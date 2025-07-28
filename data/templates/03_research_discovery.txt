@@ -1,7 +1,7 @@
 Examine these concepts:
 
 {% for concept in concepts %}
-**{{ concept.name }}**: {{ concept.__getattribute__(level) }}
+**{{ concept.name }}**: {{ concept.get_description(level, strict) }}
 {% endfor %}
 
 As a researcher or innovator, consider what new knowledge or discoveries might emerge from connecting these ideas. Focus on:

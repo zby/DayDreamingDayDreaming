@@ -61,21 +61,21 @@ class PromptFactory:
         else:
             self.templates = DEFAULT_TEMPLATES
     
-    def generate_prompt(self, concepts: List[Concept], level: str, template_idx: int = 0) -> str:
+    def generate_prompt(self, concepts: List[Concept], level: str, template_idx: int = 0, strict: bool = True) -> str:
         """Generate prompt by combining concepts at specified granularity level."""
         if template_idx >= len(self.templates):
             raise IndexError(f"Template index {template_idx} out of range (0-{len(self.templates)-1})")
         
-        # Validate that all concepts have content at the specified level
+        # Validate that all concepts can provide content at the specified level
         for concept in concepts:
-            text = getattr(concept, level)
-            if text is None:
-                raise ValueError(f"Concept '{concept.name}' has no content at level '{level}'")
+            # This will raise ValueError if strict=True and level not available
+            concept.get_description(level, strict=strict)
         
-        # Create template context with concepts and level
+        # Create template context with concepts, level, and strict mode
         context = {
             'concepts': concepts,
-            'level': level
+            'level': level,
+            'strict': strict
         }
         
         return self.templates[template_idx].render(context)
@@ -88,10 +88,11 @@ class PromptFactory:
 class PromptIterator:
     """Iterator for generating prompts across concept combinations and templates."""
     
-    def __init__(self, prompt_factory: PromptFactory, concept_combinations: List[List[Concept]], level: str):
+    def __init__(self, prompt_factory: PromptFactory, concept_combinations: List[List[Concept]], level: str, strict: bool = True):
         self.prompt_factory = prompt_factory
         self.concept_combinations = concept_combinations
         self.level = level
+        self.strict = strict
         self._current_combo_idx = 0
         self._current_template_idx = 0
     
@@ -99,7 +100,7 @@ class PromptIterator:
         """Iterate over all combinations of concepts and templates."""
         for combo_idx, concepts in enumerate(self.concept_combinations):
             for template_idx in range(self.prompt_factory.get_template_count()):
-                prompt = self.prompt_factory.generate_prompt(concepts, self.level, template_idx)
+                prompt = self.prompt_factory.generate_prompt(concepts, self.level, template_idx, strict=self.strict)
                 yield concepts, template_idx, prompt
     
     def generate_all(self) -> List[Tuple[List[Concept], int, str]]:

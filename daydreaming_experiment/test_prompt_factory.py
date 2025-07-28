@@ -29,8 +29,10 @@ class TestPromptFactory:
         """Test generating prompt with single concept."""
         concept = Concept(
             name="neural_networks",
-            sentence="Networks mimic brains.",
-            paragraph="Neural networks are computational models inspired by biological systems."
+            descriptions={
+                "sentence": "Networks mimic brains.",
+                "paragraph": "Neural networks are computational models inspired by biological systems."
+            }
         )
         factory = PromptFactory()
         
@@ -41,8 +43,8 @@ class TestPromptFactory:
     def test_generate_prompt_multiple_concepts(self):
         """Test generating prompt with multiple concepts."""
         concepts = [
-            Concept(name="concept1", paragraph="First concept description."),
-            Concept(name="concept2", paragraph="Second concept description.")
+            Concept(name="concept1", descriptions={"paragraph": "First concept description."}),
+            Concept(name="concept2", descriptions={"paragraph": "Second concept description."})
         ]
         factory = PromptFactory()
         
@@ -52,7 +54,7 @@ class TestPromptFactory:
     
     def test_generate_prompt_template_selection(self):
         """Test generating prompt with different template indices."""
-        concept = Concept(name="test", sentence="Test sentence.")
+        concept = Concept(name="test", descriptions={"sentence": "Test sentence."})
         factory = PromptFactory()
         
         prompt0 = factory.generate_prompt([concept], "sentence", 0)
@@ -64,7 +66,7 @@ class TestPromptFactory:
     
     def test_generate_prompt_invalid_template_index(self):
         """Test generating prompt with invalid template index."""
-        concept = Concept(name="test", sentence="Test sentence.")
+        concept = Concept(name="test", descriptions={"sentence": "Test sentence."})
         factory = PromptFactory()
         
         with pytest.raises(IndexError, match="Template index 5 out of range"):
@@ -72,7 +74,7 @@ class TestPromptFactory:
     
     def test_generate_prompt_missing_level_content(self):
         """Test generating prompt when concept lacks content at specified level."""
-        concept = Concept(name="test", sentence="Has sentence.")  # No paragraph
+        concept = Concept(name="test", descriptions={"sentence": "Has sentence."})  # No paragraph
         factory = PromptFactory()
         
         with pytest.raises(ValueError, match="Concept 'test' has no content at level 'paragraph'"):
@@ -82,9 +84,11 @@ class TestPromptFactory:
         """Test generating prompts at different granularity levels."""
         concept = Concept(
             name="test",
-            sentence="Short description.",
-            paragraph="Longer paragraph description.",
-            article="Full article content."
+            descriptions={
+                "sentence": "Short description.",
+                "paragraph": "Longer paragraph description.",
+                "article": "Full article content."
+            }
         )
         factory = PromptFactory()
         
@@ -99,8 +103,8 @@ class TestPromptFactory:
     def test_prompt_formatting_structure(self):
         """Test that prompts are formatted correctly with concept names."""
         concepts = [
-            Concept(name="c1", sentence="First concept."),
-            Concept(name="c2", sentence="Second concept.")
+            Concept(name="c1", descriptions={"sentence": "First concept."}),
+            Concept(name="c2", descriptions={"sentence": "Second concept."})
         ]
         factory = PromptFactory()
         
@@ -118,8 +122,8 @@ class TestPromptIterator:
     def test_iterator_creation(self):
         """Test creating PromptIterator."""
         concepts = [
-            [Concept(name="c1", sentence="Sentence 1.")],
-            [Concept(name="c2", sentence="Sentence 2.")]
+            [Concept(name="c1", descriptions={"sentence": "Sentence 1."})],
+            [Concept(name="c2", descriptions={"sentence": "Sentence 2."})]
         ]
         factory = PromptFactory()
         iterator = PromptIterator(factory, concepts, "sentence")
@@ -130,8 +134,8 @@ class TestPromptIterator:
     
     def test_iterator_generate_all(self):
         """Test generating all prompts from iterator."""
-        concept1 = Concept(name="c1", sentence="First concept.")
-        concept2 = Concept(name="c2", sentence="Second concept.")
+        concept1 = Concept(name="c1", descriptions={"sentence": "First concept."})
+        concept2 = Concept(name="c2", descriptions={"sentence": "Second concept."})
         combinations = [[concept1], [concept2]]
         
         factory = PromptFactory()
@@ -150,7 +154,7 @@ class TestPromptIterator:
     
     def test_iterator_template_variation(self):
         """Test that iterator generates different templates for same concepts."""
-        concept = Concept(name="test", sentence="Test sentence.")
+        concept = Concept(name="test", descriptions={"sentence": "Test sentence."})
         combinations = [[concept]]
         
         factory = PromptFactory()
@@ -168,9 +172,9 @@ class TestPromptIterator:
     
     def test_iterator_multiple_concept_combinations(self):
         """Test iterator with multiple concept combinations."""
-        concept1 = Concept(name="c1", paragraph="Para 1.")
-        concept2 = Concept(name="c2", paragraph="Para 2.")
-        concept3 = Concept(name="c3", paragraph="Para 3.")
+        concept1 = Concept(name="c1", descriptions={"paragraph": "Para 1."})
+        concept2 = Concept(name="c2", descriptions={"paragraph": "Para 2."})
+        concept3 = Concept(name="c3", descriptions={"paragraph": "Para 3."})
         
         combinations = [
             [concept1],
@@ -201,7 +205,7 @@ class TestPromptIterator:
         custom_templates = (env.from_string("Custom template 1: {% for concept in concepts %}{{ concept.name }}{% endfor %}"),)
         factory = PromptFactory(custom_templates)
         
-        concept = Concept(name="test", sentence="Test.")
+        concept = Concept(name="test", descriptions={"sentence": "Test."})
         combinations = [[concept]]
         
         iterator = PromptIterator(factory, combinations, "sentence")
@@ -224,8 +228,8 @@ class TestPromptIterator:
     
     def test_iterator_preserves_concept_order(self):
         """Test that iterator preserves the order of concepts in combinations."""
-        concept1 = Concept(name="first", sentence="First concept.")
-        concept2 = Concept(name="second", sentence="Second concept.")
+        concept1 = Concept(name="first", descriptions={"sentence": "First concept."})
+        concept2 = Concept(name="second", descriptions={"sentence": "Second concept."})
         
         combinations = [[concept1, concept2]]
         factory = PromptFactory()
@@ -252,8 +256,8 @@ class TestTemplateLoading:
         for template in templates:
             assert isinstance(template, Template)
             # Test that templates can render with concepts
-            test_concepts = [Concept(name="test", sentence="Test sentence.")]
-            rendered = template.render(concepts=test_concepts, level="sentence")
+            test_concepts = [Concept(name="test", descriptions={"sentence": "Test sentence."})]
+            rendered = template.render(concepts=test_concepts, level="sentence", strict=True)
             assert "test" in rendered.lower()
             assert len(rendered) > 100
     
@@ -276,7 +280,7 @@ class TestTemplateLoading:
             assert isinstance(templates[1], Template)
             
             # Test rendering
-            test_concepts = [Concept(name="test")]
+            test_concepts = [Concept(name="test", descriptions={})]
             assert "Template 1: test" == templates[0].render(concepts=test_concepts)
             assert "Template 2: test" == templates[1].render(concepts=test_concepts)
     
@@ -324,8 +328,8 @@ class TestTemplateLoading:
             assert isinstance(factory.templates[0], Template)
             
             # Test that it can generate prompts
-            test_concepts = [Concept(name="test")]
-            prompt = factory.generate_prompt(test_concepts, "name", 0)
+            test_concepts = [Concept(name="test", descriptions={})]
+            prompt = factory.generate_prompt(test_concepts, "sentence", 0, strict=False)
             assert "Custom template: test" == prompt
 
 
@@ -338,19 +342,19 @@ class TestDefaultTemplates:
         for template in DEFAULT_TEMPLATES:
             assert isinstance(template, Template)
             # Test that templates can render
-            test_concepts = [Concept(name="test", sentence="Test sentence.")]
-            rendered = template.render(concepts=test_concepts, level="sentence")
+            test_concepts = [Concept(name="test", descriptions={"sentence": "Test sentence."})]
+            rendered = template.render(concepts=test_concepts, level="sentence", strict=True)
             assert isinstance(rendered, str)
             assert len(rendered) > 100  # Reasonable length for improved templates
     
     def test_default_templates_are_different(self):
         """Test that default templates are meaningfully different."""
         # Test that all templates produce different output
-        test_concepts = [Concept(name="test", sentence="Test sentence.")]
+        test_concepts = [Concept(name="test", descriptions={"sentence": "Test sentence."})]
         rendered_templates = []
         
         for template in DEFAULT_TEMPLATES:
-            rendered = template.render(concepts=test_concepts, level="sentence")
+            rendered = template.render(concepts=test_concepts, level="sentence", strict=True)
             rendered_templates.append(rendered)
         
         # Check that all rendered templates are unique

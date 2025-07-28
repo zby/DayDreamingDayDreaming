@@ -1,7 +1,7 @@
 Consider the following concepts:
 
 {% for concept in concepts %}
-**{{ concept.name }}**: {{ concept.__getattribute__(level) }}
+**{{ concept.name }}**: {{ concept.get_description(level, strict) }}
 {% endfor %}
 
 Think about current challenges, limitations, or unsolved problems in various fields. How might combining or applying these concepts lead to:

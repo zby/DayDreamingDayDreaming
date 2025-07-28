@@ -34,7 +34,7 @@ class TestConceptDB:
     
     def test_get_concept_by_name(self):
         """Test retrieving concept by name."""
-        concept = Concept(name="neural_networks", sentence="Test sentence")
+        concept = Concept(name="neural_networks", descriptions={"sentence": "Test sentence"})
         db = ConceptDB([concept])
         
         retrieved = db.get_concept("neural_networks")
@@ -85,8 +85,8 @@ class TestConceptDB:
     def test_save_and_load_minimal(self):
         """Test saving and loading database with minimal concepts."""
         concepts = [
-            Concept(name="concept1", sentence="Sentence 1"),
-            Concept(name="concept2", paragraph="Paragraph 2")
+            Concept(name="concept1", descriptions={"sentence": "Sentence 1"}),
+            Concept(name="concept2", descriptions={"paragraph": "Paragraph 2"})
         ]
         
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -114,9 +114,11 @@ class TestConceptDB:
         concepts = [
             Concept(
                 name="neural_networks",
-                sentence="Networks mimic brains.",
-                paragraph="Neural networks are computational models.",
-                article="This is a full article about neural networks..."
+                descriptions={
+                    "sentence": "Networks mimic brains.",
+                    "paragraph": "Neural networks are computational models.",
+                    "article": "This is a full article about neural networks..."
+                }
             )
         ]
         
@@ -144,8 +146,10 @@ class TestConceptDB:
         concepts = [
             Concept(
                 name="test_concept",
-                sentence="Test sentence.",
-                article="Article content"
+                descriptions={
+                    "sentence": "Test sentence.",
+                    "article": "Article content"
+                }
             )
         ]
         
@@ -182,7 +186,7 @@ class TestConceptDB:
             concepts = [
                 Concept(
                     name="existing_concept",
-                    sentence="Has existing article.",
+                    descriptions={"sentence": "Has existing article."},
                     article_path="articles/existing_article.txt"
                 )
             ]
@@ -223,7 +227,7 @@ class TestConceptDB:
     
     def test_manifest_format_includes_articles_dir(self):
         """Test that saved manifest includes articles_dir field."""
-        concepts = [Concept(name="test", sentence="Test concept.")]
+        concepts = [Concept(name="test", descriptions={"sentence": "Test concept."})]
         
         with tempfile.TemporaryDirectory() as temp_dir:
             db = ConceptDB(concepts)

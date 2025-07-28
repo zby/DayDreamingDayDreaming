@@ -51,16 +51,19 @@ class ConceptDB:
         for concept in self._concepts:
             concept_data = {
                 "name": concept.name,
-                "sentence": concept.sentence,
-                "paragraph": concept.paragraph
+                "descriptions": concept.descriptions.copy()
             }
             
-            if concept.article:
+            # Handle article content - save to file if it exists
+            if concept.descriptions.get('article'):
                 article_file = f"{concept.name}.txt"
                 article_file_path = articles_path / article_file
                 with open(article_file_path, 'w', encoding='utf-8') as f:
-                    f.write(concept.article)
+                    f.write(concept.descriptions['article'])
                 concept_data["article_path"] = f"{articles_dir}/{article_file}"
+                # Remove article content from descriptions since it's in external file
+                concept_data["descriptions"] = concept_data["descriptions"].copy()
+                del concept_data["descriptions"]['article']
             elif concept.article_path:
                 concept_data["article_path"] = concept.article_path
             
@@ -82,18 +85,33 @@ class ConceptDB:
         
         concepts = []
         for concept_data in manifest["concepts"]:
+            # Handle new format with descriptions dict
+            descriptions = {}
+            
+            if "descriptions" in concept_data:
+                # New format - use descriptions dict directly
+                descriptions = concept_data["descriptions"].copy()
+            else:
+                # Backward compatibility - convert old format to new
+                if concept_data.get("sentence"):
+                    descriptions["sentence"] = concept_data["sentence"]
+                if concept_data.get("paragraph"):
+                    descriptions["paragraph"] = concept_data["paragraph"]
+                if concept_data.get("article"):
+                    descriptions["article"] = concept_data["article"]
+            
             concept = Concept(
                 name=concept_data["name"],
-                sentence=concept_data.get("sentence"),
-                paragraph=concept_data.get("paragraph"),
+                descriptions=descriptions,
                 article_path=concept_data.get("article_path")
             )
             
+            # Load article content from external file if available
             if concept.article_path:
                 article_full_path = base_path / concept.article_path
                 if article_full_path.exists():
                     with open(article_full_path, 'r', encoding='utf-8') as f:
-                        concept.article = f.read()
+                        concept.descriptions['article'] = f.read()
             
             concepts.append(concept)
         

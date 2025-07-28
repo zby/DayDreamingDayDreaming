@@ -22,6 +22,8 @@ def main():
     parser.add_argument("--manifest", default="data/concepts/day_dreaming_concepts.json",
                        help="Path to concept manifest file")
     parser.add_argument("--output", help="Output file (default: stdout)")
+    parser.add_argument("--strict", action="store_true",
+                       help="Require exact level match, fail if requested level is unavailable (default: non-strict with fallback)")
     
     args = parser.parse_args()
     
@@ -44,7 +46,8 @@ def main():
     
     # Create prompt iterator
     factory = PromptFactory()
-    iterator = PromptIterator(factory, combinations, args.level)
+    strict = args.strict  # Use strict flag directly (default is False = non-strict)
+    iterator = PromptIterator(factory, combinations, args.level, strict=strict)
     
     total_prompts = iterator.get_total_count()
     print(f"Total prompts to generate: {total_prompts}")

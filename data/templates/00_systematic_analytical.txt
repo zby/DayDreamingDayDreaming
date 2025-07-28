@@ -1,7 +1,7 @@
 Below are several concepts to work with:
 
 {% for concept in concepts %}
-**{{ concept.name }}**: {{ concept.__getattribute__(level) }}
+**{{ concept.name }}**: {{ concept.get_description(level, strict) }}
 {% endfor %}
 
 Please systematically explore how these concepts might be combined or connected. For each potential combination:

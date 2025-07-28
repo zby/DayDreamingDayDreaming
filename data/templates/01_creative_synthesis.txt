@@ -1,7 +1,7 @@
 Here are some concepts for creative exploration:
 
 {% for concept in concepts %}
-**{{ concept.name }}**: {{ concept.__getattribute__(level) }}
+**{{ concept.name }}**: {{ concept.get_description(level, strict) }}
 {% endfor %}
 
 Let your imagination flow and consider unexpected ways these concepts might combine. Think about:

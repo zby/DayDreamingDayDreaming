@@ -1,7 +1,7 @@
 Review these concepts:
 
 {% for concept in concepts %}
-**{{ concept.name }}**: {{ concept.__getattribute__(level) }}
+**{{ concept.name }}**: {{ concept.get_description(level, strict) }}
 {% endfor %}
 
 Think practically about how these concepts could be implemented or applied in real-world contexts. Consider:
