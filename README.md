@@ -20,8 +20,36 @@ uv sync --dev
 
 ## Usage
 
-```python
-# TODO: Add usage examples
+### Running an Experiment
+
+The main experiment runner uses combinatorial testing to find minimal concept sets that can elicit the Day-Dreaming idea from LLMs:
+
+```bash
+# Run complete experiment with automated evaluation
+uv run python -m daydreaming_experiment.experiment_runner \
+    --k-max 4 \
+    --level paragraph \
+    --generator-model gpt-4 \
+    --evaluator-model gpt-4 \
+    --output experiments/my_experiment
+```
+
+#### Parameters
+
+- `--k-max`: Maximum number of concepts to combine (default: 4)
+- `--level`: Content granularity level (`sentence`, `paragraph`, or `article`)
+- `--generator-model`: LLM model for content generation
+- `--evaluator-model`: LLM model for automated evaluation
+- `--output`: Output directory for experiment results
+
+### Analyzing Results
+
+After running an experiment, analyze the results:
+
+```bash
+# Analyze experiment results
+uv run python -m daydreaming_experiment.results_analysis \
+    experiments/experiment_20250728_143022
 ```
 
 ## Tests

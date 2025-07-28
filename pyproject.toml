@@ -27,6 +27,8 @@ dependencies = [
     "pandas>=2.0.0",
     "numpy>=1.26.0",
     "jinja2>=3.0.0",
+    "click>=8.0.0",
+    "python-dotenv>=1.0.0",
 ]
 dynamic = ["version"]
 
