@@ -1,79 +1,55 @@
 from typing import List, Iterator, Tuple
+from pathlib import Path
 from .concept import Concept
 
 
-DEFAULT_TEMPLATES = (
-    # Systematic analytical approach
-    """Below are several concepts to work with:
-
-{concepts}
-
-Please systematically explore how these concepts might be combined or connected. For each potential combination:
-1. Identify the core principles or mechanisms from each concept
-2. Consider how they might interact, complement, or enhance each other
-3. Generate specific novel applications, insights, or innovations
-
-Provide a numbered list of your most promising ideas with brief explanations.""",
+def load_templates_from_directory(templates_dir: str = "data/templates") -> tuple[str, ...]:
+    """Load all template files from the specified directory."""
+    templates_path = Path(templates_dir)
+    if not templates_path.exists():
+        raise FileNotFoundError(f"Templates directory not found: {templates_dir}")
     
-    # Creative synthesis approach
-    """Here are some concepts for creative exploration:
-
-{concepts}
-
-Let your imagination flow and consider unexpected ways these concepts might combine. Think about:
-- Novel applications that don't exist yet
-- Surprising connections or analogies
-- Creative solutions to existing problems
-- New research directions or questions
-
-Generate a diverse list of innovative possibilities, from practical to speculative.""",
+    # Find all .txt files and sort them by filename for consistent ordering
+    template_files = sorted(templates_path.glob("*.txt"))
+    if not template_files:
+        raise FileNotFoundError(f"No template files found in: {templates_dir}")
     
-    # Problem-solving focused approach
-    """Consider the following concepts:
-
-{concepts}
-
-Think about current challenges, limitations, or unsolved problems in various fields. How might combining or applying these concepts lead to:
-- Solutions to existing problems
-- Improvements to current methods or systems
-- New approaches that overcome known limitations
-- Breakthrough innovations in any domain
-
-List your most compelling ideas with explanations of how they address specific needs.""",
+    templates = []
+    for template_file in template_files:
+        try:
+            with open(template_file, 'r', encoding='utf-8') as f:
+                template_content = f.read().strip()
+                if not template_content:
+                    raise ValueError(f"Template file is empty: {template_file}")
+                if "{concepts}" not in template_content:
+                    raise ValueError(f"Template missing {{concepts}} placeholder: {template_file}")
+                templates.append(template_content)
+        except Exception as e:
+            raise RuntimeError(f"Error loading template {template_file}: {e}")
     
-    # Research and discovery approach
-    """Examine these concepts:
+    return tuple(templates)
 
-{concepts}
 
-As a researcher or innovator, consider what new knowledge or discoveries might emerge from connecting these ideas. Focus on:
-- Unexplored research questions that bridge these concepts
-- Hypotheses about how they might interact
-- New theoretical frameworks or models
-- Experimental approaches that could test novel combinations
-
-Provide a structured list of research-worthy ideas and their potential significance.""",
-    
-    # Application and implementation approach
-    """Review these concepts:
-
-{concepts}
-
-Think practically about how these concepts could be implemented or applied in real-world contexts. Consider:
-- Concrete products, services, or systems that could be built
-- Ways to improve existing technologies or processes
-- New business models or organizational approaches
-- Practical benefits that could impact people's lives
-
-Generate actionable ideas with clear implementation pathways."""
-)
+# Load default templates from files
+DEFAULT_TEMPLATES = load_templates_from_directory()
 
 
 class PromptFactory:
     """Template-based prompt generation from concept combinations."""
     
-    def __init__(self, templates: tuple[str, ...] = DEFAULT_TEMPLATES):
-        self.templates = templates
+    def __init__(self, templates: tuple[str, ...] = None, templates_dir: str = None):
+        """Initialize PromptFactory with templates.
+        
+        Args:
+            templates: Tuple of template strings. If None, loads from templates_dir.
+            templates_dir: Directory to load templates from. Defaults to "data/templates".
+        """
+        if templates is not None:
+            self.templates = templates
+        elif templates_dir is not None:
+            self.templates = load_templates_from_directory(templates_dir)
+        else:
+            self.templates = DEFAULT_TEMPLATES
     
     def generate_prompt(self, concepts: List[Concept], level: str, template_idx: int = 0) -> str:
         """Generate prompt by combining concepts at specified granularity level."""

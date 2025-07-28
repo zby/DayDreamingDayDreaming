@@ -28,9 +28,15 @@ daydreaming_experiment/
 └── results_analysis.py          # Post-experiment analysis tools
 
 data/
-├── concepts/                     # New concept database
+├── concepts/                     # Concept database
 │   ├── day_dreaming_concepts.json            # Manifest
 │   └── articles/               # Article files
+├── templates/                    # Prompt templates
+│   ├── 00_systematic_analytical.txt
+│   ├── 01_creative_synthesis.txt
+│   ├── 02_problem_solving.txt
+│   ├── 03_research_discovery.txt
+│   └── 04_application_implementation.txt
 └── experiments/                # Experiment results
     └── experiment_YYYYMMDD_HHMMSS/
 ```
@@ -83,6 +89,15 @@ Examples:
 - `SimpleModelClient` can be injected for testing without requiring real API calls
 - `ConceptDB` can be provided pre-loaded for experiment runs
 - Tests can easily inject mock dependencies without complex patching
+
+**File-based Templates**: Prompt templates are stored as separate text files in `data/templates/` for easy editing and version control. Templates are automatically loaded by filename order and must contain the `{concepts}` placeholder.
+
+Template Types:
+- `00_systematic_analytical.txt` - Structured step-by-step analysis
+- `01_creative_synthesis.txt` - Open-ended imaginative exploration  
+- `02_problem_solving.txt` - Focus on solving challenges
+- `03_research_discovery.txt` - Academic research orientation
+- `04_application_implementation.txt` - Practical real-world focus
 
 ## Dependencies
 

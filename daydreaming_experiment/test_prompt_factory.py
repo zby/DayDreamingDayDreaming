@@ -1,6 +1,8 @@
 import pytest
+import tempfile
+from pathlib import Path
 from daydreaming_experiment.concept import Concept
-from daydreaming_experiment.prompt_factory import PromptFactory, PromptIterator, DEFAULT_TEMPLATES
+from daydreaming_experiment.prompt_factory import PromptFactory, PromptIterator, DEFAULT_TEMPLATES, load_templates_from_directory
 
 
 class TestPromptFactory:
@@ -230,6 +232,80 @@ class TestPromptIterator:
             first_pos = prompt.find("First concept.")
             second_pos = prompt.find("Second concept.")
             assert first_pos < second_pos
+
+
+class TestTemplateLoading:
+    def test_load_templates_from_directory(self):
+        """Test loading templates from the data/templates directory."""
+        templates = load_templates_from_directory("data/templates")
+        assert len(templates) == 5
+        
+        # All templates should have {concepts} placeholder
+        for template in templates:
+            assert isinstance(template, str)
+            assert "{concepts}" in template
+            assert len(template) > 100
+    
+    def test_load_templates_custom_directory(self):
+        """Test loading templates from a custom directory."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            # Create test templates
+            template_dir = Path(temp_dir) / "custom_templates"
+            template_dir.mkdir()
+            
+            template1 = template_dir / "01_test.txt"
+            template2 = template_dir / "02_test.txt"
+            
+            template1.write_text("Template 1: {concepts}")
+            template2.write_text("Template 2: {concepts}")
+            
+            templates = load_templates_from_directory(str(template_dir))
+            assert len(templates) == 2
+            assert templates[0] == "Template 1: {concepts}"
+            assert templates[1] == "Template 2: {concepts}"
+    
+    def test_load_templates_missing_directory(self):
+        """Test error when templates directory doesn't exist."""
+        with pytest.raises(FileNotFoundError, match="Templates directory not found"):
+            load_templates_from_directory("nonexistent/directory")
+    
+    def test_load_templates_empty_directory(self):
+        """Test error when templates directory is empty."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            with pytest.raises(FileNotFoundError, match="No template files found"):
+                load_templates_from_directory(temp_dir)
+    
+    def test_load_templates_missing_placeholder(self):
+        """Test error when template missing {concepts} placeholder."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            template_file = Path(temp_dir) / "bad_template.txt"
+            template_file.write_text("This template has no placeholder")
+            
+            with pytest.raises(RuntimeError, match="Template missing {concepts} placeholder"):
+                load_templates_from_directory(temp_dir)
+    
+    def test_load_templates_empty_file(self):
+        """Test error when template file is empty."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            template_file = Path(temp_dir) / "empty_template.txt"
+            template_file.write_text("")
+            
+            with pytest.raises(RuntimeError, match="Template file is empty"):
+                load_templates_from_directory(temp_dir)
+    
+    def test_prompt_factory_with_custom_templates_dir(self):
+        """Test PromptFactory with custom templates directory."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            # Create test templates
+            template_dir = Path(temp_dir) / "test_templates"
+            template_dir.mkdir()
+            
+            template_file = template_dir / "test_template.txt"
+            template_file.write_text("Custom template: {concepts}")
+            
+            factory = PromptFactory(templates_dir=str(template_dir))
+            assert factory.get_template_count() == 1
+            assert factory.templates[0] == "Custom template: {concepts}"
 
 
 class TestDefaultTemplates:

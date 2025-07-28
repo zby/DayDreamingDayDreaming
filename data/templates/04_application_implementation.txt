@@ -1,0 +1,11 @@
+Review these concepts:
+
+{concepts}
+
+Think practically about how these concepts could be implemented or applied in real-world contexts. Consider:
+- Concrete products, services, or systems that could be built
+- Ways to improve existing technologies or processes
+- New business models or organizational approaches
+- Practical benefits that could impact people's lives
+
+Generate actionable ideas with clear implementation pathways.
