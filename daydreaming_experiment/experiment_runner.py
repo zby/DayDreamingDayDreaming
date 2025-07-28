@@ -116,6 +116,11 @@ def save_result_row(results_path: Path, result_data: dict):
     default="data/concepts",
     help="Concepts database directory",
 )
+@click.option(
+    "--max-prompts",
+    type=int,
+    help="Maximum number of prompts to test (default: test all combinations)",
+)
 def run_experiment(
     k_max: int,
     level: str,
@@ -123,6 +128,7 @@ def run_experiment(
     evaluator_model: str,
     output: str,
     concepts_dir: str,
+    max_prompts: int,
 ):
     """Run complete experiment with automated evaluation."""
 
@@ -161,6 +167,10 @@ def run_experiment(
         len(list(combinations(concepts, k))) * len(prompt_factory.templates)
         for k in range(1, k_max + 1)
     )
+    
+    # Apply max_prompts limit if specified
+    if max_prompts:
+        total_combinations = min(total_combinations, max_prompts)
 
     # Save configuration
     config = {
@@ -173,6 +183,7 @@ def run_experiment(
         "concept_count": len(concepts),
         "total_combinations": total_combinations,
         "templates_count": len(prompt_factory.templates),
+        "max_prompts": max_prompts,
     }
     save_config(output_dir, config)
 
@@ -185,15 +196,25 @@ def run_experiment(
 
     # Run experiment
     attempt_id = 0
+    max_reached = False
 
     with click.progressbar(
         length=total_combinations, label="Processing combinations"
     ) as bar:
 
         for k in range(1, k_max + 1):
+            if max_reached:
+                break
             for concept_combination in combinations(concepts, k):
+                if max_reached:
+                    break
                 for template_idx in range(len(prompt_factory.templates)):
                     attempt_id += 1
+                    
+                    # Check if we've reached the max_prompts limit
+                    if max_prompts and attempt_id > max_prompts:
+                        max_reached = True
+                        break
 
                     # Generate prompt
                     prompt = prompt_factory.generate_prompt(
