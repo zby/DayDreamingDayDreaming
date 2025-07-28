@@ -1,219 +1,283 @@
-# Daydreaming Experiment System Design
+# DayDreaming LLMs Concept Experiment Design
 
 ## Overview
 
-The Daydreaming Experiment is a Python research system that tests whether pre-June 2025 LLMs can "reinvent" Gwern's Daydreaming Loop concept when provided with minimal contextual hints through a structured prompt DAG (Directed Acyclic Graph) approach.
-
-## Core Hypothesis
-
-The experiment aims to determine if language models can independently discover the concept of a continuous creative process involving random idea combination, criticism, and iterative refinement when given incremental contextual prompts organized in a hierarchical structure.
+This system implements a simplified experimental framework to find the **minimal set of concepts** that can elicit Gwern's Day-Dreaming idea from offline LLMs. The design focuses on combinatorial testing with automated LLM-based evaluation.
 
 ## System Architecture
 
-### High-Level Components
+### 1. Core Data Models
 
-```
-┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
-│   ConceptDAG    │───▶│ PromptGenerator │───▶│ExperimentExecutor│
-│   (Storage)     │    │   (Templates)   │    │  (LLM Interface)│
-└─────────────────┘    └─────────────────┘    └─────────────────┘
-         │                                              │
-         ▼                                              ▼
-┌─────────────────┐                            ┌─────────────────┐
-│  File Storage   │                            │   DataStorage   │
-│  (Articles)     │                            │   (Results)     │
-└─────────────────┘                            └─────────────────┘
-```
-
-### Data Flow
-
-1. **Concept Creation**: Ideas are structured in a DAG with three levels (sentence, paragraph, article)
-2. **Prompt Generation**: Templates extract concepts from DAG nodes to create contextual prompts
-3. **Experiment Execution**: Prompts are sent to multiple LLM models via OpenRouter API
-4. **Result Storage**: Responses are stored with metadata for analysis
-
-## Core Modules
-
-### 1. ConceptDAG (`concept_dag.py`)
-
-**Purpose**: Manages hierarchical concept relationships with three representation levels.
-
-**Key Classes**:
-- `ConceptNode`: Individual concept with content, level, and parent relationships
-- `ConceptDAG`: Graph structure managing nodes and their relationships
-- `ConceptLevel`: Enum defining sentence/paragraph/article levels
-
-**Features**:
-- Hierarchical content storage (articles as files, shorter content in memory)
-- DAG validation to prevent cycles
-- Traversal methods for building full concepts from ancestors
-- Persistence to/from disk
-
-### 2. Configuration (`config.py`)
-
-**Purpose**: Centralized configuration management.
-
-**Components**:
-- OpenRouter API key management
-- Pre-June 2025 model list
-- Reproducibility seed
-- Scoring rubric for response evaluation
-
-### 3. Experiment Execution (`execution.py`)
-
-**Purpose**: Orchestrates the experiment across models and concept nodes.
-
-**Key Class**: `ExperimentExecutor`
-
-**Features**:
-- OpenRouter API integration via OpenAI client
-- Batch processing across models and concept nodes
-- Error handling and logging
-- Deterministic execution with fixed seeds
-
-### 4. Data Storage (`storage.py`)
-
-**Purpose**: Handles experiment result persistence and retrieval.
-
-**Key Classes**:
-- `ExperimentResult`: Data structure for individual results
-- `DataStorage`: Storage management with JSON and CSV support
-
-**Features**:
-- Individual result files (JSON)
-- Batch result aggregation (CSV)
-- Timestamped storage
-- Pandas integration for analysis
-
-### 5. Prompt Generation (`prompt.py`)
-
-**Purpose**: Creates contextual prompts from DAG concepts using templates.
-
-**Key Classes**:
-- `PromptTemplate`: Template with placeholders and concept requirements
-- `PromptGenerator`: Generates prompts from DAG nodes
-- `PromptTemplateLibrary`: Pre-built template collection
-
-**Features**:
-- Multi-level concept extraction (sentence/paragraph/article)
-- Template-based prompt construction
-- Missing concept validation
-- Batch generation for leaf nodes
-
-## Key Design Patterns
-
-### 1. Hierarchical Concept Representation
-
-Concepts are organized in three levels of detail:
-- **Sentence**: Brief one-sentence description
-- **Paragraph**: Moderate detail (200-500 characters)
-- **Article**: Full detailed content (stored as files)
-
-### 2. Template-Based Prompt Generation
-
-Uses Python's `string.Template` for safe placeholder substitution:
-```python
-template = "Analyze this concept: $concept\nProvide insights about its implications."
-```
-
-### 3. Directed Acyclic Graph Structure
-
-Ensures concepts build upon each other without circular dependencies:
-- Parent-child relationships define concept hierarchies
-- Leaf nodes represent the most specific/complex concepts
-- Full concept construction traverses from leaf to root
-
-### 4. API Abstraction
-
-Uses OpenAI client library with OpenRouter as the base URL, providing:
-- Unified interface across different LLM providers
-- Consistent API patterns
-- Built-in error handling
-
-## Data Models
-
-### ConceptNode
+#### Concept Structure
 ```python
 @dataclass
-class ConceptNode:
-    id: str
-    content: Union[str, Path]  # String or file path
-    level: ConceptLevel
-    parents: List[str]
-    metadata: Dict
+class Concept:
+    name: str
+    sentence: Optional[str] = None      # 1-sentence summary
+    paragraph: Optional[str] = None     # Multi-sentence description  
+    article: Optional[str] = None       # Full comprehensive content
+    article_path: Optional[str] = None  # External file for large articles
 ```
 
-### ExperimentResult
+**Key Design Decisions:**
+- All concepts have three granularity levels for future experiments
+- **Current experiments use only paragraph level** for optimal combination testing
+- Articles stored externally to keep manifest manageable
+- Simple flat structure (no DAG dependencies)
+
+#### ConceptDB
+- Registry for all available concepts
+- Provides batch retrieval and combination iteration
+- Supports save/load with JSON manifest + article files
+- Level-agnostic combination generation
+
+#### Model Integration
 ```python
-@dataclass
-class ExperimentResult:
-    model: str
-    node_id: str
-    prompt: str
-    response: str
-    seed: int
-    timestamp: str
+class SimpleModelClient:
+    """Lightweight LLM client for experiment execution."""
+    def generate(self, prompt: str) -> str:
+        # Simple interface to LLM APIs for content generation
+    
+    def evaluate(self, prompt: str, response: str) -> tuple[bool, float, str]:
+        # LLM-based evaluation returning (rating, confidence, reasoning)
 ```
+
+### 2. Prompt Generation System
+
+#### PromptFactory Class
+```python
+class PromptFactory:
+    """Template-based prompt generation from concept combinations."""
+    
+    def __init__(self, templates: tuple[str, ...] = DEFAULT_TEMPLATES):
+        self.templates = templates
+    
+    def generate_prompt(self, concepts: list[Concept], level: str, template_idx: int = 0) -> str:
+        """Generate prompt by combining concepts at specified granularity level."""
+        concept_texts = [getattr(concept, level) for concept in concepts]
+        formatted_concepts = '\n'.join(f"- {text}" for text in concept_texts)
+        return self.templates[template_idx].format(concepts=formatted_concepts)
+```
+
+#### Template System
+```python
+DEFAULT_TEMPLATES = (
+"""Below are several background concepts:
+ 
+ {concepts}
+ 
+Can you combine ideas from above and make new insights or inventions?
+Generate a list of possbilities.
+""",
+"""Here are some concepts:
+
+{concepts}
+
+When you combine them - do they suggest some novel ideas?
+Generate a list of possible inventions, suprising facts, research
+questions, new insights - etc, any thoughts that could be valuable.
+""")
+```
+
+#### Template Design Principles
+- **Minimal priming**: Avoid leading questions that bias toward Day-Dreaming concepts
+- **Open-ended generation**: Encourage broad creative exploration
+- **Combination focus**: Explicitly ask for synthesis of provided concepts
+- **Multiple variants**: Different phrasings to test prompt sensitivity
+
+### 3. Evaluation System
+
+#### Day-Dreaming Concept Detection
+The evaluator LLM assesses responses for Day-Dreaming-like elements:
+
+**Core Elements:**
+- Iterative refinement loops and cyclical processes
+- Exploration-exploitation balance concepts
+- Meta-cognitive awareness and self-monitoring systems
+- Combinatorial creativity and automated ideation
+- Quality filtering and selection mechanisms
+
+**Evaluation Prompt:**
+```
+Does this response contain ideas similar to iterative creative loops that automatically generate, evaluate, and refine concepts?
+
+Response: {response}
+
+Answer: YES/NO
+Confidence: 0.0-1.0
+Reasoning: Brief explanation
+```
+
+#### Automated LLM Evaluation
+- Use a separate LLM (evaluator model) to assess generated responses
+- Structured evaluation prompt with scoring rubric for Day-Dreaming concept detection
+- Binary scoring with confidence metrics and detailed reasoning traces
+- Store evaluation metadata (timestamp, confidence score, reasoning)
 
 ## File Organization
 
 ```
 daydreaming_experiment/
-├── __init__.py              # Package initialization
-├── concept_dag.py           # Core DAG implementation
-├── config.py                # Configuration settings
-├── execution.py             # Experiment orchestration
-├── storage.py               # Data persistence
-├── prompt.py                # Prompt generation
-└── test_*.py               # Unit tests (colocated)
+├── concept.py                    # Core Concept dataclass
+├── concept_db.py                 # ConceptDB registry and I/O
+├── prompt_factory.py             # PromptFactory for template-based generation
+├── experiment_runner.py          # CLI experiment execution
+├── model_client.py              # Simple LLM interface
+└── results_analysis.py          # Post-experiment analysis tools
+
+data/
+├── concepts/                     # New concept database
+│   ├── day_dreaming_concepts.json            # Manifest
+│   └── articles/               # Article files
+└── experiments/                # Experiment results
+    └── experiment_YYYYMMDD_HHMMSS/
+        ├── config.json                 # Experiment parameters
+        ├── results.csv                 # Main results table
+        └── responses/
+            ├── response_001.txt        # LLM response files
+            ├── response_002.txt
+            └── ...
 ```
 
-## External Dependencies
+## Data Storage Schema
 
-- **openai**: LLM API client (used with OpenRouter)
-- **pandas**: Data manipulation and CSV handling
-- **numpy**: Data handling support
-- **pytest**: Testing framework
-- **json**: Built-in JSON serialization
-- **pathlib**: Modern path handling
+### 1. Concept Database Schema
 
-## Testing Strategy
+#### Manifest Structure (day_dreaming_concepts.json)
+```json
+{
+  "version": "1.0",
+  "created": "2025-07-28T14:30:22Z", 
+  "concepts": [
+    {
+      "name": "neural_networks",
+      "sentence": "Artificial neural networks mimic biological brain structures.",
+      "paragraph": "Neural networks are computational models inspired by biological neural networks...",
+      "article_path": "articles/neural_networks.txt"
+    }
+  ]
+}
+```
 
-- **Unit Tests**: Colocated with source files (`test_*.py`)
-- **Integration Tests**: Located in separate `tests/` directory
-- **Fixtures**: Test data stored in `tests/fixtures/`
-- **Framework**: pytest with custom configurations
+#### Article File Format
+- Plain text files in `data/concepts/articles/`
+- Filename matches concept name with `.txt` extension
+- UTF-8 encoding
 
-## Security and Reproducibility
+### 2. Results Storage Schema
 
-- **API Keys**: Environment variable based (`OPENROUTER_API_KEY`)
-- **Deterministic Execution**: Fixed seed for reproducible results
-- **File Safety**: UTF-8 encoding, proper path handling
-- **Error Handling**: Graceful degradation with error logging
+#### Results Schema (CSV)
+| Column | Description |
+|--------|-------------|
+| experiment_id | Unique experiment identifier |
+| attempt_id | Sequential attempt number |
+| concept_names | Pipe-separated concept names |
+| concept_count | Number of concepts in combination |
+| level | Description level used (always "paragraph" initially) |
+| template_id | Template index used |
+| response_file | Filename of LLM response |
+| automated_rating | Binary evaluation (0/1) from evaluator LLM |
+| confidence_score | Evaluator's confidence in rating (0.0-1.0) |
+| evaluation_reasoning | LLM evaluator's reasoning trace |
+| evaluation_timestamp | When automated evaluation occurred |
+| generation_timestamp | When prompt was generated |
+| model_used | LLM model identifier |
 
-## Extensibility Points
+#### Configuration Storage (JSON)
+```json
+{
+  "experiment_id": "exp_20250728_143022",
+  "timestamp": "2025-07-28T14:30:22Z",
+  "k_max": 4,
+  "level": "paragraph",
+  "templates": [...],
+  "model": "gpt-4",
+  "evaluator_model": "gpt-4",
+  "concept_count": 6,
+  "total_combinations": 57
+}
+```
 
-1. **New Models**: Add model identifiers to `PRE_JUNE_2025_MODELS`
-2. **Custom Templates**: Extend `PromptTemplateLibrary`
-3. **Alternative Storage**: Implement new storage backends
-4. **Analysis Tools**: Build on `DataStorage` CSV exports
-5. **Concept Levels**: Extend `ConceptLevel` enum for new granularities
+## Experimental Process
 
-## Limitations and Considerations
+### 1. Search Strategy
+- **Brute-force combinatorial**: Test all combinations from 1 to k_max concepts
+- **Current limit**: k_max = 4 (combinations of 1-4 concepts)
+- **Future extensions**: Heuristic guidance, random sampling, concept relationships
 
-- **API Rate Limits**: No built-in rate limiting for OpenRouter calls
-- **Memory Usage**: Large DAGs with article-level content may consume significant memory
-- **Error Recovery**: Limited retry mechanisms for failed API calls
-- **Concurrency**: Sequential processing may be slow for large experiments
-- **Model Compatibility**: Assumes OpenRouter-compatible model identifiers
+### 2. Two-Stage Search (Future)
+1. **Stage 1**: Test concept combinations at target level (paragraph)
+2. **Stage 2**: For successful combinations, test different granularity levels
 
-## Scoring and Evaluation
+**Current Implementation**: Single-stage testing at paragraph level only.
 
-The system includes a rubric for evaluating LLM responses to determine if they "reinvent" the daydreaming loop concept:
+## Technical Dependencies
 
-- **Random Pair Generator**: Detection of combinatorial processes
-- **Critic Filter**: Identification of evaluation mechanisms
-- **Feedback Loop**: Recognition of iterative refinement
-- **Background Process**: Bonus points for continuous operation aspects
+### API Dependencies
 
-This structured approach allows researchers to systematically test whether different models can independently arrive at similar creative process concepts when given graduated contextual hints.
+#### Required API Access
+- **OpenRouter API**: Multi-model access for generation and evaluation
+- **API Keys**: Configured via environment variables
+
+#### Core Dependencies
+```python
+openai>=1.0.0           # API client (OpenRouter compatible)
+pandas>=2.0.0           # Results analysis
+click>=8.0.0            # CLI interface
+pytest>=7.0.0           # Testing framework
+black>=23.0.0           # Code formatting
+flake8>=6.0.0           # Style checking
+```
+
+## Usage Workflow
+
+### 1. Initial Setup
+```bash
+# Verify concept database
+uv run python -c "
+from daydreaming_experiment.concept_db import ConceptDB
+db = ConceptDB.load('data/concepts')
+print(f'Loaded {len(db._concepts)} concepts')
+"
+```
+
+### 2. Run Experiment
+```bash
+# Run complete experiment with automated evaluation
+uv run python -m daydreaming_experiment.experiment_runner \
+    --k-max 4 \
+    --level paragraph \
+    --generator-model gpt-4 \
+    --evaluator-model gpt-4 \
+    --output experiments/my_experiment
+```
+
+### 3. Analysis
+```bash
+# Analyze results
+uv run python -m daydreaming_experiment.results_analysis \
+    experiments/experiment_20250728_143022
+```
+
+## Design Principles
+
+1. **Simplicity First**: No complex DAG structures, focus on core experimental loop
+2. **Automated Evaluation**: LLM-based evaluation enables large-scale experimentation  
+3. **Extensible**: Clean interfaces for future enhancements (concept relationships, automated evaluation, etc.)
+4. **Reproducible**: Complete experiment logging for scientific rigor
+5. **Modular**: Separate concerns (concept management, experiment execution, evaluation, analysis)
+
+## Implementation Strategy
+
+1. **Phase 1**: Run initial experiments (k_max=4, paragraph level)
+2. **Phase 2**: Analyze results and identify successful concept patterns
+3. **Phase 3**: Extend system based on experimental insights
+
+## Future Extensions
+
+- **Multi-Model Evaluation**: Cross-validation using multiple evaluator models
+- **Concept Relationships**: Dependency-guided combination selection
+- **Multi-Level Optimization**: Stage-2 granularity level testing
+- **Search Heuristics**: Guided exploration for larger concept spaces  
+- **Statistical Analysis**: Success pattern identification and prediction
+- **Concept Generation**: Automatic expansion of concept database

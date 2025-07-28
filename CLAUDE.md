@@ -4,25 +4,38 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-This is a Python experiment that tests whether pre-June 2025 LLMs can "reinvent" Gwern's Daydreaming Loop concept when provided with minimal contextual hints through a structured prompt DAG (Directed Acyclic Graph) approach.
+This is a Python experiment that tests whether pre-June 2025 LLMs can "reinvent" Gwern's Daydreaming Loop concept when provided with minimal contextual hints through a simplified combinatorial testing approach. The system finds the minimal set of concepts that can elicit the Day-Dreaming idea from offline LLMs using automated LLM-based evaluation.
 
-## Code Architecture
+## Core Modules and File Structure
 
-### Core Modules
+### Core Modules and Classes
 
-1. **config.py** - Configuration management including API keys, model lists, and scoring rubrics
-2. **concept_dag.py** - Implementation of the ConceptDAG structure for organizing concept nodes with three levels (sentence, paragraph, article) and their relationships
-3. **execution.py** - Core experiment execution logic that interfaces with LLM APIs
-4. **storage.py** - Data storage functionality for saving and loading experiment results
+1. **concept.py** - Core `Concept` dataclass with three granularity levels (sentence, paragraph, article)
+2. **concept_db.py** - `ConceptDB` registry for batch retrieval and combination iteration
+3. **prompt_factory.py** - `PromptFactory` for template-based prompt generation from concept combinations
+4. **experiment_runner.py** - CLI experiment execution with combinatorial testing and automated evaluation
+5. **model_client.py** - Simple LLM interface for content generation and evaluation
 
-### Key Classes
+### File Organization
 
-- `ConceptDAG` - Manages the directed acyclic graph of concept nodes with three representation levels
-- `ExperimentExecutor` - Executes the experiment across models and prompt nodes
-- `DataStorage` - Handles storage and retrieval of experiment data
-- `ExperimentResult` - Data class representing a single experiment result
+```
+daydreaming_experiment/
+├── concept.py                    # Core Concept dataclass
+├── concept_db.py                 # ConceptDB registry and I/O
+├── prompt_factory.py             # PromptFactory for template-based generation  
+├── experiment_runner.py          # CLI experiment execution
+├── model_client.py              # Simple LLM interface
+└── results_analysis.py          # Post-experiment analysis tools
 
-## Package Management
+data/
+├── concepts/                     # New concept database
+│   ├── day_dreaming_concepts.json            # Manifest
+│   └── articles/               # Article files
+└── experiments/                # Experiment results
+    └── experiment_YYYYMMDD_HHMMSS/
+```
+
+# Package Management
 
 This project uses **uv** for fast Python package management and dependency resolution.
 
@@ -43,7 +56,7 @@ uv sync --dev
 uv run pytest
 
 # Run tests for a specific module
-uv run pytest daydreaming_experiment/test_concept_dag.py
+uv run pytest tests/
 ```
 
 ### Code Formatting
@@ -57,23 +70,49 @@ uv run flake8
 
 ## Testing Structure
 
-- Unit tests are colocated with the code they test (in the same directory)
-- Functional and integration tests are located in the `tests` directory
+- Unittests should be colocated with the modules they are verifying
+- Integration tests should be in the tests directory
 - All tests use pytest as the testing framework
+- Test fixtures are created using `create_test_fixtures.py` for consistent test data
 
 ## Design Preferences
 
 **Dependency Injection**: This project uses dependency injection patterns for better testability and modularity. Dependencies should be passed as constructor parameters rather than created internally.
 
 Examples:
-- `ExperimentExecutor` takes an OpenAI client as a parameter instead of creating it internally
-- Use factory functions like `create_openai_client()` for production instantiation
+- `SimpleModelClient` can be injected for testing without requiring real API calls
+- `ConceptDB` can be provided pre-loaded for experiment runs
 - Tests can easily inject mock dependencies without complex patching
 
 ## Dependencies
 
 Main dependencies include:
-- openrouter-python for LLM API interactions
-- pandas and numpy for data handling
+- Standard library modules for core functionality
 - pytest for testing
 - black and flake8 for code formatting
+- LLM API clients (we can start with openrouter)
+
+## Development Guidelines
+
+- Never add defensive coding when not explicitly asked for it, the code should fail early
+- Focus on simplicity
+
+## Usage Workflow
+
+### Run Experiment
+```bash
+# Run complete experiment with automated evaluation
+uv run python -m daydreaming_experiment.experiment_runner \
+    --k-max 4 \
+    --level paragraph \
+    --generator-model gpt-4 \
+    --evaluator-model gpt-4 \
+    --output experiments/my_experiment
+```
+
+### Analysis
+```bash
+# Analyze results
+uv run python -m daydreaming_experiment.results_analysis \
+    experiments/experiment_20250728_143022
+```
