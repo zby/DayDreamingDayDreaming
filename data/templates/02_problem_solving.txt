@@ -1,6 +1,8 @@
 Consider the following concepts:
 
-{concepts}
+{% for concept in concepts %}
+**{{ concept.name }}**: {{ concept.__getattribute__(level) }}
+{% endfor %}
 
 Think about current challenges, limitations, or unsolved problems in various fields. How might combining or applying these concepts lead to:
 - Solutions to existing problems

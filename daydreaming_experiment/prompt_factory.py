@@ -1,10 +1,11 @@
 from typing import List, Iterator, Tuple
 from pathlib import Path
+from jinja2 import Environment, Template, meta
 from .concept import Concept
 
 
-def load_templates_from_directory(templates_dir: str = "data/templates") -> tuple[str, ...]:
-    """Load all template files from the specified directory."""
+def load_templates_from_directory(templates_dir: str = "data/templates") -> tuple[Template, ...]:
+    """Load all template files from the specified directory as Jinja2 templates."""
     templates_path = Path(templates_dir)
     if not templates_path.exists():
         raise FileNotFoundError(f"Templates directory not found: {templates_dir}")
@@ -14,16 +15,25 @@ def load_templates_from_directory(templates_dir: str = "data/templates") -> tupl
     if not template_files:
         raise FileNotFoundError(f"No template files found in: {templates_dir}")
     
+    env = Environment()
     templates = []
+    
     for template_file in template_files:
         try:
             with open(template_file, 'r', encoding='utf-8') as f:
                 template_content = f.read().strip()
                 if not template_content:
                     raise ValueError(f"Template file is empty: {template_file}")
-                if "{concepts}" not in template_content:
-                    raise ValueError(f"Template missing {{concepts}} placeholder: {template_file}")
-                templates.append(template_content)
+                
+                # Parse template and check for required variables
+                parsed = env.parse(template_content)
+                variables = meta.find_undeclared_variables(parsed)
+                if 'concepts' not in variables:
+                    raise ValueError(f"Template missing 'concepts' variable: {template_file}")
+                
+                template = env.from_string(template_content)
+                templates.append(template)
+                
         except Exception as e:
             raise RuntimeError(f"Error loading template {template_file}: {e}")
     
@@ -35,13 +45,13 @@ DEFAULT_TEMPLATES = load_templates_from_directory()
 
 
 class PromptFactory:
-    """Template-based prompt generation from concept combinations."""
+    """Template-based prompt generation from concept combinations using Jinja2."""
     
-    def __init__(self, templates: tuple[str, ...] = None, templates_dir: str = None):
+    def __init__(self, templates: tuple[Template, ...] = None, templates_dir: str = None):
         """Initialize PromptFactory with templates.
         
         Args:
-            templates: Tuple of template strings. If None, loads from templates_dir.
+            templates: Tuple of Jinja2 Template objects. If None, loads from templates_dir.
             templates_dir: Directory to load templates from. Defaults to "data/templates".
         """
         if templates is not None:
@@ -56,15 +66,19 @@ class PromptFactory:
         if template_idx >= len(self.templates):
             raise IndexError(f"Template index {template_idx} out of range (0-{len(self.templates)-1})")
         
-        concept_texts = []
+        # Validate that all concepts have content at the specified level
         for concept in concepts:
             text = getattr(concept, level)
             if text is None:
                 raise ValueError(f"Concept '{concept.name}' has no content at level '{level}'")
-            concept_texts.append(text)
         
-        formatted_concepts = '\n'.join(f"- {text}" for text in concept_texts)
-        return self.templates[template_idx].format(concepts=formatted_concepts)
+        # Create template context with concepts and level
+        context = {
+            'concepts': concepts,
+            'level': level
+        }
+        
+        return self.templates[template_idx].render(context)
     
     def get_template_count(self) -> int:
         """Return the number of available templates."""

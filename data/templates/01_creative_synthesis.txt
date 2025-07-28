@@ -1,6 +1,8 @@
 Here are some concepts for creative exploration:
 
-{concepts}
+{% for concept in concepts %}
+**{{ concept.name }}**: {{ concept.__getattribute__(level) }}
+{% endfor %}
 
 Let your imagination flow and consider unexpected ways these concepts might combine. Think about:
 - Novel applications that don't exist yet

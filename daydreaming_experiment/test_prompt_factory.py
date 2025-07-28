@@ -1,6 +1,7 @@
 import pytest
 import tempfile
 from pathlib import Path
+from jinja2 import Template
 from daydreaming_experiment.concept import Concept
 from daydreaming_experiment.prompt_factory import PromptFactory, PromptIterator, DEFAULT_TEMPLATES, load_templates_from_directory
 
@@ -14,7 +15,12 @@ class TestPromptFactory:
     
     def test_custom_template_creation(self):
         """Test creating PromptFactory with custom templates."""
-        custom_templates = ("Template 1: {concepts}", "Template 2: {concepts}")
+        from jinja2 import Environment
+        env = Environment()
+        custom_templates = (
+            env.from_string("Template 1: {% for concept in concepts %}{{ concept.name }}{% endfor %}"),
+            env.from_string("Template 2: {% for concept in concepts %}{{ concept.name }}{% endfor %}")
+        )
         factory = PromptFactory(custom_templates)
         assert factory.get_template_count() == 2
         assert factory.templates == custom_templates
@@ -29,7 +35,7 @@ class TestPromptFactory:
         factory = PromptFactory()
         
         prompt = factory.generate_prompt([concept], "sentence", 0)
-        assert "- Networks mimic brains." in prompt
+        assert "**neural_networks**: Networks mimic brains." in prompt
         assert "Below are several concepts to work with:" in prompt
     
     def test_generate_prompt_multiple_concepts(self):
@@ -41,8 +47,8 @@ class TestPromptFactory:
         factory = PromptFactory()
         
         prompt = factory.generate_prompt(concepts, "paragraph", 0)
-        assert "- First concept description." in prompt
-        assert "- Second concept description." in prompt
+        assert "**concept1**: First concept description." in prompt
+        assert "**concept2**: Second concept description." in prompt
     
     def test_generate_prompt_template_selection(self):
         """Test generating prompt with different template indices."""
@@ -86,12 +92,12 @@ class TestPromptFactory:
         paragraph_prompt = factory.generate_prompt([concept], "paragraph", 0)
         article_prompt = factory.generate_prompt([concept], "article", 0)
         
-        assert "- Short description." in sentence_prompt
-        assert "- Longer paragraph description." in paragraph_prompt
-        assert "- Full article content." in article_prompt
+        assert "**test**: Short description." in sentence_prompt
+        assert "**test**: Longer paragraph description." in paragraph_prompt
+        assert "**test**: Full article content." in article_prompt
     
     def test_prompt_formatting_structure(self):
-        """Test that prompts are formatted correctly with bullet points."""
+        """Test that prompts are formatted correctly with concept names."""
         concepts = [
             Concept(name="c1", sentence="First concept."),
             Concept(name="c2", sentence="Second concept.")
@@ -100,9 +106,9 @@ class TestPromptFactory:
         
         prompt = factory.generate_prompt(concepts, "sentence", 0)
         
-        # Should contain both concepts as bullet points
-        assert "- First concept." in prompt
-        assert "- Second concept." in prompt
+        # Should contain both concepts with bold names
+        assert "**c1**: First concept." in prompt
+        assert "**c2**: Second concept." in prompt
         
         # Should have the expected template structure
         assert "Below are several concepts to work with:" in prompt
@@ -140,7 +146,7 @@ class TestPromptIterator:
         assert concepts[0].name == "c1"
         assert isinstance(template_idx, int)
         assert isinstance(prompt, str)
-        assert "- First concept." in prompt
+        assert "**c1**: First concept." in prompt
     
     def test_iterator_template_variation(self):
         """Test that iterator generates different templates for same concepts."""
@@ -190,7 +196,9 @@ class TestPromptIterator:
     
     def test_iterator_with_custom_templates(self):
         """Test iterator with custom template factory."""
-        custom_templates = ("Custom template 1: {concepts}",)
+        from jinja2 import Environment
+        env = Environment()
+        custom_templates = (env.from_string("Custom template 1: {% for concept in concepts %}{{ concept.name }}{% endfor %}"),)
         factory = PromptFactory(custom_templates)
         
         concept = Concept(name="test", sentence="Test.")
@@ -204,7 +212,7 @@ class TestPromptIterator:
         
         _, template_idx, prompt = all_prompts[0]
         assert template_idx == 0
-        assert "Custom template 1:" in prompt
+        assert "Custom template 1: test" == prompt
     
     def test_iterator_empty_combinations(self):
         """Test iterator with empty concept combinations list."""
@@ -229,8 +237,8 @@ class TestPromptIterator:
             assert concepts[0].name == "first"
             assert concepts[1].name == "second"
             # First concept should appear before second in prompt
-            first_pos = prompt.find("First concept.")
-            second_pos = prompt.find("Second concept.")
+            first_pos = prompt.find("**first**: First concept.")
+            second_pos = prompt.find("**second**: Second concept.")
             assert first_pos < second_pos
 
 
@@ -240,29 +248,37 @@ class TestTemplateLoading:
         templates = load_templates_from_directory("data/templates")
         assert len(templates) == 5
         
-        # All templates should have {concepts} placeholder
+        # All templates should be Jinja2 Template objects
         for template in templates:
-            assert isinstance(template, str)
-            assert "{concepts}" in template
-            assert len(template) > 100
+            assert isinstance(template, Template)
+            # Test that templates can render with concepts
+            test_concepts = [Concept(name="test", sentence="Test sentence.")]
+            rendered = template.render(concepts=test_concepts, level="sentence")
+            assert "test" in rendered.lower()
+            assert len(rendered) > 100
     
     def test_load_templates_custom_directory(self):
         """Test loading templates from a custom directory."""
         with tempfile.TemporaryDirectory() as temp_dir:
-            # Create test templates
+            # Create test templates with Jinja2 syntax
             template_dir = Path(temp_dir) / "custom_templates"
             template_dir.mkdir()
             
             template1 = template_dir / "01_test.txt"
             template2 = template_dir / "02_test.txt"
             
-            template1.write_text("Template 1: {concepts}")
-            template2.write_text("Template 2: {concepts}")
+            template1.write_text("Template 1: {% for concept in concepts %}{{ concept.name }}{% endfor %}")
+            template2.write_text("Template 2: {% for concept in concepts %}{{ concept.name }}{% endfor %}")
             
             templates = load_templates_from_directory(str(template_dir))
             assert len(templates) == 2
-            assert templates[0] == "Template 1: {concepts}"
-            assert templates[1] == "Template 2: {concepts}"
+            assert isinstance(templates[0], Template)
+            assert isinstance(templates[1], Template)
+            
+            # Test rendering
+            test_concepts = [Concept(name="test")]
+            assert "Template 1: test" == templates[0].render(concepts=test_concepts)
+            assert "Template 2: test" == templates[1].render(concepts=test_concepts)
     
     def test_load_templates_missing_directory(self):
         """Test error when templates directory doesn't exist."""
@@ -276,12 +292,12 @@ class TestTemplateLoading:
                 load_templates_from_directory(temp_dir)
     
     def test_load_templates_missing_placeholder(self):
-        """Test error when template missing {concepts} placeholder."""
+        """Test error when template missing 'concepts' variable."""
         with tempfile.TemporaryDirectory() as temp_dir:
             template_file = Path(temp_dir) / "bad_template.txt"
-            template_file.write_text("This template has no placeholder")
+            template_file.write_text("This template has no concepts variable")
             
-            with pytest.raises(RuntimeError, match="Template missing {concepts} placeholder"):
+            with pytest.raises(RuntimeError, match="Template missing 'concepts' variable"):
                 load_templates_from_directory(temp_dir)
     
     def test_load_templates_empty_file(self):
@@ -301,11 +317,16 @@ class TestTemplateLoading:
             template_dir.mkdir()
             
             template_file = template_dir / "test_template.txt"
-            template_file.write_text("Custom template: {concepts}")
+            template_file.write_text("Custom template: {% for concept in concepts %}{{ concept.name }}{% endfor %}")
             
             factory = PromptFactory(templates_dir=str(template_dir))
             assert factory.get_template_count() == 1
-            assert factory.templates[0] == "Custom template: {concepts}"
+            assert isinstance(factory.templates[0], Template)
+            
+            # Test that it can generate prompts
+            test_concepts = [Concept(name="test")]
+            prompt = factory.generate_prompt(test_concepts, "name", 0)
+            assert "Custom template: test" == prompt
 
 
 class TestDefaultTemplates:
@@ -313,17 +334,24 @@ class TestDefaultTemplates:
         """Test the structure and content of default templates."""
         assert len(DEFAULT_TEMPLATES) == 5
         
-        # All templates should have {concepts} placeholder
+        # All templates should be Template objects that can render with concepts
         for template in DEFAULT_TEMPLATES:
-            assert isinstance(template, str)
-            assert "{concepts}" in template
-            assert len(template) > 100  # Reasonable length for improved templates
+            assert isinstance(template, Template)
+            # Test that templates can render
+            test_concepts = [Concept(name="test", sentence="Test sentence.")]
+            rendered = template.render(concepts=test_concepts, level="sentence")
+            assert isinstance(rendered, str)
+            assert len(rendered) > 100  # Reasonable length for improved templates
     
     def test_default_templates_are_different(self):
         """Test that default templates are meaningfully different."""
-        # Check that all templates are unique
-        assert len(set(DEFAULT_TEMPLATES)) == len(DEFAULT_TEMPLATES)
+        # Test that all templates produce different output
+        test_concepts = [Concept(name="test", sentence="Test sentence.")]
+        rendered_templates = []
         
-        # They should have different opening text
-        opening_lines = [template.split('\n')[0] for template in DEFAULT_TEMPLATES]
-        assert len(set(opening_lines)) == len(opening_lines)
+        for template in DEFAULT_TEMPLATES:
+            rendered = template.render(concepts=test_concepts, level="sentence")
+            rendered_templates.append(rendered)
+        
+        # Check that all rendered templates are unique
+        assert len(set(rendered_templates)) == len(rendered_templates)

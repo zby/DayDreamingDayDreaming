@@ -90,7 +90,13 @@ Examples:
 - `ConceptDB` can be provided pre-loaded for experiment runs
 - Tests can easily inject mock dependencies without complex patching
 
-**File-based Templates**: Prompt templates are stored as separate text files in `data/templates/` for easy editing and version control. Templates are automatically loaded by filename order and must contain the `{concepts}` placeholder.
+**Jinja2-based Templates**: Prompt templates are stored as separate text files in `data/templates/` using Jinja2 templating syntax for powerful and flexible prompt generation. Templates are automatically loaded by filename order and must reference the `concepts` variable.
+
+Template System Features:
+- **Dynamic concept access**: `{% for concept in concepts %}{{ concept.name }}: {{ concept.__getattribute__(level) }}{% endfor %}`
+- **Level-agnostic**: Templates work with any content level (sentence, paragraph, article)
+- **Rich formatting**: Bold concept names, structured layouts, conditional logic
+- **Extensible**: Easy to add new templates with complex logic and formatting
 
 Template Types:
 - `00_systematic_analytical.txt` - Structured step-by-step analysis
@@ -103,6 +109,7 @@ Template Types:
 
 Main dependencies include:
 - Standard library modules for core functionality
+- jinja2 for advanced template processing
 - pytest for testing
 - black and flake8 for code formatting
 - LLM API clients (we can start with openrouter)

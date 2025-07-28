@@ -1,6 +1,8 @@
 Examine these concepts:
 
-{concepts}
+{% for concept in concepts %}
+**{{ concept.name }}**: {{ concept.__getattribute__(level) }}
+{% endfor %}
 
 As a researcher or innovator, consider what new knowledge or discoveries might emerge from connecting these ideas. Focus on:
 - Unexplored research questions that bridge these concepts

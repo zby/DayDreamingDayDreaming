@@ -1,6 +1,8 @@
 Review these concepts:
 
-{concepts}
+{% for concept in concepts %}
+**{{ concept.name }}**: {{ concept.__getattribute__(level) }}
+{% endfor %}
 
 Think practically about how these concepts could be implemented or applied in real-world contexts. Consider:
 - Concrete products, services, or systems that could be built

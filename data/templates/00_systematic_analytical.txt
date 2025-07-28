@@ -1,6 +1,8 @@
 Below are several concepts to work with:
 
-{concepts}
+{% for concept in concepts %}
+**{{ concept.name }}**: {{ concept.__getattribute__(level) }}
+{% endfor %}
 
 Please systematically explore how these concepts might be combined or connected. For each potential combination:
 1. Identify the core principles or mechanisms from each concept
