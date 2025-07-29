@@ -8,6 +8,7 @@ from click.testing import CliRunner
 from daydreaming_experiment.experiment_runner import (
     generate_experiment_id,
     save_response,
+    save_prompt,
     save_config,
     get_csv_headers,
     initialize_results_csv,
@@ -42,6 +43,23 @@ class TestExperimentRunnerHelpers:
                 content = f.read()
                 assert content == response_text
 
+    def test_save_prompt(self):
+        """Test saving prompt to file."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            output_dir = Path(temp_dir)
+            prompt_text = "This is a test prompt."
+            
+            filename = save_prompt(output_dir, 1, prompt_text)
+            
+            assert filename == "prompt_001.txt"
+            
+            prompt_file = output_dir / "prompts" / filename
+            assert prompt_file.exists()
+            
+            with open(prompt_file, "r") as f:
+                content = f.read()
+                assert content == prompt_text
+
     def test_save_config(self):
         """Test saving experiment configuration."""
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -74,7 +92,7 @@ class TestExperimentRunnerHelpers:
                 
                 expected_headers = [
                     "experiment_id", "attempt_id", "concept_names", "concept_count",
-                    "level", "template_id", "response_file", "generation_timestamp", "generator_model"
+                    "level", "template_id", "prompt_file", "response_file", "generation_timestamp", "generator_model"
                 ]
                 
                 assert headers == expected_headers
@@ -93,6 +111,7 @@ class TestExperimentRunnerHelpers:
                 "concept_count": 2,
                 "level": "paragraph",
                 "template_id": 0,
+                "prompt_file": "prompt_001.txt",
                 "response_file": "response_001.txt",
                 "generation_timestamp": "2025-01-01T00:00:00",
                 "generator_model": "test-model"
@@ -109,7 +128,8 @@ class TestExperimentRunnerHelpers:
                 assert row[0] == "test_exp"  # experiment_id
                 assert row[1] == "1"  # attempt_id
                 assert row[2] == "concept1|concept2"  # concept_names
-                assert row[6] == "response_001.txt"  # response_file
+                assert row[6] == "prompt_001.txt"  # prompt_file
+                assert row[7] == "response_001.txt"  # response_file
 
     def test_get_csv_headers_generation_only(self):
         """Test CSV headers for generation-only mode."""
@@ -122,6 +142,7 @@ class TestExperimentRunnerHelpers:
             "concept_count",
             "level",
             "template_id",
+            "prompt_file",
             "response_file",
             "generation_timestamp",
             "generator_model",

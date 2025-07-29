@@ -1,0 +1,6 @@
+Test prompt 2 for creative synthesis approach combining concept3 and concept4.
+
+**concept3**: Description of concept3 at paragraph level
+**concept4**: Description of concept4 at paragraph level
+
+Imagine combining these concepts in novel ways. What innovative possibilities emerge?

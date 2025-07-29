@@ -14,6 +14,15 @@ from daydreaming_experiment.concept_db import ConceptDB
 from daydreaming_experiment.prompt_factory import PromptFactory
 from daydreaming_experiment.model_client import SimpleModelClient
 
+# Default models and settings
+#DEFAULT_GENERATOR_MODEL = "openai/gpt-4"
+DEFAULT_GENERATOR_MODEL = "deepseek/deepseek-r1:free"
+DEFAULT_LEVEL = "paragraph"
+DEFAULT_K_MAX = 3
+
+# Rate limiting
+RATE_LIMIT_DELAY = 0.1
+
 # Constants
 DEFAULT_CONCEPTS_DIR = "data/concepts"
 CONCEPTS_MANIFEST_FILENAME = "day_dreaming_concepts.json"
@@ -21,15 +30,9 @@ DEFAULT_EXPERIMENTS_DIR = "data/experiments"
 CONFIG_FILENAME = "config.json"
 RESULTS_FILENAME = "results.csv"
 RESPONSES_DIR_NAME = "responses"
+PROMPTS_DIR_NAME = "prompts"
 RESPONSE_FILENAME_TEMPLATE = "response_{:03d}.txt"
-
-# Default models and settings
-DEFAULT_GENERATOR_MODEL = "openai/gpt-4"
-DEFAULT_LEVEL = "paragraph"
-DEFAULT_K_MAX = 4
-
-# Rate limiting
-RATE_LIMIT_DELAY = 0.1
+PROMPT_FILENAME_TEMPLATE = "prompt_{:03d}.txt"
 
 # Experiment ID format
 EXPERIMENT_ID_FORMAT = "experiment_{}"
@@ -55,6 +58,20 @@ def save_response(output_dir: Path, attempt_id: int, response: str) -> str:
     return filename
 
 
+def save_prompt(output_dir: Path, attempt_id: int, prompt: str) -> str:
+    """Save prompt to file and return filename."""
+    prompts_dir = output_dir / PROMPTS_DIR_NAME
+    prompts_dir.mkdir(exist_ok=True)
+
+    filename = PROMPT_FILENAME_TEMPLATE.format(attempt_id)
+    filepath = prompts_dir / filename
+
+    with open(filepath, "w", encoding="utf-8") as f:
+        f.write(prompt)
+
+    return filename
+
+
 def save_config(output_dir: Path, config: dict):
     """Save experiment configuration."""
     config_path = output_dir / CONFIG_FILENAME
@@ -71,6 +88,7 @@ def get_csv_headers() -> list:
         "concept_count",
         "level",
         "template_id",
+        "prompt_file",
         "response_file",
         "generation_timestamp",
         "generator_model",
@@ -223,6 +241,9 @@ def run_experiment(
                     list(concept_combination), level, template_idx
                 )
 
+                # Save prompt
+                prompt_file = save_prompt(output_dir, attempt_id, prompt)
+
                 generation_timestamp = datetime.now().isoformat()
 
                 try:
@@ -242,6 +263,7 @@ def run_experiment(
                         "concept_count": len(concept_combination),
                         "level": level,
                         "template_id": template_idx,
+                        "prompt_file": prompt_file,
                         "response_file": response_file,
                         "generation_timestamp": generation_timestamp,
                         "generator_model": generator_model,
@@ -265,6 +287,7 @@ def run_experiment(
                         "concept_count": len(concept_combination),
                         "level": level,
                         "template_id": template_idx,
+                        "prompt_file": prompt_file,
                         "response_file": "",
                         "generation_timestamp": generation_timestamp,
                         "generator_model": generator_model,
