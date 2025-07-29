@@ -45,7 +45,7 @@ class TestSimpleModelClient:
             model="test-model",
             messages=[{"role": "user", "content": "test prompt"}],
             temperature=0.7,
-            max_tokens=1024,
+            max_tokens=8192,
         )
 
     @patch("daydreaming_experiment.model_client.OpenAI")
@@ -104,7 +104,9 @@ Reasoning: No iterative patterns found"""
         mock_openai.return_value = mock_client
 
         client = SimpleModelClient(api_key="test_key")
-        rating, confidence, reasoning, full_response = client.evaluate("prompt", "response")
+        rating, confidence, reasoning, full_response = client.evaluate(
+            "prompt", "response"
+        )
 
         assert rating is False
         assert confidence == 0.9
@@ -125,7 +127,9 @@ Reasoning: No iterative patterns found"""
         mock_openai.return_value = mock_client
 
         client = SimpleModelClient(api_key="test_key")
-        rating, confidence, reasoning, full_response = client.evaluate("prompt", "response")
+        rating, confidence, reasoning, full_response = client.evaluate(
+            "prompt", "response"
+        )
 
         assert rating is False
         assert confidence == 0.0
@@ -148,7 +152,9 @@ Reasoning: Test reasoning"""
         mock_openai.return_value = mock_client
 
         client = SimpleModelClient(api_key="test_key")
-        rating, confidence, reasoning, full_response = client.evaluate("prompt", "response")
+        rating, confidence, reasoning, full_response = client.evaluate(
+            "prompt", "response"
+        )
 
         assert rating is True
         assert confidence == 0.5  # Default fallback
@@ -164,7 +170,9 @@ Reasoning: Test reasoning"""
         mock_openai.return_value = mock_client
 
         client = SimpleModelClient(api_key="test_key")
-        rating, confidence, reasoning, full_response = client.evaluate("prompt", "response")
+        rating, confidence, reasoning, full_response = client.evaluate(
+            "prompt", "response"
+        )
 
         assert rating is False
         assert confidence == 0.0

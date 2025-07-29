@@ -228,6 +228,12 @@ Main dependencies include:
 - Never add defensive coding when not explicitly asked for it, the code should fail early
 - Focus on simplicity
 
+## Coding Guidelines
+
+- **Formatting Changes**: 
+  - Formatting changes (e.g., the result of running `black`) should be committed separately from functional changes
+  - We should only run black when we have no uncommitted changes
+
 ## Search Strategy
 
 The experiment supports multiple search strategies for testing concept combinations. The current active strategy is documented in:

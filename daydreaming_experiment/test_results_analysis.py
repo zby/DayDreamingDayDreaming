@@ -35,7 +35,9 @@ class TestResultsAnalysisHelpers:
                 writer.writerow(["test_exp", 1, 2])
                 writer.writerow(["test_exp", 0, 1])
 
-            loaded_config, results_df, has_evaluation = load_experiment_results(str(exp_dir))
+            loaded_config, results_df, has_evaluation = load_experiment_results(
+                str(exp_dir)
+            )
 
             assert loaded_config == config
             assert len(results_df) == 2
@@ -91,7 +93,9 @@ class TestResultsAnalysisHelpers:
 
         # Success by k-value (single k-value)
         assert len(analysis["success_by_k"]) == 1
-        assert analysis["success_by_k"][4]["success_rate"] == pytest.approx(0.667, rel=1e-3)
+        assert analysis["success_by_k"][4]["success_rate"] == pytest.approx(
+            0.667, rel=1e-3
+        )
         assert analysis["single_k_strategy"] == True  # Single k-value
 
         # Success by template
@@ -202,7 +206,9 @@ class TestGenerationOnlyExperiments:
                 writer.writerow(["gen_only", "concept1|concept2", "response_001.txt"])
                 writer.writerow(["gen_only", "concept3", "response_002.txt"])
 
-            loaded_config, results_df, has_evaluation = load_experiment_results(str(exp_dir))
+            loaded_config, results_df, has_evaluation = load_experiment_results(
+                str(exp_dir)
+            )
 
             assert loaded_config == config
             assert len(results_df) == 2
@@ -230,10 +236,14 @@ class TestGenerationOnlyExperiments:
             eval_results_path = exp_dir / "evaluation_results.csv"
             with open(eval_results_path, "w", newline="") as f:
                 writer = csv.writer(f)
-                writer.writerow(["experiment_id", "automated_rating", "confidence_score"])
+                writer.writerow(
+                    ["experiment_id", "automated_rating", "confidence_score"]
+                )
                 writer.writerow(["test_exp", 1, 0.85])
 
-            loaded_config, results_df, has_evaluation = load_experiment_results(str(exp_dir))
+            loaded_config, results_df, has_evaluation = load_experiment_results(
+                str(exp_dir)
+            )
 
             assert has_evaluation == True
             assert "automated_rating" in results_df.columns
@@ -244,7 +254,7 @@ class TestGenerationOnlyExperiments:
         data = {
             "experiment_id": ["exp1", "exp1", "exp1"],
             "concept_names": ["concept1", "concept2", "concept3"],
-            "response_file": ["resp1.txt", "resp2.txt", "resp3.txt"]
+            "response_file": ["resp1.txt", "resp2.txt", "resp3.txt"],
         }
         df = pd.DataFrame(data)
 
@@ -262,9 +272,9 @@ class TestGenerationOnlyExperiments:
         data = {
             "concept_names": [
                 "concept1|concept2",
-                "concept1|concept3", 
+                "concept1|concept3",
                 "concept2|concept3",
-                "concept1"
+                "concept1",
             ]
         }
         df = pd.DataFrame(data)

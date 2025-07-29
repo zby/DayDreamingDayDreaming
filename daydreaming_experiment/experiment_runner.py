@@ -15,7 +15,7 @@ from daydreaming_experiment.prompt_factory import PromptFactory
 from daydreaming_experiment.model_client import SimpleModelClient
 
 # Default models and settings
-#DEFAULT_GENERATOR_MODEL = "openai/gpt-4"
+# DEFAULT_GENERATOR_MODEL = "openai/gpt-4"
 DEFAULT_GENERATOR_MODEL = "deepseek/deepseek-r1:free"
 DEFAULT_LEVEL = "paragraph"
 DEFAULT_K_MAX = 3
@@ -41,7 +41,9 @@ EXPERIMENT_ID_TIMESTAMP_FORMAT = "%Y%m%d_%H%M%S"
 
 def generate_experiment_id() -> str:
     """Generate timestamp-based experiment ID."""
-    return EXPERIMENT_ID_FORMAT.format(datetime.now().strftime(EXPERIMENT_ID_TIMESTAMP_FORMAT))
+    return EXPERIMENT_ID_FORMAT.format(
+        datetime.now().strftime(EXPERIMENT_ID_TIMESTAMP_FORMAT)
+    )
 
 
 def save_response(output_dir: Path, attempt_id: int, response: str) -> str:
@@ -110,20 +112,49 @@ def initialize_results_csv(output_dir: Path) -> Path:
 def save_result_row(results_path: Path, result_data: dict):
     """Append result row to CSV."""
     headers = get_csv_headers()
-    
+
     # Build row data based on headers order
     row_data = []
     for header in headers:
         row_data.append(result_data.get(header, ""))
-    
+
     with open(results_path, "a", newline="", encoding="utf-8") as f:
         writer = csv.writer(f)
         writer.writerow(row_data)
 
 
+def load_completed_attempts(results_path: Path) -> tuple[set, int]:
+    """Load completed attempts from existing results CSV.
+
+    Returns:
+        tuple: (completed_combinations set, max_attempt_id)
+    """
+    completed = set()
+    max_attempt_id = 0
+
+    if not results_path.exists():
+        return completed, max_attempt_id
+
+    with open(results_path, "r", encoding="utf-8") as f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            concept_names = row["concept_names"]
+            template_id = int(row["template_id"]) if row["template_id"] else 0
+            attempt_id = int(row["attempt_id"]) if row["attempt_id"] else 0
+
+            # Track completed combinations (including failed ones - we don't retry)
+            completed.add((concept_names, template_id))
+            max_attempt_id = max(max_attempt_id, attempt_id)
+
+    return completed, max_attempt_id
+
+
 @click.command()
 @click.option(
-    "--k-max", type=int, default=DEFAULT_K_MAX, help="Maximum number of concepts to combine"
+    "--k-max",
+    type=int,
+    default=DEFAULT_K_MAX,
+    help="Maximum number of concepts to combine",
 )
 @click.option(
     "--level",
@@ -132,7 +163,9 @@ def save_result_row(results_path: Path, result_data: dict):
     help="Concept description level",
 )
 @click.option(
-    "--generator-model", default=DEFAULT_GENERATOR_MODEL, help="Model for content generation"
+    "--generator-model",
+    default=DEFAULT_GENERATOR_MODEL,
+    help="Model for content generation",
 )
 @click.option(
     "--output", type=click.Path(), help="Output directory (default: auto-generated)"
@@ -148,6 +181,11 @@ def save_result_row(results_path: Path, result_data: dict):
     type=int,
     help="Maximum number of prompts to test (default: test all combinations)",
 )
+@click.option(
+    "--resume",
+    is_flag=True,
+    help="Resume interrupted experiment from existing output directory",
+)
 def run_experiment(
     k_max: int,
     level: str,
@@ -155,6 +193,7 @@ def run_experiment(
     output: str,
     concepts_dir: str,
     max_prompts: int,
+    resume: bool,
 ):
     """Run generation-only experiment. Use evaluation_runner.py for evaluation."""
 
@@ -179,58 +218,113 @@ def run_experiment(
     model_client = SimpleModelClient()
 
     # Setup output directory
-    if not output:
-        output = f"{DEFAULT_EXPERIMENTS_DIR}/{generate_experiment_id()}"
-
-    output_dir = Path(output)
-    output_dir.mkdir(parents=True, exist_ok=True)
+    if resume:
+        if not output:
+            click.echo("Error: --output directory is required when using --resume")
+            return
+        output_dir = Path(output)
+        if not output_dir.exists():
+            click.echo(f"Error: Resume directory {output_dir} does not exist")
+            return
+        if not (output_dir / RESULTS_FILENAME).exists():
+            click.echo(f"Error: No {RESULTS_FILENAME} found in {output_dir}")
+            return
+    else:
+        if not output:
+            output = f"{DEFAULT_EXPERIMENTS_DIR}/{generate_experiment_id()}"
+        output_dir = Path(output)
+        output_dir.mkdir(parents=True, exist_ok=True)
 
     # Generate experiment ID
     experiment_id = output_dir.name
 
     # Count total combinations (only k_max-sized combinations)
-    total_combinations = len(list(combinations(concepts, k_max))) * len(prompt_factory.templates)
-    
-    # Apply max_prompts limit if specified
-    if max_prompts:
-        total_combinations = min(total_combinations, max_prompts)
+    total_combinations = len(list(combinations(concepts, k_max))) * len(
+        prompt_factory.templates
+    )
 
-    # Save configuration
-    config = {
-        "experiment_id": experiment_id,
-        "timestamp": datetime.now().isoformat(),
-        "k_max": k_max,
-        "level": level,
-        "generator_model": generator_model,
-        "concept_count": len(concepts),
-        "total_combinations": total_combinations,
-        "templates_count": len(prompt_factory.templates),
-        "max_prompts": max_prompts,
-        "generation_only": True,
-    }
-    save_config(output_dir, config)
+    # Handle resume vs new experiment
+    results_path = output_dir / RESULTS_FILENAME
+    if resume:
+        # Load completed attempts
+        completed_attempts, max_attempt_id = load_completed_attempts(results_path)
+        click.echo(f"Resuming experiment: {experiment_id}")
+        click.echo(f"Found {len(completed_attempts)} completed attempts")
 
-    # Initialize results CSV
-    results_path = initialize_results_csv(output_dir)
+        # Load existing config to verify compatibility
+        config_path = output_dir / CONFIG_FILENAME
+        if config_path.exists():
+            with open(config_path, "r") as f:
+                existing_config = json.load(f)
 
-    click.echo(f"Running experiment: {experiment_id}")
-    click.echo(f"Total combinations to test: {total_combinations}")
+            # Verify key parameters match
+            if (
+                existing_config.get("k_max") != k_max
+                or existing_config.get("level") != level
+                or existing_config.get("generator_model") != generator_model
+            ):
+                click.echo("Warning: Resume parameters differ from original experiment")
+
+        attempt_id = max_attempt_id
+    else:
+        completed_attempts = set()
+        attempt_id = 0
+
+        # Apply max_prompts limit if specified
+        if max_prompts:
+            total_combinations = min(total_combinations, max_prompts)
+
+        # Save configuration
+        config = {
+            "experiment_id": experiment_id,
+            "timestamp": datetime.now().isoformat(),
+            "k_max": k_max,
+            "level": level,
+            "generator_model": generator_model,
+            "concept_count": len(concepts),
+            "total_combinations": total_combinations,
+            "templates_count": len(prompt_factory.templates),
+            "max_prompts": max_prompts,
+            "generation_only": True,
+        }
+        save_config(output_dir, config)
+
+        # Initialize results CSV
+        results_path = initialize_results_csv(output_dir)
+
+    # Calculate remaining work for progress bar
+    if resume:
+        remaining_combinations = total_combinations - len(completed_attempts)
+        click.echo(f"Remaining combinations to test: {remaining_combinations}")
+    else:
+        remaining_combinations = total_combinations
+        click.echo(f"Total combinations to test: {total_combinations}")
+
     click.echo(f"Output directory: {output_dir}")
 
     # Run experiment
-    attempt_id = 0
     max_reached = False
+    processed_count = 0
 
     with click.progressbar(
-        length=total_combinations, label="Processing combinations"
+        length=remaining_combinations, label="Processing combinations"
     ) as bar:
 
         for concept_combination in combinations(concepts, k_max):
             if max_reached:
                 break
             for template_idx in range(len(prompt_factory.templates)):
+                # Build concept names key for checking completion
+                concept_names = "|".join(c.name for c in concept_combination)
+                combination_key = (concept_names, template_idx)
+
+                # Skip if already completed (resume functionality)
+                if combination_key in completed_attempts:
+                    continue
+
                 attempt_id += 1
-                
+                processed_count += 1
+
                 # Check if we've reached the max_prompts limit
                 if max_prompts and attempt_id > max_prompts:
                     max_reached = True
@@ -257,9 +351,7 @@ def run_experiment(
                     result_data = {
                         "experiment_id": experiment_id,
                         "attempt_id": attempt_id,
-                        "concept_names": "|".join(
-                            c.name for c in concept_combination
-                        ),
+                        "concept_names": concept_names,
                         "concept_count": len(concept_combination),
                         "level": level,
                         "template_id": template_idx,
@@ -281,9 +373,7 @@ def run_experiment(
                     result_data = {
                         "experiment_id": experiment_id,
                         "attempt_id": attempt_id,
-                        "concept_names": "|".join(
-                            c.name for c in concept_combination
-                        ),
+                        "concept_names": concept_names,
                         "concept_count": len(concept_combination),
                         "level": level,
                         "template_id": template_idx,
@@ -292,7 +382,7 @@ def run_experiment(
                         "generation_timestamp": generation_timestamp,
                         "generator_model": generator_model,
                     }
-                    
+
                     save_result_row(results_path, result_data)
 
                 bar.update(1)
