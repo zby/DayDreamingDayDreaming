@@ -3,10 +3,7 @@ from unittest.mock import Mock, patch, mock_open, MagicMock
 import tempfile
 from pathlib import Path
 
-from daydreaming_experiment.evaluation_templates import (
-    EvaluationTemplateLoader,
-    get_builtin_evaluation_prompt,
-)
+from daydreaming_experiment.evaluation_templates import EvaluationTemplateLoader
 
 
 class TestEvaluationTemplateLoader:
@@ -169,47 +166,7 @@ Answer: YES/NO"""
             assert "..." in long_prompt
 
 
-class TestBuiltinEvaluationPrompt:
-
-    def test_get_builtin_evaluation_prompt(self):
-        """Test getting the built-in evaluation prompt."""
-        response = "Test response about iterative processes."
-        prompt = get_builtin_evaluation_prompt(response)
-        
-        # Should contain the response
-        assert response in prompt
-        
-        # Should contain key evaluation criteria
-        assert "iterative creative loops" in prompt
-        assert "Iterative refinement loops" in prompt
-        assert "Exploration-exploitation balance" in prompt
-        assert "Meta-cognitive awareness" in prompt
-        assert "Combinatorial creativity" in prompt
-        assert "Quality filtering" in prompt
-        
-        # Should have expected format
-        assert "Answer: YES/NO" in prompt
-        assert "Confidence: 0.0-1.0" in prompt
-        assert "Reasoning:" in prompt
-
-    def test_builtin_prompt_format_consistency(self):
-        """Test that builtin prompt maintains consistent format."""
-        responses = [
-            "Short response",
-            "A much longer response with multiple sentences and detailed explanations about various topics.",
-            "Response with special characters: !@#$%^&*()",
-            "Response with\nnewlines\nand\ttabs"
-        ]
-        
-        for response in responses:
-            prompt = get_builtin_evaluation_prompt(response)
-            
-            # All prompts should have the same structure
-            assert "Does this response contain ideas similar to iterative creative loops" in prompt
-            assert "Answer: YES/NO" in prompt
-            assert "Confidence: 0.0-1.0" in prompt
-            assert "Reasoning: Brief explanation" in prompt
-            assert f"Response: {response}" in prompt
+# Built-in evaluation prompt functionality removed - now using template system only
 
 
 # Integration tests with real template files moved to tests/test_integration_data_dependent.py

@@ -212,8 +212,8 @@ class TestEndToEndIntegration:
 
     @patch('daydreaming_experiment.evaluation_runner.load_dotenv')
     @patch('daydreaming_experiment.evaluation_runner.SimpleModelClient')
-    def test_evaluation_template_fallback(self, mock_client_class, mock_load_dotenv):
-        """Test evaluation template fallback to builtin when templates not available."""
+    def test_evaluation_with_nonexistent_template(self, mock_client_class, mock_load_dotenv):
+        """Test error handling when requesting a non-existent evaluation template."""
         
         with tempfile.TemporaryDirectory() as temp_dir:
             exp_dir = Path(temp_dir)
@@ -240,30 +240,20 @@ class TestEndToEndIntegration:
             with open(responses_dir / "test_response.txt", 'w') as f:
                 f.write("Test response content")
             
-            # Mock client
+            # Mock client (shouldn't be reached, but needed to pass initialization)
             mock_client = Mock()
-            mock_client.evaluate.return_value = (True, 0.8, "Test reasoning")
             mock_client_class.return_value = mock_client
             
-            # Test evaluation with builtin template (no template directory available)
+            # Test evaluation with non-existent template name
             runner = CliRunner()
             result = runner.invoke(evaluate_experiment, [
                 str(exp_dir),
-                "--evaluation-template", "builtin"
+                "--evaluation-template", "nonexistent_template"
             ])
             
-            assert result.exit_code == 0
-            assert "Evaluation completed!" in result.output
-            
-            # Verify builtin template was used
-            eval_results_file = exp_dir / "evaluation_results.csv"
-            assert eval_results_file.exists()
-            
-            with open(eval_results_file) as f:
-                reader = csv.DictReader(f)
-                rows = list(reader)
-                assert len(rows) == 1
-                assert rows[0]["evaluation_template"] == "builtin"
+            # Should fail gracefully with error message
+            assert result.exit_code == 0  # Click doesn't set non-zero exit code for our errors
+            assert "Template 'nonexistent_template' not found" in result.output
 
 
 class TestWorkflowValidation:

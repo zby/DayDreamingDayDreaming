@@ -10,7 +10,7 @@ import click
 from dotenv import load_dotenv
 
 from daydreaming_experiment.model_client import SimpleModelClient
-from daydreaming_experiment.evaluation_templates import EvaluationTemplateLoader, get_builtin_evaluation_prompt
+from daydreaming_experiment.evaluation_templates import EvaluationTemplateLoader
 
 
 def load_experiment_info(experiment_dir: Path) -> Tuple[Dict, List[Dict]]:
@@ -111,7 +111,7 @@ def save_evaluation_result(results_path: Path, result_data: Dict):
 @click.option(
     '--evaluation-template',
     default='default',
-    help='Evaluation template to use (default: iterative_loops, or "builtin" for legacy)'
+    help='Evaluation template to use (default: iterative_loops)'
 )
 def evaluate_experiment(
     experiment_directory: Path,
@@ -147,26 +147,23 @@ def evaluate_experiment(
         return
     
     # Initialize evaluation template loader
-    template_loader = None
-    if evaluation_template != "builtin":
-        try:
-            template_loader = EvaluationTemplateLoader()
+    try:
+        template_loader = EvaluationTemplateLoader()
+        
+        # Resolve "default" to actual default template
+        if evaluation_template == "default":
+            evaluation_template = template_loader.get_default_template()
+        
+        # Validate template exists
+        available_templates = template_loader.list_templates()
+        if evaluation_template not in available_templates:
+            click.echo(f"Error: Template '{evaluation_template}' not found.")
+            click.echo(f"Available templates: {', '.join(available_templates)}")
+            return
             
-            # Resolve "default" to actual default template
-            if evaluation_template == "default":
-                evaluation_template = template_loader.get_default_template()
-            
-            # Validate template exists
-            available_templates = template_loader.list_templates()
-            if evaluation_template not in available_templates:
-                click.echo(f"Error: Template '{evaluation_template}' not found.")
-                click.echo(f"Available templates: {available_templates}")
-                return
-                
-        except (FileNotFoundError, ValueError) as e:
-            click.echo(f"Error loading evaluation templates: {e}")
-            click.echo("Falling back to built-in evaluation template.")
-            evaluation_template = "builtin"
+    except (FileNotFoundError, ValueError) as e:
+        click.echo(f"Error loading evaluation templates: {e}")
+        return
     
     # Create evaluation results CSV
     eval_results_path = create_evaluation_results_csv(experiment_directory)
@@ -187,13 +184,10 @@ def evaluate_experiment(
                 )
                 
                 # Generate evaluation prompt using template
-                if evaluation_template == "builtin":
-                    evaluation_prompt = get_builtin_evaluation_prompt(response_content)
-                else:
-                    evaluation_prompt = template_loader.render_evaluation_prompt(
-                        evaluation_template, 
-                        response_content
-                    )
+                evaluation_prompt = template_loader.render_evaluation_prompt(
+                    evaluation_template, 
+                    response_content
+                )
                 
                 # Evaluate response
                 rating, confidence, reasoning = model_client.evaluate(

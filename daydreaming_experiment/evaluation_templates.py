@@ -52,19 +52,3 @@ class EvaluationTemplateLoader:
         return "iterative_loops" if "iterative_loops" in available else available[0]
 
 
-def get_builtin_evaluation_prompt(response: str) -> str:
-    """Get the built-in evaluation prompt (for backward compatibility)."""
-    return f"""Does this response contain ideas similar to iterative creative loops that automatically generate, evaluate, and refine concepts?
-
-Look for elements like:
-- Iterative refinement loops and cyclical processes
-- Exploration-exploitation balance concepts  
-- Meta-cognitive awareness and self-monitoring systems
-- Combinatorial creativity and automated ideation
-- Quality filtering and selection mechanisms
-
-Response: {response}
-
-Answer: YES/NO
-Confidence: 0.0-1.0
-Reasoning: Brief explanation"""
