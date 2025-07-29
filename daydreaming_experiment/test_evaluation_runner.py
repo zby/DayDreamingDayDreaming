@@ -106,9 +106,9 @@ class TestEvaluationRunnerHelpers:
                 expected_headers = [
                     "experiment_id", "attempt_id", "concept_names", "concept_count",
                     "level", "template_id", "response_file", "automated_rating",
-                    "confidence_score", "evaluation_reasoning", "evaluation_timestamp",
-                    "evaluator_model", "evaluation_template", "generation_timestamp",
-                    "generator_model"
+                    "confidence_score", "evaluation_reasoning", "full_evaluation_response",
+                    "evaluation_timestamp", "evaluator_model", "evaluation_template", 
+                    "generation_timestamp", "generator_model"
                 ]
                 assert headers == expected_headers
 
@@ -129,6 +129,7 @@ class TestEvaluationRunnerHelpers:
                 "automated_rating": 1,
                 "confidence_score": 0.85,
                 "evaluation_reasoning": "Found iterative patterns",
+                "full_evaluation_response": "Answer: YES\nConfidence: 0.85\nReasoning: Found iterative patterns",
                 "evaluation_timestamp": "2025-01-01T12:00:00",
                 "evaluator_model": "openai/gpt-4",
                 "evaluation_template": "default",
@@ -148,7 +149,8 @@ class TestEvaluationRunnerHelpers:
                 assert row[1] == "1"  # attempt_id
                 assert row[7] == "1"  # automated_rating
                 assert row[8] == "0.85"  # confidence_score
-                assert row[11] == "openai/gpt-4"  # evaluator_model
+                assert row[10] == "Answer: YES\nConfidence: 0.85\nReasoning: Found iterative patterns"  # full_evaluation_response
+                assert row[12] == "openai/gpt-4"  # evaluator_model
 
 
 class TestEvaluationRunnerCLI:
@@ -268,7 +270,7 @@ class TestEvaluationRunnerMocking:
         
         # Setup mock model client
         mock_client = Mock()
-        mock_client.evaluate.return_value = (True, 0.85, "Found iterative patterns")
+        mock_client.evaluate.return_value = (True, 0.85, "Found iterative patterns", "Answer: YES\nConfidence: 0.85\nReasoning: Found iterative patterns")
         mock_client_class.return_value = mock_client
         
         # Setup mock template loader

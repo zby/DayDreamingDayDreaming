@@ -64,6 +64,7 @@ def create_evaluation_results_csv(experiment_dir: Path) -> Path:
         "automated_rating",
         "confidence_score",
         "evaluation_reasoning",
+        "full_evaluation_response",
         "evaluation_timestamp",
         "evaluator_model",
         "evaluation_template",
@@ -93,6 +94,7 @@ def save_evaluation_result(results_path: Path, result_data: Dict):
             result_data["automated_rating"],
             result_data["confidence_score"],
             result_data["evaluation_reasoning"],
+            result_data["full_evaluation_response"],
             result_data["evaluation_timestamp"],
             result_data["evaluator_model"],
             result_data["evaluation_template"],
@@ -190,7 +192,7 @@ def evaluate_experiment(
                 )
                 
                 # Evaluate response
-                rating, confidence, reasoning = model_client.evaluate(
+                rating, confidence, reasoning, full_response = model_client.evaluate(
                     evaluation_prompt, 
                     response_content,
                     evaluator_model
@@ -210,6 +212,7 @@ def evaluate_experiment(
                     "automated_rating": int(rating),
                     "confidence_score": confidence,
                     "evaluation_reasoning": reasoning,
+                    "full_evaluation_response": full_response,
                     "evaluation_timestamp": evaluation_timestamp,
                     "evaluator_model": evaluator_model,
                     "evaluation_template": evaluation_template,
@@ -239,6 +242,7 @@ def evaluate_experiment(
                     "automated_rating": 0,
                     "confidence_score": 0.0,
                     "evaluation_reasoning": f"Evaluation error: {str(e)}",
+                    "full_evaluation_response": "",
                     "evaluation_timestamp": datetime.now().isoformat(),
                     "evaluator_model": evaluator_model,
                     "evaluation_template": evaluation_template,
