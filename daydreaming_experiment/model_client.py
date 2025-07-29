@@ -38,8 +38,8 @@ class SimpleModelClient:
 
     def evaluate(
         self, prompt: str, response: str, model: str = "openai/gpt-4"
-    ) -> Tuple[bool, float, str]:
-        """LLM-based evaluation returning (rating, confidence, reasoning)."""
+    ) -> Tuple[bool, float, str, str]:
+        """LLM-based evaluation returning (rating, confidence, reasoning, full_response)."""
         evaluation_prompt = f"""Does this response contain ideas similar to iterative creative loops that automatically generate, evaluate, and refine concepts?
 
 Look for elements like:
@@ -82,8 +82,8 @@ Reasoning: Brief explanation"""
                 elif line.startswith("Reasoning:"):
                     reasoning = line.split(":", 1)[1].strip()
 
-            return rating, confidence, reasoning
+            return rating, confidence, reasoning, eval_text
 
         except Exception as e:
             time.sleep(1)
-            return False, 0.0, f"Evaluation failed: {str(e)}"
+            return False, 0.0, f"Evaluation failed: {str(e)}", ""

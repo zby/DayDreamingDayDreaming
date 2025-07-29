@@ -14,18 +14,39 @@ from daydreaming_experiment.concept_db import ConceptDB
 from daydreaming_experiment.prompt_factory import PromptFactory
 from daydreaming_experiment.model_client import SimpleModelClient
 
+# Constants
+DEFAULT_CONCEPTS_DIR = "data/concepts"
+CONCEPTS_MANIFEST_FILENAME = "day_dreaming_concepts.json"
+DEFAULT_EXPERIMENTS_DIR = "data/experiments"
+CONFIG_FILENAME = "config.json"
+RESULTS_FILENAME = "results.csv"
+RESPONSES_DIR_NAME = "responses"
+RESPONSE_FILENAME_TEMPLATE = "response_{:03d}.txt"
+
+# Default models and settings
+DEFAULT_GENERATOR_MODEL = "openai/gpt-4"
+DEFAULT_LEVEL = "paragraph"
+DEFAULT_K_MAX = 4
+
+# Rate limiting
+RATE_LIMIT_DELAY = 0.1
+
+# Experiment ID format
+EXPERIMENT_ID_FORMAT = "experiment_{}"
+EXPERIMENT_ID_TIMESTAMP_FORMAT = "%Y%m%d_%H%M%S"
+
 
 def generate_experiment_id() -> str:
     """Generate timestamp-based experiment ID."""
-    return f"experiment_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+    return EXPERIMENT_ID_FORMAT.format(datetime.now().strftime(EXPERIMENT_ID_TIMESTAMP_FORMAT))
 
 
 def save_response(output_dir: Path, attempt_id: int, response: str) -> str:
     """Save LLM response to file and return filename."""
-    responses_dir = output_dir / "responses"
+    responses_dir = output_dir / RESPONSES_DIR_NAME
     responses_dir.mkdir(exist_ok=True)
 
-    filename = f"response_{attempt_id:03d}.txt"
+    filename = RESPONSE_FILENAME_TEMPLATE.format(attempt_id)
     filepath = responses_dir / filename
 
     with open(filepath, "w", encoding="utf-8") as f:
@@ -36,14 +57,14 @@ def save_response(output_dir: Path, attempt_id: int, response: str) -> str:
 
 def save_config(output_dir: Path, config: dict):
     """Save experiment configuration."""
-    config_path = output_dir / "config.json"
+    config_path = output_dir / CONFIG_FILENAME
     with open(config_path, "w", encoding="utf-8") as f:
         json.dump(config, f, indent=2)
 
 
-def get_csv_headers(generation_only: bool) -> list:
-    """Get CSV headers based on experiment mode."""
-    base_headers = [
+def get_csv_headers() -> list:
+    """Get CSV headers for generation-only experiments."""
+    return [
         "experiment_id",
         "attempt_id",
         "concept_names",
@@ -54,25 +75,12 @@ def get_csv_headers(generation_only: bool) -> list:
         "generation_timestamp",
         "generator_model",
     ]
-    
-    if not generation_only:
-        evaluation_headers = [
-            "automated_rating",
-            "confidence_score",
-            "evaluation_reasoning",
-            "evaluation_timestamp",  
-            "evaluator_model",
-        ]
-        # Insert evaluation headers before the last two fields
-        return base_headers[:-2] + evaluation_headers + base_headers[-2:]
-    
-    return base_headers
 
 
-def initialize_results_csv(output_dir: Path, generation_only: bool = True) -> Path:
+def initialize_results_csv(output_dir: Path) -> Path:
     """Initialize CSV file with headers."""
-    results_path = output_dir / "results.csv"
-    headers = get_csv_headers(generation_only)
+    results_path = output_dir / RESULTS_FILENAME
+    headers = get_csv_headers()
 
     with open(results_path, "w", newline="", encoding="utf-8") as f:
         writer = csv.writer(f)
@@ -81,9 +89,9 @@ def initialize_results_csv(output_dir: Path, generation_only: bool = True) -> Pa
     return results_path
 
 
-def save_result_row(results_path: Path, result_data: dict, generation_only: bool = True):
+def save_result_row(results_path: Path, result_data: dict):
     """Append result row to CSV."""
-    headers = get_csv_headers(generation_only)
+    headers = get_csv_headers()
     
     # Build row data based on headers order
     row_data = []
@@ -97,25 +105,24 @@ def save_result_row(results_path: Path, result_data: dict, generation_only: bool
 
 @click.command()
 @click.option(
-    "--k-max", type=int, default=4, help="Maximum number of concepts to combine"
+    "--k-max", type=int, default=DEFAULT_K_MAX, help="Maximum number of concepts to combine"
 )
 @click.option(
     "--level",
     type=click.Choice(["sentence", "paragraph", "article"]),
-    default="paragraph",
+    default=DEFAULT_LEVEL,
     help="Concept description level",
 )
 @click.option(
-    "--generator-model", default="openai/gpt-4", help="Model for content generation"
+    "--generator-model", default=DEFAULT_GENERATOR_MODEL, help="Model for content generation"
 )
-@click.option("--evaluator-model", default="openai/gpt-4", help="Model for evaluation")
 @click.option(
     "--output", type=click.Path(), help="Output directory (default: auto-generated)"
 )
 @click.option(
     "--concepts-dir",
     type=click.Path(exists=True),
-    default="data/concepts",
+    default=DEFAULT_CONCEPTS_DIR,
     help="Concepts database directory",
 )
 @click.option(
@@ -123,28 +130,21 @@ def save_result_row(results_path: Path, result_data: dict, generation_only: bool
     type=int,
     help="Maximum number of prompts to test (default: test all combinations)",
 )
-@click.option(
-    "--generation-only/--with-evaluation",
-    default=True,
-    help="Only generate responses without evaluation (default: generation-only)",
-)
 def run_experiment(
     k_max: int,
     level: str,
     generator_model: str,
-    evaluator_model: str,
     output: str,
     concepts_dir: str,
     max_prompts: int,
-    generation_only: bool,
 ):
-    """Run experiment with optional evaluation. By default, only generates responses."""
+    """Run generation-only experiment. Use evaluation_runner.py for evaluation."""
 
     # Load environment variables from .env file
     load_dotenv()
 
     # Load concept database
-    manifest_path = Path(concepts_dir) / "day_dreaming_concepts.json"
+    manifest_path = Path(concepts_dir) / CONCEPTS_MANIFEST_FILENAME
     concept_db = ConceptDB.load(str(manifest_path))
     concepts = concept_db.get_concepts()
 
@@ -162,7 +162,7 @@ def run_experiment(
 
     # Setup output directory
     if not output:
-        output = f"data/experiments/{generate_experiment_id()}"
+        output = f"{DEFAULT_EXPERIMENTS_DIR}/{generate_experiment_id()}"
 
     output_dir = Path(output)
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -184,17 +184,16 @@ def run_experiment(
         "k_max": k_max,
         "level": level,
         "generator_model": generator_model,
-        "evaluator_model": evaluator_model,
         "concept_count": len(concepts),
         "total_combinations": total_combinations,
         "templates_count": len(prompt_factory.templates),
         "max_prompts": max_prompts,
-        "generation_only": generation_only,
+        "generation_only": True,
     }
     save_config(output_dir, config)
 
     # Initialize results CSV
-    results_path = initialize_results_csv(output_dir, generation_only)
+    results_path = initialize_results_csv(output_dir)
 
     click.echo(f"Running experiment: {experiment_id}")
     click.echo(f"Total combinations to test: {total_combinations}")
@@ -248,34 +247,10 @@ def run_experiment(
                         "generator_model": generator_model,
                     }
 
-                    # Conditionally evaluate response
-                    if not generation_only:
-                        rating, confidence, reasoning = model_client.evaluate(
-                            prompt, response, evaluator_model
-                        )
-                        evaluation_timestamp = datetime.now().isoformat()
-                        
-                        # Add evaluation data
-                        result_data.update({
-                            "automated_rating": int(rating),
-                            "confidence_score": confidence,
-                            "evaluation_reasoning": reasoning,
-                            "evaluation_timestamp": evaluation_timestamp,
-                            "evaluator_model": evaluator_model,
-                        })
+                    save_result_row(results_path, result_data)
 
-                    save_result_row(results_path, result_data, generation_only)
-
-                    # Show success message only for evaluated responses
-                    if not generation_only and result_data.get("automated_rating"):
-                        click.echo(
-                            f"\\n✓ SUCCESS (attempt {attempt_id}): {result_data['confidence_score']:.2f} confidence"
-                        )
-                        click.echo(
-                            f"  Concepts: {', '.join(c.name for c in concept_combination)}"
-                        )
-                    elif generation_only:
-                        click.echo(f"Generated response {attempt_id}")
+                    # Show generation success message
+                    click.echo(f"Generated response {attempt_id}")
 
                 except Exception as e:
                     click.echo(f"\\nError in attempt {attempt_id}: {e}")
@@ -295,20 +270,10 @@ def run_experiment(
                         "generator_model": generator_model,
                     }
                     
-                    # Add evaluation error data only if not generation-only
-                    if not generation_only:
-                        result_data.update({
-                            "automated_rating": 0,
-                            "confidence_score": 0.0,
-                            "evaluation_reasoning": f"Error: {str(e)}",
-                            "evaluation_timestamp": "",
-                            "evaluator_model": evaluator_model,
-                        })
-
-                    save_result_row(results_path, result_data, generation_only)
+                    save_result_row(results_path, result_data)
 
                 bar.update(1)
-                time.sleep(0.1)  # Rate limiting
+                time.sleep(RATE_LIMIT_DELAY)  # Rate limiting
 
     click.echo(f"\\nExperiment completed!")
     click.echo(f"Results saved to: {results_path}")

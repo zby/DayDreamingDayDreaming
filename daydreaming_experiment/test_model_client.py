@@ -79,13 +79,14 @@ Reasoning: Contains iterative refinement loops"""
         mock_openai.return_value = mock_client
 
         client = SimpleModelClient(api_key="test_key")
-        rating, confidence, reasoning = client.evaluate(
+        rating, confidence, reasoning, full_response = client.evaluate(
             "prompt", "response", "test-model"
         )
 
         assert rating is True
         assert confidence == 0.85
         assert reasoning == "Contains iterative refinement loops"
+        assert "Answer: YES" in full_response
 
     @patch("daydreaming_experiment.model_client.OpenAI")
     def test_evaluate_success_no(self, mock_openai):
@@ -103,11 +104,12 @@ Reasoning: No iterative patterns found"""
         mock_openai.return_value = mock_client
 
         client = SimpleModelClient(api_key="test_key")
-        rating, confidence, reasoning = client.evaluate("prompt", "response")
+        rating, confidence, reasoning, full_response = client.evaluate("prompt", "response")
 
         assert rating is False
         assert confidence == 0.9
         assert reasoning == "No iterative patterns found"
+        assert "Answer: NO" in full_response
 
     @patch("daydreaming_experiment.model_client.OpenAI")
     def test_evaluate_malformed_response(self, mock_openai):
@@ -123,11 +125,12 @@ Reasoning: No iterative patterns found"""
         mock_openai.return_value = mock_client
 
         client = SimpleModelClient(api_key="test_key")
-        rating, confidence, reasoning = client.evaluate("prompt", "response")
+        rating, confidence, reasoning, full_response = client.evaluate("prompt", "response")
 
         assert rating is False
         assert confidence == 0.0
         assert reasoning == ""
+        assert full_response == "Malformed response without proper structure"
 
     @patch("daydreaming_experiment.model_client.OpenAI")
     def test_evaluate_invalid_confidence(self, mock_openai):
@@ -145,11 +148,12 @@ Reasoning: Test reasoning"""
         mock_openai.return_value = mock_client
 
         client = SimpleModelClient(api_key="test_key")
-        rating, confidence, reasoning = client.evaluate("prompt", "response")
+        rating, confidence, reasoning, full_response = client.evaluate("prompt", "response")
 
         assert rating is True
         assert confidence == 0.5  # Default fallback
         assert reasoning == "Test reasoning"
+        assert "Confidence: invalid" in full_response
 
     @patch("daydreaming_experiment.model_client.OpenAI")
     @patch("time.sleep")
@@ -160,11 +164,12 @@ Reasoning: Test reasoning"""
         mock_openai.return_value = mock_client
 
         client = SimpleModelClient(api_key="test_key")
-        rating, confidence, reasoning = client.evaluate("prompt", "response")
+        rating, confidence, reasoning, full_response = client.evaluate("prompt", "response")
 
         assert rating is False
         assert confidence == 0.0
         assert reasoning == "Evaluation failed: API Error"
+        assert full_response == ""
         mock_sleep.assert_called_once_with(1)
 
     @patch("daydreaming_experiment.model_client.OpenAI")
