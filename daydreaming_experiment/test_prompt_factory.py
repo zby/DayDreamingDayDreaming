@@ -272,23 +272,7 @@ class TestPromptIterator:
 
 
 class TestTemplateLoading:
-    def test_load_templates_from_directory(self):
-        """Test loading templates from the data/templates directory."""
-        templates = load_templates_from_directory("data/templates")
-        assert len(templates) == 5
-
-        # All templates should be Jinja2 Template objects
-        for template in templates:
-            assert isinstance(template, Template)
-            # Test that templates can render with concepts
-            test_concepts = [
-                Concept(name="test", descriptions={"sentence": "Test sentence."})
-            ]
-            rendered = template.render(
-                concepts=test_concepts, level="sentence", strict=True
-            )
-            assert "test" in rendered.lower()
-            assert len(rendered) > 100
+    # Integration test with data/templates moved to tests/test_integration_data_dependent.py
 
     def test_load_templates_custom_directory(self):
         """Test loading templates from a custom directory."""

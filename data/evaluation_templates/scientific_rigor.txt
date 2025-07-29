@@ -1,0 +1,14 @@
+Does this response demonstrate scientific thinking and methodological rigor in approaching research questions?
+
+Assess the response for:
+- Systematic approach to problem solving
+- Evidence-based reasoning patterns
+- Hypothesis generation and testing concepts
+- Methodological considerations
+- Reproducible research frameworks
+
+Response: {{ response }}
+
+Answer: YES/NO
+Confidence: 0.0-1.0
+Reasoning: Brief explanation of scientific merit

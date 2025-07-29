@@ -61,8 +61,14 @@ uv sync --dev
 # Run all tests
 uv run pytest
 
-# Run tests for a specific module
+# Run only unit tests (fast, isolated)
+uv run pytest daydreaming_experiment/
+
+# Run only integration tests (data-dependent)
 uv run pytest tests/
+
+# Run with coverage report
+uv run pytest --cov=daydreaming_experiment
 ```
 
 ### Code Formatting
@@ -76,10 +82,113 @@ uv run flake8
 
 ## Testing Structure
 
-- Unittests should be colocated with the modules they are verifying
-- Integration tests should be in the tests directory
-- All tests use pytest as the testing framework
-- Test fixtures are created using `create_test_fixtures.py` for consistent test data
+### Overview
+This project follows a clear separation between unit tests and integration tests to ensure fast, reliable testing with proper isolation.
+
+### Test Categories and Placement
+
+#### Unit Tests (Fast, Isolated)
+- **Location**: Colocated with the modules they test (e.g., `test_concept.py` next to `concept.py`)
+- **Purpose**: Test individual functions/classes in isolation
+- **Data Access**: **MUST NOT** access files in the `data/` directory
+- **Dependencies**: Use mocking for external dependencies (APIs, file systems, etc.)
+- **Performance**: Should run quickly (<1 second per test)
+- **Examples**: `daydreaming_experiment/test_concept.py`, `daydreaming_experiment/test_model_client.py`
+
+#### Integration Tests (Component Interaction)
+- **Location**: `tests/` directory only
+- **Purpose**: Test component interactions and workflows with real data
+- **Data Access**: **CAN** read from `data/` directory when testing data-dependent functionality
+- **Data Requirements**: **MUST FAIL** if required data files are missing (no graceful skipping)
+- **API Restrictions**: **MUST NOT** make real API calls (use proper mocking)
+- **Examples**: `tests/test_integration_data_dependent.py`, `tests/test_integration_prompt_iterator.py`
+
+### Running Tests
+
+```bash
+# Run only unit tests (fast, no data dependencies)
+uv run pytest daydreaming_experiment/
+
+# Run only integration tests (may require data files)
+uv run pytest tests/
+
+# Run all tests
+uv run pytest
+
+# Run tests with coverage report
+uv run pytest --cov=daydreaming_experiment
+
+# Run tests in parallel for speed
+uv run pytest -n auto
+
+# Run specific test file
+uv run pytest daydreaming_experiment/test_concept.py
+
+# Run specific test method
+uv run pytest daydreaming_experiment/test_concept.py::TestConcept::test_concept_creation
+```
+
+### Testing Best Practices
+
+#### For Unit Tests:
+- Use dependency injection to make components testable
+- Mock external dependencies with `unittest.mock` or `pytest-mock`
+- Test edge cases and error conditions
+- Keep tests focused on a single behavior
+- Use descriptive test names that explain the expected behavior
+
+```python
+# Good unit test example
+def test_concept_get_description_with_fallback():
+    """Should return paragraph when sentence is missing but paragraph exists."""
+    concept = Concept(
+        name="test",
+        descriptions={"paragraph": "Test paragraph", "article": "Test article"}
+    )
+    
+    # Should fall back to paragraph level
+    assert concept.get_description("sentence", strict=False) == "Test paragraph"
+```
+
+#### For Integration Tests:
+- **Fail fast** if required data files are missing (do not skip)
+- Test realistic workflows end-to-end
+- Use real data files and validate their expected structure
+- Mock API calls even in integration tests
+
+```python
+# Good integration test example
+def test_concept_database_loading():
+    """Test loading real concept database - fails if data missing."""
+    # Should fail with clear error if file doesn't exist
+    concept_db = ConceptDB.load("data/concepts/day_dreaming_concepts.json")
+    concepts = concept_db.get_concepts()
+    assert len(concepts) > 0
+    
+    # Verify structure without depending on specific content
+    for concept in concepts:
+        assert hasattr(concept, 'name')
+        assert hasattr(concept, 'descriptions')
+```
+
+#### Naming Conventions:
+- Test files: `test_*.py`
+- Test classes: `TestClassName`
+- Test methods: `test_method_name_condition_expected_result`
+- Use underscores for readability in test names
+
+#### Mock Usage:
+- Mock external services (APIs, file systems when not testing I/O)
+- Use `@patch` decorator for clean mocking
+- Inject mocks through dependency injection when possible
+- Verify mock calls when testing interaction behavior
+
+### Test Framework Configuration
+- **Framework**: pytest (configured in `pytest.ini`)
+- **Coverage**: pytest-cov for coverage reporting
+- **Mocking**: unittest.mock (built-in) and pytest-mock
+- **Fixtures**: Create reusable test data in `conftest.py` files
+- **Parallel Execution**: pytest-xdist for faster test runs
 
 ## Design Preferences
 

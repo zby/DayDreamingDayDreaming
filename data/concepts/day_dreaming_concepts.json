@@ -1,0 +1,40 @@
+{
+  "version": "1.0",
+  "created": "2025-07-28T14:30:22Z",
+  "articles_dir": "articles",
+  "concepts": [
+    {
+      "name": "Dearth of AI-driven Discoveries",
+      "sentence": "Current AI systems struggle to make truly groundbreaking, independent discoveries beyond their training data.",
+      "paragraph": "Despite impressive achievements in areas like game playing and pattern recognition, AI has so far fallen short of making truly groundbreaking, independent discoveries. Current AI is excellent at solving problems defined by humans and exploring known data, but it struggles to formulate new questions or identify \"unknown unknowns\" – problems we don't even know exist. This limitation highlights the need for AI systems that can go beyond their training data and engage in more creative, exploratory \"thought\" to generate genuinely novel ideas, much like a human daydreaming."
+    },
+    {
+      "name": "Default Mode Network",
+      "sentence": "The Default Mode Network is a brain network active during rest that's associated with creativity and internal thought processing.",
+      "paragraph": "The Default Mode Network (DMN) is a large-scale brain network that is most active when the brain is in a state of wakeful rest, such as during daydreaming and mind-wandering. The DMN is associated with internal thoughts, remembering the past, planning for the future, and creativity. The idea of an AI having a similar \"default mode\" for exploring its knowledge base is a direct inspiration for creating systems that can engage in background creative processing.",
+      "article_path": "default_mode_network.txt"
+    },
+    {
+      "name": "Human Creativity and Insight",
+      "sentence": "Humans have sudden insights during rest periods, suggesting background creative processes that could be replicated in AI.",
+      "paragraph": "The phenomenon of humans having sudden \"eureka\" moments or insights, often during periods of rest or dreaming, suggests that a background mental process is at work. These moments of inspiration typically occur when the conscious mind is not actively focused on problem-solving, indicating that creative processes can operate independently of directed attention. The goal is to replicate this process in AI systems to allow for novel discoveries and creative problem-solving that emerges from undirected exploration."
+    },
+    {
+      "name": "Combinatorial Search",
+      "sentence": "Combinatorial search systematically explores combinations of possibilities to discover novel solutions.",
+      "paragraph": "Combinatorial search is a method of searching for solutions by systematically exploring combinations of possibilities. In the context of AI daydreaming, it refers to the idea of the AI searching through its vast store of knowledge and skills to find new and useful combinations. Unlike traditional search algorithms that look for specific solutions, this approach involves open-ended exploration of the combinatorial space of ideas, potentially discovering unexpected connections and novel insights.",
+      "article_path": "combinatorial_search.txt"
+    },
+    {
+      "name": "Generator-Verifier Gap",
+      "sentence": "It's often easier to recognize good ideas than to generate them, suggesting separate generator and verifier components for AI creativity.",
+      "paragraph": "This concept highlights the fundamental difference in difficulty between generating a new idea and verifying its quality. It is often much easier to recognize a good idea than to come up with one from scratch, a phenomenon observed across many domains from mathematics to creative arts. This insight inspires a two-part system in AI, with a \"generator\" component that produces many ideas (including potentially absurd ones) and a \"verifier\" or \"critic\" component that filters them for quality, coherence, and usefulness."
+    },
+    {
+      "name": "Economic Innovation Models",
+      "sentence": "Economic models show how continuous innovation emerges from combining existing ideas, providing a framework for AI creativity.",
+      "paragraph": "The work of economist Charles I. Jones on economic innovation, particularly his research on how continuous streams of innovation can arise from the combination of existing ideas, provides a mathematical foundation for AI creativity. His models demonstrate that even when the most obvious ideas have already been discovered, novel innovation can continue through increasingly sophisticated combinations of existing concepts. This economic perspective suggests that AI systems could generate genuinely new ideas through systematic combinatorial exploration of their knowledge base.",
+      "article_path": "economic_innovation_models.txt"
+    }
+  ]
+}

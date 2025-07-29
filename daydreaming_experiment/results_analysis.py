@@ -8,8 +8,14 @@ import click
 import pandas as pd
 
 
-def load_experiment_results(experiment_dir: str) -> Tuple[dict, pd.DataFrame]:
-    """Load experiment configuration and results."""
+def load_experiment_results(experiment_dir: str) -> Tuple[dict, pd.DataFrame, bool]:
+    """Load experiment configuration and results.
+    
+    Returns:
+        config: Experiment configuration
+        results_df: Results dataframe
+        has_evaluation: Whether evaluation results are available
+    """
     exp_path = Path(experiment_dir)
 
     # Load config
@@ -17,18 +23,39 @@ def load_experiment_results(experiment_dir: str) -> Tuple[dict, pd.DataFrame]:
     with open(config_path, "r") as f:
         config = json.load(f)
 
-    # Load results
+    # Check for evaluation results first (preferred for analysis)
+    eval_results_path = exp_path / "evaluation_results.csv"
     results_path = exp_path / "results.csv"
-    results_df = pd.read_csv(results_path)
+    
+    if eval_results_path.exists():
+        # Use evaluation results if available
+        results_df = pd.read_csv(eval_results_path)
+        has_evaluation = True
+    elif results_path.exists():
+        # Fall back to generation results
+        results_df = pd.read_csv(results_path)
+        # Check if results have evaluation columns
+        has_evaluation = "automated_rating" in results_df.columns
+    else:
+        raise FileNotFoundError(f"No results file found in {experiment_dir}")
 
-    return config, results_df
+    return config, results_df, has_evaluation
 
 
-def analyze_success_rates(results_df: pd.DataFrame) -> Dict:
+def analyze_success_rates(results_df: pd.DataFrame, has_evaluation: bool) -> Dict:
     """Analyze success rates by different dimensions."""
     analysis = {}
+    analysis["has_evaluation"] = has_evaluation
 
-    # Overall success rate
+    if not has_evaluation:
+        # For generation-only experiments, we can't analyze success rates
+        analysis["total_attempts"] = len(results_df)
+        analysis["overall_success_rate"] = None
+        analysis["successful_attempts"] = None
+        analysis["note"] = "No evaluation data available - this is a generation-only experiment"
+        return analysis
+
+    # Overall success rate (only for evaluated experiments)
     total_attempts = len(results_df)
     successful_attempts = len(results_df[results_df["automated_rating"] == 1])
     analysis["overall_success_rate"] = (
@@ -68,8 +95,29 @@ def analyze_success_rates(results_df: pd.DataFrame) -> Dict:
     return analysis
 
 
-def analyze_concept_patterns(results_df: pd.DataFrame) -> Dict:
+def _analyze_all_concept_frequency(results_df: pd.DataFrame) -> Dict:
+    """Analyze concept frequency across all combinations (for generation-only experiments)."""
+    concept_frequency = Counter()
+    
+    for _, row in results_df.iterrows():
+        if pd.notna(row["concept_names"]):
+            concepts = row["concept_names"].split("|")
+            for concept in concepts:
+                concept_frequency[concept] += 1
+    
+    return dict(concept_frequency.most_common())
+
+
+def analyze_concept_patterns(results_df: pd.DataFrame, has_evaluation: bool) -> Dict:
     """Analyze which concepts appear most in successful combinations."""
+    if not has_evaluation:
+        # For generation-only experiments, analyze all concept patterns
+        return {
+            "concept_frequency": _analyze_all_concept_frequency(results_df),
+            "note": "Analysis based on all generated responses (no evaluation filtering)",
+            "total_combinations": len(results_df),
+        }
+    
     successful_results = results_df[results_df["automated_rating"] == 1]
 
     # Count concept frequency in successful combinations
@@ -102,12 +150,18 @@ def analyze_concept_patterns(results_df: pd.DataFrame) -> Dict:
     }
 
 
-def analyze_confidence_patterns(results_df: pd.DataFrame) -> Dict:
+def analyze_confidence_patterns(results_df: pd.DataFrame, has_evaluation: bool) -> Dict:
     """Analyze confidence score patterns."""
+    if not has_evaluation:
+        return {
+            "note": "No confidence data available - this is a generation-only experiment",
+            "has_evaluation": False
+        }
+    
     successful_results = results_df[results_df["automated_rating"] == 1]
 
     if len(successful_results) == 0:
-        return {"no_successful_results": True}
+        return {"no_successful_results": True, "has_evaluation": True}
 
     confidence_stats = {
         "mean_confidence": successful_results["confidence_score"].mean(),
@@ -128,7 +182,7 @@ def analyze_confidence_patterns(results_df: pd.DataFrame) -> Dict:
 
 
 def print_analysis_report(
-    config: dict, analysis: Dict, concept_patterns: Dict, confidence_patterns: Dict
+    config: dict, analysis: Dict, concept_patterns: Dict, confidence_patterns: Dict, has_evaluation: bool
 ):
     """Print formatted analysis report."""
     print("=" * 60)
@@ -139,44 +193,60 @@ def print_analysis_report(
     print(f"K-max: {config['k_max']}")
     print(f"Level: {config['level']}")
     print(f"Generator Model: {config['generator_model']}")
-    print(f"Evaluator Model: {config['evaluator_model']}")
+    if has_evaluation:
+        print(f"Evaluator Model: {config.get('evaluator_model', 'N/A')}")
+    else:
+        print("Evaluation: None (generation-only experiment)")
     print()
 
     print("OVERALL RESULTS:")
     print("-" * 30)
     print(f"Total Attempts: {analysis['total_attempts']}")
-    print(f"Successful Attempts: {analysis['successful_attempts']}")
-    print(f"Overall Success Rate: {analysis['overall_success_rate']:.2%}")
-    print()
-
-    print("SUCCESS BY CONCEPT COUNT (K-VALUE):")
-    print("-" * 40)
-    if analysis.get("single_k_strategy", False):
-        k, stats = next(iter(analysis["success_by_k"].items()))
-        print(f"K={k} (single strategy): {stats['successful']}/{stats['total']} ({stats['success_rate']:.2%})")
+    
+    if has_evaluation:
+        print(f"Successful Attempts: {analysis['successful_attempts']}")
+        print(f"Overall Success Rate: {analysis['overall_success_rate']:.2%}")
     else:
-        for k, stats in analysis["success_by_k"].items():
+        print("Note: No evaluation data available (generation-only experiment)")
+    print()
+
+    if has_evaluation:
+        print("SUCCESS BY CONCEPT COUNT (K-VALUE):")
+        print("-" * 40)
+        if analysis.get("single_k_strategy", False):
+            k, stats = next(iter(analysis["success_by_k"].items()))
+            print(f"K={k} (single strategy): {stats['successful']}/{stats['total']} ({stats['success_rate']:.2%})")
+        else:
+            for k, stats in analysis["success_by_k"].items():
+                print(
+                    f"K={k}: {stats['successful']}/{stats['total']} ({stats['success_rate']:.2%})"
+                )
+        print()
+
+    if has_evaluation:
+        print("SUCCESS BY TEMPLATE:")
+        print("-" * 25)
+        for template_id, stats in analysis["success_by_template"].items():
             print(
-                f"K={k}: {stats['successful']}/{stats['total']} ({stats['success_rate']:.2%})"
+                f"Template {template_id}: {stats['successful']}/{stats['total']} ({stats['success_rate']:.2%})"
             )
-    print()
+        print()
 
-    print("SUCCESS BY TEMPLATE:")
-    print("-" * 25)
-    for template_id, stats in analysis["success_by_template"].items():
-        print(
-            f"Template {template_id}: {stats['successful']}/{stats['total']} ({stats['success_rate']:.2%})"
-        )
-    print()
-
-    if concept_patterns["most_common_concepts"]:
+    # Handle concept patterns for both evaluated and generation-only experiments
+    if has_evaluation and concept_patterns.get("most_common_concepts"):
         print("MOST FREQUENT CONCEPTS IN SUCCESSFUL COMBINATIONS:")
         print("-" * 55)
         for concept, count in concept_patterns["most_common_concepts"]:
             print(f"  {concept}: {count} appearances")
         print()
+    elif not has_evaluation and concept_patterns.get("concept_frequency"):
+        print("MOST FREQUENT CONCEPTS IN ALL COMBINATIONS:")
+        print("-" * 45)
+        for concept, count in list(concept_patterns["concept_frequency"].items())[:5]:
+            print(f"  {concept}: {count} appearances")
+        print()
 
-    if not confidence_patterns.get("no_successful_results"):
+    if has_evaluation and not confidence_patterns.get("no_successful_results"):
         print("CONFIDENCE ANALYSIS:")
         print("-" * 25)
         print(f"Mean Confidence: {confidence_patterns['mean_confidence']:.3f}")
@@ -189,7 +259,7 @@ def print_analysis_report(
         )
         print()
 
-    if concept_patterns["successful_combinations"]:
+    if has_evaluation and concept_patterns.get("successful_combinations"):
         print("SUCCESSFUL CONCEPT COMBINATIONS:")
         print("-" * 35)
         for i, combination in enumerate(
@@ -215,34 +285,45 @@ def analyze_results(experiment_dir: str, min_confidence: float, export_csv: str)
     """Analyze results from an experiment directory."""
 
     try:
-        config, results_df = load_experiment_results(experiment_dir)
+        config, results_df, has_evaluation = load_experiment_results(experiment_dir)
     except Exception as e:
         click.echo(f"Error loading experiment results: {e}")
         return
 
-    # Filter by confidence if specified
+    # Filter by confidence if specified (only for evaluated experiments)
     if min_confidence > 0:
-        original_count = len(results_df)
-        results_df = results_df[results_df["confidence_score"] >= min_confidence]
-        click.echo(
-            f"Filtered to {len(results_df)} results with confidence >= {min_confidence} (from {original_count})"
-        )
+        if not has_evaluation:
+            click.echo("Warning: Cannot filter by confidence - no evaluation data available.")
+        elif "confidence_score" in results_df.columns:
+            original_count = len(results_df)
+            results_df = results_df[results_df["confidence_score"] >= min_confidence]
+            click.echo(
+                f"Filtered to {len(results_df)} results with confidence >= {min_confidence} (from {original_count})"
+            )
+        else:
+            click.echo("Warning: Confidence scores not found in results.")
 
     # Run analyses
-    analysis = analyze_success_rates(results_df)
-    concept_patterns = analyze_concept_patterns(results_df)
-    confidence_patterns = analyze_confidence_patterns(results_df)
+    analysis = analyze_success_rates(results_df, has_evaluation)
+    concept_patterns = analyze_concept_patterns(results_df, has_evaluation)
+    confidence_patterns = analyze_confidence_patterns(results_df, has_evaluation)
 
     # Print report
-    print_analysis_report(config, analysis, concept_patterns, confidence_patterns)
+    print_analysis_report(config, analysis, concept_patterns, confidence_patterns, has_evaluation)
 
     # Export if requested
     if export_csv:
-        filtered_results = results_df[results_df["automated_rating"] == 1]
+        if has_evaluation:
+            filtered_results = results_df[results_df["automated_rating"] == 1]
+            click.echo(
+                f"Exported {len(filtered_results)} successful results to {export_csv}"
+            )
+        else:
+            filtered_results = results_df
+            click.echo(
+                f"Exported {len(filtered_results)} generation results to {export_csv}"
+            )
         filtered_results.to_csv(export_csv, index=False)
-        click.echo(
-            f"Exported {len(filtered_results)} successful results to {export_csv}"
-        )
 
 
 if __name__ == "__main__":

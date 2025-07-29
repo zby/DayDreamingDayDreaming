@@ -35,12 +35,13 @@ class TestResultsAnalysisHelpers:
                 writer.writerow(["test_exp", 1, 2])
                 writer.writerow(["test_exp", 0, 1])
 
-            loaded_config, results_df = load_experiment_results(str(exp_dir))
+            loaded_config, results_df, has_evaluation = load_experiment_results(str(exp_dir))
 
             assert loaded_config == config
             assert len(results_df) == 2
             assert results_df.iloc[0]["automated_rating"] == 1
             assert results_df.iloc[1]["automated_rating"] == 0
+            assert has_evaluation == True  # Has automated_rating column
 
     def test_analyze_success_rates(self):
         """Test success rate analysis by different dimensions."""
@@ -52,7 +53,7 @@ class TestResultsAnalysisHelpers:
         }
         df = pd.DataFrame(data)
 
-        analysis = analyze_success_rates(df)
+        analysis = analyze_success_rates(df, has_evaluation=True)
 
         # Overall success rate: 4/6 = 0.667
         assert analysis["overall_success_rate"] == pytest.approx(0.667, rel=1e-3)
@@ -81,7 +82,7 @@ class TestResultsAnalysisHelpers:
         }
         df = pd.DataFrame(data)
 
-        analysis = analyze_success_rates(df)
+        analysis = analyze_success_rates(df, has_evaluation=True)
 
         # Overall success rate: 4/6 = 0.667
         assert analysis["overall_success_rate"] == pytest.approx(0.667, rel=1e-3)
@@ -112,7 +113,7 @@ class TestResultsAnalysisHelpers:
         }
         df = pd.DataFrame(data)
 
-        patterns = analyze_concept_patterns(df)
+        patterns = analyze_concept_patterns(df, has_evaluation=True)
 
         # concept1 appears in 2 successful results, concept2 in 2, concept3 in 1
         expected_frequency = {"concept1": 2, "concept2": 2, "concept3": 1}
@@ -141,7 +142,7 @@ class TestResultsAnalysisHelpers:
         }
         df = pd.DataFrame(data)
 
-        patterns = analyze_concept_patterns(df)
+        patterns = analyze_concept_patterns(df, has_evaluation=True)
 
         assert patterns["concept_frequency"] == {}
         assert patterns["most_common_concepts"] == []
@@ -155,7 +156,7 @@ class TestResultsAnalysisHelpers:
         }
         df = pd.DataFrame(data)
 
-        confidence_analysis = analyze_confidence_patterns(df)
+        confidence_analysis = analyze_confidence_patterns(df, has_evaluation=True)
 
         # Only successful results: [0.9, 0.7, 0.85]
         assert confidence_analysis["mean_confidence"] == pytest.approx(0.817, rel=1e-3)
@@ -174,9 +175,119 @@ class TestResultsAnalysisHelpers:
         data = {"automated_rating": [0, 0, 0], "confidence_score": [0.3, 0.2, 0.1]}
         df = pd.DataFrame(data)
 
-        confidence_analysis = analyze_confidence_patterns(df)
+        confidence_analysis = analyze_confidence_patterns(df, has_evaluation=True)
 
         assert confidence_analysis["no_successful_results"] is True
+
+
+class TestGenerationOnlyExperiments:
+    """Test handling of generation-only experiments without evaluation data."""
+
+    def test_load_generation_only_results(self):
+        """Test loading generation-only experiment results."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            exp_dir = Path(temp_dir)
+
+            # Create config file
+            config = {"experiment_id": "gen_only", "generation_only": True}
+            config_path = exp_dir / "config.json"
+            with open(config_path, "w") as f:
+                json.dump(config, f)
+
+            # Create results file without evaluation columns
+            results_path = exp_dir / "results.csv"
+            with open(results_path, "w", newline="") as f:
+                writer = csv.writer(f)
+                writer.writerow(["experiment_id", "concept_names", "response_file"])
+                writer.writerow(["gen_only", "concept1|concept2", "response_001.txt"])
+                writer.writerow(["gen_only", "concept3", "response_002.txt"])
+
+            loaded_config, results_df, has_evaluation = load_experiment_results(str(exp_dir))
+
+            assert loaded_config == config
+            assert len(results_df) == 2
+            assert has_evaluation == False  # No automated_rating column
+            assert "automated_rating" not in results_df.columns
+
+    def test_load_evaluation_results_preferred(self):
+        """Test that evaluation_results.csv is preferred over results.csv."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            exp_dir = Path(temp_dir)
+
+            # Create config file
+            config = {"experiment_id": "test_exp"}
+            config_path = exp_dir / "config.json"
+            with open(config_path, "w") as f:
+                json.dump(config, f)
+
+            # Create both results files
+            results_path = exp_dir / "results.csv"
+            with open(results_path, "w", newline="") as f:
+                writer = csv.writer(f)
+                writer.writerow(["experiment_id", "concept_names"])
+                writer.writerow(["test_exp", "concept1"])
+
+            eval_results_path = exp_dir / "evaluation_results.csv"
+            with open(eval_results_path, "w", newline="") as f:
+                writer = csv.writer(f)
+                writer.writerow(["experiment_id", "automated_rating", "confidence_score"])
+                writer.writerow(["test_exp", 1, 0.85])
+
+            loaded_config, results_df, has_evaluation = load_experiment_results(str(exp_dir))
+
+            assert has_evaluation == True
+            assert "automated_rating" in results_df.columns
+            assert len(results_df) == 1  # From evaluation_results.csv
+
+    def test_analyze_success_rates_generation_only(self):
+        """Test success rate analysis for generation-only experiments."""
+        data = {
+            "experiment_id": ["exp1", "exp1", "exp1"],
+            "concept_names": ["concept1", "concept2", "concept3"],
+            "response_file": ["resp1.txt", "resp2.txt", "resp3.txt"]
+        }
+        df = pd.DataFrame(data)
+
+        analysis = analyze_success_rates(df, has_evaluation=False)
+
+        assert analysis["has_evaluation"] == False
+        assert analysis["total_attempts"] == 3
+        assert analysis["overall_success_rate"] is None
+        assert analysis["successful_attempts"] is None
+        assert "note" in analysis
+        assert "generation-only experiment" in analysis["note"]
+
+    def test_analyze_concept_patterns_generation_only(self):
+        """Test concept pattern analysis for generation-only experiments."""
+        data = {
+            "concept_names": [
+                "concept1|concept2",
+                "concept1|concept3", 
+                "concept2|concept3",
+                "concept1"
+            ]
+        }
+        df = pd.DataFrame(data)
+
+        patterns = analyze_concept_patterns(df, has_evaluation=False)
+
+        # Should analyze all concept patterns, not just successful ones
+        expected_frequency = {"concept1": 3, "concept2": 2, "concept3": 2}
+        assert patterns["concept_frequency"] == expected_frequency
+        assert patterns["total_combinations"] == 4
+        assert "note" in patterns
+        assert "no evaluation filtering" in patterns["note"]
+
+    def test_analyze_confidence_patterns_generation_only(self):
+        """Test confidence analysis for generation-only experiments."""
+        data = {"experiment_id": ["exp1", "exp1"]}
+        df = pd.DataFrame(data)
+
+        confidence_analysis = analyze_confidence_patterns(df, has_evaluation=False)
+
+        assert confidence_analysis["has_evaluation"] == False
+        assert "note" in confidence_analysis
+        assert "generation-only experiment" in confidence_analysis["note"]
 
 
 class TestResultsAnalysisCLI:

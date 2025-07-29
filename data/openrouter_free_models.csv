@@ -1,0 +1,19 @@
+model_name,provider,context_length,parameters,release_date,architecture,primary_use,modalities,training_data_usage,performance_notes
+meta-llama/llama-4-maverick:free,Meta,256000,"400B total, 17B active",2025-04-05,MoE (128 experts),General/Reasoning,"Text, Image",Required,Beats GPT-4o on benchmarks
+meta-llama/llama-4-scout:free,Meta,512000,"109B total, 17B active",2025-04-05,MoE (16 experts),General/Reasoning,"Text, Image",Required,Optimized for single H100 GPU
+deepseek/deepseek-chat-v3-0324:free,DeepSeek,32000,671B,2025-03-24,Dense,Coding/Analysis,Text,Required,Strong coding and analytical capabilities
+deepseek/deepseek-r1:free,DeepSeek,64000,671B,2025-01-20,Dense,Reasoning,Text,Required,Latest reasoning model
+deepseek/deepseek-r1-zero:free,DeepSeek,64000,671B,2025-01-20,Dense,Reasoning,Text,Required,Zero-shot reasoning optimization
+deepseek/deepseek-r1-distill-llama-70b:free,DeepSeek,32000,70B,2025-01-20,Dense,Reasoning,Text,Required,Distilled version for efficiency
+deepseek/deepseek-r1-distill-qwen-32b:free,DeepSeek,32000,32B,2025-01-20,Dense,Reasoning,Text,Required,Smaller distilled version
+google/gemini-2.5-pro-exp-03-25:free,Google,Unknown,Unknown,2025-03-25,Unknown,General,"Text, Image, Audio",Required,Experimental pro version
+google/gemini-2.0-flash-thinking-exp:free,Google,Unknown,Unknown,2025-12-01,Unknown,Reasoning,"Text, Image, Audio",Required,Thinking/reasoning focused
+google/gemini-2.0-flash-exp:free,Google,Unknown,Unknown,2025-12-01,Unknown,General,"Text, Image, Audio",Required,Fast experimental model
+nvidia/llama-3.1-nemotron-ultra-253b-v1:free,Nvidia,128000,253B,2024-10-01,Dense,General,Text,Required,NVIDIA optimized Llama
+google/gemma-3-27b-it:free,Google,8192,27B,2024-12-11,Dense,Instruction Following,Text,Required,Instruction-tuned model
+qwen/qwq-32b:free,Alibaba,32000,32B,2024-11-27,Dense,Reasoning,Text,Required,Question-answering focused
+meta-llama/llama-3.3-70b-instruct:free,Meta,131072,70B,2024-12-06,Dense,Instruction Following,Text,Required,Latest Llama 3.3 series
+meta-llama/llama-3.3-8b-instruct:free,Meta,131072,8B,2024-12-06,Dense,Instruction Following,Text,Required,Smaller efficient model
+mistralai/devstral-small:free,Mistral,Unknown,22B,2024-06-01,Dense,Code Generation,Text,Required,Specialized for coding
+mistralai/mistral-small-3.1-24b-instruct:free,Mistral,128000,24B,2024-10-22,Dense,Instruction Following,Text,Required,Balanced performance model
+mistralai/mistral-7b-instruct:free,Mistral,32000,7B,2023-09-27,Dense,Instruction Following,Text,Required,Efficient small model

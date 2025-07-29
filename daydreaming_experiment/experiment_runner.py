@@ -41,11 +41,9 @@ def save_config(output_dir: Path, config: dict):
         json.dump(config, f, indent=2)
 
 
-def initialize_results_csv(output_dir: Path) -> Path:
-    """Initialize CSV file with headers."""
-    results_path = output_dir / "results.csv"
-
-    headers = [
+def get_csv_headers(generation_only: bool) -> list:
+    """Get CSV headers based on experiment mode."""
+    base_headers = [
         "experiment_id",
         "attempt_id",
         "concept_names",
@@ -53,14 +51,28 @@ def initialize_results_csv(output_dir: Path) -> Path:
         "level",
         "template_id",
         "response_file",
-        "automated_rating",
-        "confidence_score",
-        "evaluation_reasoning",
-        "evaluation_timestamp",
         "generation_timestamp",
         "generator_model",
-        "evaluator_model",
     ]
+    
+    if not generation_only:
+        evaluation_headers = [
+            "automated_rating",
+            "confidence_score",
+            "evaluation_reasoning",
+            "evaluation_timestamp",  
+            "evaluator_model",
+        ]
+        # Insert evaluation headers before the last two fields
+        return base_headers[:-2] + evaluation_headers + base_headers[-2:]
+    
+    return base_headers
+
+
+def initialize_results_csv(output_dir: Path, generation_only: bool = True) -> Path:
+    """Initialize CSV file with headers."""
+    results_path = output_dir / "results.csv"
+    headers = get_csv_headers(generation_only)
 
     with open(results_path, "w", newline="", encoding="utf-8") as f:
         writer = csv.writer(f)
@@ -69,28 +81,18 @@ def initialize_results_csv(output_dir: Path) -> Path:
     return results_path
 
 
-def save_result_row(results_path: Path, result_data: dict):
+def save_result_row(results_path: Path, result_data: dict, generation_only: bool = True):
     """Append result row to CSV."""
+    headers = get_csv_headers(generation_only)
+    
+    # Build row data based on headers order
+    row_data = []
+    for header in headers:
+        row_data.append(result_data.get(header, ""))
+    
     with open(results_path, "a", newline="", encoding="utf-8") as f:
         writer = csv.writer(f)
-        writer.writerow(
-            [
-                result_data["experiment_id"],
-                result_data["attempt_id"],
-                result_data["concept_names"],
-                result_data["concept_count"],
-                result_data["level"],
-                result_data["template_id"],
-                result_data["response_file"],
-                result_data["automated_rating"],
-                result_data["confidence_score"],
-                result_data["evaluation_reasoning"],
-                result_data["evaluation_timestamp"],
-                result_data["generation_timestamp"],
-                result_data["generator_model"],
-                result_data["evaluator_model"],
-            ]
-        )
+        writer.writerow(row_data)
 
 
 @click.command()
@@ -121,6 +123,11 @@ def save_result_row(results_path: Path, result_data: dict):
     type=int,
     help="Maximum number of prompts to test (default: test all combinations)",
 )
+@click.option(
+    "--generation-only/--with-evaluation",
+    default=True,
+    help="Only generate responses without evaluation (default: generation-only)",
+)
 def run_experiment(
     k_max: int,
     level: str,
@@ -129,8 +136,9 @@ def run_experiment(
     output: str,
     concepts_dir: str,
     max_prompts: int,
+    generation_only: bool,
 ):
-    """Run complete experiment with automated evaluation."""
+    """Run experiment with optional evaluation. By default, only generates responses."""
 
     # Load environment variables from .env file
     load_dotenv()
@@ -181,11 +189,12 @@ def run_experiment(
         "total_combinations": total_combinations,
         "templates_count": len(prompt_factory.templates),
         "max_prompts": max_prompts,
+        "generation_only": generation_only,
     }
     save_config(output_dir, config)
 
     # Initialize results CSV
-    results_path = initialize_results_csv(output_dir)
+    results_path = initialize_results_csv(output_dir, generation_only)
 
     click.echo(f"Running experiment: {experiment_id}")
     click.echo(f"Total combinations to test: {total_combinations}")
@@ -224,14 +233,7 @@ def run_experiment(
                     # Save response
                     response_file = save_response(output_dir, attempt_id, response)
 
-                    # Evaluate response
-                    rating, confidence, reasoning = model_client.evaluate(
-                        prompt, response, evaluator_model
-                    )
-
-                    evaluation_timestamp = datetime.now().isoformat()
-
-                    # Save result
+                    # Base result data (always present)
                     result_data = {
                         "experiment_id": experiment_id,
                         "attempt_id": attempt_id,
@@ -242,24 +244,38 @@ def run_experiment(
                         "level": level,
                         "template_id": template_idx,
                         "response_file": response_file,
-                        "automated_rating": int(rating),
-                        "confidence_score": confidence,
-                        "evaluation_reasoning": reasoning,
-                        "evaluation_timestamp": evaluation_timestamp,
                         "generation_timestamp": generation_timestamp,
                         "generator_model": generator_model,
-                        "evaluator_model": evaluator_model,
                     }
 
-                    save_result_row(results_path, result_data)
+                    # Conditionally evaluate response
+                    if not generation_only:
+                        rating, confidence, reasoning = model_client.evaluate(
+                            prompt, response, evaluator_model
+                        )
+                        evaluation_timestamp = datetime.now().isoformat()
+                        
+                        # Add evaluation data
+                        result_data.update({
+                            "automated_rating": int(rating),
+                            "confidence_score": confidence,
+                            "evaluation_reasoning": reasoning,
+                            "evaluation_timestamp": evaluation_timestamp,
+                            "evaluator_model": evaluator_model,
+                        })
 
-                    if rating:
+                    save_result_row(results_path, result_data, generation_only)
+
+                    # Show success message only for evaluated responses
+                    if not generation_only and result_data.get("automated_rating"):
                         click.echo(
-                            f"\\n✓ SUCCESS (attempt {attempt_id}): {confidence:.2f} confidence"
+                            f"\\n✓ SUCCESS (attempt {attempt_id}): {result_data['confidence_score']:.2f} confidence"
                         )
                         click.echo(
                             f"  Concepts: {', '.join(c.name for c in concept_combination)}"
                         )
+                    elif generation_only:
+                        click.echo(f"Generated response {attempt_id}")
 
                 except Exception as e:
                     click.echo(f"\\nError in attempt {attempt_id}: {e}")
@@ -275,16 +291,21 @@ def run_experiment(
                         "level": level,
                         "template_id": template_idx,
                         "response_file": "",
-                        "automated_rating": 0,
-                        "confidence_score": 0.0,
-                        "evaluation_reasoning": f"Error: {str(e)}",
-                        "evaluation_timestamp": "",
                         "generation_timestamp": generation_timestamp,
                         "generator_model": generator_model,
-                        "evaluator_model": evaluator_model,
                     }
+                    
+                    # Add evaluation error data only if not generation-only
+                    if not generation_only:
+                        result_data.update({
+                            "automated_rating": 0,
+                            "confidence_score": 0.0,
+                            "evaluation_reasoning": f"Error: {str(e)}",
+                            "evaluation_timestamp": "",
+                            "evaluator_model": evaluator_model,
+                        })
 
-                    save_result_row(results_path, result_data)
+                    save_result_row(results_path, result_data, generation_only)
 
                 bar.update(1)
                 time.sleep(0.1)  # Rate limiting
