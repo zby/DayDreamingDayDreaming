@@ -4,10 +4,12 @@ Consider the following concepts:
 **{{ concept.name }}**: {{ concept.get_description(level, strict) }}
 {% endfor %}
 
-Think about current challenges, limitations, or unsolved problems in various fields. How might combining or applying these concepts lead to:
-- Solutions to existing problems
-- Improvements to current methods or systems
-- New approaches that overcome known limitations
-- Breakthrough innovations in any domain
+Think about current challenges, limitations, or unsolved problems in various fields. Select 3-4 of your most promising conceptual combinations and for each one:
 
-List your most compelling ideas with explanations of how they address specific needs.
+- Identify the specific problem it addresses and why current solutions fall short
+- Describe the detailed methodology or approach your combined concepts would create
+- Explain the step-by-step process of how the solution would work in practice
+- Detail how the system would adapt, improve, or refine itself over time
+- Specify the mechanisms for monitoring progress and adjusting the approach
+
+Focus on providing thorough explanations of the operational processes and systematic approaches these solutions would employ.

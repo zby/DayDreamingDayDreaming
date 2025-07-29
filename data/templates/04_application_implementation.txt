@@ -4,10 +4,13 @@ Review these concepts:
 **{{ concept.name }}**: {{ concept.get_description(level, strict) }}
 {% endfor %}
 
-Think practically about how these concepts could be implemented or applied in real-world contexts. Consider:
-- Concrete products, services, or systems that could be built
-- Ways to improve existing technologies or processes
-- New business models or organizational approaches
-- Practical benefits that could impact people's lives
+Think practically about how these concepts could be implemented or applied in real-world contexts. Select 3-4 of your most viable implementation ideas and for each one:
 
-Generate actionable ideas with clear implementation pathways.
+- Describe the specific system, product, or service in detail
+- Explain the step-by-step implementation process from conception to deployment
+- Detail how the system would operate on a day-to-day basis
+- Specify how it would evolve, improve, and adapt based on user feedback and performance data
+- Outline the mechanisms for quality control, optimization, and continuous development
+- Describe how different components would interact and coordinate with each other
+
+Focus on providing thorough explanations of the operational workflows and systematic processes these implementations would require.

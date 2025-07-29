@@ -4,10 +4,12 @@ Here are some concepts for creative exploration:
 **{{ concept.name }}**: {{ concept.get_description(level, strict) }}
 {% endfor %}
 
-Let your imagination flow and consider unexpected ways these concepts might combine. Think about:
-- Novel applications that don't exist yet
-- Surprising connections or analogies
-- Creative solutions to existing problems
-- New research directions or questions
+Let your imagination flow and consider unexpected ways these concepts might combine. Select 3-4 of your most innovative conceptual combinations and for each one:
 
-Generate a diverse list of innovative possibilities, from practical to speculative.
+- Describe the novel mechanisms or processes that would emerge from this combination
+- Explain how the system would develop, evolve, or self-organize over time
+- Detail the feedback loops, cycles, or dynamic interactions within the system
+- Specify how different components would influence and respond to each other
+- Outline the step-by-step workflows or operational sequences
+
+Focus on providing rich, detailed explanations of how these creative systems would actually work and behave.
