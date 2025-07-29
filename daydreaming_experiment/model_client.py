@@ -29,7 +29,7 @@ class SimpleModelClient:
                 model=model,
                 messages=[{"role": "user", "content": prompt}],
                 temperature=0.7,
-                max_tokens=1024,
+                max_tokens=8192,
             )
             return response.choices[0].message.content.strip()
         except Exception as e:
