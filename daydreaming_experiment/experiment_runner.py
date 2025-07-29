@@ -162,11 +162,8 @@ def run_experiment(
     # Generate experiment ID
     experiment_id = output_dir.name
 
-    # Count total combinations
-    total_combinations = sum(
-        len(list(combinations(concepts, k))) * len(prompt_factory.templates)
-        for k in range(1, k_max + 1)
-    )
+    # Count total combinations (only k_max-sized combinations)
+    total_combinations = len(list(combinations(concepts, k_max))) * len(prompt_factory.templates)
     
     # Apply max_prompts limit if specified
     if max_prompts:
@@ -202,98 +199,95 @@ def run_experiment(
         length=total_combinations, label="Processing combinations"
     ) as bar:
 
-        for k in range(1, k_max + 1):
+        for concept_combination in combinations(concepts, k_max):
             if max_reached:
                 break
-            for concept_combination in combinations(concepts, k):
-                if max_reached:
+            for template_idx in range(len(prompt_factory.templates)):
+                attempt_id += 1
+                
+                # Check if we've reached the max_prompts limit
+                if max_prompts and attempt_id > max_prompts:
+                    max_reached = True
                     break
-                for template_idx in range(len(prompt_factory.templates)):
-                    attempt_id += 1
-                    
-                    # Check if we've reached the max_prompts limit
-                    if max_prompts and attempt_id > max_prompts:
-                        max_reached = True
-                        break
 
-                    # Generate prompt
-                    prompt = prompt_factory.generate_prompt(
-                        list(concept_combination), level, template_idx
+                # Generate prompt
+                prompt = prompt_factory.generate_prompt(
+                    list(concept_combination), level, template_idx
+                )
+
+                generation_timestamp = datetime.now().isoformat()
+
+                try:
+                    # Generate response
+                    response = model_client.generate(prompt, generator_model)
+
+                    # Save response
+                    response_file = save_response(output_dir, attempt_id, response)
+
+                    # Evaluate response
+                    rating, confidence, reasoning = model_client.evaluate(
+                        prompt, response, evaluator_model
                     )
 
-                    generation_timestamp = datetime.now().isoformat()
+                    evaluation_timestamp = datetime.now().isoformat()
 
-                    try:
-                        # Generate response
-                        response = model_client.generate(prompt, generator_model)
+                    # Save result
+                    result_data = {
+                        "experiment_id": experiment_id,
+                        "attempt_id": attempt_id,
+                        "concept_names": "|".join(
+                            c.name for c in concept_combination
+                        ),
+                        "concept_count": len(concept_combination),
+                        "level": level,
+                        "template_id": template_idx,
+                        "response_file": response_file,
+                        "automated_rating": int(rating),
+                        "confidence_score": confidence,
+                        "evaluation_reasoning": reasoning,
+                        "evaluation_timestamp": evaluation_timestamp,
+                        "generation_timestamp": generation_timestamp,
+                        "generator_model": generator_model,
+                        "evaluator_model": evaluator_model,
+                    }
 
-                        # Save response
-                        response_file = save_response(output_dir, attempt_id, response)
+                    save_result_row(results_path, result_data)
 
-                        # Evaluate response
-                        rating, confidence, reasoning = model_client.evaluate(
-                            prompt, response, evaluator_model
+                    if rating:
+                        click.echo(
+                            f"\\n✓ SUCCESS (attempt {attempt_id}): {confidence:.2f} confidence"
+                        )
+                        click.echo(
+                            f"  Concepts: {', '.join(c.name for c in concept_combination)}"
                         )
 
-                        evaluation_timestamp = datetime.now().isoformat()
+                except Exception as e:
+                    click.echo(f"\\nError in attempt {attempt_id}: {e}")
 
-                        # Save result
-                        result_data = {
-                            "experiment_id": experiment_id,
-                            "attempt_id": attempt_id,
-                            "concept_names": "|".join(
-                                c.name for c in concept_combination
-                            ),
-                            "concept_count": len(concept_combination),
-                            "level": level,
-                            "template_id": template_idx,
-                            "response_file": response_file,
-                            "automated_rating": int(rating),
-                            "confidence_score": confidence,
-                            "evaluation_reasoning": reasoning,
-                            "evaluation_timestamp": evaluation_timestamp,
-                            "generation_timestamp": generation_timestamp,
-                            "generator_model": generator_model,
-                            "evaluator_model": evaluator_model,
-                        }
+                    # Save error result
+                    result_data = {
+                        "experiment_id": experiment_id,
+                        "attempt_id": attempt_id,
+                        "concept_names": "|".join(
+                            c.name for c in concept_combination
+                        ),
+                        "concept_count": len(concept_combination),
+                        "level": level,
+                        "template_id": template_idx,
+                        "response_file": "",
+                        "automated_rating": 0,
+                        "confidence_score": 0.0,
+                        "evaluation_reasoning": f"Error: {str(e)}",
+                        "evaluation_timestamp": "",
+                        "generation_timestamp": generation_timestamp,
+                        "generator_model": generator_model,
+                        "evaluator_model": evaluator_model,
+                    }
 
-                        save_result_row(results_path, result_data)
+                    save_result_row(results_path, result_data)
 
-                        if rating:
-                            click.echo(
-                                f"\\n✓ SUCCESS (attempt {attempt_id}): {confidence:.2f} confidence"
-                            )
-                            click.echo(
-                                f"  Concepts: {', '.join(c.name for c in concept_combination)}"
-                            )
-
-                    except Exception as e:
-                        click.echo(f"\\nError in attempt {attempt_id}: {e}")
-
-                        # Save error result
-                        result_data = {
-                            "experiment_id": experiment_id,
-                            "attempt_id": attempt_id,
-                            "concept_names": "|".join(
-                                c.name for c in concept_combination
-                            ),
-                            "concept_count": len(concept_combination),
-                            "level": level,
-                            "template_id": template_idx,
-                            "response_file": "",
-                            "automated_rating": 0,
-                            "confidence_score": 0.0,
-                            "evaluation_reasoning": f"Error: {str(e)}",
-                            "evaluation_timestamp": "",
-                            "generation_timestamp": generation_timestamp,
-                            "generator_model": generator_model,
-                            "evaluator_model": evaluator_model,
-                        }
-
-                        save_result_row(results_path, result_data)
-
-                    bar.update(1)
-                    time.sleep(0.1)  # Rate limiting
+                bar.update(1)
+                time.sleep(0.1)  # Rate limiting
 
     click.echo(f"\\nExperiment completed!")
     click.echo(f"Results saved to: {results_path}")

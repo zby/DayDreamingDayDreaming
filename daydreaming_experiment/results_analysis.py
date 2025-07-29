@@ -37,9 +37,10 @@ def analyze_success_rates(results_df: pd.DataFrame) -> Dict:
     analysis["total_attempts"] = total_attempts
     analysis["successful_attempts"] = successful_attempts
 
-    # Success rate by concept count (k-value)
+    # Success rate by concept count (k-value) - may be single value with new strategy
     success_by_k = {}
-    for k in sorted(results_df["concept_count"].unique()):
+    unique_k_values = sorted(results_df["concept_count"].unique())
+    for k in unique_k_values:
         k_results = results_df[results_df["concept_count"] == k]
         k_success = len(k_results[k_results["automated_rating"] == 1])
         k_total = len(k_results)
@@ -49,6 +50,7 @@ def analyze_success_rates(results_df: pd.DataFrame) -> Dict:
             "total": k_total,
         }
     analysis["success_by_k"] = success_by_k
+    analysis["single_k_strategy"] = len(unique_k_values) == 1
 
     # Success rate by template
     success_by_template = {}
@@ -149,10 +151,14 @@ def print_analysis_report(
 
     print("SUCCESS BY CONCEPT COUNT (K-VALUE):")
     print("-" * 40)
-    for k, stats in analysis["success_by_k"].items():
-        print(
-            f"K={k}: {stats['successful']}/{stats['total']} ({stats['success_rate']:.2%})"
-        )
+    if analysis.get("single_k_strategy", False):
+        k, stats = next(iter(analysis["success_by_k"].items()))
+        print(f"K={k} (single strategy): {stats['successful']}/{stats['total']} ({stats['success_rate']:.2%})")
+    else:
+        for k, stats in analysis["success_by_k"].items():
+            print(
+                f"K={k}: {stats['successful']}/{stats['total']} ({stats['success_rate']:.2%})"
+            )
     print()
 
     print("SUCCESS BY TEMPLATE:")

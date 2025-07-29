@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-This is a Python experiment that tests whether pre-June 2025 LLMs can "reinvent" Gwern's Daydreaming Loop concept when provided with minimal contextual hints through a simplified combinatorial testing approach. The system finds the minimal set of concepts that can elicit the Day-Dreaming idea from offline LLMs using automated LLM-based evaluation.
+This is a Python experiment that tests whether pre-June 2025 LLMs can "reinvent" Gwern's Daydreaming Loop concept when provided with minimal contextual hints through a focused combinatorial testing approach. The system tests k_max-sized concept combinations to elicit the Day-Dreaming idea from offline LLMs using automated LLM-based evaluation.
 
 ## Core Modules and File Structure
 
@@ -119,6 +119,14 @@ Main dependencies include:
 - Never add defensive coding when not explicitly asked for it, the code should fail early
 - Focus on simplicity
 
+## Search Strategy
+
+The experiment supports multiple search strategies for testing concept combinations. The current active strategy is documented in:
+
+📄 **[Current Search Strategy](data/current_search_strategy.md)**
+
+This modular approach allows for easy strategy experimentation and comparison without frequent documentation updates.
+
 ## Usage Workflow
 
 ### Run Experiment
@@ -130,6 +138,14 @@ uv run python -m daydreaming_experiment.experiment_runner \
     --generator-model gpt-4 \
     --evaluator-model gpt-4 \
     --output experiments/my_experiment
+
+# Limit number of prompts tested
+uv run python -m daydreaming_experiment.experiment_runner \
+    --k-max 4 \
+    --max-prompts 50 \
+    --level paragraph \
+    --generator-model gpt-4 \
+    --evaluator-model gpt-4
 ```
 
 ### Analysis

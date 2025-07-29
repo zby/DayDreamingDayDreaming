@@ -59,16 +59,44 @@ class TestResultsAnalysisHelpers:
         assert analysis["total_attempts"] == 6
         assert analysis["successful_attempts"] == 4
 
-        # Success by k-value
+        # Success by k-value (multiple k-values in this test data)
         assert analysis["success_by_k"][1]["success_rate"] == 0.5  # 1/2
         assert analysis["success_by_k"][2]["success_rate"] == 0.5  # 1/2
         assert analysis["success_by_k"][3]["success_rate"] == 1.0  # 2/2
+        assert analysis["single_k_strategy"] == False  # Multiple k-values
 
         # Success by template
         assert analysis["success_by_template"][0]["success_rate"] == 1.0  # 3/3
         assert analysis["success_by_template"][1]["success_rate"] == pytest.approx(
             1 / 3, rel=1e-3
         )  # 1/3
+
+    def test_analyze_success_rates_single_k(self):
+        """Test success rate analysis with single k-value (new default strategy)."""
+        # Create test DataFrame with single k-value (k=4)
+        data = {
+            "automated_rating": [1, 0, 1, 1, 0, 1],
+            "concept_count": [4, 4, 4, 4, 4, 4],  # All same k-value
+            "template_id": [0, 1, 2, 0, 1, 2],
+        }
+        df = pd.DataFrame(data)
+
+        analysis = analyze_success_rates(df)
+
+        # Overall success rate: 4/6 = 0.667
+        assert analysis["overall_success_rate"] == pytest.approx(0.667, rel=1e-3)
+        assert analysis["total_attempts"] == 6
+        assert analysis["successful_attempts"] == 4
+
+        # Success by k-value (single k-value)
+        assert len(analysis["success_by_k"]) == 1
+        assert analysis["success_by_k"][4]["success_rate"] == pytest.approx(0.667, rel=1e-3)
+        assert analysis["single_k_strategy"] == True  # Single k-value
+
+        # Success by template
+        assert analysis["success_by_template"][0]["success_rate"] == 1.0  # 2/2
+        assert analysis["success_by_template"][1]["success_rate"] == 0.0  # 0/2
+        assert analysis["success_by_template"][2]["success_rate"] == 1.0  # 2/2
 
     def test_analyze_concept_patterns(self):
         """Test concept pattern analysis for successful combinations."""
