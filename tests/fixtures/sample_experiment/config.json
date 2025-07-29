@@ -1,0 +1,8 @@
+{
+  "experiment_id": "test_fixture_exp",
+  "timestamp": "2025-07-29T12:00:00",
+  "k_max": 2,
+  "level": "paragraph",
+  "generator_model": "test-model",
+  "generation_only": true
+}

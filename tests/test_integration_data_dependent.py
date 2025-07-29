@@ -4,6 +4,8 @@ These tests verify integration with real concept databases, templates, and exper
 """
 import pytest
 import tempfile
+import json
+import csv
 from pathlib import Path
 from click.testing import CliRunner
 from jinja2 import Template
@@ -13,6 +15,16 @@ from daydreaming_experiment.results_analysis import analyze_results
 from daydreaming_experiment.concept_db import ConceptDB
 from daydreaming_experiment.concept import Concept
 from daydreaming_experiment.evaluation_templates import EvaluationTemplateLoader
+
+
+@pytest.fixture
+def sample_experiment_fixture():
+    """Return path to static sample experiment fixture."""
+    return Path(__file__).parent / "fixtures" / "sample_experiment"
+
+
+
+
 from daydreaming_experiment.prompt_factory import load_templates_from_directory
 
 
@@ -150,26 +162,20 @@ class TestPromptFactoryIntegration:
 class TestEndToEndWithRealData:
     """End-to-end integration tests with real experiment data."""
 
-    def test_analysis_with_existing_experiments(self):
-        """Test analysis workflow with existing experiment data."""
+    def test_analysis_with_generation_only_experiment(self, sample_experiment_fixture):
+        """Test analysis workflow with generation-only experiment fixture."""
         
-        # Should fail if no experiments directory exists
-        experiments_dir = Path("data/experiments")
-        assert experiments_dir.exists(), "Experiments directory must exist for integration tests"
-            
-        experiment_dirs = [d for d in experiments_dir.iterdir() if d.is_dir()]
-        assert len(experiment_dirs) > 0, "At least one experiment must exist for integration tests"
-            
-        # Use the first available experiment directory
-        exp_dir = experiment_dirs[0]
-        
-        # Run analysis to test the workflow
+        # Run analysis on the fixture experiment
         runner = CliRunner()
-        result = runner.invoke(analyze_results, [str(exp_dir)])
+        result = runner.invoke(analyze_results, [str(sample_experiment_fixture)])
         
-        # Should succeed regardless of whether it's generation-only or evaluated
+        # Should succeed with generation-only analysis
         assert result.exit_code == 0
         assert "EXPERIMENT ANALYSIS REPORT" in result.output
+        assert "generation-only experiment" in result.output
+        assert "Total Attempts: 2" in result.output
+        assert "MOST FREQUENT CONCEPTS IN ALL COMBINATIONS" in result.output
+
 
     def test_concept_database_integration(self):
         """Test integration with real concept database."""

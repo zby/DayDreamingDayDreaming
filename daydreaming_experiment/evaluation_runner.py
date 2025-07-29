@@ -12,11 +12,25 @@ from dotenv import load_dotenv
 from daydreaming_experiment.model_client import SimpleModelClient
 from daydreaming_experiment.evaluation_templates import EvaluationTemplateLoader
 
+# Constants
+CONFIG_FILENAME = "config.json"
+RESULTS_FILENAME = "results.csv"
+EVALUATION_RESULTS_FILENAME = "evaluation_results.csv"
+RESPONSES_DIR_NAME = "responses"
+DEFAULT_EVALUATION_TEMPLATES_DIR = "data/evaluation_templates"
+
+# Default settings
+DEFAULT_EVALUATOR_MODEL = "openai/gpt-4"
+DEFAULT_EVALUATION_TEMPLATE = "default"
+
+# Rate limiting
+RATE_LIMIT_DELAY = 0.1
+
 
 def load_experiment_info(experiment_dir: Path) -> Tuple[Dict, List[Dict]]:
     """Load experiment configuration and generation results."""
-    config_path = experiment_dir / "config.json"
-    results_path = experiment_dir / "results.csv"
+    config_path = experiment_dir / CONFIG_FILENAME
+    results_path = experiment_dir / RESULTS_FILENAME
     
     if not config_path.exists():
         raise FileNotFoundError(f"Config file not found: {config_path}")
@@ -40,7 +54,7 @@ def load_experiment_info(experiment_dir: Path) -> Tuple[Dict, List[Dict]]:
 
 def load_response_content(experiment_dir: Path, response_file: str) -> str:
     """Load response content from file."""
-    response_path = experiment_dir / "responses" / response_file
+    response_path = experiment_dir / RESPONSES_DIR_NAME / response_file
     
     if not response_path.exists():
         raise FileNotFoundError(f"Response file not found: {response_path}")
@@ -51,7 +65,7 @@ def load_response_content(experiment_dir: Path, response_file: str) -> str:
 
 def create_evaluation_results_csv(experiment_dir: Path) -> Path:
     """Create evaluation results CSV file."""
-    eval_results_path = experiment_dir / "evaluation_results.csv"
+    eval_results_path = experiment_dir / EVALUATION_RESULTS_FILENAME
     
     headers = [
         "experiment_id",
@@ -107,13 +121,13 @@ def save_evaluation_result(results_path: Path, result_data: Dict):
 @click.argument('experiment_directory', type=click.Path(exists=True, path_type=Path))
 @click.option(
     '--evaluator-model', 
-    default='openai/gpt-4',
+    default=DEFAULT_EVALUATOR_MODEL,
     help='Model to use for evaluation'
 )
 @click.option(
     '--evaluation-template',
-    default='default',
-    help='Evaluation template to use (default: iterative_loops)'
+    default=DEFAULT_EVALUATION_TEMPLATE,
+    help='Evaluation template to use (default: default)'
 )
 def evaluate_experiment(
     experiment_directory: Path,
@@ -153,7 +167,7 @@ def evaluate_experiment(
         template_loader = EvaluationTemplateLoader()
         
         # Resolve "default" to actual default template
-        if evaluation_template == "default":
+        if evaluation_template == DEFAULT_EVALUATION_TEMPLATE:
             evaluation_template = template_loader.get_default_template()
         
         # Validate template exists
@@ -252,7 +266,7 @@ def evaluate_experiment(
                 
                 save_evaluation_result(eval_results_path, eval_result)
             
-            time.sleep(0.1)  # Rate limiting
+            time.sleep(RATE_LIMIT_DELAY)  # Rate limiting
     
     click.echo(f"\nEvaluation completed!")
     click.echo(f"Successful evaluations: {successful_evaluations}")
