@@ -1,4 +1,3 @@
-import os
 import json
 import csv
 import time
@@ -114,6 +113,28 @@ Response File: {response_file}
         f.write(log_entry)
 
 
+def load_evaluation_response(experiment_dir: Path, attempt_id: int) -> Tuple[str, str]:
+    """Load existing evaluation response from file.
+    
+    Returns:
+        Tuple of (eval_response_content, eval_response_filename)
+    
+    Raises:
+        FileNotFoundError: If evaluation response file doesn't exist
+    """
+    eval_responses_dir = experiment_dir / EVAL_RESPONSES_DIR_NAME
+    filename = EVAL_RESPONSE_FILENAME_TEMPLATE.format(attempt_id)
+    filepath = eval_responses_dir / filename
+    
+    if not filepath.exists():
+        raise FileNotFoundError(f"Evaluation response file not found: {filepath}")
+    
+    with open(filepath, "r", encoding="utf-8") as f:
+        content = f.read().strip()
+    
+    return content, filename
+
+
 def create_evaluation_results_csv(experiment_dir: Path) -> Path:
     """Create evaluation results CSV file."""
     eval_results_path = experiment_dir / EVALUATION_RESULTS_FILENAME
@@ -182,8 +203,13 @@ def save_evaluation_result(results_path: Path, result_data: Dict):
     default=DEFAULT_EVALUATION_TEMPLATE,
     help="Evaluation template to use (default: default)",
 )
+@click.option(
+    "--reparse-responses",
+    is_flag=True,
+    help="Only reparse existing evaluation responses, skip model calls",
+)
 def evaluate_experiment(
-    experiment_directory: Path, evaluator_model: str, evaluation_template: str
+    experiment_directory: Path, evaluator_model: str, evaluation_template: str, reparse_responses: bool
 ):
     """Evaluate responses from a generation-only experiment."""
 
@@ -206,38 +232,50 @@ def evaluate_experiment(
         click.echo("Warning: This experiment already includes evaluation results.")
         click.echo("Continuing will create separate evaluation results.")
 
-    # Initialize model client
-    try:
-        model_client = SimpleModelClient()
-    except ValueError as e:
-        click.echo(f"Error initializing model client: {e}")
-        return
-
-    # Initialize evaluation template loader
-    try:
-        template_loader = EvaluationTemplateLoader()
-
-        # Resolve "default" to actual default template
-        if evaluation_template == DEFAULT_EVALUATION_TEMPLATE:
-            evaluation_template = template_loader.get_default_template()
-
-        # Validate template exists
-        available_templates = template_loader.list_templates()
-        if evaluation_template not in available_templates:
-            click.echo(f"Error: Template '{evaluation_template}' not found.")
-            click.echo(f"Available templates: {', '.join(available_templates)}")
-            return
-
-    except (FileNotFoundError, ValueError) as e:
-        click.echo(f"Error loading evaluation templates: {e}")
-        return
-
     # Create evaluation results CSV
     eval_results_path = create_evaluation_results_csv(experiment_directory)
 
-    click.echo(f"Evaluating {len(generation_results)} responses...")
-    click.echo(f"Evaluation results will be saved to: {eval_results_path}")
+    if reparse_responses:
+        # Reparse existing evaluation responses
+        click.echo(f"Reparsing existing evaluation responses for {len(generation_results)} attempts...")
+        click.echo(f"Results will be saved to: {eval_results_path}")
+        _reparse_existing_responses(experiment_directory, generation_results, eval_results_path, evaluator_model, evaluation_template)
+    else:
+        # Normal evaluation flow
+        # Initialize model client
+        try:
+            model_client = SimpleModelClient()
+        except ValueError as e:
+            click.echo(f"Error initializing model client: {e}")
+            return
 
+        # Initialize evaluation template loader
+        try:
+            template_loader = EvaluationTemplateLoader()
+
+            # Resolve "default" to actual default template
+            if evaluation_template == DEFAULT_EVALUATION_TEMPLATE:
+                evaluation_template = template_loader.get_default_template()
+
+            # Validate template exists
+            available_templates = template_loader.list_templates()
+            if evaluation_template not in available_templates:
+                click.echo(f"Error: Template '{evaluation_template}' not found.")
+                click.echo(f"Available templates: {', '.join(available_templates)}")
+                return
+
+        except (FileNotFoundError, ValueError) as e:
+            click.echo(f"Error loading evaluation templates: {e}")
+            return
+
+        click.echo(f"Evaluating {len(generation_results)} responses...")
+        click.echo(f"Evaluation results will be saved to: {eval_results_path}")
+        _run_full_evaluation(experiment_directory, generation_results, eval_results_path, model_client, template_loader, evaluator_model, evaluation_template)
+
+
+def _run_full_evaluation(experiment_directory: Path, generation_results: List[Dict], eval_results_path: Path, 
+                        model_client, template_loader, evaluator_model: str, evaluation_template: str):
+    """Run full evaluation including model calls."""
     successful_evaluations = 0
     failed_evaluations = 0
 
@@ -372,9 +410,128 @@ def evaluate_experiment(
 
             time.sleep(RATE_LIMIT_DELAY)  # Rate limiting
 
-    click.echo(f"\nEvaluation completed!")
+    click.echo("\nEvaluation completed!")
     click.echo(f"Successful evaluations: {successful_evaluations}")
     click.echo(f"Failed evaluations: {failed_evaluations}")
+    click.echo(f"Results saved to: {eval_results_path}")
+
+
+def _reparse_existing_responses(experiment_directory: Path, generation_results: List[Dict], eval_results_path: Path,
+                               evaluator_model: str, evaluation_template: str):
+    """Reparse existing evaluation responses without calling model."""
+    successful_evaluations = 0
+    failed_evaluations = 0
+
+    with click.progressbar(generation_results, label="Reparsing responses") as bar:
+        for gen_result in bar:
+            try:
+                attempt_id = int(gen_result["attempt_id"])
+                
+                # Load existing evaluation response
+                try:
+                    eval_response_content, eval_response_file = load_evaluation_response(experiment_directory, attempt_id)
+                except FileNotFoundError:
+                    # No evaluation response file exists for this attempt
+                    evaluation_status = "missing_response"
+                    raw_score = 0.0
+                    rating = False
+                    eval_response_file = ""
+                    eval_prompt_file = ""
+                    
+                    click.echo(f"\n⚠ MISSING (attempt {attempt_id}): No evaluation response file found")
+                else:
+                    # Try to parse the existing response
+                    try:
+                        raw_score = parse_llm_response(eval_response_content)
+                        rating = raw_score >= 5.0
+                        evaluation_status = "success"
+                        
+                        # Look for corresponding eval prompt file
+                        eval_prompt_file = EVAL_PROMPT_FILENAME_TEMPLATE.format(attempt_id)
+                        eval_prompt_path = experiment_directory / EVAL_PROMPTS_DIR_NAME / eval_prompt_file
+                        if not eval_prompt_path.exists():
+                            eval_prompt_file = ""  # Prompt file doesn't exist
+                        
+                    except ValueError as parse_error:
+                        # Parsing error
+                        evaluation_status = "parsing_error"
+                        raw_score = 0.0
+                        rating = False
+                        eval_prompt_file = EVAL_PROMPT_FILENAME_TEMPLATE.format(attempt_id)
+                        
+                        # Log detailed error info
+                        log_evaluation_error(
+                            experiment_directory, attempt_id,
+                            "REPARSING_ERROR", str(parse_error), eval_prompt_file, gen_result["response_file"]
+                        )
+                        
+                        click.echo(f"\n✗ PARSE ERROR (attempt {attempt_id}): {parse_error}")
+                
+                evaluation_timestamp = datetime.now().isoformat()
+
+                # Prepare evaluation result
+                eval_result = {
+                    "experiment_id": gen_result["experiment_id"],
+                    "attempt_id": gen_result["attempt_id"],
+                    "concept_names": gen_result["concept_names"],
+                    "concept_count": gen_result["concept_count"],
+                    "level": gen_result["level"],
+                    "template_id": gen_result["template_id"],
+                    "response_file": gen_result["response_file"],
+                    "eval_prompt_file": eval_prompt_file,
+                    "eval_response_file": eval_response_file,
+                    "evaluation_status": evaluation_status,
+                    "raw_score": raw_score,
+                    "evaluation_timestamp": evaluation_timestamp,
+                    "evaluator_model": evaluator_model,
+                    "evaluation_template": evaluation_template,
+                    "generation_timestamp": gen_result["generation_timestamp"],
+                    "generator_model": gen_result["generator_model"],
+                }
+
+                save_evaluation_result(eval_results_path, eval_result)
+
+                if rating:
+                    successful_evaluations += 1
+                    click.echo(f"\n✓ SUCCESS (attempt {attempt_id}): score {raw_score:.1f}/10")
+                elif evaluation_status != "missing_response":
+                    failed_evaluations += 1
+
+            except Exception as e:
+                failed_evaluations += 1
+                click.echo(f"\nError reparsing attempt {gen_result['attempt_id']}: {e}")
+
+                # Log the exception error
+                log_evaluation_error(
+                    experiment_directory, int(gen_result["attempt_id"]),
+                    "REPARSE_EXCEPTION", str(e), "N/A", gen_result["response_file"]
+                )
+
+                # Save error result
+                eval_result = {
+                    "experiment_id": gen_result["experiment_id"],
+                    "attempt_id": gen_result["attempt_id"],
+                    "concept_names": gen_result["concept_names"],
+                    "concept_count": gen_result["concept_count"],
+                    "level": gen_result["level"],
+                    "template_id": gen_result["template_id"],
+                    "response_file": gen_result["response_file"],
+                    "eval_prompt_file": "",
+                    "eval_response_file": "",
+                    "evaluation_status": "exception",
+                    "raw_score": 0.0,
+                    "evaluation_timestamp": datetime.now().isoformat(),
+                    "evaluator_model": evaluator_model,
+                    "evaluation_template": evaluation_template,
+                    "generation_timestamp": gen_result["generation_timestamp"],
+                    "generator_model": gen_result["generator_model"],
+                }
+
+                save_evaluation_result(eval_results_path, eval_result)
+
+    click.echo("\nReparsing completed!")
+    click.echo(f"Successful reparsing: {successful_evaluations}")
+    click.echo(f"Failed reparsing: {failed_evaluations}")
     click.echo(f"Results saved to: {eval_results_path}")
 
 

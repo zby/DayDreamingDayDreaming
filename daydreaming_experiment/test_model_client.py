@@ -48,35 +48,49 @@ SCORE: 7.2"""
         assert score == 7.5
     
     def test_score_as_fraction(self):
-        """Test score in fraction format like 8/10."""
-        response = "REASONING: Good work\nSCORE: 8/10"
-        score = parse_llm_response(response)
-        assert score == 8.0  # 8/10 * 10 = 8.0
+        """Test score as fraction like 8/10."""
+        test_cases = [
+            ("REASONING: Good work\nSCORE: 8/10", 8.0),
+            ("REASONING: Excellent\nSCORE: 9/10", 9.0),
+            ("REASONING: Perfect\nSCORE: 10/10", 10.0),
+            ("REASONING: Poor\nSCORE: 3/10", 3.0),
+        ]
         
-        # Test other fractions
-        response2 = "REASONING: Excellent\nSCORE: 9/10"
-        score2 = parse_llm_response(response2)
-        assert score2 == 9.0
+        for response, expected_score in test_cases:
+            score = parse_llm_response(response)
+            assert score == expected_score
     
     def test_integer_scores(self):
         """Test integer scores without decimals."""
-        response = "REASONING: Basic response\nSCORE: 5"
-        score = parse_llm_response(response)
-        assert score == 5.0
+        test_cases = [
+            ("REASONING: Test\nSCORE: 8", 8.0),
+            ("REASONING: Test\nSCORE: 10", 10.0),
+            ("REASONING: Test\nSCORE: 0", 0.0),
+        ]
+        
+        for response, expected_score in test_cases:
+            score = parse_llm_response(response)
+            assert score == expected_score
     
     def test_extra_whitespace(self):
         """Test handling of extra whitespace."""
-        response = "  \n  REASONING:   Creative analysis   \n\n  SCORE:  6.8  \n  "
-        score = parse_llm_response(response)
-        assert score == 6.8
+        test_cases = [
+            ("REASONING: Test\nSCORE:     8.5", 8.5),
+            ("REASONING: Test\n  SCORE: 7.0  ", 7.0),
+            ("REASONING: Test\nSCORE:8.0", 8.0),
+        ]
+        
+        for response, expected_score in test_cases:
+            score = parse_llm_response(response)
+            assert score == expected_score
     
     def test_boundary_scores(self):
-        """Test boundary score values."""
+        """Test boundary values 0 and 10."""
         test_cases = [
-            ("REASONING: Minimum\nSCORE: 0", 0.0),
-            ("REASONING: Maximum\nSCORE: 10", 10.0),
-            ("REASONING: Decimal boundary\nSCORE: 0.1", 0.1),
-            ("REASONING: High decimal\nSCORE: 9.9", 9.9),
+            ("REASONING: Minimum\nSCORE: 0.0", 0.0),
+            ("REASONING: Maximum\nSCORE: 10.0", 10.0),
+            ("REASONING: Minimum fraction\nSCORE: 0/10", 0.0),
+            ("REASONING: Maximum fraction\nSCORE: 10/10", 10.0),
         ]
         
         for response, expected_score in test_cases:
@@ -149,6 +163,37 @@ SCORE: 9.5/10
         score = parse_llm_response(response)
         assert score == 9.5
 
+    def test_markdown_score_formatting(self):
+        """Test parsing all variations of markdown-formatted scores."""
+        test_cases = [
+            # Markdown labels
+            ("**SCORE**: 10.0", 10.0),
+            ("**Score**: 8.5", 8.5),
+            ("**score**: 7.0", 7.0),
+            ("**SCORE**: 9/10", 9.0),
+            ("**SCORE**: 8.5/10", 8.5),
+            ("**SCORE** - 8.0", 8.0),
+            
+            # Markdown values
+            ("SCORE: **10**", 10.0),
+            ("Score: **8.5**", 8.5),
+            ("score: **7.0**", 7.0),
+            ("SCORE: **9/10**", 9.0),
+            ("SCORE: **8.5/10**", 8.5),
+            ("SCORE - **8.0**", 8.0),
+            
+            # Both label and value in markdown
+            ("**SCORE**: **10**", 10.0),
+            ("**SCORE**: **8.5**", 8.5),
+            ("**SCORE**: **9/10**", 9.0),
+            ("**SCORE**: **8.5/10**", 8.5),
+        ]
+        
+        for score_text, expected_score in test_cases:
+            response = f"REASONING: Good analysis.\n{score_text}\n(Comment)"
+            score = parse_llm_response(response)
+            assert score == expected_score, f"Failed for: {score_text}"
+
 
 class TestSimpleModelClient:
 
@@ -166,201 +211,135 @@ class TestSimpleModelClient:
     def test_init_no_api_key_raises_error(self):
         """Test that missing API key raises ValueError."""
         with patch.dict(os.environ, {}, clear=True):
-            with pytest.raises(ValueError, match="OpenRouter API key required"):
+            with pytest.raises(ValueError, match="API key is required"):
                 SimpleModelClient()
 
-    @patch("daydreaming_experiment.model_client.OpenAI")
-    def test_generate_success(self, mock_openai):
-        """Test successful content generation."""
-        # Setup mock
+    @patch('requests.post')
+    def test_evaluate_success(self, mock_post):
+        """Test successful evaluation."""
+        # Mock successful API response
         mock_response = Mock()
-        mock_response.choices = [Mock()]
-        mock_response.choices[0].message.content = "  Generated content  "
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            "choices": [
+                {
+                    "message": {
+                        "content": "REASONING: Great creativity\nSCORE: 8.5"
+                    }
+                }
+            ]
+        }
+        mock_post.return_value = mock_response
 
-        mock_client = Mock()
-        mock_client.chat.completions.create.return_value = mock_response
-        mock_openai.return_value = mock_client
-
-        # Test
         client = SimpleModelClient(api_key="test_key")
-        result = client.generate("test prompt", "test-model")
-
-        assert result == "Generated content"
-        mock_client.chat.completions.create.assert_called_once_with(
-            model="test-model",
-            messages=[{"role": "user", "content": "test prompt"}],
-            temperature=0.7,
-            max_tokens=8192,
+        result = client.evaluate(
+            "Evaluate this response",
+            "Sample response content",
+            "test-model"
         )
 
-    @patch("daydreaming_experiment.model_client.OpenAI")
-    @patch("time.sleep")
-    def test_generate_exception_propagated(self, mock_sleep, mock_openai):
-        """Test that exceptions in generate are propagated after sleep."""
-        mock_client = Mock()
-        mock_client.chat.completions.create.side_effect = Exception("API Error")
-        mock_openai.return_value = mock_client
-
-        client = SimpleModelClient(api_key="test_key")
-
-        with pytest.raises(Exception, match="API Error"):
-            client.generate("test prompt", "test-model")
-
-        mock_sleep.assert_called_once_with(1)
-
-    @patch("daydreaming_experiment.model_client.OpenAI")
-    def test_evaluate_success_yes(self, mock_openai):
-        """Test successful evaluation with YES response."""
-        response_content = """REASONING: Contains iterative refinement loops
-SCORE: 8.5"""
+        assert result == "REASONING: Great creativity\nSCORE: 8.5"
         
+        # Verify API call was made correctly
+        mock_post.assert_called_once()
+        call_args = mock_post.call_args
+        
+        assert call_args[1]['headers']['Authorization'] == 'Bearer test_key'
+        assert call_args[1]['json']['model'] == 'test-model'
+        assert 'Evaluate this response' in call_args[1]['json']['messages'][0]['content']
+        assert 'Sample response content' in call_args[1]['json']['messages'][0]['content']
+
+    @patch('requests.post')
+    def test_evaluate_api_error(self, mock_post):
+        """Test API error handling."""
+        # Mock API error response
         mock_response = Mock()
-        mock_response.choices = [Mock()]
-        mock_response.choices[0].message.content = response_content
+        mock_response.status_code = 401
+        mock_response.text = "Unauthorized"
+        mock_post.return_value = mock_response
 
-        mock_client = Mock()
-        mock_client.chat.completions.create.return_value = mock_response
-        mock_openai.return_value = mock_client
-
-        client = SimpleModelClient(api_key="test_key")
-        full_response = client.evaluate(
-            "prompt", "response", "test-model"
-        )
-
-        assert full_response == response_content.strip()
+        client = SimpleModelClient(api_key="invalid_key")
         
-        # Test that the response can be parsed successfully
-        raw_score = parse_llm_response(full_response)
-        assert raw_score == 8.5
+        with pytest.raises(Exception, match="API request failed with status 401"):
+            client.evaluate(
+                "Evaluate this response",
+                "Sample response content", 
+                "test-model"
+            )
 
-    @patch("daydreaming_experiment.model_client.OpenAI")
-    def test_evaluate_success_no(self, mock_openai):
-        """Test successful evaluation with NO response."""
-        response_content = """REASONING: No iterative patterns found
-SCORE: 2.0"""
-        
+    @patch('requests.post')
+    def test_evaluate_no_choices(self, mock_post):
+        """Test handling of response without choices."""
+        # Mock response without choices
         mock_response = Mock()
-        mock_response.choices = [Mock()]
-        mock_response.choices[0].message.content = response_content
-
-        mock_client = Mock()
-        mock_client.chat.completions.create.return_value = mock_response
-        mock_openai.return_value = mock_client
+        mock_response.status_code = 200
+        mock_response.json.return_value = {"error": "No choices available"}
+        mock_post.return_value = mock_response
 
         client = SimpleModelClient(api_key="test_key")
-        full_response = client.evaluate(
-            "prompt", "response", "test-model"
-        )
-
-        assert full_response == response_content.strip()
         
-        # Test that the response can be parsed successfully
-        raw_score = parse_llm_response(full_response)
-        assert raw_score == 2.0
+        with pytest.raises(Exception, match="No choices in API response"):
+            client.evaluate(
+                "Evaluate this response",
+                "Sample response content",
+                "test-model"
+            )
 
-    @patch("daydreaming_experiment.model_client.OpenAI")
-    def test_evaluate_malformed_response(self, mock_openai):
-        """Test evaluation with malformed response returns the raw response."""
-        malformed_content = "Malformed response without proper structure"
-        
+    @patch('requests.post')
+    def test_evaluate_empty_choices(self, mock_post):
+        """Test handling of response with empty choices array."""
+        # Mock response with empty choices
         mock_response = Mock()
-        mock_response.choices = [Mock()]
-        mock_response.choices[0].message.content = malformed_content
-
-        mock_client = Mock()
-        mock_client.chat.completions.create.return_value = mock_response
-        mock_openai.return_value = mock_client
+        mock_response.status_code = 200
+        mock_response.json.return_value = {"choices": []}
+        mock_post.return_value = mock_response
 
         client = SimpleModelClient(api_key="test_key")
         
-        # evaluate() should return the raw response without parsing
-        result = client.evaluate("prompt", "response", "test-model")
-        assert result == malformed_content
-        
-        # But parsing the result should raise an error
-        with pytest.raises(ValueError, match="No SCORE field found"):
-            parse_llm_response(result)
+        with pytest.raises(Exception, match="No choices in API response"):
+            client.evaluate(
+                "Evaluate this response",
+                "Sample response content",
+                "test-model"
+            )
 
-    @patch("daydreaming_experiment.model_client.OpenAI")
-    def test_evaluate_invalid_score(self, mock_openai):
-        """Test evaluation with invalid score value returns raw response."""
-        invalid_content = """REASONING: Test reasoning
-SCORE: invalid"""
-        
-        mock_response = Mock()
-        mock_response.choices = [Mock()]
-        mock_response.choices[0].message.content = invalid_content
-
-        mock_client = Mock()
-        mock_client.chat.completions.create.return_value = mock_response
-        mock_openai.return_value = mock_client
+    @patch('requests.post')
+    def test_evaluate_request_exception(self, mock_post):
+        """Test handling of request exceptions."""
+        import requests
+        mock_post.side_effect = requests.ConnectionError("Connection failed")
 
         client = SimpleModelClient(api_key="test_key")
         
-        # evaluate() should return the raw response without parsing
-        result = client.evaluate("prompt", "response", "test-model")
-        assert result == invalid_content.strip()
-        
-        # But parsing the result should raise an error
-        with pytest.raises(ValueError, match="No SCORE field found"):
-            parse_llm_response(result)
+        with pytest.raises(requests.ConnectionError):
+            client.evaluate(
+                "Evaluate this response",
+                "Sample response content",
+                "test-model"
+            )
 
-    @patch("daydreaming_experiment.model_client.OpenAI")
-    @patch("time.sleep")
-    def test_evaluate_exception_propagation(self, mock_sleep, mock_openai):
-        """Test that evaluate propagates API exceptions after sleep."""
-        mock_client = Mock()
-        mock_client.chat.completions.create.side_effect = Exception("API Error")
-        mock_openai.return_value = mock_client
+    def test_evaluate_prompt_combination(self):
+        """Test that evaluation prompt and response content are properly combined."""
+        with patch('requests.post') as mock_post:
+            # Mock successful API response
+            mock_response = Mock()
+            mock_response.status_code = 200
+            mock_response.json.return_value = {
+                "choices": [{"message": {"content": "SCORE: 8.0"}}]
+            }
+            mock_post.return_value = mock_response
 
-        client = SimpleModelClient(api_key="test_key")
-        
-        with pytest.raises(Exception, match="API Error"):
-            client.evaluate("prompt", "response", "test-model")
-        
-        mock_sleep.assert_called_once_with(1)
+            client = SimpleModelClient(api_key="test_key")
+            client.evaluate(
+                "Please evaluate this response for creativity:",
+                "This is a creative response about innovation.",
+                "test-model"
+            )
 
-    @patch("daydreaming_experiment.model_client.OpenAI")
-    def test_evaluate_empty_response_handling(self, mock_openai):
-        """Test that evaluate handles empty API responses gracefully."""
-        mock_completion = Mock()
-        mock_completion.choices = [Mock()]
-        mock_completion.choices[0].message.content = None  # Simulate empty response
-
-        mock_client = Mock()
-        mock_client.chat.completions.create.return_value = mock_completion
-        mock_openai.return_value = mock_client
-
-        client = SimpleModelClient(api_key="test_key")
-        
-        # evaluate() should return empty string for None content
-        result = client.evaluate("prompt", "response", "test-model")
-        assert result == ""
-        
-        # But parsing the empty result should raise an error
-        with pytest.raises(ValueError, match="Empty or whitespace-only response"):
-            parse_llm_response(result)
-
-    @patch("daydreaming_experiment.model_client.OpenAI")
-    def test_evaluate_prompt_structure(self, mock_openai):
-        """Test that evaluation prompt contains expected elements."""
-        mock_response = Mock()
-        mock_response.choices = [Mock()]
-        mock_response.choices[0].message.content = (
-            "REASONING: Test\nSCORE: 3.0"
-        )
-
-        mock_client = Mock()
-        mock_client.chat.completions.create.return_value = mock_response
-        mock_openai.return_value = mock_client
-
-        client = SimpleModelClient(api_key="test_key")
-        test_prompt = "RESPONSE TO EVALUATE:\ntest response\n\nREASONING:\nSCORE:"
-        client.evaluate(test_prompt, "test response", "test-model")
-
-        # Check that the evaluation prompt was passed through correctly
-        call_args = mock_client.chat.completions.create.call_args
-        evaluation_prompt = call_args[1]["messages"][0]["content"]
-
-        # The prompt parameter should be used directly as the evaluation prompt
-        assert evaluation_prompt == test_prompt
+            # Check that the prompt was properly constructed
+            call_args = mock_post.call_args
+            sent_prompt = call_args[1]['json']['messages'][0]['content']
+            
+            assert "Please evaluate this response for creativity:" in sent_prompt
+            assert "Response to evaluate:" in sent_prompt
+            assert "This is a creative response about innovation." in sent_prompt

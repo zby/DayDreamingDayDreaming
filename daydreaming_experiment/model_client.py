@@ -24,6 +24,31 @@ def parse_llm_response(response_text: str) -> float:
     
     # Find score - look for various formats
     score_patterns = [
+        # Markdown formatted patterns
+        r'\*\*SCORE\*\*:\s*(-?\d+(?:\.\d+)?)(?:\s|\(|$)',  # **SCORE**: 8.5
+        r'\*\*Score\*\*:\s*(-?\d+(?:\.\d+)?)(?:\s|\(|$)',  # **Score**: 8.5
+        r'\*\*score\*\*:\s*(-?\d+(?:\.\d+)?)(?:\s|\(|$)',  # **score**: 8.5
+        r'\*\*SCORE\*\*:\s*(-?\d+(?:\.\d+)?)/(-?\d+(?:\.\d+)?)',  # **SCORE**: 8/10 or **SCORE**: 8.5/10
+        r'\*\*SCORE\*\*\s*-\s*(-?\d+(?:\.\d+)?)(?:\s|\(|$)',  # **SCORE** - 8.5
+        
+        # Markdown with colon inside
+        r'\*\*SCORE:\*\*\s*(-?\d+(?:\.\d+)?)(?:\s|\(|$)',  # **SCORE:** 8.5
+        r'\*\*Score:\*\*\s*(-?\d+(?:\.\d+)?)(?:\s|\(|$)',  # **Score:** 8.5
+        r'\*\*score:\*\*\s*(-?\d+(?:\.\d+)?)(?:\s|\(|$)',  # **score:** 8.5
+        r'\*\*SCORE:\*\*\s*(-?\d+(?:\.\d+)?)/(-?\d+(?:\.\d+)?)',  # **SCORE:** 8/10 or **SCORE:** 8.5/10
+        
+        # Markdown values
+        r'SCORE:\s*\*\*(-?\d+(?:\.\d+)?)\*\*(?:\s|\(|$)',  # SCORE: **8.5**
+        r'Score:\s*\*\*(-?\d+(?:\.\d+)?)\*\*(?:\s|\(|$)',  # Score: **8.5**
+        r'score:\s*\*\*(-?\d+(?:\.\d+)?)\*\*(?:\s|\(|$)',  # score: **8.5**
+        r'SCORE:\s*\*\*(-?\d+(?:\.\d+)?)/(-?\d+(?:\.\d+)?)\*\*',  # SCORE: **8/10** or SCORE: **8.5/10**
+        r'SCORE\s*-\s*\*\*(-?\d+(?:\.\d+)?)\*\*(?:\s|\(|$)',  # SCORE - **8.5**
+        
+        # Both label and value in markdown
+        r'\*\*SCORE\*\*:\s*\*\*(-?\d+(?:\.\d+)?)\*\*(?:\s|\(|$)',  # **SCORE**: **8.5**
+        r'\*\*SCORE\*\*:\s*\*\*(-?\d+(?:\.\d+)?)/(-?\d+(?:\.\d+)?)\*\*',  # **SCORE**: **8/10**
+        
+        # Regular patterns
         r'SCORE:\s*(-?\d+(?:\.\d+)?)(?:\s|\(|$)',  # SCORE: 8.5 or SCORE: 8.5 (explanation)
         r'Score:\s*(-?\d+(?:\.\d+)?)(?:\s|\(|$)',  # Score: 8.5
         r'score:\s*(-?\d+(?:\.\d+)?)(?:\s|\(|$)',  # score: 8.5
