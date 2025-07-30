@@ -25,7 +25,7 @@ EVALUATION_ERRORS_LOG = "evaluation_errors.log"
 DEFAULT_EVALUATION_TEMPLATES_DIR = "data/evaluation_templates"
 
 # Default settings
-DEFAULT_EVALUATOR_MODEL = "deepseek/deepseek-r1"
+DEFAULT_EVALUATOR_MODEL = "deepseek/deepseek-r1:free"
 DEFAULT_EVALUATION_TEMPLATE = "default"
 
 # Rate limiting

@@ -28,7 +28,7 @@ def parse_llm_response(response_text: str) -> float:
         r'Score:\s*(-?\d+(?:\.\d+)?)(?:\s|\(|$)',  # Score: 8.5
         r'score:\s*(-?\d+(?:\.\d+)?)(?:\s|\(|$)',  # score: 8.5
         r'SCORE\s*-\s*(-?\d+(?:\.\d+)?)(?:\s|\(|$)',  # SCORE - 8.5
-        r'SCORE:\s*(-?\d+)/(-?\d+)',  # SCORE: 8/10
+        r'SCORE:\s*(-?\d+(?:\.\d+)?)/(-?\d+(?:\.\d+)?)',  # SCORE: 8/10 or SCORE: 8.5/10
     ]
     
     score = None
@@ -107,7 +107,7 @@ class SimpleModelClient:
                 model=model,
                 messages=[{"role": "user", "content": evaluation_prompt}],
                 temperature=0.1,
-                max_tokens=2048,  # Increased to allow for full REASONING + SCORE and avoid the bug with empty responses
+#                max_tokens=2048,  # Increased to allow for full REASONING + SCORE and avoid the bug with empty responses
             )
 
             eval_text = eval_response.choices[0].message.content

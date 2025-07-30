@@ -141,6 +141,14 @@ SCORE: 7.2"""
             with pytest.raises(ValueError):
                 parse_llm_response(response)
 
+    def test_decimal_fraction_score(self):
+        """Test parsing decimal fraction scores like 9.5/10."""
+        response = """REASONING: Comprehensive analysis of creative loops and mechanisms.
+SCORE: 9.5/10  
+(Minor room for improvement)"""
+        score = parse_llm_response(response)
+        assert score == 9.5
+
 
 class TestSimpleModelClient:
 
