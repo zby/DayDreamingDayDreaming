@@ -35,7 +35,7 @@ def load_experiment_results(experiment_dir: str) -> Tuple[dict, pd.DataFrame, bo
         # Fall back to generation results
         results_df = pd.read_csv(results_path)
         # Check if results have evaluation columns
-        has_evaluation = "automated_rating" in results_df.columns
+        has_evaluation = "raw_score" in results_df.columns
     else:
         raise FileNotFoundError(f"No results file found in {experiment_dir}")
 
@@ -59,7 +59,7 @@ def analyze_success_rates(results_df: pd.DataFrame, has_evaluation: bool) -> Dic
 
     # Overall success rate (only for evaluated experiments)
     total_attempts = len(results_df)
-    successful_attempts = len(results_df[results_df["automated_rating"] == 1])
+    successful_attempts = len(results_df[results_df["raw_score"] >= 5.0])
     analysis["overall_success_rate"] = (
         successful_attempts / total_attempts if total_attempts > 0 else 0
     )
@@ -71,7 +71,7 @@ def analyze_success_rates(results_df: pd.DataFrame, has_evaluation: bool) -> Dic
     unique_k_values = sorted(results_df["concept_count"].unique())
     for k in unique_k_values:
         k_results = results_df[results_df["concept_count"] == k]
-        k_success = len(k_results[k_results["automated_rating"] == 1])
+        k_success = len(k_results[k_results["raw_score"] >= 5.0])
         k_total = len(k_results)
         success_by_k[k] = {
             "success_rate": k_success / k_total if k_total > 0 else 0,
@@ -85,7 +85,7 @@ def analyze_success_rates(results_df: pd.DataFrame, has_evaluation: bool) -> Dic
     success_by_template = {}
     for template_id in sorted(results_df["template_id"].unique()):
         t_results = results_df[results_df["template_id"] == template_id]
-        t_success = len(t_results[t_results["automated_rating"] == 1])
+        t_success = len(t_results[t_results["raw_score"] >= 5.0])
         t_total = len(t_results)
         success_by_template[template_id] = {
             "success_rate": t_success / t_total if t_total > 0 else 0,
@@ -120,7 +120,7 @@ def analyze_concept_patterns(results_df: pd.DataFrame, has_evaluation: bool) -> 
             "total_combinations": len(results_df),
         }
 
-    successful_results = results_df[results_df["automated_rating"] == 1]
+    successful_results = results_df[results_df["raw_score"] >= 5.0]
 
     # Count concept frequency in successful combinations
     concept_frequency = Counter()
@@ -349,7 +349,7 @@ def analyze_results(experiment_dir: str, min_score: float, export_csv: str):
     # Export if requested
     if export_csv:
         if has_evaluation:
-            filtered_results = results_df[results_df["automated_rating"] == 1]
+            filtered_results = results_df[results_df["raw_score"] >= 5.0]
             click.echo(
                 f"Exported {len(filtered_results)} successful results to {export_csv}"
             )

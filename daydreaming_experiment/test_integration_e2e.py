@@ -123,7 +123,6 @@ class TestEndToEndIntegration:
                 reader = csv.DictReader(f)
                 eval_rows = list(reader)
                 assert len(eval_rows) == 1
-                assert eval_rows[0]["automated_rating"] == "1"
                 assert eval_rows[0]["raw_score"] == "9.2"
                 assert eval_rows[0]["evaluator_model"] == "eval-model"
                 assert eval_rows[0]["evaluation_template"] == "iterative_loops"
@@ -393,10 +392,9 @@ class TestWorkflowValidation:
         with tempfile.TemporaryDirectory() as temp_dir:
             exp_dir = Path(temp_dir)
 
-            # Create old-style experiment (with evaluation already included)
-            old_style_headers = [
+            # Create experiment with evaluation already included (new format)
+            eval_headers = [
                 "experiment_id",
-                "automated_rating",
                 "raw_score",
                 "concept_names",
                 "concept_count",
@@ -405,9 +403,9 @@ class TestWorkflowValidation:
 
             with open(exp_dir / "results.csv", "w", newline="") as f:
                 writer = csv.writer(f)
-                writer.writerow(old_style_headers)
-                writer.writerow(["old_exp", 1, 0.8, "concept1", "1", 0])
-                writer.writerow(["old_exp", 0, 0.3, "concept2", "1", 1])
+                writer.writerow(eval_headers)
+                writer.writerow(["old_exp", 8.0, "concept1", "1", 0])  # 8.0 >= 5.0 (success)
+                writer.writerow(["old_exp", 3.0, "concept2", "1", 1])  # 3.0 < 5.0 (failure)
 
             with open(exp_dir / "config.json", "w") as f:
                 json.dump(

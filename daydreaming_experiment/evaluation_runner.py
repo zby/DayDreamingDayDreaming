@@ -132,10 +132,7 @@ def create_evaluation_results_csv(experiment_dir: Path) -> Path:
         "eval_prompt_file",
         "eval_response_file",
         "evaluation_status",
-        "automated_rating",
         "raw_score",
-        "evaluation_reasoning",
-        "full_evaluation_response",
         "evaluation_timestamp",
         "evaluator_model",
         "evaluation_template",
@@ -166,10 +163,7 @@ def save_evaluation_result(results_path: Path, result_data: Dict):
                 result_data["eval_prompt_file"],
                 result_data["eval_response_file"],
                 result_data["evaluation_status"],
-                result_data["automated_rating"],
                 result_data["raw_score"],
-                result_data["evaluation_reasoning"],
-                result_data["full_evaluation_response"],
                 result_data["evaluation_timestamp"],
                 result_data["evaluator_model"],
                 result_data["evaluation_template"],
@@ -268,46 +262,46 @@ def evaluate_experiment(
                     experiment_directory, int(gen_result["attempt_id"]), evaluation_prompt
                 )
 
-                # Evaluate response
-                reasoning, full_response, raw_score = model_client.evaluate(
-                    evaluation_prompt, response_content, evaluator_model
-                )
-                
-                # Compute rating from raw score (>=5.0 is success)
-                rating = raw_score >= 5.0
-
-                # Determine evaluation status and handle errors
-                if full_response.startswith("EVALUATION_ERROR:"):
-                    evaluation_status = "api_error"
-                    # Log detailed error info
-                    log_evaluation_error(
-                        experiment_directory, int(gen_result["attempt_id"]),
-                        "API_ERROR", reasoning, evaluation_prompt, response_content
+                # Evaluate response with proper error handling
+                try:
+                    reasoning, full_response, raw_score = model_client.evaluate(
+                        evaluation_prompt, response_content, evaluator_model
                     )
-                    # Save simple error marker to file
-                    response_to_save = "EVALUATION_FAILED"
-                elif full_response.startswith("EMPTY_API_RESPONSE"):
-                    evaluation_status = "empty_response"
-                    # Log detailed error info
-                    log_evaluation_error(
-                        experiment_directory, int(gen_result["attempt_id"]),
-                        "EMPTY_API_RESPONSE", reasoning, evaluation_prompt, response_content
-                    )
-                    # Save simple error marker to file
-                    response_to_save = "EVALUATION_FAILED"
-                elif not full_response:
-                    evaluation_status = "parsing_error"
-                    # Log detailed error info
-                    log_evaluation_error(
-                        experiment_directory, int(gen_result["attempt_id"]),
-                        "PARSING_ERROR", reasoning, evaluation_prompt, response_content
-                    )
-                    # Save simple error marker to file
-                    response_to_save = "EVALUATION_FAILED"
-                else:
+                    
+                    # Compute rating from raw score (>=5.0 is success)
+                    rating = raw_score >= 5.0
                     evaluation_status = "success"
-                    # Save actual LLM response
                     response_to_save = full_response
+                    
+                except ValueError as parse_error:
+                    # Parsing error - LLM response could not be parsed
+                    evaluation_status = "parsing_error"
+                    reasoning = f"Parse error: {str(parse_error)}"
+                    full_response = f"PARSING_ERROR: {str(parse_error)}"
+                    raw_score = 0.0
+                    rating = False
+                    response_to_save = "EVALUATION_FAILED_PARSING"
+                    
+                    # Log detailed error info
+                    log_evaluation_error(
+                        experiment_directory, int(gen_result["attempt_id"]),
+                        "PARSING_ERROR", str(parse_error), evaluation_prompt, response_content
+                    )
+                    
+                except Exception as api_error:
+                    # API error or other exception
+                    evaluation_status = "api_error"
+                    reasoning = f"API error: {str(api_error)}"
+                    full_response = f"API_ERROR: {str(api_error)}"
+                    raw_score = 0.0
+                    rating = False
+                    response_to_save = "EVALUATION_FAILED_API"
+                    
+                    # Log detailed error info
+                    log_evaluation_error(
+                        experiment_directory, int(gen_result["attempt_id"]),
+                        "API_ERROR", str(api_error), evaluation_prompt, response_content
+                    )
                     
                 eval_response_file = save_evaluation_response(
                     experiment_directory, int(gen_result["attempt_id"]), response_to_save
@@ -327,10 +321,7 @@ def evaluate_experiment(
                     "eval_prompt_file": eval_prompt_file,
                     "eval_response_file": eval_response_file,
                     "evaluation_status": evaluation_status,
-                    "automated_rating": int(rating),
                     "raw_score": raw_score,
-                    "evaluation_reasoning": reasoning,
-                    "full_evaluation_response": full_response,
                     "evaluation_timestamp": evaluation_timestamp,
                     "evaluator_model": evaluator_model,
                     "evaluation_template": evaluation_template,

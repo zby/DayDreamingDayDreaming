@@ -117,10 +117,7 @@ class TestEvaluationRunnerHelpers:
                     "eval_prompt_file",
                     "eval_response_file",
                     "evaluation_status",
-                    "automated_rating",
                     "raw_score",
-                    "evaluation_reasoning",
-                    "full_evaluation_response",
                     "evaluation_timestamp",
                     "evaluator_model",
                     "evaluation_template",
@@ -146,10 +143,7 @@ class TestEvaluationRunnerHelpers:
                 "eval_prompt_file": "eval_prompt_001.txt",
                 "eval_response_file": "eval_response_001.txt",
                 "evaluation_status": "success",
-                "automated_rating": 1,
                 "raw_score": 8.5,
-                "evaluation_reasoning": "Found iterative patterns",
-                "full_evaluation_response": "REASONING: Found iterative patterns\nSCORE: 8.5",
                 "evaluation_timestamp": "2025-01-01T12:00:00",
                 "evaluator_model": "openai/gpt-4",
                 "evaluation_template": "default",
@@ -170,13 +164,8 @@ class TestEvaluationRunnerHelpers:
                 assert row[7] == "eval_prompt_001.txt"  # eval_prompt_file
                 assert row[8] == "eval_response_001.txt"  # eval_response_file
                 assert row[9] == "success"  # evaluation_status
-                assert row[10] == "1"  # automated_rating
-                assert row[11] == "8.5"  # raw_score
-                assert (
-                    row[13]
-                    == "REASONING: Found iterative patterns\nSCORE: 8.5"
-                )  # full_evaluation_response
-                assert row[15] == "openai/gpt-4"  # evaluator_model
+                assert row[10] == "8.5"  # raw_score
+                assert row[12] == "openai/gpt-4"  # evaluator_model
 
     def test_save_evaluation_prompt(self):
         """Test saving evaluation prompt to file."""
@@ -571,13 +560,9 @@ class TestEvaluationRunnerMocking:
         from click.testing import CliRunner
         from daydreaming_experiment.evaluation_runner import evaluate_experiment
 
-        # Setup mock model client that returns empty full_response
+        # Setup mock model client that raises ValueError for empty response
         mock_client = Mock()
-        mock_client.evaluate.return_value = (
-            "Empty response from API",  # reasoning
-            "",     # full_response (empty!)
-            0.0,    # raw_score
-        )
+        mock_client.evaluate.side_effect = ValueError("Empty or whitespace-only response")
         mock_client_class.return_value = mock_client
 
         # Setup mock template loader
@@ -630,4 +615,4 @@ class TestEvaluationRunnerMocking:
             # Verify file contains clean error marker instead of being empty
             with open(eval_response_file, "r") as f:
                 content = f.read()
-                assert content == "EVALUATION_FAILED"  # Clean error marker
+                assert content == "EVALUATION_FAILED_PARSING"  # Clean parsing error marker

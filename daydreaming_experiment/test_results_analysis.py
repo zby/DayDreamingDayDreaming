@@ -31,9 +31,9 @@ class TestResultsAnalysisHelpers:
             results_path = exp_dir / "results.csv"
             with open(results_path, "w", newline="") as f:
                 writer = csv.writer(f)
-                writer.writerow(["experiment_id", "automated_rating", "concept_count"])
-                writer.writerow(["test_exp", 1, 2])
-                writer.writerow(["test_exp", 0, 1])
+                writer.writerow(["experiment_id", "raw_score", "concept_count"])
+                writer.writerow(["test_exp", 8.5, 2])
+                writer.writerow(["test_exp", 3.0, 1])
 
             loaded_config, results_df, has_evaluation = load_experiment_results(
                 str(exp_dir)
@@ -41,15 +41,15 @@ class TestResultsAnalysisHelpers:
 
             assert loaded_config == config
             assert len(results_df) == 2
-            assert results_df.iloc[0]["automated_rating"] == 1
-            assert results_df.iloc[1]["automated_rating"] == 0
-            assert has_evaluation == True  # Has automated_rating column
+            assert results_df.iloc[0]["raw_score"] == 8.5
+            assert results_df.iloc[1]["raw_score"] == 3.0
+            assert has_evaluation == True  # Has raw_score column
 
     def test_analyze_success_rates(self):
         """Test success rate analysis by different dimensions."""
         # Create test DataFrame
         data = {
-            "automated_rating": [1, 0, 1, 0, 1, 1],
+            "raw_score": [8.5, 3.0, 7.0, 2.5, 9.0, 6.5],  # success: >=5.0, so [1, 0, 1, 0, 1, 1]
             "concept_count": [1, 1, 2, 2, 3, 3],
             "template_id": [0, 1, 0, 1, 0, 1],
         }
@@ -78,7 +78,7 @@ class TestResultsAnalysisHelpers:
         """Test success rate analysis with single k-value (new default strategy)."""
         # Create test DataFrame with single k-value (k=4)
         data = {
-            "automated_rating": [1, 0, 1, 1, 0, 1],
+            "raw_score": [8.0, 3.0, 7.5, 9.0, 2.0, 6.0],  # success: >=5.0, so [1, 0, 1, 1, 0, 1]
             "concept_count": [4, 4, 4, 4, 4, 4],  # All same k-value
             "template_id": [0, 1, 2, 0, 1, 2],
         }
@@ -107,7 +107,7 @@ class TestResultsAnalysisHelpers:
         """Test concept pattern analysis for successful combinations."""
         # Create test DataFrame
         data = {
-            "automated_rating": [1, 0, 1, 1],
+            "raw_score": [8.0, 3.0, 7.0, 9.0],  # success: >=5.0, so [1, 0, 1, 1]
             "concept_names": [
                 "concept1|concept2",
                 "concept3",
@@ -141,7 +141,7 @@ class TestResultsAnalysisHelpers:
     def test_analyze_concept_patterns_no_success(self):
         """Test concept pattern analysis when no results are successful."""
         data = {
-            "automated_rating": [0, 0, 0],
+            "raw_score": [3.0, 2.0, 1.0],  # all < 5.0, so all failures
             "concept_names": ["concept1", "concept2", "concept3"],
         }
         df = pd.DataFrame(data)
@@ -155,8 +155,7 @@ class TestResultsAnalysisHelpers:
     def test_analyze_raw_scores(self):
         """Test raw score pattern analysis."""
         data = {
-            "automated_rating": [1, 1, 1, 0],
-            "raw_score": [9.0, 7.0, 8.5, 3.0],
+            "raw_score": [9.0, 7.0, 8.5, 3.0],  # first 3 >=5.0 (success), last <5.0 (failure)
         }
         df = pd.DataFrame(data)
 
@@ -176,7 +175,7 @@ class TestResultsAnalysisHelpers:
 
     def test_analyze_raw_scores_no_success(self):
         """Test raw score analysis when no results are successful."""
-        data = {"automated_rating": [0, 0, 0], "raw_score": [3.0, 2.0, 1.0]}
+        data = {"raw_score": [3.0, 2.0, 1.0]}  # all < 5.0, so all failures
         df = pd.DataFrame(data)
 
         score_analysis = analyze_raw_scores(df, has_evaluation=True)
@@ -213,8 +212,8 @@ class TestGenerationOnlyExperiments:
 
             assert loaded_config == config
             assert len(results_df) == 2
-            assert has_evaluation == False  # No automated_rating column
-            assert "automated_rating" not in results_df.columns
+            assert has_evaluation == False  # No raw_score column
+            assert "raw_score" not in results_df.columns
 
     def test_load_evaluation_results_preferred(self):
         """Test that evaluation_results.csv is preferred over results.csv."""
@@ -238,16 +237,16 @@ class TestGenerationOnlyExperiments:
             with open(eval_results_path, "w", newline="") as f:
                 writer = csv.writer(f)
                 writer.writerow(
-                    ["experiment_id", "automated_rating", "raw_score"]
+                    ["experiment_id", "raw_score"]
                 )
-                writer.writerow(["test_exp", 1, 0.85])
+                writer.writerow(["test_exp", 8.5])
 
             loaded_config, results_df, has_evaluation = load_experiment_results(
                 str(exp_dir)
             )
 
             assert has_evaluation == True
-            assert "automated_rating" in results_df.columns
+            assert "raw_score" in results_df.columns
             assert len(results_df) == 1  # From evaluation_results.csv
 
     def test_analyze_success_rates_generation_only(self):
