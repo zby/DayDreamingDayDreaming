@@ -32,6 +32,14 @@ uv run python -m daydreaming_experiment.experiment_runner \
     --generator-model gpt-4 \
     --evaluator-model gpt-4 \
     --output experiments/my_experiment
+
+# Or run generation-only experiment (for later evaluation)
+uv run python -m daydreaming_experiment.experiment_runner \
+    --k-max 4 \
+    --level paragraph \
+    --generator-model gpt-4 \
+    --generation-only \
+    --output experiments/my_experiment
 ```
 
 #### Parameters
@@ -39,8 +47,26 @@ uv run python -m daydreaming_experiment.experiment_runner \
 - `--k-max`: Maximum number of concepts to combine (default: 4)
 - `--level`: Content granularity level (`sentence`, `paragraph`, or `article`)
 - `--generator-model`: LLM model for content generation
-- `--evaluator-model`: LLM model for automated evaluation
+- `--evaluator-model`: LLM model for automated evaluation (ignored with `--generation-only`)
+- `--generation-only`: Skip evaluation during experiment (for later evaluation)
 - `--output`: Output directory for experiment results
+
+### Separate Evaluation
+
+For generation-only experiments, run evaluation separately:
+
+```bash
+# Evaluate responses from a generation-only experiment
+uv run python -m daydreaming_experiment.evaluation_runner \
+    experiments/experiment_20250728_143022 \
+    --evaluator-model deepseek/deepseek-r1 \
+    --evaluation-template default
+```
+
+#### Evaluation Parameters
+
+- `--evaluator-model`: LLM model for automated evaluation (default: deepseek/deepseek-r1)
+- `--evaluation-template`: Evaluation template to use (default: default)
 
 ### Analyzing Results
 

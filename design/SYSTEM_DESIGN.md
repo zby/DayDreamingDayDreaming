@@ -1,283 +1,192 @@
-# DayDreaming LLMs Concept Experiment Design
+# System Design: DayDreaming LLM Experiment
 
-## Overview
+## System Goal
 
-This system implements a simplified experimental framework to find the **minimal set of concepts** that can elicit Gwern's Day-Dreaming idea from offline LLMs. The design focuses on combinatorial testing with automated LLM-based evaluation.
+This system tests whether pre-June 2025 LLMs can "reinvent" Gwern's Day-Dreaming Loop concept when provided with minimal contextual hints through combinatorial testing of concept sets. The core hypothesis is that certain minimal combinations of concepts can elicit the Day-Dreaming idea from offline LLMs using automated evaluation.
 
-## System Architecture
+## High-Level Architecture
 
-### 1. Core Data Models
+### Design Philosophy
 
-#### Concept Structure
-```python
-@dataclass
-class Concept:
-    name: str
-    sentence: Optional[str] = None      # 1-sentence summary
-    paragraph: Optional[str] = None     # Multi-sentence description  
-    article: Optional[str] = None       # Full comprehensive content
-    article_path: Optional[str] = None  # External file for large articles
-```
+The system follows a **separation of concerns** approach with two distinct pipelines:
 
-**Key Design Decisions:**
-- All concepts have three granularity levels for future experiments
-- **Current experiments use only paragraph level** for optimal combination testing
-- Articles stored externally to keep manifest manageable
-- Simple flat structure (no DAG dependencies)
+1. **Generation Pipeline**: Combinatorial concept testing → prompt generation → LLM responses
+2. **Evaluation Pipeline**: Response analysis → automated rating → confidence scoring
 
-#### ConceptDB
-- Registry for all available concepts
-- Provides batch retrieval and combination iteration
-- Supports save/load with JSON manifest + article files
-- Level-agnostic combination generation
+This separation enables flexible experimentation where generation can happen independently of evaluation, allowing different evaluation strategies to be applied to the same generated responses.
 
-#### Model Integration
-```python
-class SimpleModelClient:
-    """Lightweight LLM client for experiment execution."""
-    def generate(self, prompt: str) -> str:
-        # Simple interface to LLM APIs for content generation
-    
-    def evaluate(self, prompt: str, response: str) -> tuple[bool, float, str]:
-        # LLM-based evaluation returning (rating, confidence, reasoning)
-```
-
-### 2. Prompt Generation System
-
-#### PromptFactory Class
-```python
-class PromptFactory:
-    """Template-based prompt generation from concept combinations."""
-    
-    def __init__(self, templates: tuple[str, ...] = DEFAULT_TEMPLATES):
-        self.templates = templates
-    
-    def generate_prompt(self, concepts: list[Concept], level: str, template_idx: int = 0) -> str:
-        """Generate prompt by combining concepts at specified granularity level."""
-        concept_texts = [getattr(concept, level) for concept in concepts]
-        formatted_concepts = '\n'.join(f"- {text}" for text in concept_texts)
-        return self.templates[template_idx].format(concepts=formatted_concepts)
-```
-
-#### Template System
-```python
-DEFAULT_TEMPLATES = (
-"""Below are several background concepts:
- 
- {concepts}
- 
-Can you combine ideas from above and make new insights or inventions?
-Generate a list of possbilities.
-""",
-"""Here are some concepts:
-
-{concepts}
-
-When you combine them - do they suggest some novel ideas?
-Generate a list of possible inventions, suprising facts, research
-questions, new insights - etc, any thoughts that could be valuable.
-""")
-```
-
-#### Template Design Principles
-- **Minimal priming**: Avoid leading questions that bias toward Day-Dreaming concepts
-- **Open-ended generation**: Encourage broad creative exploration
-- **Combination focus**: Explicitly ask for synthesis of provided concepts
-- **Multiple variants**: Different phrasings to test prompt sensitivity
-
-### 3. Evaluation System
-
-#### Day-Dreaming Concept Detection
-The evaluator LLM assesses responses for Day-Dreaming-like elements:
-
-**Core Elements:**
-- Iterative refinement loops and cyclical processes
-- Exploration-exploitation balance concepts
-- Meta-cognitive awareness and self-monitoring systems
-- Combinatorial creativity and automated ideation
-- Quality filtering and selection mechanisms
-
-**Evaluation Prompt:**
-```
-Does this response contain ideas similar to iterative creative loops that automatically generate, evaluate, and refine concepts?
-
-Response: {response}
-
-Answer: YES/NO
-Confidence: 0.0-1.0
-Reasoning: Brief explanation
-```
-
-#### Automated LLM Evaluation
-- Use a separate LLM (evaluator model) to assess generated responses
-- Structured evaluation prompt with scoring rubric for Day-Dreaming concept detection
-- Binary scoring with confidence metrics and detailed reasoning traces
-- Store evaluation metadata (timestamp, confidence score, reasoning)
-
-## File Organization
+### Core Architecture
 
 ```
-daydreaming_experiment/
-├── concept.py                    # Core Concept dataclass
-├── concept_db.py                 # ConceptDB registry and I/O
-├── prompt_factory.py             # PromptFactory for template-based generation
-├── experiment_runner.py          # CLI experiment execution
-├── model_client.py              # Simple LLM interface
-└── results_analysis.py          # Post-experiment analysis tools
-
-data/
-├── concepts/                     # New concept database
-│   ├── day_dreaming_concepts.json            # Manifest
-│   └── articles/               # Article files
-└── experiments/                # Experiment results
-    └── experiment_YYYYMMDD_HHMMSS/
-        ├── config.json                 # Experiment parameters
-        ├── results.csv                 # Main results table
-        └── responses/
-            ├── response_001.txt        # LLM response files
-            ├── response_002.txt
-            └── ...
+ConceptDB → PromptFactory → ModelClient (Generation) 
+                                ↓
+                          Response Storage
+                                ↓
+                     EvaluationRunner → ResultsAnalysis
 ```
 
-## Data Storage Schema
+**Key Architectural Decisions**:
+- **Exhaustive combinatorial search**: Test all concept combinations up to k_max size
+- **Template-based prompt generation**: Jinja2 templates for consistent, extensible prompts
+- **Separated generation/evaluation**: Enable independent experimentation with evaluation methods
+- **File-based storage**: CSV results + individual response files for reliability and inspection
 
-### 1. Concept Database Schema
+## Core Components
 
-#### Manifest Structure (day_dreaming_concepts.json)
-```json
-{
-  "version": "1.0",
-  "created": "2025-07-28T14:30:22Z", 
-  "concepts": [
-    {
-      "name": "neural_networks",
-      "sentence": "Artificial neural networks mimic biological brain structures.",
-      "paragraph": "Neural networks are computational models inspired by biological neural networks...",
-      "article_path": "articles/neural_networks.txt"
-    }
-  ]
-}
-```
+### ConceptDB (`concept_db.py`)
+**Responsibility**: Concept storage and combinatorial generation engine
 
-#### Article File Format
-- Plain text files in `data/concepts/articles/`
-- Filename matches concept name with `.txt` extension
-- UTF-8 encoding
+**Architecture**: Registry pattern with JSON manifest + external article files
+- Loads concepts from `data/concepts/day_dreaming_concepts.json`
+- Supports three granularity levels: sentence, paragraph, article
+- Generates all k-sized combinations via `itertools.combinations`
 
-### 2. Results Storage Schema
+**Key Design**: Flat concept structure (no DAG dependencies) for simplified combinatorial testing
 
-#### Results Schema (CSV)
-| Column | Description |
-|--------|-------------|
-| experiment_id | Unique experiment identifier |
-| attempt_id | Sequential attempt number |
-| concept_names | Pipe-separated concept names |
-| concept_count | Number of concepts in combination |
-| level | Description level used (always "paragraph" initially) |
-| template_id | Template index used |
-| response_file | Filename of LLM response |
-| automated_rating | Binary evaluation (0/1) from evaluator LLM |
-| confidence_score | Evaluator's confidence in rating (0.0-1.0) |
-| evaluation_reasoning | LLM evaluator's reasoning trace |
-| evaluation_timestamp | When automated evaluation occurred |
-| generation_timestamp | When prompt was generated |
-| model_used | LLM model identifier |
+### PromptFactory (`prompt_factory.py`) 
+**Responsibility**: Template-based prompt generation
 
-#### Configuration Storage (JSON)
-```json
-{
-  "experiment_id": "exp_20250728_143022",
-  "timestamp": "2025-07-28T14:30:22Z",
-  "k_max": 4,
-  "level": "paragraph",
-  "templates": [...],
-  "model": "gpt-4",
-  "evaluator_model": "gpt-4",
-  "concept_count": 6,
-  "total_combinations": 57
-}
-```
+**Architecture**: Jinja2 template engine with file-based template loading
+- Templates in `data/templates/*.txt` (loaded alphabetically)
+- Template variables: `concepts` (list), `level` (string), `strict` (boolean)
+- Renders concept combinations into structured prompts
 
-## Experimental Process
+**Key Design**: Template system enables prompt experimentation without code changes
 
-### 1. Search Strategy
-- **Brute-force combinatorial**: Test all combinations from 1 to k_max concepts
-- **Current limit**: k_max = 4 (combinations of 1-4 concepts)
-- **Future extensions**: Heuristic guidance, random sampling, concept relationships
+### ModelClient (`model_client.py`)
+**Responsibility**: LLM API abstraction layer
 
-### 2. Two-Stage Search (Future)
-1. **Stage 1**: Test concept combinations at target level (paragraph)
-2. **Stage 2**: For successful combinations, test different granularity levels
+**Architecture**: Simple client wrapper for OpenRouter/OpenAI APIs
+- `generate()`: Prompt → Response
+- `evaluate()`: Evaluation prompt + response → (rating, confidence, reasoning)
+- Environment-based configuration (API keys, base URLs)
 
-**Current Implementation**: Single-stage testing at paragraph level only.
+**Key Design**: Minimal abstraction to enable easy model switching and testing
 
-## Technical Dependencies
+### ExperimentRunner (`experiment_runner.py`)
+**Responsibility**: Main combinatorial testing pipeline
 
-### API Dependencies
+**Architecture**: CLI-driven experiment execution
+- Generates all concept combinations up to k_max
+- Tests each combination with all templates
+- Supports both integrated (generation+evaluation) and generation-only modes
+- Saves results to structured CSV + individual response files
 
-#### Required API Access
-- **OpenRouter API**: Multi-model access for generation and evaluation
-- **API Keys**: Configured via environment variables
+**Key Design**: Stateless execution with complete result persistence for reproducibility
 
-#### Core Dependencies
-```python
-openai>=1.0.0           # API client (OpenRouter compatible)
-pandas>=2.0.0           # Results analysis
-click>=8.0.0            # CLI interface
-pytest>=7.0.0           # Testing framework
-black>=23.0.0           # Code formatting
-flake8>=6.0.0           # Style checking
-```
+### EvaluationRunner (`evaluation_runner.py`)
+**Responsibility**: Standalone evaluation pipeline
 
-## Usage Workflow
+**Architecture**: Post-hoc evaluation of generated responses
+- Loads existing experiment results and response files
+- Applies evaluation templates via `EvaluationTemplateLoader`
+- Supports different evaluator models and evaluation strategies
+- Saves evaluation results separately from generation results
 
-### 1. Initial Setup
-```bash
-# Verify concept database
-uv run python -c "
-from daydreaming_experiment.concept_db import ConceptDB
-db = ConceptDB.load('data/concepts')
-print(f'Loaded {len(db._concepts)} concepts')
-"
-```
+**Key Design**: Enables independent evaluation experimentation on existing response data
 
-### 2. Run Experiment
-```bash
-# Run complete experiment with automated evaluation
-uv run python -m daydreaming_experiment.experiment_runner \
-    --k-max 4 \
-    --level paragraph \
-    --generator-model gpt-4 \
-    --evaluator-model gpt-4 \
-    --output experiments/my_experiment
-```
+### EvaluationTemplateLoader (`evaluation_templates.py`)
+**Responsibility**: Evaluation template management
 
-### 3. Analysis
-```bash
-# Analyze results
-uv run python -m daydreaming_experiment.results_analysis \
-    experiments/experiment_20250728_143022
-```
+**Architecture**: Jinja2-based evaluation prompt generation
+- Templates in `data/evaluation_templates/*.txt`
+- Template variable: `response` (generated text to evaluate)
+- Default template selection logic (prefers 'iterative_loops')
 
-## Design Principles
+## Data Flow & Storage
 
-1. **Simplicity First**: No complex DAG structures, focus on core experimental loop
-2. **Automated Evaluation**: LLM-based evaluation enables large-scale experimentation  
-3. **Extensible**: Clean interfaces for future enhancements (concept relationships, automated evaluation, etc.)
-4. **Reproducible**: Complete experiment logging for scientific rigor
-5. **Modular**: Separate concerns (concept management, experiment execution, evaluation, analysis)
+### Generation Flow
+1. ConceptDB loads concepts from JSON manifest
+2. PromptFactory generates all k-sized concept combinations
+3. Each combination rendered with each template
+4. ModelClient generates responses via LLM API
+5. Results saved to CSV with individual response files
 
-## Implementation Strategy
+### Evaluation Flow
+1. EvaluationRunner loads existing experiment data
+2. EvaluationTemplateLoader renders evaluation prompts
+3. ModelClient evaluates responses for Day-Dreaming concepts  
+4. Evaluation results saved to separate CSV
 
-1. **Phase 1**: Run initial experiments (k_max=4, paragraph level)
-2. **Phase 2**: Analyze results and identify successful concept patterns
-3. **Phase 3**: Extend system based on experimental insights
+### Storage Architecture
+- **Concept data**: `data/concepts/day_dreaming_concepts.json` + `articles/*.txt`
+- **Templates**: `data/templates/*.txt` (generation) + `data/evaluation_templates/*.txt` (evaluation)
+- **Experiment results**: `experiment_YYYYMMDD_HHMMSS/` directories containing:
+  - `config.json`: Experiment parameters
+  - `results.csv`: Main results (crucial fields: `experiment_id`, `concept_names`, `automated_rating`, `confidence_score`)
+  - `evaluation_results.csv`: Separate evaluation results (adds `evaluator_model`, `evaluation_template`)
+  - `responses/`: Individual LLM response files
 
-## Future Extensions
+## Key Design Patterns
 
-- **Multi-Model Evaluation**: Cross-validation using multiple evaluator models
-- **Concept Relationships**: Dependency-guided combination selection
-- **Multi-Level Optimization**: Stage-2 granularity level testing
-- **Search Heuristics**: Guided exploration for larger concept spaces  
-- **Statistical Analysis**: Success pattern identification and prediction
-- **Concept Generation**: Automatic expansion of concept database
+### Template-Driven Configuration
+Both prompt generation and evaluation use Jinja2 templates stored as files, enabling experimentation without code changes. Templates are loaded alphabetically and accessed by index.
+
+### Dependency Injection
+Components accept dependencies as constructor parameters (e.g., ModelClient, ConceptDB) rather than creating them internally, enabling easy testing and configuration.
+
+### Combinatorial Exhaustive Search
+The system tests all possible concept combinations up to k_max size. For n concepts and k_max=4: C(n,1) + C(n,2) + C(n,3) + C(n,4) combinations.
+
+### Separated Pipelines
+Generation and evaluation are architecturally separate, enabling:
+- Generation-only experiments for faster iteration
+- Multiple evaluation strategies on the same responses
+- Different evaluator models without re-generation
+
+## Extension Points
+
+### Adding New Concepts
+Update `data/concepts/day_dreaming_concepts.json` with new concept entries. System automatically includes them in combinatorial generation.
+
+### Custom Prompt Templates
+Add `.txt` files to `data/templates/` using Jinja2 syntax. Templates loaded alphabetically by filename (use numeric prefixes for ordering).
+
+### Custom Evaluation Methods
+Add evaluation templates to `data/evaluation_templates/` or extend EvaluationRunner for different evaluation strategies.
+
+### Alternative Search Strategies
+Extend `ConceptDB.get_concept_combinations()` to implement heuristic or guided search instead of exhaustive combinatorial testing.
+
+### Multi-Model Evaluation
+Extend EvaluationRunner to support multiple evaluator models for cross-validation of Day-Dreaming concept detection.
+
+## Debugging Guide
+
+### Experiment Fails to Start
+- **Check**: ConceptDB loading (`data/concepts/day_dreaming_concepts.json` exists and valid)
+- **Check**: Template directory (`data/templates/` contains .txt files)
+- **Check**: API credentials (environment variables set)
+
+### Generation Issues
+- **Component**: PromptFactory template rendering
+- **Files**: Check `data/templates/*.txt` for Jinja2 syntax errors
+- **API**: Verify model names and rate limiting in ModelClient
+
+### Evaluation Issues  
+- **Component**: EvaluationRunner + EvaluationTemplateLoader
+- **Files**: Check `data/evaluation_templates/*.txt` exist
+- **Data**: Verify experiment directory contains `results.csv` and `responses/` folder
+
+### Performance Issues
+- **Combinatorial explosion**: n concepts with k_max=4 generates C(n,1)+...+C(n,4) combinations
+- **API rate limits**: Built-in delays, consider generation-only mode for large experiments
+- **File I/O**: Thousands of small response files for large experiments
+
+### Data Issues
+- **Concept loading**: Check JSON syntax in manifest file
+- **Template rendering**: Verify concept description levels exist
+- **Result parsing**: Check CSV column structure matches expected schema
+
+## Testing Architecture
+
+The system uses separated unit tests (fast, mocked) and integration tests (data-dependent):
+
+- **Unit tests**: `daydreaming_experiment/test_*.py` - Mock all external dependencies
+- **Integration tests**: `tests/test_*.py` - Use real data files, mock only API calls
+
+This separation enables fast development iteration (unit tests) while ensuring data compatibility (integration tests).
+
+---
+
+*This document focuses on architectural understanding. See individual module files for implementation details and CLAUDE.md for development workflow.*

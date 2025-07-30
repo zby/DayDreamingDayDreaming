@@ -14,7 +14,8 @@ This is a Python experiment that tests whether pre-June 2025 LLMs can "reinvent"
 2. **concept_db.py** - `ConceptDB` registry for batch retrieval and combination iteration
 3. **prompt_factory.py** - `PromptFactory` for template-based prompt generation from concept combinations
 4. **experiment_runner.py** - CLI experiment execution with combinatorial testing and automated evaluation
-5. **model_client.py** - Simple LLM interface for content generation and evaluation
+5. **evaluation_runner.py** - Standalone CLI evaluator for post-hoc evaluation of generation-only experiments
+6. **model_client.py** - Simple LLM interface for content generation and evaluation
 
 ### File Organization
 
@@ -24,6 +25,7 @@ daydreaming_experiment/
 ├── concept_db.py                 # ConceptDB registry and I/O
 ├── prompt_factory.py             # PromptFactory for template-based generation  
 ├── experiment_runner.py          # CLI experiment execution
+├── evaluation_runner.py          # Standalone CLI evaluator
 ├── model_client.py              # Simple LLM interface
 └── results_analysis.py          # Post-experiment analysis tools
 
@@ -261,6 +263,15 @@ uv run python -m daydreaming_experiment.experiment_runner \
     --level paragraph \
     --generator-model gpt-4 \
     --evaluator-model gpt-4
+```
+
+### Separate Evaluation
+```bash
+# Evaluate responses from a generation-only experiment
+uv run python -m daydreaming_experiment.evaluation_runner \
+    experiments/experiment_20250728_143022 \
+    --evaluator-model deepseek/deepseek-r1 \
+    --evaluation-template default
 ```
 
 ### Analysis
