@@ -695,3 +695,315 @@ class TestEvaluationRunnerMocking:
                 assert result_row["evaluation_status"] == "api_error"
                 assert result_row["eval_response_file"] == ""  # Empty for API errors
                 assert result_row["eval_prompt_file"] == "eval_prompt_001.txt"  # Prompt file should still exist
+
+    @patch("daydreaming_experiment.evaluation_runner.load_dotenv")
+    @patch("daydreaming_experiment.evaluation_runner.SimpleModelClient")
+    @patch("daydreaming_experiment.evaluation_runner.EvaluationTemplateLoader")
+    def test_evaluation_response_without_score_field_saved(
+        self, mock_template_loader_class, mock_client_class, mock_load_dotenv
+    ):
+        """Test that full response is saved even when SCORE field is missing."""
+        from click.testing import CliRunner
+        from daydreaming_experiment.evaluation_runner import evaluate_experiment
+
+        # Setup mock model client with response missing SCORE field
+        mock_client = Mock()
+        response_without_score = "REASONING: This response contains detailed reasoning but no SCORE field at the end."
+        mock_client.evaluate.return_value = response_without_score
+        mock_client_class.return_value = mock_client
+
+        # Setup mock template loader
+        mock_template_loader = Mock()
+        mock_template_loader.get_default_template.return_value = "iterative_loops"
+        mock_template_loader.list_templates.return_value = ["iterative_loops"]
+        mock_template_loader.render_evaluation_prompt.return_value = "Mocked evaluation prompt"
+        mock_template_loader_class.return_value = mock_template_loader
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            exp_dir = Path(temp_dir)
+
+            # Create experiment structure
+            config = {"experiment_id": "test_exp", "generation_only": True}
+            config_path = exp_dir / "config.json"
+            with open(config_path, "w") as f:
+                json.dump(config, f)
+
+            results_path = exp_dir / "results.csv"
+            with open(results_path, "w", newline="") as f:
+                writer = csv.writer(f)
+                writer.writerow([
+                    "experiment_id", "attempt_id", "concept_names", "concept_count",
+                    "level", "template_id", "response_file", "generation_timestamp", "generator_model"
+                ])
+                writer.writerow([
+                    "test_exp", "1", "concept1,concept2", "2",
+                    "basic", "template_1", "response_001.txt", "2023-01-01T00:00:00", "test-model"
+                ])
+
+            # Create responses directory and file
+            responses_dir = exp_dir / "responses"
+            responses_dir.mkdir()
+            response_file = responses_dir / "response_001.txt"
+            with open(response_file, "w") as f:
+                f.write("Test response content.")
+
+            # Run evaluation
+            runner = CliRunner()
+            result = runner.invoke(evaluate_experiment, [str(exp_dir)])
+
+            assert result.exit_code == 0
+            assert "Failed evaluations: 0" in result.output  # Should not count as failed
+
+            # Verify the full response was saved despite parsing error
+            eval_responses_dir = exp_dir / "eval_responses"
+            eval_response_file = eval_responses_dir / "eval_response_001.txt"
+            assert eval_response_file.exists()
+            
+            with open(eval_response_file, "r") as f:
+                saved_response = f.read()
+                assert saved_response == response_without_score
+
+            # Verify evaluation results show parsing error but response is saved
+            eval_results_path = exp_dir / "evaluation_results.csv"
+            with open(eval_results_path, "r") as f:
+                reader = csv.DictReader(f)
+                results = list(reader)
+                assert len(results) == 1
+                result_row = results[0]
+                assert result_row["evaluation_status"] == "parsing_error"
+                assert result_row["raw_score"] == "0.0"
+                assert result_row["eval_response_file"] == "eval_response_001.txt"
+
+    @patch("daydreaming_experiment.evaluation_runner.load_dotenv")
+    @patch("daydreaming_experiment.evaluation_runner.SimpleModelClient")
+    @patch("daydreaming_experiment.evaluation_runner.EvaluationTemplateLoader")
+    def test_evaluation_response_with_invalid_score_saved(
+        self, mock_template_loader_class, mock_client_class, mock_load_dotenv
+    ):
+        """Test that full response is saved even when SCORE field is invalid."""
+        from click.testing import CliRunner
+        from daydreaming_experiment.evaluation_runner import evaluate_experiment
+
+        # Setup mock model client with invalid SCORE format
+        mock_client = Mock()
+        response_invalid_score = "REASONING: Detailed analysis here.\nSCORE: invalid_number"
+        mock_client.evaluate.return_value = response_invalid_score
+        mock_client_class.return_value = mock_client
+
+        # Setup mock template loader
+        mock_template_loader = Mock()
+        mock_template_loader.get_default_template.return_value = "iterative_loops"
+        mock_template_loader.list_templates.return_value = ["iterative_loops"]
+        mock_template_loader.render_evaluation_prompt.return_value = "Mocked evaluation prompt"
+        mock_template_loader_class.return_value = mock_template_loader
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            exp_dir = Path(temp_dir)
+
+            # Create experiment structure
+            config = {"experiment_id": "test_exp", "generation_only": True}
+            config_path = exp_dir / "config.json"
+            with open(config_path, "w") as f:
+                json.dump(config, f)
+
+            results_path = exp_dir / "results.csv"
+            with open(results_path, "w", newline="") as f:
+                writer = csv.writer(f)
+                writer.writerow([
+                    "experiment_id", "attempt_id", "concept_names", "concept_count",
+                    "level", "template_id", "response_file", "generation_timestamp", "generator_model"
+                ])
+                writer.writerow([
+                    "test_exp", "1", "concept1", "1",
+                    "basic", "template_1", "response_001.txt", "2023-01-01T00:00:00", "test-model"
+                ])
+
+            # Create responses directory and file
+            responses_dir = exp_dir / "responses"
+            responses_dir.mkdir()
+            response_file = responses_dir / "response_001.txt"
+            with open(response_file, "w") as f:
+                f.write("Test response with invalid score format.")
+
+            # Run evaluation
+            runner = CliRunner()
+            result = runner.invoke(evaluate_experiment, [str(exp_dir)])
+
+            assert result.exit_code == 0
+
+            # Verify the full response was saved despite parsing error
+            eval_responses_dir = exp_dir / "eval_responses"
+            eval_response_file = eval_responses_dir / "eval_response_001.txt"
+            assert eval_response_file.exists()
+            
+            with open(eval_response_file, "r") as f:
+                saved_response = f.read()
+                assert saved_response == response_invalid_score
+
+            # Verify error was logged
+            error_log_path = exp_dir / "evaluation_errors.log"
+            assert error_log_path.exists()
+            with open(error_log_path, "r") as f:
+                log_content = f.read()
+                assert "PARSING_ERROR" in log_content
+                assert "Attempt 001" in log_content
+
+    @patch("daydreaming_experiment.evaluation_runner.load_dotenv")
+    @patch("daydreaming_experiment.evaluation_runner.SimpleModelClient")
+    @patch("daydreaming_experiment.evaluation_runner.EvaluationTemplateLoader")
+    def test_evaluation_empty_response_handled(
+        self, mock_template_loader_class, mock_client_class, mock_load_dotenv
+    ):
+        """Test that empty responses are handled correctly."""
+        from click.testing import CliRunner
+        from daydreaming_experiment.evaluation_runner import evaluate_experiment
+
+        # Setup mock model client with empty response
+        mock_client = Mock()
+        mock_client.evaluate.return_value = ""  # Empty response
+        mock_client_class.return_value = mock_client
+
+        # Setup mock template loader
+        mock_template_loader = Mock()
+        mock_template_loader.get_default_template.return_value = "iterative_loops"
+        mock_template_loader.list_templates.return_value = ["iterative_loops"]
+        mock_template_loader.render_evaluation_prompt.return_value = "Mocked evaluation prompt"
+        mock_template_loader_class.return_value = mock_template_loader
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            exp_dir = Path(temp_dir)
+
+            # Create experiment structure
+            config = {"experiment_id": "test_exp", "generation_only": True}
+            config_path = exp_dir / "config.json"
+            with open(config_path, "w") as f:
+                json.dump(config, f)
+
+            results_path = exp_dir / "results.csv"
+            with open(results_path, "w", newline="") as f:
+                writer = csv.writer(f)
+                writer.writerow([
+                    "experiment_id", "attempt_id", "concept_names", "concept_count",
+                    "level", "template_id", "response_file", "generation_timestamp", "generator_model"
+                ])
+                writer.writerow([
+                    "test_exp", "1", "concept1", "1",
+                    "basic", "template_1", "response_001.txt", "2023-01-01T00:00:00", "test-model"
+                ])
+
+            # Create responses directory and file
+            responses_dir = exp_dir / "responses"
+            responses_dir.mkdir()
+            response_file = responses_dir / "response_001.txt"
+            with open(response_file, "w") as f:
+                f.write("Test response content.")
+
+            # Run evaluation
+            runner = CliRunner()
+            result = runner.invoke(evaluate_experiment, [str(exp_dir)])
+
+            assert result.exit_code == 0
+
+            # Verify the empty response was still saved
+            eval_responses_dir = exp_dir / "eval_responses"
+            eval_response_file = eval_responses_dir / "eval_response_001.txt"
+            assert eval_response_file.exists()
+            
+            with open(eval_response_file, "r") as f:
+                saved_response = f.read()
+                assert saved_response == ""  # Empty file but exists
+
+            # Verify evaluation results show parsing error
+            eval_results_path = exp_dir / "evaluation_results.csv"
+            with open(eval_results_path, "r") as f:
+                reader = csv.DictReader(f)
+                results = list(reader)
+                assert len(results) == 1
+                result_row = results[0]
+                assert result_row["evaluation_status"] == "parsing_error"
+                assert result_row["raw_score"] == "0.0"
+                assert result_row["eval_response_file"] == "eval_response_001.txt"
+
+            # Verify error mentions empty response
+            error_log_path = exp_dir / "evaluation_errors.log"
+            assert error_log_path.exists()
+            with open(error_log_path, "r") as f:
+                log_content = f.read()
+                assert "Empty or whitespace-only response" in log_content
+
+    @patch("daydreaming_experiment.evaluation_runner.load_dotenv")
+    @patch("daydreaming_experiment.evaluation_runner.SimpleModelClient")
+    @patch("daydreaming_experiment.evaluation_runner.EvaluationTemplateLoader")
+    def test_evaluation_whitespace_only_response_saved(
+        self, mock_template_loader_class, mock_client_class, mock_load_dotenv
+    ):
+        """Test that whitespace-only responses are saved and handled correctly."""
+        from click.testing import CliRunner
+        from daydreaming_experiment.evaluation_runner import evaluate_experiment
+
+        # Setup mock model client with whitespace-only response
+        mock_client = Mock()
+        whitespace_response = "   \n\t   \n   "  # Only whitespace
+        mock_client.evaluate.return_value = whitespace_response
+        mock_client_class.return_value = mock_client
+
+        # Setup mock template loader
+        mock_template_loader = Mock()
+        mock_template_loader.get_default_template.return_value = "iterative_loops"
+        mock_template_loader.list_templates.return_value = ["iterative_loops"]
+        mock_template_loader.render_evaluation_prompt.return_value = "Mocked evaluation prompt"
+        mock_template_loader_class.return_value = mock_template_loader
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            exp_dir = Path(temp_dir)
+
+            # Create experiment structure
+            config = {"experiment_id": "test_exp", "generation_only": True}
+            config_path = exp_dir / "config.json"
+            with open(config_path, "w") as f:
+                json.dump(config, f)
+
+            results_path = exp_dir / "results.csv"
+            with open(results_path, "w", newline="") as f:
+                writer = csv.writer(f)
+                writer.writerow([
+                    "experiment_id", "attempt_id", "concept_names", "concept_count",
+                    "level", "template_id", "response_file", "generation_timestamp", "generator_model"
+                ])
+                writer.writerow([
+                    "test_exp", "1", "concept1", "1",
+                    "basic", "template_1", "response_001.txt", "2023-01-01T00:00:00", "test-model"
+                ])
+
+            # Create responses directory and file
+            responses_dir = exp_dir / "responses"
+            responses_dir.mkdir()
+            response_file = responses_dir / "response_001.txt"
+            with open(response_file, "w") as f:
+                f.write("Test response content.")
+
+            # Run evaluation
+            runner = CliRunner()
+            result = runner.invoke(evaluate_experiment, [str(exp_dir)])
+
+            assert result.exit_code == 0
+
+            # Verify the whitespace response was saved exactly as returned
+            eval_responses_dir = exp_dir / "eval_responses"
+            eval_response_file = eval_responses_dir / "eval_response_001.txt"
+            assert eval_response_file.exists()
+            
+            with open(eval_response_file, "r") as f:
+                saved_response = f.read()
+                assert saved_response == whitespace_response  # Exact whitespace preserved
+
+            # Verify evaluation results show parsing error
+            eval_results_path = exp_dir / "evaluation_results.csv"
+            with open(eval_results_path, "r") as f:
+                reader = csv.DictReader(f)
+                results = list(reader)
+                assert len(results) == 1
+                result_row = results[0]
+                assert result_row["evaluation_status"] == "parsing_error"
+                assert result_row["raw_score"] == "0.0"
+                assert result_row["eval_response_file"] == "eval_response_001.txt"

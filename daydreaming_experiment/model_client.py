@@ -81,7 +81,8 @@ class SimpleModelClient:
                 temperature=0.7,
                 max_tokens=8192,
             )
-            return response.choices[0].message.content.strip()
+            response_text = response.choices[0].message.content.strip()
+            return response_text
         except Exception as e:
             time.sleep(1)
             raise e
@@ -106,13 +107,13 @@ class SimpleModelClient:
                 model=model,
                 messages=[{"role": "user", "content": evaluation_prompt}],
                 temperature=0.1,
-                max_tokens=256,
+                max_tokens=2048,  # Increased to allow for full REASONING + SCORE and avoid the bug with empty responses
             )
 
             eval_text = eval_response.choices[0].message.content
             if eval_text is None:
                 eval_text = ''
-           
+
             return eval_text.strip()
 
         except Exception as e:
