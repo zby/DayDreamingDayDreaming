@@ -160,7 +160,7 @@ class TestExperimentRunnerHelpers:
         assert headers == expected_headers
         # Should not contain evaluation fields
         assert "automated_rating" not in headers
-        assert "confidence_score" not in headers
+        assert "raw_score" not in headers
         assert "evaluation_reasoning" not in headers
 
     # Legacy tests removed since we no longer support evaluation mode in experiment_runner

@@ -1,14 +1,18 @@
+RESPONSE TO EVALUATE:
+{{ response }}
+
+--- EVALUATION INSTRUCTIONS ---
+
 Does this response demonstrate novel creative thinking patterns that could lead to breakthrough innovations?
 
 Evaluate the response for:
-- Originality and uniqueness of ideas
-- Cross-domain conceptual connections
-- Emergent properties from concept combinations
-- Potential for real-world creative applications
-- Divergent thinking patterns
+- **Originality and uniqueness**: Does it present genuinely new ideas rather than common knowledge?
+- **Cross-domain synthesis**: Does it connect concepts from different fields in meaningful ways?
+- **Emergent insights**: Do the combined concepts produce novel understanding beyond their individual parts?
+- **Creative potential**: Could these ideas realistically lead to breakthrough applications?
+- **Divergent thinking**: Does it explore multiple possibilities and unconventional approaches?
+- **Conceptual depth**: Does it go beyond surface-level connections to deeper structural relationships?
 
-Response: {{ response }}
-
-Answer: YES/NO
-Confidence: 0.0-1.0
-Reasoning: Brief explanation of creative merit
+Provide your evaluation in this format:
+REASONING: Detailed explanation of what makes this response creative or not, citing specific examples from the text
+SCORE: 0-10 (0 = no creative merit, 10 = exceptional breakthrough-level creativity)

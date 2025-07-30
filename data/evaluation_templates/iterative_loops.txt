@@ -1,14 +1,20 @@
+RESPONSE TO EVALUATE:
+{{ response }}
+
+--- EVALUATION INSTRUCTIONS ---
+
 Does this response contain ideas similar to iterative creative loops that automatically generate, evaluate, and refine concepts?
 
-Look for elements like:
-- Iterative refinement loops and cyclical processes
-- Exploration-exploitation balance concepts  
-- Meta-cognitive awareness and self-monitoring systems
-- Combinatorial creativity and automated ideation
-- Quality filtering and selection mechanisms
+Specifically, look for these key elements:
+- **Iterative refinement loops**: Cyclical processes that improve ideas through repeated cycles
+- **Exploration-exploitation balance**: Systems that balance trying new approaches vs refining known good ones
+- **Meta-cognitive awareness**: Self-monitoring and reflection on thinking processes
+- **Combinatorial creativity**: Systematic combination of existing elements to create novelty
+- **Quality filtering mechanisms**: Methods for evaluating and selecting the best ideas
+- **Automated ideation**: Systems that can generate ideas without constant human intervention
+- **Feedback loops**: Mechanisms where output influences future input
+- **Progressive enhancement**: Building complexity through iterative development
 
-Response: {{ response }}
-
-Answer: YES/NO
-Confidence: 0.0-1.0
-Reasoning: Brief explanation
+Provide your evaluation in this format:
+REASONING: Detailed explanation identifying which specific loop elements are present or absent, with quotes from the text
+SCORE: 0-10 (0 = no iterative loop concepts, 10 = comprehensive iterative creative loop system)

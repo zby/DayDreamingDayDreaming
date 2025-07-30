@@ -81,9 +81,10 @@ ConceptDB → PromptFactory → ModelClient (Generation)
 - Loads existing experiment results and response files
 - Applies evaluation templates via `EvaluationTemplateLoader`
 - Supports different evaluator models and evaluation strategies
-- Saves evaluation results separately from generation results
+- Saves evaluation prompts and LLM responses to separate files (like generator)
+- Saves structured evaluation results to separate CSV
 
-**Key Design**: Enables independent evaluation experimentation on existing response data
+**Key Design**: Enables independent evaluation experimentation with full traceability through individual file storage
 
 ### EvaluationTemplateLoader (`evaluation_templates.py`)
 **Responsibility**: Evaluation template management
@@ -105,17 +106,22 @@ ConceptDB → PromptFactory → ModelClient (Generation)
 ### Evaluation Flow
 1. EvaluationRunner loads existing experiment data
 2. EvaluationTemplateLoader renders evaluation prompts
-3. ModelClient evaluates responses for Day-Dreaming concepts  
-4. Evaluation results saved to separate CSV
+3. Evaluation prompts saved to individual files (`eval_prompts/`)
+4. ModelClient evaluates responses for Day-Dreaming concepts  
+5. LLM evaluation responses saved to individual files (`eval_responses/`)
+6. Structured evaluation results saved to separate CSV
 
 ### Storage Architecture
 - **Concept data**: `data/concepts/day_dreaming_concepts.json` + `articles/*.txt`
 - **Templates**: `data/templates/*.txt` (generation) + `data/evaluation_templates/*.txt` (evaluation)
 - **Experiment results**: `experiment_YYYYMMDD_HHMMSS/` directories containing:
   - `config.json`: Experiment parameters
-  - `results.csv`: Main results (crucial fields: `experiment_id`, `concept_names`, `automated_rating`, `confidence_score`)
-  - `evaluation_results.csv`: Separate evaluation results (adds `evaluator_model`, `evaluation_template`)
-  - `responses/`: Individual LLM response files
+  - `results.csv`: Main results (crucial fields: `experiment_id`, `concept_names`, `automated_rating`, `raw_score`)
+  - `evaluation_results.csv`: Separate evaluation results (adds `evaluator_model`, `evaluation_template`, `eval_prompt_file`, `eval_response_file`)
+  - `responses/`: Individual LLM generation response files
+  - `prompts/`: Individual generation prompt files (from generator)
+  - `eval_prompts/`: Individual evaluation prompt files (from evaluator)
+  - `eval_responses/`: Individual LLM evaluation response files (from evaluator)
 
 ## Key Design Patterns
 

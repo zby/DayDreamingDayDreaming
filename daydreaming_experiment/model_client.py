@@ -38,22 +38,14 @@ class SimpleModelClient:
 
     def evaluate(
         self, prompt: str, response: str, model: str = "openai/gpt-4"
-    ) -> Tuple[bool, float, str, str]:
-        """LLM-based evaluation returning (rating, confidence, reasoning, full_response)."""
-        evaluation_prompt = f"""Does this response contain ideas similar to iterative creative loops that automatically generate, evaluate, and refine concepts?
-
-Look for elements like:
-- Iterative refinement loops and cyclical processes
-- Exploration-exploitation balance concepts  
-- Meta-cognitive awareness and self-monitoring systems
-- Combinatorial creativity and automated ideation
-- Quality filtering and selection mechanisms
-
-Response: {response}
-
-Answer: YES/NO
-Confidence: 0.0-1.0
-Reasoning: Brief explanation"""
+    ) -> Tuple[str, str, float]:
+        """LLM-based evaluation returning (reasoning, full_response, raw_score).
+        
+        Note: This method now expects evaluation templates that output REASONING and SCORE fields.
+        The prompt parameter should contain the full evaluation template with the response inserted.
+        Returns: (reasoning, full_response, raw_score)
+        """
+        evaluation_prompt = prompt
 
         try:
             eval_response = self.client.chat.completions.create(
@@ -63,27 +55,30 @@ Reasoning: Brief explanation"""
                 max_tokens=256,
             )
 
-            eval_text = eval_response.choices[0].message.content.strip()
+            eval_text = eval_response.choices[0].message.content
+            if eval_text is None:
+                eval_text = ''
+           
+            eval_text = eval_text.strip()
 
             # Parse structured response
             lines = eval_text.split("\n")
-            rating = False
-            confidence = 0.0
+            score = 0.0
             reasoning = ""
 
             for line in lines:
-                if line.startswith("Answer:"):
-                    rating = "YES" in line.upper()
-                elif line.startswith("Confidence:"):
-                    try:
-                        confidence = float(line.split(":", 1)[1].strip())
-                    except (ValueError, IndexError):
-                        confidence = 0.5
-                elif line.startswith("Reasoning:"):
+                if line.startswith("REASONING:"):
                     reasoning = line.split(":", 1)[1].strip()
+                elif line.startswith("SCORE:"):
+                    try:
+                        score_text = line.split(":", 1)[1].strip()
+                        # Extract just the number (handle "5 (explanation)" format)
+                        score = float(score_text.split()[0])
+                    except (ValueError, IndexError):
+                        score = 0.0
 
-            return rating, confidence, reasoning, eval_text
+            return reasoning, eval_text, score
 
         except Exception as e:
             time.sleep(1)
-            return False, 0.0, f"Evaluation failed: {str(e)}", ""
+            return f"Evaluation failed: {str(e)}", f"EVALUATION_ERROR: {str(e)}", 0.0

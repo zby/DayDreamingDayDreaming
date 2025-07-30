@@ -149,8 +149,8 @@ class TestEvaluationTemplatesIntegration:
             assert test_response in prompt
 
             # All prompts should have the expected format
-            assert "Answer: YES/NO" in prompt
-            assert "Confidence: 0.0-1.0" in prompt
+            assert "REASONING:" in prompt
+            assert "SCORE:" in prompt
 
 
 class TestPromptFactoryIntegration:

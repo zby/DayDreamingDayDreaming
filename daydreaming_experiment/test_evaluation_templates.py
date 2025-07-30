@@ -53,7 +53,7 @@ class TestEvaluationTemplateLoader:
         """Test loading a valid template."""
         with tempfile.TemporaryDirectory() as temp_dir:
             templates_dir = Path(temp_dir)
-            template_content = "Evaluate this response: {{ response }}\nAnswer: YES/NO"
+            template_content = "Evaluate this response: {{ response }}\nREASONING: \nSCORE: 0-10"
 
             template_file = templates_dir / "test_template.txt"
             template_file.write_text(template_content)
@@ -152,7 +152,8 @@ Long response evaluation: {{ response[:50] }}...
 Short response evaluation: {{ response }}
 {%- endif -%}
 
-Answer: YES/NO"""
+REASONING: 
+SCORE: 0-10"""
 
             template_file = templates_dir / "conditional.txt"
             template_file.write_text(template_content)

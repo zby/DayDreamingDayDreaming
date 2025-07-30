@@ -70,23 +70,21 @@ class TestSimpleModelClient:
         mock_response.choices = [Mock()]
         mock_response.choices[
             0
-        ].message.content = """Answer: YES
-Confidence: 0.85
-Reasoning: Contains iterative refinement loops"""
+        ].message.content = """REASONING: Contains iterative refinement loops
+SCORE: 8.5"""
 
         mock_client = Mock()
         mock_client.chat.completions.create.return_value = mock_response
         mock_openai.return_value = mock_client
 
         client = SimpleModelClient(api_key="test_key")
-        rating, confidence, reasoning, full_response = client.evaluate(
+        reasoning, full_response, raw_score = client.evaluate(
             "prompt", "response", "test-model"
         )
 
-        assert rating is True
-        assert confidence == 0.85
         assert reasoning == "Contains iterative refinement loops"
-        assert "Answer: YES" in full_response
+        assert "REASONING:" in full_response
+        assert raw_score == 8.5
 
     @patch("daydreaming_experiment.model_client.OpenAI")
     def test_evaluate_success_no(self, mock_openai):
@@ -95,23 +93,21 @@ Reasoning: Contains iterative refinement loops"""
         mock_response.choices = [Mock()]
         mock_response.choices[
             0
-        ].message.content = """Answer: NO
-Confidence: 0.9
-Reasoning: No iterative patterns found"""
+        ].message.content = """REASONING: No iterative patterns found
+SCORE: 2.0"""
 
         mock_client = Mock()
         mock_client.chat.completions.create.return_value = mock_response
         mock_openai.return_value = mock_client
 
         client = SimpleModelClient(api_key="test_key")
-        rating, confidence, reasoning, full_response = client.evaluate(
+        reasoning, full_response, raw_score = client.evaluate(
             "prompt", "response"
         )
 
-        assert rating is False
-        assert confidence == 0.9
         assert reasoning == "No iterative patterns found"
-        assert "Answer: NO" in full_response
+        assert "REASONING:" in full_response
+        assert raw_score == 2.0
 
     @patch("daydreaming_experiment.model_client.OpenAI")
     def test_evaluate_malformed_response(self, mock_openai):
@@ -127,14 +123,13 @@ Reasoning: No iterative patterns found"""
         mock_openai.return_value = mock_client
 
         client = SimpleModelClient(api_key="test_key")
-        rating, confidence, reasoning, full_response = client.evaluate(
+        reasoning, full_response, raw_score = client.evaluate(
             "prompt", "response"
         )
 
-        assert rating is False
-        assert confidence == 0.0
         assert reasoning == ""
         assert full_response == "Malformed response without proper structure"
+        assert raw_score == 0.0
 
     @patch("daydreaming_experiment.model_client.OpenAI")
     def test_evaluate_invalid_confidence(self, mock_openai):
@@ -143,23 +138,21 @@ Reasoning: No iterative patterns found"""
         mock_response.choices = [Mock()]
         mock_response.choices[
             0
-        ].message.content = """Answer: YES
-Confidence: invalid
-Reasoning: Test reasoning"""
+        ].message.content = """REASONING: Test reasoning
+SCORE: invalid"""
 
         mock_client = Mock()
         mock_client.chat.completions.create.return_value = mock_response
         mock_openai.return_value = mock_client
 
         client = SimpleModelClient(api_key="test_key")
-        rating, confidence, reasoning, full_response = client.evaluate(
+        reasoning, full_response, raw_score = client.evaluate(
             "prompt", "response"
         )
 
-        assert rating is True
-        assert confidence == 0.5  # Default fallback
         assert reasoning == "Test reasoning"
-        assert "Confidence: invalid" in full_response
+        assert "SCORE: invalid" in full_response
+        assert raw_score == 0.0
 
     @patch("daydreaming_experiment.model_client.OpenAI")
     @patch("time.sleep")
@@ -170,15 +163,34 @@ Reasoning: Test reasoning"""
         mock_openai.return_value = mock_client
 
         client = SimpleModelClient(api_key="test_key")
-        rating, confidence, reasoning, full_response = client.evaluate(
+        reasoning, full_response, raw_score = client.evaluate(
             "prompt", "response"
         )
 
-        assert rating is False
-        assert confidence == 0.0
         assert reasoning == "Evaluation failed: API Error"
-        assert full_response == ""
+        assert raw_score == 0.0
+        assert full_response == "EVALUATION_ERROR: API Error"
         mock_sleep.assert_called_once_with(1)
+
+    @patch("daydreaming_experiment.model_client.OpenAI")
+    def test_evaluate_empty_response_handling(self, mock_openai):
+        """Test that evaluate handles empty API responses gracefully."""
+        mock_completion = Mock()
+        mock_completion.choices = [Mock()]
+        mock_completion.choices[0].message.content = None  # Simulate empty response
+
+        mock_client = Mock()
+        mock_client.chat.completions.create.return_value = mock_completion
+        mock_openai.return_value = mock_client
+
+        client = SimpleModelClient(api_key="test_key")
+        reasoning, full_response, raw_score = client.evaluate(
+            "prompt", "response"
+        )
+
+        assert reasoning == ""
+        assert full_response == ""
+        assert raw_score == 0.0
 
     @patch("daydreaming_experiment.model_client.OpenAI")
     def test_evaluate_prompt_structure(self, mock_openai):
@@ -186,7 +198,7 @@ Reasoning: Test reasoning"""
         mock_response = Mock()
         mock_response.choices = [Mock()]
         mock_response.choices[0].message.content = (
-            "Answer: NO\nConfidence: 0.5\nReasoning: Test"
+            "REASONING: Test\nSCORE: 3.0"
         )
 
         mock_client = Mock()
@@ -194,14 +206,12 @@ Reasoning: Test reasoning"""
         mock_openai.return_value = mock_client
 
         client = SimpleModelClient(api_key="test_key")
-        client.evaluate("test prompt", "test response")
+        test_prompt = "RESPONSE TO EVALUATE:\ntest response\n\nREASONING:\nSCORE:"
+        client.evaluate(test_prompt, "test response")
 
-        # Check that the evaluation prompt was constructed correctly
+        # Check that the evaluation prompt was passed through correctly
         call_args = mock_client.chat.completions.create.call_args
         evaluation_prompt = call_args[1]["messages"][0]["content"]
 
-        assert "test response" in evaluation_prompt
-        assert "iterative creative loops" in evaluation_prompt
-        assert "Answer: YES/NO" in evaluation_prompt
-        assert "Confidence: 0.0-1.0" in evaluation_prompt
-        assert "Reasoning:" in evaluation_prompt
+        # The prompt parameter should be used directly as the evaluation prompt
+        assert evaluation_prompt == test_prompt

@@ -17,6 +17,11 @@ CONFIG_FILENAME = "config.json"
 RESULTS_FILENAME = "results.csv"
 EVALUATION_RESULTS_FILENAME = "evaluation_results.csv"
 RESPONSES_DIR_NAME = "responses"
+EVAL_PROMPTS_DIR_NAME = "eval_prompts"
+EVAL_RESPONSES_DIR_NAME = "eval_responses"
+EVAL_PROMPT_FILENAME_TEMPLATE = "eval_prompt_{:03d}.txt"
+EVAL_RESPONSE_FILENAME_TEMPLATE = "eval_response_{:03d}.txt"
+EVALUATION_ERRORS_LOG = "evaluation_errors.log"
 DEFAULT_EVALUATION_TEMPLATES_DIR = "data/evaluation_templates"
 
 # Default settings
@@ -63,6 +68,55 @@ def load_response_content(experiment_dir: Path, response_file: str) -> str:
         return f.read().strip()
 
 
+def save_evaluation_prompt(experiment_dir: Path, attempt_id: int, prompt: str) -> str:
+    """Save evaluation prompt to file and return filename."""
+    eval_prompts_dir = experiment_dir / EVAL_PROMPTS_DIR_NAME
+    eval_prompts_dir.mkdir(exist_ok=True)
+    filename = EVAL_PROMPT_FILENAME_TEMPLATE.format(attempt_id)
+    filepath = eval_prompts_dir / filename
+    with open(filepath, "w", encoding="utf-8") as f:
+        f.write(prompt)
+    return filename
+
+
+def save_evaluation_response(experiment_dir: Path, attempt_id: int, response: str) -> str:
+    """Save evaluation response to file and return filename."""
+    eval_responses_dir = experiment_dir / EVAL_RESPONSES_DIR_NAME
+    eval_responses_dir.mkdir(exist_ok=True)
+    filename = EVAL_RESPONSE_FILENAME_TEMPLATE.format(attempt_id)
+    filepath = eval_responses_dir / filename
+    with open(filepath, "w", encoding="utf-8") as f:
+        f.write(response)
+    return filename
+
+
+def log_evaluation_error(experiment_dir: Path, attempt_id: int, error_type: str, 
+                        error_message: str, evaluation_prompt: str, response_content: str):
+    """Log detailed evaluation error information to centralized log file."""
+    log_path = experiment_dir / EVALUATION_ERRORS_LOG
+    timestamp = datetime.now().isoformat()
+    
+    log_entry = f"""
+================================================================================
+EVALUATION ERROR - Attempt {attempt_id:03d} - {timestamp}
+================================================================================
+Error Type: {error_type}
+Error Message: {error_message}
+
+Evaluation Prompt Used:
+{evaluation_prompt}
+
+Response Being Evaluated:
+{response_content}
+
+================================================================================
+
+"""
+    
+    with open(log_path, "a", encoding="utf-8") as f:
+        f.write(log_entry)
+
+
 def create_evaluation_results_csv(experiment_dir: Path) -> Path:
     """Create evaluation results CSV file."""
     eval_results_path = experiment_dir / EVALUATION_RESULTS_FILENAME
@@ -75,8 +129,11 @@ def create_evaluation_results_csv(experiment_dir: Path) -> Path:
         "level",
         "template_id",
         "response_file",
+        "eval_prompt_file",
+        "eval_response_file",
+        "evaluation_status",
         "automated_rating",
-        "confidence_score",
+        "raw_score",
         "evaluation_reasoning",
         "full_evaluation_response",
         "evaluation_timestamp",
@@ -106,8 +163,11 @@ def save_evaluation_result(results_path: Path, result_data: Dict):
                 result_data["level"],
                 result_data["template_id"],
                 result_data["response_file"],
+                result_data["eval_prompt_file"],
+                result_data["eval_response_file"],
+                result_data["evaluation_status"],
                 result_data["automated_rating"],
-                result_data["confidence_score"],
+                result_data["raw_score"],
                 result_data["evaluation_reasoning"],
                 result_data["full_evaluation_response"],
                 result_data["evaluation_timestamp"],
@@ -203,9 +263,54 @@ def evaluate_experiment(
                     evaluation_template, response_content
                 )
 
+                # Save evaluation prompt to file
+                eval_prompt_file = save_evaluation_prompt(
+                    experiment_directory, int(gen_result["attempt_id"]), evaluation_prompt
+                )
+
                 # Evaluate response
-                rating, confidence, reasoning, full_response = model_client.evaluate(
+                reasoning, full_response, raw_score = model_client.evaluate(
                     evaluation_prompt, response_content, evaluator_model
+                )
+                
+                # Compute rating from raw score (>=5.0 is success)
+                rating = raw_score >= 5.0
+
+                # Determine evaluation status and handle errors
+                if full_response.startswith("EVALUATION_ERROR:"):
+                    evaluation_status = "api_error"
+                    # Log detailed error info
+                    log_evaluation_error(
+                        experiment_directory, int(gen_result["attempt_id"]),
+                        "API_ERROR", reasoning, evaluation_prompt, response_content
+                    )
+                    # Save simple error marker to file
+                    response_to_save = "EVALUATION_FAILED"
+                elif full_response.startswith("EMPTY_API_RESPONSE"):
+                    evaluation_status = "empty_response"
+                    # Log detailed error info
+                    log_evaluation_error(
+                        experiment_directory, int(gen_result["attempt_id"]),
+                        "EMPTY_API_RESPONSE", reasoning, evaluation_prompt, response_content
+                    )
+                    # Save simple error marker to file
+                    response_to_save = "EVALUATION_FAILED"
+                elif not full_response:
+                    evaluation_status = "parsing_error"
+                    # Log detailed error info
+                    log_evaluation_error(
+                        experiment_directory, int(gen_result["attempt_id"]),
+                        "PARSING_ERROR", reasoning, evaluation_prompt, response_content
+                    )
+                    # Save simple error marker to file
+                    response_to_save = "EVALUATION_FAILED"
+                else:
+                    evaluation_status = "success"
+                    # Save actual LLM response
+                    response_to_save = full_response
+                    
+                eval_response_file = save_evaluation_response(
+                    experiment_directory, int(gen_result["attempt_id"]), response_to_save
                 )
 
                 evaluation_timestamp = datetime.now().isoformat()
@@ -219,8 +324,11 @@ def evaluate_experiment(
                     "level": gen_result["level"],
                     "template_id": gen_result["template_id"],
                     "response_file": gen_result["response_file"],
+                    "eval_prompt_file": eval_prompt_file,
+                    "eval_response_file": eval_response_file,
+                    "evaluation_status": evaluation_status,
                     "automated_rating": int(rating),
-                    "confidence_score": confidence,
+                    "raw_score": raw_score,
                     "evaluation_reasoning": reasoning,
                     "full_evaluation_response": full_response,
                     "evaluation_timestamp": evaluation_timestamp,
@@ -235,7 +343,7 @@ def evaluate_experiment(
                 if rating:
                     successful_evaluations += 1
                     click.echo(
-                        f"\n✓ SUCCESS (attempt {gen_result['attempt_id']}): {confidence:.2f} confidence"
+                        f"\n✓ SUCCESS (attempt {gen_result['attempt_id']}): score {raw_score:.1f}/10"
                     )
 
             except Exception as e:
@@ -243,6 +351,23 @@ def evaluate_experiment(
                 click.echo(
                     f"\nError evaluating attempt {gen_result['attempt_id']}: {e}"
                 )
+
+                # Log the exception error
+                try:
+                    # Try to load response content for logging
+                    response_content = load_response_content(
+                        experiment_directory, gen_result["response_file"]
+                    )
+                    log_evaluation_error(
+                        experiment_directory, int(gen_result["attempt_id"]),
+                        "EXCEPTION", str(e), "N/A", response_content
+                    )
+                except:
+                    # If we can't even load the response, log with minimal info
+                    log_evaluation_error(
+                        experiment_directory, int(gen_result["attempt_id"]),
+                        "EXCEPTION", str(e), "N/A", "Could not load response file"
+                    )
 
                 # Save error result
                 eval_result = {
@@ -253,8 +378,11 @@ def evaluate_experiment(
                     "level": gen_result["level"],
                     "template_id": gen_result["template_id"],
                     "response_file": gen_result["response_file"],
+                    "eval_prompt_file": "",
+                    "eval_response_file": "",
+                    "evaluation_status": "exception",
                     "automated_rating": 0,
-                    "confidence_score": 0.0,
+                    "raw_score": 0.0,
                     "evaluation_reasoning": f"Evaluation error: {str(e)}",
                     "full_evaluation_response": "",
                     "evaluation_timestamp": datetime.now().isoformat(),

@@ -10,7 +10,7 @@ from daydreaming_experiment.results_analysis import (
     load_experiment_results,
     analyze_success_rates,
     analyze_concept_patterns,
-    analyze_confidence_patterns,
+    analyze_raw_scores,
 )
 
 
@@ -152,36 +152,37 @@ class TestResultsAnalysisHelpers:
         assert patterns["most_common_concepts"] == []
         assert patterns["successful_combinations"] == []
 
-    def test_analyze_confidence_patterns(self):
-        """Test confidence pattern analysis."""
+    def test_analyze_raw_scores(self):
+        """Test raw score pattern analysis."""
         data = {
             "automated_rating": [1, 1, 1, 0],
-            "confidence_score": [0.9, 0.7, 0.85, 0.3],
+            "raw_score": [9.0, 7.0, 8.5, 3.0],
         }
         df = pd.DataFrame(data)
 
-        confidence_analysis = analyze_confidence_patterns(df, has_evaluation=True)
+        score_analysis = analyze_raw_scores(df, has_evaluation=True)
 
-        # Only successful results: [0.9, 0.7, 0.85]
-        assert confidence_analysis["mean_confidence"] == pytest.approx(0.817, rel=1e-3)
-        assert confidence_analysis["median_confidence"] == 0.85
-        assert confidence_analysis["min_confidence"] == 0.7
-        assert confidence_analysis["max_confidence"] == 0.9
+        # All results: [9.0, 7.0, 8.5, 3.0]
+        assert score_analysis["mean_score"] == pytest.approx(6.875, rel=1e-3)
+        assert score_analysis["median_score"] == 7.75  # (7.0 + 8.5) / 2
+        assert score_analysis["min_score"] == 3.0
+        assert score_analysis["max_score"] == 9.0
+        assert score_analysis["has_raw_scores"] is True
 
-        # High confidence (>0.8): 2 out of 3 successful
-        assert confidence_analysis["high_confidence_count"] == 2
-        assert confidence_analysis["high_confidence_rate"] == pytest.approx(
-            0.667, rel=1e-3
-        )
+        # Score distribution
+        assert score_analysis["excellent_scores_8_10"] == 2  # 9.0, 8.5
+        assert score_analysis["good_scores_6_8"] == 1  # 7.0
+        assert score_analysis["poor_scores_0_4"] == 1  # 3.0
 
-    def test_analyze_confidence_patterns_no_success(self):
-        """Test confidence analysis when no results are successful."""
-        data = {"automated_rating": [0, 0, 0], "confidence_score": [0.3, 0.2, 0.1]}
+    def test_analyze_raw_scores_no_success(self):
+        """Test raw score analysis when no results are successful."""
+        data = {"automated_rating": [0, 0, 0], "raw_score": [3.0, 2.0, 1.0]}
         df = pd.DataFrame(data)
 
-        confidence_analysis = analyze_confidence_patterns(df, has_evaluation=True)
+        score_analysis = analyze_raw_scores(df, has_evaluation=True)
 
-        assert confidence_analysis["no_successful_results"] is True
+        assert score_analysis["has_raw_scores"] is True
+        assert score_analysis["mean_score"] == 2.0
 
 
 class TestGenerationOnlyExperiments:
@@ -237,7 +238,7 @@ class TestGenerationOnlyExperiments:
             with open(eval_results_path, "w", newline="") as f:
                 writer = csv.writer(f)
                 writer.writerow(
-                    ["experiment_id", "automated_rating", "confidence_score"]
+                    ["experiment_id", "automated_rating", "raw_score"]
                 )
                 writer.writerow(["test_exp", 1, 0.85])
 
@@ -288,16 +289,16 @@ class TestGenerationOnlyExperiments:
         assert "note" in patterns
         assert "no evaluation filtering" in patterns["note"]
 
-    def test_analyze_confidence_patterns_generation_only(self):
-        """Test confidence analysis for generation-only experiments."""
+    def test_analyze_raw_scores_generation_only(self):
+        """Test raw score analysis for generation-only experiments."""
         data = {"experiment_id": ["exp1", "exp1"]}
         df = pd.DataFrame(data)
 
-        confidence_analysis = analyze_confidence_patterns(df, has_evaluation=False)
+        score_analysis = analyze_raw_scores(df, has_evaluation=False)
 
-        assert confidence_analysis["has_evaluation"] == False
-        assert "note" in confidence_analysis
-        assert "generation-only experiment" in confidence_analysis["note"]
+        assert score_analysis["has_raw_scores"] is False
+        assert "note" in score_analysis
+        assert "No raw score data available" in score_analysis["note"]
 
 
 class TestResultsAnalysisCLI:
@@ -318,5 +319,5 @@ class TestResultsAnalysisCLI:
 
         assert result.exit_code == 0
         assert "Analyze results from an experiment directory" in result.output
-        assert "--min-confidence" in result.output
+        assert "--min-score" in result.output
         assert "--export-csv" in result.output

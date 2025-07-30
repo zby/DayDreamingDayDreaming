@@ -152,42 +152,57 @@ def analyze_concept_patterns(results_df: pd.DataFrame, has_evaluation: bool) -> 
     }
 
 
-def analyze_confidence_patterns(results_df: pd.DataFrame, has_evaluation: bool) -> Dict:
-    """Analyze confidence score patterns."""
-    if not has_evaluation:
+# Confidence analysis removed - raw scores are now the primary metric
+
+
+def analyze_raw_scores(results_df: pd.DataFrame, has_evaluation: bool) -> Dict:
+    """Analyze raw numerical score patterns (0-10 scale)."""
+    if not has_evaluation or "raw_score" not in results_df.columns:
         return {
-            "note": "No confidence data available - this is a generation-only experiment",
-            "has_evaluation": False,
+            "note": "No raw score data available",
+            "has_raw_scores": False,
         }
 
-    successful_results = results_df[results_df["automated_rating"] == 1]
-
-    if len(successful_results) == 0:
-        return {"no_successful_results": True, "has_evaluation": True}
-
-    confidence_stats = {
-        "mean_confidence": successful_results["confidence_score"].mean(),
-        "median_confidence": successful_results["confidence_score"].median(),
-        "min_confidence": successful_results["confidence_score"].min(),
-        "max_confidence": successful_results["confidence_score"].max(),
-        "std_confidence": successful_results["confidence_score"].std(),
+    # Overall score statistics
+    score_stats = {
+        "has_raw_scores": True,
+        "mean_score": results_df["raw_score"].mean(),
+        "median_score": results_df["raw_score"].median(),
+        "min_score": results_df["raw_score"].min(),
+        "max_score": results_df["raw_score"].max(),
+        "std_score": results_df["raw_score"].std(),
     }
 
-    # High confidence results (> 0.8)
-    high_confidence = successful_results[successful_results["confidence_score"] > 0.8]
-    confidence_stats["high_confidence_count"] = len(high_confidence)
-    confidence_stats["high_confidence_rate"] = len(high_confidence) / len(
-        successful_results
-    )
-
-    return confidence_stats
+    # Score distribution by ranges
+    score_ranges = {
+        "excellent_scores_8_10": len(results_df[results_df["raw_score"] >= 8.0]),
+        "good_scores_6_8": len(results_df[(results_df["raw_score"] >= 6.0) & (results_df["raw_score"] < 8.0)]),
+        "fair_scores_4_6": len(results_df[(results_df["raw_score"] >= 4.0) & (results_df["raw_score"] < 6.0)]),
+        "poor_scores_0_4": len(results_df[results_df["raw_score"] < 4.0]),
+    }
+    
+    # Calculate percentages
+    total_evaluations = len(results_df)
+    if total_evaluations > 0:
+        for key in score_ranges:
+            percentage_key = key.replace("scores", "rate")
+            score_stats[percentage_key] = score_ranges[key] / total_evaluations
+    
+    score_stats.update(score_ranges)
+    
+    # Success rate using raw scores (>=5.0 threshold)
+    successful_by_score = len(results_df[results_df["raw_score"] >= 5.0])
+    score_stats["success_rate_by_raw_score"] = successful_by_score / total_evaluations if total_evaluations > 0 else 0
+    score_stats["successful_attempts_by_raw_score"] = successful_by_score
+    
+    return score_stats
 
 
 def print_analysis_report(
     config: dict,
     analysis: Dict,
     concept_patterns: Dict,
-    confidence_patterns: Dict,
+    raw_score_patterns: Dict,
     has_evaluation: bool,
 ):
     """Print formatted analysis report."""
@@ -254,17 +269,25 @@ def print_analysis_report(
             print(f"  {concept}: {count} appearances")
         print()
 
-    if has_evaluation and not confidence_patterns.get("no_successful_results"):
-        print("CONFIDENCE ANALYSIS:")
-        print("-" * 25)
-        print(f"Mean Confidence: {confidence_patterns['mean_confidence']:.3f}")
-        print(f"Median Confidence: {confidence_patterns['median_confidence']:.3f}")
+    # Confidence analysis removed - raw scores provide better insights
+
+    if has_evaluation and raw_score_patterns.get("has_raw_scores"):
+        print("RAW SCORE ANALYSIS (0-10 scale):")
+        print("-" * 30)
+        print(f"Mean Score: {raw_score_patterns['mean_score']:.2f}")
+        print(f"Median Score: {raw_score_patterns['median_score']:.2f}")
         print(
-            f"Confidence Range: {confidence_patterns['min_confidence']:.3f} - {confidence_patterns['max_confidence']:.3f}"
+            f"Score Range: {raw_score_patterns['min_score']:.1f} - {raw_score_patterns['max_score']:.1f}"
         )
-        print(
-            f"High Confidence (>0.8): {confidence_patterns['high_confidence_count']} ({confidence_patterns['high_confidence_rate']:.2%})"
-        )
+        print(f"Standard Deviation: {raw_score_patterns['std_score']:.2f}")
+        print()
+        print("Score Distribution:")
+        print(f"  Excellent (8-10): {raw_score_patterns['excellent_scores_8_10']} ({raw_score_patterns['excellent_rate_8_10']:.1%})")
+        print(f"  Good (6-8): {raw_score_patterns['good_scores_6_8']} ({raw_score_patterns['good_rate_6_8']:.1%})")
+        print(f"  Fair (4-6): {raw_score_patterns['fair_scores_4_6']} ({raw_score_patterns['fair_rate_4_6']:.1%})")
+        print(f"  Poor (0-4): {raw_score_patterns['poor_scores_0_4']} ({raw_score_patterns['poor_rate_0_4']:.1%})")
+        print()
+        print(f"Success Rate (≥5.0): {raw_score_patterns['successful_attempts_by_raw_score']} attempts ({raw_score_patterns['success_rate_by_raw_score']:.1%})")
         print()
 
     if has_evaluation and concept_patterns.get("successful_combinations"):
@@ -283,13 +306,13 @@ def print_analysis_report(
 @click.command()
 @click.argument("experiment_dir", type=click.Path(exists=True))
 @click.option(
-    "--min-confidence",
+    "--min-score",
     type=float,
     default=0.0,
-    help="Minimum confidence threshold for analysis",
+    help="Minimum raw score threshold for analysis (0-10)",
 )
 @click.option("--export-csv", type=click.Path(), help="Export filtered results to CSV")
-def analyze_results(experiment_dir: str, min_confidence: float, export_csv: str):
+def analyze_results(experiment_dir: str, min_score: float, export_csv: str):
     """Analyze results from an experiment directory."""
 
     try:
@@ -298,17 +321,17 @@ def analyze_results(experiment_dir: str, min_confidence: float, export_csv: str)
         click.echo(f"Error loading experiment results: {e}")
         return
 
-    # Filter by confidence if specified (only for evaluated experiments)
-    if min_confidence > 0:
+    # Filter by raw score if specified (only for evaluated experiments)
+    if min_score > 0:
         if not has_evaluation:
             click.echo(
-                "Warning: Cannot filter by confidence - no evaluation data available."
+                "Warning: Cannot filter by score - no evaluation data available."
             )
-        elif "confidence_score" in results_df.columns:
+        elif "raw_score" in results_df.columns:
             original_count = len(results_df)
-            results_df = results_df[results_df["confidence_score"] >= min_confidence]
+            results_df = results_df[results_df["raw_score"] >= min_score]
             click.echo(
-                f"Filtered to {len(results_df)} results with confidence >= {min_confidence} (from {original_count})"
+                f"Filtered to {len(results_df)} results with raw score >= {min_score} (from {original_count})"
             )
         else:
             click.echo("Warning: Confidence scores not found in results.")
@@ -316,11 +339,11 @@ def analyze_results(experiment_dir: str, min_confidence: float, export_csv: str)
     # Run analyses
     analysis = analyze_success_rates(results_df, has_evaluation)
     concept_patterns = analyze_concept_patterns(results_df, has_evaluation)
-    confidence_patterns = analyze_confidence_patterns(results_df, has_evaluation)
+    raw_score_patterns = analyze_raw_scores(results_df, has_evaluation)
 
     # Print report
     print_analysis_report(
-        config, analysis, concept_patterns, confidence_patterns, has_evaluation
+        config, analysis, concept_patterns, raw_score_patterns, has_evaluation
     )
 
     # Export if requested

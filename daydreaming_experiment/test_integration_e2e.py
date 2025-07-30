@@ -83,10 +83,9 @@ class TestEndToEndIntegration:
             # Setup evaluation mocks
             mock_eval_client = Mock()
             mock_eval_client.evaluate.return_value = (
-                True,
-                0.92,
                 "Contains iterative patterns",
                 "Full evaluation response",
+                9.2,
             )
             mock_client_class.return_value = mock_eval_client
 
@@ -125,7 +124,7 @@ class TestEndToEndIntegration:
                 eval_rows = list(reader)
                 assert len(eval_rows) == 1
                 assert eval_rows[0]["automated_rating"] == "1"
-                assert eval_rows[0]["confidence_score"] == "0.92"
+                assert eval_rows[0]["raw_score"] == "9.2"
                 assert eval_rows[0]["evaluator_model"] == "eval-model"
                 assert eval_rows[0]["evaluation_template"] == "iterative_loops"
 
@@ -194,15 +193,15 @@ class TestEndToEndIntegration:
                     [
                         "experiment_id",
                         "automated_rating",
-                        "confidence_score",
+                        "raw_score",
                         "concept_names",
                         "concept_count",
                         "template_id",
                     ]
                 )
-                writer.writerow(["eval_test", 1, 0.85, "concept1|concept2", 2, 0])
-                writer.writerow(["eval_test", 0, 0.45, "concept3|concept4", 2, 1])
-                writer.writerow(["eval_test", 1, 0.92, "concept1|concept3", 2, 0])
+                writer.writerow(["eval_test", 1, 8.5, "concept1|concept2", 2, 0])
+                writer.writerow(["eval_test", 0, 4.5, "concept3|concept4", 2, 1])
+                writer.writerow(["eval_test", 1, 9.2, "concept1|concept3", 2, 0])
 
             # Test evaluated experiment analysis
             result = runner.invoke(analyze_results, [str(eval_exp_dir)])
@@ -211,16 +210,16 @@ class TestEndToEndIntegration:
             assert "Overall Success Rate: 66.67%" in result.output
             assert "Successful Attempts: 2" in result.output
             assert "MOST FREQUENT CONCEPTS IN SUCCESSFUL COMBINATIONS" in result.output
-            assert "CONFIDENCE ANALYSIS" in result.output
+            assert "RAW SCORE ANALYSIS" in result.output
             assert "SUCCESSFUL CONCEPT COMBINATIONS" in result.output
 
-            # Test confidence filtering
+            # Test score filtering
             result = runner.invoke(
-                analyze_results, [str(eval_exp_dir), "--min-confidence", "0.9"]
+                analyze_results, [str(eval_exp_dir), "--min-score", "9.0"]
             )
 
             assert result.exit_code == 0
-            assert "Filtered to 1 results with confidence >= 0.9" in result.output
+            assert "Filtered to 1 results with raw score >= 9.0" in result.output
 
     def test_error_handling_integration(self):
         """Test error handling across the workflow."""
@@ -398,7 +397,7 @@ class TestWorkflowValidation:
             old_style_headers = [
                 "experiment_id",
                 "automated_rating",
-                "confidence_score",
+                "raw_score",
                 "concept_names",
                 "concept_count",
                 "template_id",
