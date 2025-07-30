@@ -11,8 +11,7 @@ class TestParseLLMResponse:
     def test_standard_format(self):
         """Test parsing standard REASONING/SCORE format."""
         response = "REASONING: This shows great creativity\nSCORE: 8.5"
-        reasoning, score = parse_llm_response(response)
-        assert reasoning == "This shows great creativity"
+        score = parse_llm_response(response)
         assert score == 8.5
     
     def test_multiline_reasoning(self):
@@ -21,62 +20,54 @@ class TestParseLLMResponse:
 because it combines multiple concepts in novel ways.
 The ideas are well-structured and innovative.
 SCORE: 7.2"""
-        reasoning, score = parse_llm_response(response)
-        expected_reasoning = "This response demonstrates creativity\nbecause it combines multiple concepts in novel ways.\nThe ideas are well-structured and innovative."
-        assert reasoning == expected_reasoning
+        score = parse_llm_response(response)
         assert score == 7.2
     
     def test_case_variations(self):
         """Test different case variations."""
         test_cases = [
-            ("reasoning: Good analysis\nscore: 6.0", "Good analysis", 6.0),
-            ("Reasoning: Excellent work\nScore: 9.5", "Excellent work", 9.5),
-            ("REASONING: Basic response\nSCORE: 4.0", "Basic response", 4.0),
+            ("reasoning: Good analysis\nscore: 6.0", 6.0),
+            ("Reasoning: Excellent work\nScore: 9.5", 9.5),
+            ("REASONING: Basic response\nSCORE: 4.0", 4.0),
         ]
         
-        for response, expected_reasoning, expected_score in test_cases:
-            reasoning, score = parse_llm_response(response)
-            assert reasoning == expected_reasoning
+        for response, expected_score in test_cases:
+            score = parse_llm_response(response)
             assert score == expected_score
     
     def test_alternative_separators(self):
         """Test alternative separators like dashes."""
         response = "REASONING - Great creativity shown\nSCORE: 8.0"
-        reasoning, score = parse_llm_response(response)
-        assert reasoning == "Great creativity shown"
+        score = parse_llm_response(response)
         assert score == 8.0
     
     def test_score_with_explanation(self):
         """Test score followed by explanation in parentheses."""
         response = "REASONING: Shows innovation\nSCORE: 7.5 (above average creativity)"
-        reasoning, score = parse_llm_response(response)
-        assert reasoning == "Shows innovation"
+        score = parse_llm_response(response)
         assert score == 7.5
     
     def test_score_as_fraction(self):
         """Test score in fraction format like 8/10."""
         response = "REASONING: Good work\nSCORE: 8/10"
-        reasoning, score = parse_llm_response(response)
-        assert reasoning == "Good work"
+        score = parse_llm_response(response)
         assert score == 8.0  # 8/10 * 10 = 8.0
         
         # Test other fractions
         response2 = "REASONING: Excellent\nSCORE: 9/10"
-        reasoning2, score2 = parse_llm_response(response2)
+        score2 = parse_llm_response(response2)
         assert score2 == 9.0
     
     def test_integer_scores(self):
         """Test integer scores without decimals."""
         response = "REASONING: Basic response\nSCORE: 5"
-        reasoning, score = parse_llm_response(response)
-        assert reasoning == "Basic response"
+        score = parse_llm_response(response)
         assert score == 5.0
     
     def test_extra_whitespace(self):
         """Test handling of extra whitespace."""
         response = "  \n  REASONING:   Creative analysis   \n\n  SCORE:  6.8  \n  "
-        reasoning, score = parse_llm_response(response)
-        assert reasoning == "Creative analysis"
+        score = parse_llm_response(response)
         assert score == 6.8
     
     def test_boundary_scores(self):
@@ -89,7 +80,7 @@ SCORE: 7.2"""
         ]
         
         for response, expected_score in test_cases:
-            reasoning, score = parse_llm_response(response)
+            score = parse_llm_response(response)
             assert score == expected_score
     
     # Error cases - these should raise ValueError
@@ -102,13 +93,13 @@ SCORE: 7.2"""
         with pytest.raises(ValueError, match="Empty or whitespace-only response"):
             parse_llm_response("   \n  \t  ")
     
-    def test_missing_reasoning(self):
-        """Test missing REASONING field raises ValueError."""
-        with pytest.raises(ValueError, match="No REASONING field found"):
-            parse_llm_response("SCORE: 8.5")
+    def test_score_without_reasoning(self):
+        """Test that responses with only SCORE work fine."""
+        score = parse_llm_response("SCORE: 8.5")
+        assert score == 8.5
         
-        with pytest.raises(ValueError, match="No REASONING field found"):
-            parse_llm_response("Some random text\nSCORE: 8.5")
+        score = parse_llm_response("Some random text\nSCORE: 8.5")
+        assert score == 8.5
     
     def test_missing_score(self):
         """Test missing SCORE field raises ValueError."""
@@ -212,57 +203,61 @@ class TestSimpleModelClient:
     @patch("daydreaming_experiment.model_client.OpenAI")
     def test_evaluate_success_yes(self, mock_openai):
         """Test successful evaluation with YES response."""
+        response_content = """REASONING: Contains iterative refinement loops
+SCORE: 8.5"""
+        
         mock_response = Mock()
         mock_response.choices = [Mock()]
-        mock_response.choices[
-            0
-        ].message.content = """REASONING: Contains iterative refinement loops
-SCORE: 8.5"""
+        mock_response.choices[0].message.content = response_content
 
         mock_client = Mock()
         mock_client.chat.completions.create.return_value = mock_response
         mock_openai.return_value = mock_client
 
         client = SimpleModelClient(api_key="test_key")
-        reasoning, full_response, raw_score = client.evaluate(
+        full_response = client.evaluate(
             "prompt", "response", "test-model"
         )
 
-        assert reasoning == "Contains iterative refinement loops"
-        assert "REASONING:" in full_response
+        assert full_response == response_content.strip()
+        
+        # Test that the response can be parsed successfully
+        raw_score = parse_llm_response(full_response)
         assert raw_score == 8.5
 
     @patch("daydreaming_experiment.model_client.OpenAI")
     def test_evaluate_success_no(self, mock_openai):
         """Test successful evaluation with NO response."""
+        response_content = """REASONING: No iterative patterns found
+SCORE: 2.0"""
+        
         mock_response = Mock()
         mock_response.choices = [Mock()]
-        mock_response.choices[
-            0
-        ].message.content = """REASONING: No iterative patterns found
-SCORE: 2.0"""
+        mock_response.choices[0].message.content = response_content
 
         mock_client = Mock()
         mock_client.chat.completions.create.return_value = mock_response
         mock_openai.return_value = mock_client
 
         client = SimpleModelClient(api_key="test_key")
-        reasoning, full_response, raw_score = client.evaluate(
+        full_response = client.evaluate(
             "prompt", "response", "test-model"
         )
 
-        assert reasoning == "No iterative patterns found"
-        assert "REASONING:" in full_response
+        assert full_response == response_content.strip()
+        
+        # Test that the response can be parsed successfully
+        raw_score = parse_llm_response(full_response)
         assert raw_score == 2.0
 
     @patch("daydreaming_experiment.model_client.OpenAI")
     def test_evaluate_malformed_response(self, mock_openai):
-        """Test evaluation with malformed response raises ValueError."""
+        """Test evaluation with malformed response returns the raw response."""
+        malformed_content = "Malformed response without proper structure"
+        
         mock_response = Mock()
         mock_response.choices = [Mock()]
-        mock_response.choices[0].message.content = (
-            "Malformed response without proper structure"
-        )
+        mock_response.choices[0].message.content = malformed_content
 
         mock_client = Mock()
         mock_client.chat.completions.create.return_value = mock_response
@@ -270,18 +265,23 @@ SCORE: 2.0"""
 
         client = SimpleModelClient(api_key="test_key")
         
-        with pytest.raises(ValueError, match="No REASONING field found"):
-            client.evaluate("prompt", "response", "test-model")
+        # evaluate() should return the raw response without parsing
+        result = client.evaluate("prompt", "response", "test-model")
+        assert result == malformed_content
+        
+        # But parsing the result should raise an error
+        with pytest.raises(ValueError, match="No SCORE field found"):
+            parse_llm_response(result)
 
     @patch("daydreaming_experiment.model_client.OpenAI")
     def test_evaluate_invalid_score(self, mock_openai):
-        """Test evaluation with invalid score value raises ValueError."""
+        """Test evaluation with invalid score value returns raw response."""
+        invalid_content = """REASONING: Test reasoning
+SCORE: invalid"""
+        
         mock_response = Mock()
         mock_response.choices = [Mock()]
-        mock_response.choices[
-            0
-        ].message.content = """REASONING: Test reasoning
-SCORE: invalid"""
+        mock_response.choices[0].message.content = invalid_content
 
         mock_client = Mock()
         mock_client.chat.completions.create.return_value = mock_response
@@ -289,8 +289,13 @@ SCORE: invalid"""
 
         client = SimpleModelClient(api_key="test_key")
         
+        # evaluate() should return the raw response without parsing
+        result = client.evaluate("prompt", "response", "test-model")
+        assert result == invalid_content.strip()
+        
+        # But parsing the result should raise an error
         with pytest.raises(ValueError, match="No SCORE field found"):
-            client.evaluate("prompt", "response", "test-model")
+            parse_llm_response(result)
 
     @patch("daydreaming_experiment.model_client.OpenAI")
     @patch("time.sleep")
@@ -309,7 +314,7 @@ SCORE: invalid"""
 
     @patch("daydreaming_experiment.model_client.OpenAI")
     def test_evaluate_empty_response_handling(self, mock_openai):
-        """Test that evaluate handles empty API responses by raising ValueError."""
+        """Test that evaluate handles empty API responses gracefully."""
         mock_completion = Mock()
         mock_completion.choices = [Mock()]
         mock_completion.choices[0].message.content = None  # Simulate empty response
@@ -320,8 +325,13 @@ SCORE: invalid"""
 
         client = SimpleModelClient(api_key="test_key")
         
+        # evaluate() should return empty string for None content
+        result = client.evaluate("prompt", "response", "test-model")
+        assert result == ""
+        
+        # But parsing the empty result should raise an error
         with pytest.raises(ValueError, match="Empty or whitespace-only response"):
-            client.evaluate("prompt", "response", "test-model")
+            parse_llm_response(result)
 
     @patch("daydreaming_experiment.model_client.OpenAI")
     def test_evaluate_prompt_structure(self, mock_openai):

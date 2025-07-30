@@ -9,7 +9,7 @@ from typing import Dict, List, Tuple
 import click
 from dotenv import load_dotenv
 
-from daydreaming_experiment.model_client import SimpleModelClient
+from daydreaming_experiment.model_client import SimpleModelClient, parse_llm_response
 from daydreaming_experiment.evaluation_templates import EvaluationTemplateLoader
 
 # Constants
@@ -264,38 +264,43 @@ def evaluate_experiment(
 
                 # Evaluate response with proper error handling
                 try:
-                    reasoning, full_response, raw_score = model_client.evaluate(
+                    # Get raw evaluation response
+                    full_response = model_client.evaluate(
                         evaluation_prompt, response_content, evaluator_model
                     )
                     
-                    # Compute rating from raw score (>=5.0 is success)
-                    rating = raw_score >= 5.0
-                    evaluation_status = "success"
+                    # Always save the full response regardless of parsing success
                     response_to_save = full_response
-                    
-                except ValueError as parse_error:
-                    # Parsing error - LLM response could not be parsed
-                    evaluation_status = "parsing_error"
-                    reasoning = f"Parse error: {str(parse_error)}"
-                    full_response = f"PARSING_ERROR: {str(parse_error)}"
-                    raw_score = 0.0
-                    rating = False
-                    response_to_save = "EVALUATION_FAILED_PARSING"
-                    
-                    # Log detailed error info
-                    log_evaluation_error(
-                        experiment_directory, int(gen_result["attempt_id"]),
-                        "PARSING_ERROR", str(parse_error), evaluation_prompt, response_content
+                    eval_response_file = save_evaluation_response(
+                        experiment_directory, int(gen_result["attempt_id"]), response_to_save
                     )
+
+                    
+                    # Try to parse the response
+                    try:
+                        raw_score = parse_llm_response(full_response)
+                        # Compute rating from raw score (>=5.0 is success)
+                        rating = raw_score >= 5.0
+                        evaluation_status = "success"
+                        
+                    except ValueError as parse_error:
+                        # Parsing error - but we still have the full response saved
+                        evaluation_status = "parsing_error"
+                        raw_score = 0.0
+                        rating = False
+                        
+                        # Log detailed error info
+                        log_evaluation_error(
+                            experiment_directory, int(gen_result["attempt_id"]),
+                            "PARSING_ERROR", str(parse_error), evaluation_prompt, response_content
+                        )
                     
                 except Exception as api_error:
-                    # API error or other exception
+                    # API error or other exception - no response file created
                     evaluation_status = "api_error"
-                    reasoning = f"API error: {str(api_error)}"
-                    full_response = f"API_ERROR: {str(api_error)}"
                     raw_score = 0.0
                     rating = False
-                    response_to_save = "EVALUATION_FAILED_API"
+                    eval_response_file = ""  # No response file for API errors
                     
                     # Log detailed error info
                     log_evaluation_error(
@@ -303,10 +308,6 @@ def evaluate_experiment(
                         "API_ERROR", str(api_error), evaluation_prompt, response_content
                     )
                     
-                eval_response_file = save_evaluation_response(
-                    experiment_directory, int(gen_result["attempt_id"]), response_to_save
-                )
-
                 evaluation_timestamp = datetime.now().isoformat()
 
                 # Prepare evaluation result
@@ -372,10 +373,7 @@ def evaluate_experiment(
                     "eval_prompt_file": "",
                     "eval_response_file": "",
                     "evaluation_status": "exception",
-                    "automated_rating": 0,
                     "raw_score": 0.0,
-                    "evaluation_reasoning": f"Evaluation error: {str(e)}",
-                    "full_evaluation_response": "",
                     "evaluation_timestamp": datetime.now().isoformat(),
                     "evaluator_model": evaluator_model,
                     "evaluation_template": evaluation_template,

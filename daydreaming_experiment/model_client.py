@@ -1,18 +1,17 @@
 import os
 import re
 import time
-from typing import Tuple
 from openai import OpenAI
 
 
-def parse_llm_response(response_text: str) -> Tuple[str, float]:
-    """Parse LLM evaluation response to extract reasoning and score.
+def parse_llm_response(response_text: str) -> float:
+    """Parse LLM evaluation response to extract score.
     
     Args:
         response_text: Raw LLM response text
         
     Returns:
-        Tuple of (reasoning, score)
+        Score as float (0-10 range)
         
     Raises:
         ValueError: If response cannot be parsed or is invalid
@@ -22,24 +21,6 @@ def parse_llm_response(response_text: str) -> Tuple[str, float]:
     
     # Normalize the response text
     text = response_text.strip()
-    
-    # Find reasoning - look for various case patterns
-    reasoning_patterns = [
-        r'REASONING:\s*(.*?)(?=\n\s*SCORE:|$)',
-        r'Reasoning:\s*(.*?)(?=\n\s*SCORE:|$)', 
-        r'reasoning:\s*(.*?)(?=\n\s*SCORE:|$)',
-        r'REASONING\s*-\s*(.*?)(?=\n\s*SCORE:|$)',
-    ]
-    
-    reasoning = ""
-    for pattern in reasoning_patterns:
-        match = re.search(pattern, text, re.IGNORECASE | re.DOTALL)
-        if match:
-            reasoning = match.group(1).strip()
-            break
-    
-    if not reasoning:
-        raise ValueError("No REASONING field found in response")
     
     # Find score - look for various formats
     score_patterns = [
@@ -70,7 +51,7 @@ def parse_llm_response(response_text: str) -> Tuple[str, float]:
     if score < 0 or score > 10:
         raise ValueError(f"Score {score} is outside valid range 0-10")
     
-    return reasoning, score
+    return score
 
 
 class SimpleModelClient:
@@ -107,15 +88,15 @@ class SimpleModelClient:
 
     def evaluate(
         self, prompt: str, response: str, model: str
-    ) -> Tuple[str, str, float]:
-        """LLM-based evaluation returning (reasoning, full_response, raw_score).
+    ) -> str:
+        """LLM-based evaluation returning the raw response text.
         
-        Note: This method now expects evaluation templates that output REASONING and SCORE fields.
+        Note: This method expects evaluation templates that output REASONING and SCORE fields,
+        but parsing is now handled by the caller for better error handling.
         The prompt parameter should contain the full evaluation template with the response inserted.
-        Returns: (reasoning, full_response, raw_score)
+        Returns: raw_response_text
         
         Raises:
-            ValueError: If LLM response cannot be parsed
             Exception: For API errors and other failures
         """
         evaluation_prompt = prompt
@@ -132,12 +113,7 @@ class SimpleModelClient:
             if eval_text is None:
                 eval_text = ''
            
-            eval_text = eval_text.strip()
-
-            # Use the robust parser to extract reasoning and score
-            reasoning, score = parse_llm_response(eval_text)
-            
-            return reasoning, eval_text, score
+            return eval_text.strip()
 
         except Exception as e:
             time.sleep(1)

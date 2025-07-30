@@ -82,11 +82,7 @@ class TestEndToEndIntegration:
 
             # Setup evaluation mocks
             mock_eval_client = Mock()
-            mock_eval_client.evaluate.return_value = (
-                "Contains iterative patterns",
-                "Full evaluation response",
-                9.2,
-            )
+            mock_eval_client.evaluate.return_value = "REASONING: Contains iterative patterns\nSCORE: 9.2"
             mock_client_class.return_value = mock_eval_client
 
             mock_template_loader = Mock()
