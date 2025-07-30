@@ -268,7 +268,7 @@ class TestEvaluationRunnerHelpers:
             
             log_evaluation_error(
                 exp_dir, 1, "API_ERROR", "Connection failed", 
-                "Test evaluation prompt", "Test response content"
+                "eval_prompt_001.txt", "response_001.txt"
             )
             
             log_path = exp_dir / "evaluation_errors.log"
@@ -280,10 +280,8 @@ class TestEvaluationRunnerHelpers:
             assert "EVALUATION ERROR - Attempt 001" in log_content
             assert "Error Type: API_ERROR" in log_content
             assert "Error Message: Connection failed" in log_content
-            assert "Evaluation Prompt Used:" in log_content
-            assert "Test evaluation prompt" in log_content
-            assert "Response Being Evaluated:" in log_content
-            assert "Test response content" in log_content
+            assert "Evaluation Prompt File: eval_prompt_001.txt" in log_content
+            assert "Response File: response_001.txt" in log_content
 
     def test_log_evaluation_error_multiple_entries(self):
         """Test logging multiple evaluation errors to same log file."""
@@ -293,13 +291,13 @@ class TestEvaluationRunnerHelpers:
             # Log first error
             log_evaluation_error(
                 exp_dir, 1, "API_ERROR", "First error", 
-                "First prompt", "First response"
+                "eval_prompt_001.txt", "response_001.txt"
             )
             
             # Log second error
             log_evaluation_error(
                 exp_dir, 2, "PARSING_ERROR", "Second error", 
-                "Second prompt", "Second response"
+                "eval_prompt_002.txt", "response_002.txt"
             )
             
             log_path = exp_dir / "evaluation_errors.log"
@@ -315,6 +313,10 @@ class TestEvaluationRunnerHelpers:
             assert "Error Type: PARSING_ERROR" in log_content
             assert "First error" in log_content
             assert "Second error" in log_content
+            assert "Evaluation Prompt File: eval_prompt_001.txt" in log_content
+            assert "Evaluation Prompt File: eval_prompt_002.txt" in log_content
+            assert "Response File: response_001.txt" in log_content
+            assert "Response File: response_002.txt" in log_content
 
 
 class TestEvaluationRunnerCLI:

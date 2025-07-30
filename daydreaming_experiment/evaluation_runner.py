@@ -91,7 +91,7 @@ def save_evaluation_response(experiment_dir: Path, attempt_id: int, response: st
 
 
 def log_evaluation_error(experiment_dir: Path, attempt_id: int, error_type: str, 
-                        error_message: str, evaluation_prompt: str, response_content: str):
+                        error_message: str, eval_prompt_file: str, response_file: str):
     """Log detailed evaluation error information to centralized log file."""
     log_path = experiment_dir / EVALUATION_ERRORS_LOG
     timestamp = datetime.now().isoformat()
@@ -103,11 +103,8 @@ EVALUATION ERROR - Attempt {attempt_id:03d} - {timestamp}
 Error Type: {error_type}
 Error Message: {error_message}
 
-Evaluation Prompt Used:
-{evaluation_prompt}
-
-Response Being Evaluated:
-{response_content}
+Evaluation Prompt File: {eval_prompt_file}
+Response File: {response_file}
 
 ================================================================================
 
@@ -292,7 +289,7 @@ def evaluate_experiment(
                         # Log detailed error info
                         log_evaluation_error(
                             experiment_directory, int(gen_result["attempt_id"]),
-                            "PARSING_ERROR", str(parse_error), evaluation_prompt, response_content
+                            "PARSING_ERROR", str(parse_error), eval_prompt_file, gen_result["response_file"]
                         )
                     
                 except Exception as api_error:
@@ -305,7 +302,7 @@ def evaluate_experiment(
                     # Log detailed error info
                     log_evaluation_error(
                         experiment_directory, int(gen_result["attempt_id"]),
-                        "API_ERROR", str(api_error), evaluation_prompt, response_content
+                        "API_ERROR", str(api_error), eval_prompt_file, gen_result["response_file"]
                     )
                     
                 evaluation_timestamp = datetime.now().isoformat()
@@ -345,21 +342,11 @@ def evaluate_experiment(
                 )
 
                 # Log the exception error
-                try:
-                    # Try to load response content for logging
-                    response_content = load_response_content(
-                        experiment_directory, gen_result["response_file"]
-                    )
-                    log_evaluation_error(
-                        experiment_directory, int(gen_result["attempt_id"]),
-                        "EXCEPTION", str(e), "N/A", response_content
-                    )
-                except:
-                    # If we can't even load the response, log with minimal info
-                    log_evaluation_error(
-                        experiment_directory, int(gen_result["attempt_id"]),
-                        "EXCEPTION", str(e), "N/A", "Could not load response file"
-                    )
+                # Log the exception error with available file info
+                log_evaluation_error(
+                    experiment_directory, int(gen_result["attempt_id"]),
+                    "EXCEPTION", str(e), "N/A", gen_result["response_file"]
+                )
 
                 # Save error result
                 eval_result = {
