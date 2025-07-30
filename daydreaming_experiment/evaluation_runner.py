@@ -191,6 +191,28 @@ def save_evaluation_result(results_path: Path, result_data: Dict):
         )
 
 
+def _filter_generation_results_by_attempt(generation_results: List[Dict], attempt_id: int) -> Dict:
+    """Find specific generation result by attempt ID.
+    
+    Args:
+        generation_results: List of generation result dictionaries
+        attempt_id: The attempt ID to find
+        
+    Returns:
+        The matching generation result dictionary
+        
+    Raises:
+        ValueError: If attempt ID is not found
+    """
+    for result in generation_results:
+        if int(result["attempt_id"]) == attempt_id:
+            return result
+    
+    # If not found, show available attempt IDs for better error message
+    available_ids = sorted([int(r["attempt_id"]) for r in generation_results])
+    raise ValueError(f"Attempt {attempt_id} not found. Available attempts: {available_ids}")
+
+
 @click.command()
 @click.argument("experiment_directory", type=click.Path(exists=True, path_type=Path))
 @click.option(
@@ -208,8 +230,14 @@ def save_evaluation_result(results_path: Path, result_data: Dict):
     is_flag=True,
     help="Only reparse existing evaluation responses, skip model calls",
 )
+@click.option(
+    "--reevaluate-response",
+    type=int,
+    help="Reevaluate specific response by attempt ID (e.g., 77)",
+)
 def evaluate_experiment(
-    experiment_directory: Path, evaluator_model: str, evaluation_template: str, reparse_responses: bool
+    experiment_directory: Path, evaluator_model: str, evaluation_template: str, 
+    reparse_responses: bool, reevaluate_response: int = None
 ):
     """Evaluate responses from a generation-only experiment."""
 
@@ -232,10 +260,46 @@ def evaluate_experiment(
         click.echo("Warning: This experiment already includes evaluation results.")
         click.echo("Continuing will create separate evaluation results.")
 
-    # Create evaluation results CSV
-    eval_results_path = create_evaluation_results_csv(experiment_directory)
+    # Handle evaluation results CSV
+    eval_results_path = experiment_directory / EVALUATION_RESULTS_FILENAME
+    
+    if reevaluate_response:
+        # For reevaluation, use existing CSV or create if doesn't exist
+        if not eval_results_path.exists():
+            create_evaluation_results_csv(experiment_directory)
+    else:
+        # For full evaluation and reparse, always create new CSV
+        eval_results_path = create_evaluation_results_csv(experiment_directory)
 
-    if reparse_responses:
+    if reevaluate_response:
+        # Reevaluate specific response
+        click.echo(f"Reevaluating response {reevaluate_response}...")
+        click.echo(f"Results will be saved to: {eval_results_path}")
+        
+        # Initialize model client and template loader for reevaluation
+        try:
+            model_client = SimpleModelClient()
+            template_loader = EvaluationTemplateLoader()
+
+            # Resolve "default" to actual default template
+            if evaluation_template == DEFAULT_EVALUATION_TEMPLATE:
+                evaluation_template = template_loader.get_default_template()
+
+            # Validate template exists
+            available_templates = template_loader.list_templates()
+            if evaluation_template not in available_templates:
+                click.echo(f"Error: Template '{evaluation_template}' not found.")
+                click.echo(f"Available templates: {', '.join(available_templates)}")
+                return
+
+        except (FileNotFoundError, ValueError) as e:
+            click.echo(f"Error initializing for reevaluation: {e}")
+            return
+            
+        _reevaluate_single_response(experiment_directory, generation_results, eval_results_path, 
+                                   reevaluate_response, model_client, template_loader, 
+                                   evaluator_model, evaluation_template)
+    elif reparse_responses:
         # Reparse existing evaluation responses
         click.echo(f"Reparsing existing evaluation responses for {len(generation_results)} attempts...")
         click.echo(f"Results will be saved to: {eval_results_path}")
@@ -413,6 +477,145 @@ def _run_full_evaluation(experiment_directory: Path, generation_results: List[Di
     click.echo("\nEvaluation completed!")
     click.echo(f"Successful evaluations: {successful_evaluations}")
     click.echo(f"Failed evaluations: {failed_evaluations}")
+    click.echo(f"Results saved to: {eval_results_path}")
+
+
+def _reevaluate_single_response(experiment_directory: Path, generation_results: List[Dict], eval_results_path: Path,
+                               attempt_id: int, model_client, template_loader, evaluator_model: str, evaluation_template: str):
+    """Reevaluate a single response by attempt ID."""
+    
+    # Find the specific response to reevaluate
+    try:
+        gen_result = _filter_generation_results_by_attempt(generation_results, attempt_id)
+    except ValueError as e:
+        click.echo(f"Error: {e}")
+        return
+    
+    click.echo(f"Found response {attempt_id}: {gen_result['response_file']}")
+    
+    try:
+        # Load response content
+        response_content = load_response_content(
+            experiment_directory, gen_result["response_file"]
+        )
+
+        # Generate evaluation prompt using template
+        evaluation_prompt = template_loader.render_evaluation_prompt(
+            evaluation_template, response_content
+        )
+
+        # Save evaluation prompt to file
+        eval_prompt_file = save_evaluation_prompt(
+            experiment_directory, int(gen_result["attempt_id"]), evaluation_prompt
+        )
+
+        # Evaluate response with proper error handling
+        try:
+            # Get raw evaluation response
+            full_response = model_client.evaluate(
+                evaluation_prompt, response_content, evaluator_model
+            )
+            
+            # Always save the full response regardless of parsing success
+            response_to_save = full_response
+            eval_response_file = save_evaluation_response(
+                experiment_directory, int(gen_result["attempt_id"]), response_to_save
+            )
+
+            # Try to parse the response
+            try:
+                raw_score = parse_llm_response(full_response)
+                # Compute rating from raw score (>=5.0 is success)
+                rating = raw_score >= 5.0
+                evaluation_status = "success"
+                
+            except ValueError as parse_error:
+                # Parsing error - but we still have the full response saved
+                evaluation_status = "parsing_error"
+                raw_score = 0.0
+                rating = False
+                
+                # Log detailed error info
+                log_evaluation_error(
+                    experiment_directory, int(gen_result["attempt_id"]),
+                    "PARSING_ERROR", str(parse_error), eval_prompt_file, gen_result["response_file"]
+                )
+            
+        except Exception as api_error:
+            # API error or other exception - no response file created
+            evaluation_status = "api_error"
+            raw_score = 0.0
+            rating = False
+            eval_response_file = ""  # No response file for API errors
+            
+            # Log detailed error info
+            log_evaluation_error(
+                experiment_directory, int(gen_result["attempt_id"]),
+                "API_ERROR", str(api_error), eval_prompt_file, gen_result["response_file"]
+            )
+            
+        evaluation_timestamp = datetime.now().isoformat()
+
+        # Prepare evaluation result
+        eval_result = {
+            "experiment_id": gen_result["experiment_id"],
+            "attempt_id": gen_result["attempt_id"],
+            "concept_names": gen_result["concept_names"],
+            "concept_count": gen_result["concept_count"],
+            "level": gen_result["level"],
+            "template_id": gen_result["template_id"],
+            "response_file": gen_result["response_file"],
+            "eval_prompt_file": eval_prompt_file,
+            "eval_response_file": eval_response_file,
+            "evaluation_status": evaluation_status,
+            "raw_score": raw_score,
+            "evaluation_timestamp": evaluation_timestamp,
+            "evaluator_model": evaluator_model,
+            "evaluation_template": evaluation_template,
+            "generation_timestamp": gen_result["generation_timestamp"],
+            "generator_model": gen_result["generator_model"],
+        }
+
+        # For now, just append to CSV (Phase 1 implementation)
+        save_evaluation_result(eval_results_path, eval_result)
+
+        if rating:
+            click.echo(f"✓ SUCCESS: Reevaluated attempt {attempt_id} with score {raw_score:.1f}/10")
+        else:
+            click.echo(f"✗ FAILED: Reevaluation of attempt {attempt_id} failed with status: {evaluation_status}")
+
+    except Exception as e:
+        click.echo(f"Error reevaluating attempt {attempt_id}: {e}")
+        
+        # Log the exception error
+        log_evaluation_error(
+            experiment_directory, int(gen_result["attempt_id"]),
+            "REEVALUATION_EXCEPTION", str(e), "N/A", gen_result["response_file"]
+        )
+
+        # Save error result
+        eval_result = {
+            "experiment_id": gen_result["experiment_id"],
+            "attempt_id": gen_result["attempt_id"],
+            "concept_names": gen_result["concept_names"],
+            "concept_count": gen_result["concept_count"],
+            "level": gen_result["level"],
+            "template_id": gen_result["template_id"],
+            "response_file": gen_result["response_file"],
+            "eval_prompt_file": "",
+            "eval_response_file": "",
+            "evaluation_status": "exception",
+            "raw_score": 0.0,
+            "evaluation_timestamp": datetime.now().isoformat(),
+            "evaluator_model": evaluator_model,
+            "evaluation_template": evaluation_template,
+            "generation_timestamp": gen_result["generation_timestamp"],
+            "generator_model": gen_result["generator_model"],
+        }
+
+        save_evaluation_result(eval_results_path, eval_result)
+
+    click.echo(f"Reevaluation completed for attempt {attempt_id}")
     click.echo(f"Results saved to: {eval_results_path}")
 
 
