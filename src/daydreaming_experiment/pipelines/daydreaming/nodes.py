@@ -139,9 +139,9 @@ def generate_prompts(
                 logger.error(f"Concept ID '{concept_id}' not found in concept contents for task {run_id}")
                 raise KeyError(f"Concept ID '{concept_id}' not found in concept contents")
             
-            # Load the actual content from the dataset (concept_contents contains TextDataset objects)
+            # Load the actual content from the dataset (concept_contents contains callable methods)
             content_dataset = concept_contents[concept_id]
-            actual_content = content_dataset.load() if hasattr(content_dataset, 'load') else content_dataset
+            actual_content = content_dataset() if callable(content_dataset) else content_dataset
             
             # Create a dictionary for template rendering (Jinja2 can access dict keys with dot notation)
             concept_dict = {
@@ -180,13 +180,20 @@ def get_llm_responses(prompts: Dict[str, str], tasks_df: pd.DataFrame) -> Dict[s
     # Initialize client with rate limiting
     client = SimpleModelClient()
     
-    for run_id, prompt in prompts.items():
+    for run_id, prompt_dataset in prompts.items():
         task = tasks_df[tasks_df['run_id'] == run_id].iloc[0]
-        logger.debug(f"Generating response for {run_id} using model {task['generator_model']}")
+        
+        # Load the actual prompt content from the dataset (prompts contains callable methods)
+        if callable(prompt_dataset):
+            prompt = prompt_dataset()  # Call the method to get the string
+        else:
+            prompt = prompt_dataset  # Fallback if it's already a string
         
         try:
             # API errors will propagate and fail the task
+            logger.info(f"Sending generation request for {run_id} to model {task['generator_model']}")
             response = client.generate(prompt, model=task["generator_model"])
+            logger.info(f"Received generation response for {run_id} ({len(response)} characters)")
             responses[run_id] = response
             
         except Exception as e:
@@ -216,8 +223,14 @@ def generate_evaluation_prompts(
     
     eval_prompts = {}
     
-    for run_id, response in responses.items():
+    for run_id, response_dataset in responses.items():
         task = tasks_df[tasks_df['run_id'] == run_id].iloc[0]
+        
+        # Load the actual response content from the dataset (responses contains callable methods)
+        if callable(response_dataset):
+            response = response_dataset()  # Call the method to get the string
+        else:
+            response = response_dataset  # Fallback if it's already a string
         
         # Use appropriate evaluation template (default to first available)
         template_key = task.get("eval_template", list(eval_templates.keys())[0])
@@ -255,12 +268,19 @@ def query_evaluation_llm(eval_prompts: Dict[str, str], tasks_df: pd.DataFrame) -
     # Initialize client
     client = SimpleModelClient()
     
-    for run_id, eval_prompt in eval_prompts.items():
+    for run_id, eval_prompt_dataset in eval_prompts.items():
         task = tasks_df[tasks_df['run_id'] == run_id].iloc[0]
-        logger.debug(f"Evaluating {run_id} using model {task['evaluator_model']}")
+        
+        # Load the actual prompt content from the dataset (eval_prompts contains callable methods)
+        if callable(eval_prompt_dataset):
+            eval_prompt = eval_prompt_dataset()  # Call the method to get the string
+        else:
+            eval_prompt = eval_prompt_dataset  # Fallback if it's already a string
         
         try:
+            logger.info(f"Sending evaluation request for {run_id} to model {task['evaluator_model']}")
             response = client.generate(eval_prompt, model=task["evaluator_model"])
+            logger.info(f"Received evaluation response for {run_id} ({len(response)} characters)")
             eval_responses[run_id] = response
             
         except Exception as e:
@@ -285,7 +305,13 @@ def parse_scores(eval_responses: Dict[str, str]) -> pd.DataFrame:
     parsed_scores = {}
     failed_parses = []
     
-    for run_id, raw_eval in eval_responses.items():
+    for run_id, eval_response_dataset in eval_responses.items():
+        # Load the actual response content from the dataset (eval_responses contains callable methods)
+        if callable(eval_response_dataset):
+            raw_eval = eval_response_dataset()  # Call the method to get the string
+        else:
+            raw_eval = eval_response_dataset  # Fallback if it's already a string
+            
         try:
             # Use the existing parsing function
             score = parse_llm_response(raw_eval)
