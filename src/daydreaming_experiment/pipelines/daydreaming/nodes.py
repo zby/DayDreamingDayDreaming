@@ -12,7 +12,8 @@ from jinja2 import Environment
 from pathlib import Path
 
 # Import utility classes
-from daydreaming_experiment.utils.model_client import SimpleModelClient, parse_llm_response
+from daydreaming_experiment.utils.model_client import SimpleModelClient
+from daydreaming_experiment.utils.eval_response_parser import parse_llm_response
 
 logger = logging.getLogger(__name__)
 
