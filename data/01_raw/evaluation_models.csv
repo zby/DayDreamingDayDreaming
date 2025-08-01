@@ -1,0 +1,12 @@
+model_name,model_short,evaluation_strength,active
+deepseek/deepseek-r1:free,deepseek-r1,logical_reasoning,true
+google/gemini-2.5-pro-exp-03-25:free,gemini-2.5-pro,comprehensive_analysis,false
+google/gemini-2.0-flash-thinking-exp:free,gemini-2.0-flash-thinking,reasoning_evaluation,false
+qwen/qwq-32b:free,qwq-32b,question_answering,true
+meta-llama/llama-4-maverick:free,llama-4-maverick,general_evaluation,false
+meta-llama/llama-4-scout:free,llama-4-scout,general_evaluation,false
+meta-llama/llama-3.3-70b-instruct:free,llama-3.3-70b,instruction_following,false
+nvidia/llama-3.1-nemotron-ultra-253b-v1:free,nemotron-253b,comprehensive_analysis,false
+deepseek/deepseek-r1-distill-llama-70b:free,deepseek-r1-distill-70b,logical_reasoning,false
+mistralai/mistral-small-3.1-24b-instruct:free,mistral-small-3.1,balanced_evaluation,false
+google/gemma-3-27b-it:free,gemma-3-27b,instruction_evaluation,false

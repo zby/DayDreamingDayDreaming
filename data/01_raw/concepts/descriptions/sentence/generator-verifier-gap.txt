@@ -1,0 +1,1 @@
+It's often easier to recognize good ideas than to generate them, suggesting separate generator and verifier components for AI creativity.

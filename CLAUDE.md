@@ -29,7 +29,8 @@ src/daydreaming_experiment/
 │   └── model_client.py         # Simple LLM interface
 ├── pipelines/daydreaming/
 │   ├── nodes.py                # Pipeline node functions
-│   └── pipeline.py             # Kedro pipeline definition
+│   ├── pipeline.py             # Kedro pipeline definition
+│   └── test_nodes.py           # Unit tests for pipeline nodes
 └── legacy/                     # Legacy CLI runners (archived)
 
 data/
@@ -43,10 +44,14 @@ data/
 │   │   ├── 02_problem_solving.txt
 │   │   ├── 03_research_discovery.txt
 │   │   └── 04_application_implementation.txt
-│   └── evaluation_templates/   # Evaluation prompt templates
-├── 02_tasks/                   # Generated task definitions
-│   ├── pipeline_tasks.csv              # Task metadata (run_id, template, models)
-│   ├── pipeline_task_concepts.csv      # Task-concept relationships (run_id, concept_id, concept_name, order)
+│   ├── evaluation_templates/   # Evaluation prompt templates
+│   ├── generation_models.csv   # Available generation models with active selection
+│   └── evaluation_models.csv   # Available evaluation models with active selection
+├── 02_tasks/                   # Generated task definitions (hierarchical structure)
+│   ├── concept_combinations.csv        # Concept combination definitions (combo_id, description, num_concepts)
+│   ├── concept_combo_relationships.csv # Concept-combo relationships (combo_id, concept_id, position)
+│   ├── generation_tasks.csv            # Generation tasks (generation_task_id, combo_id, template, model)
+│   ├── evaluation_tasks.csv            # Evaluation tasks (evaluation_task_id, generation_task_id, template, model)
 │   └── concept_contents/               # Individual concept content files (by concept_id)
 ├── 03_generation/              # LLM generation results
 │   ├── generation_prompts/     # Prompts sent to generator LLM
@@ -68,7 +73,7 @@ conf/base/
 └── parameters.yml              # Pipeline parameters
 
 tests/                          # Integration tests with real data
-└── test_nodes.py              # Pipeline node integration tests
+└── test_working_integration.py # Real data integration tests
 ```
 
 # Package Management
@@ -123,7 +128,7 @@ This project follows a clear separation between unit tests and integration tests
 - **Data Access**: **MUST NOT** access files in the `data/` directory
 - **Dependencies**: Use mocking for external dependencies (APIs, file systems, etc.)
 - **Performance**: Should run quickly (<1 second per test)
-- **Examples**: `daydreaming_experiment/test_concept.py`, `daydreaming_experiment/test_model_client.py`
+- **Examples**: `daydreaming_experiment/utils/test_concept.py`, `daydreaming_experiment/pipelines/daydreaming/test_nodes.py`
 
 #### Integration Tests (Component Interaction)
 - **Location**: `tests/` directory only
@@ -131,7 +136,7 @@ This project follows a clear separation between unit tests and integration tests
 - **Data Access**: **CAN** read from `data/` directory when testing data-dependent functionality
 - **Data Requirements**: **MUST FAIL** if required data files are missing (no graceful skipping)
 - **API Restrictions**: **MUST NOT** make real API calls (use proper mocking)
-- **Examples**: `tests/test_integration_data_dependent.py`, `tests/test_integration_prompt_iterator.py`
+- **Examples**: `tests/test_working_integration.py`
 
 ### Running Tests
 
@@ -152,10 +157,10 @@ uv run pytest --cov=daydreaming_experiment
 uv run pytest -n auto
 
 # Run specific test file
-uv run pytest daydreaming_experiment/test_concept.py
+uv run pytest daydreaming_experiment/utils/test_concept.py
 
 # Run specific test method
-uv run pytest daydreaming_experiment/test_concept.py::TestConcept::test_concept_creation
+uv run pytest daydreaming_experiment/pipelines/daydreaming/test_nodes.py::TestCreateTaskList::test_create_task_list_with_real_concepts
 ```
 
 ### Testing Best Practices
@@ -307,9 +312,10 @@ The pipeline follows a clear data processing workflow:
    - Jinja2 templates for generation and evaluation
 
 2. **Task Generation (02_tasks/)**: 
-   - Generate all k_max-combinations of concepts
-   - Create normalized task and task-concept tables
-   - Generate individual concept content files
+   - Generate all k_max-combinations of concepts as concept_combinations
+   - Create hierarchical task structure: combinations → generation tasks → evaluation tasks
+   - Active model selection from CSV files with `active` column
+   - Generate individual concept content files by concept_id
 
 3. **Generation (03_generation/)**:
    - Render prompts using templates and concept combinations
