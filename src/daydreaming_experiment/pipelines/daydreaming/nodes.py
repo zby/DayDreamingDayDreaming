@@ -66,7 +66,7 @@ def create_task_list(
             'run_id': run_id,
             'template': '00_systematic_analytical',  # Default template
             'generator_model': 'deepseek/deepseek-r1:free',
-            'evaluator_model': 'meta-llama/llama-4-maverick:free',
+            'evaluator_model': 'deepseek/deepseek-r1:free',
             'k_max': k_max
         }
         tasks.append(task_data)
@@ -241,10 +241,12 @@ def generate_evaluation_prompts(
         
         # Load the actual template content (partitioned datasets return callables)
         eval_template_loader = eval_templates[template_key]
-        eval_template = eval_template_loader()
+        eval_template_content = eval_template_loader()
         
-        # Format the evaluation prompt with the response
-        eval_prompt = eval_template.format(response=response)
+        # Format the evaluation prompt with the response using Jinja2
+        env = Environment()
+        template = env.from_string(eval_template_content)
+        eval_prompt = template.render(response=response)
         eval_prompts[run_id] = eval_prompt
         
     logger.info(f"Generated {len(eval_prompts)} evaluation prompts")
