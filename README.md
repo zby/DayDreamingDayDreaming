@@ -87,7 +87,7 @@ uv run pytest -n auto
 ```
 
 ### Test Architecture
-- **Unit Tests**: Colocated with modules (e.g., `src/daydreaming_experiment/pipelines/daydreaming/test_nodes.py`)
+- **Unit Tests**: Colocated with modules (e.g., `src/daydreaming_experiment/utils/test_model_client.py`)
 - **Integration Tests**: In `tests/` directory, use real data files and must fail if data is missing
 
 ## Key Features
@@ -137,7 +137,7 @@ uv run black .
 uv run flake8
 
 # Run specific test file
-uv run pytest daydreaming_experiment/pipelines/daydreaming/test_nodes.py
+uv run pytest daydreaming_experiment/utils/test_model_client.py
 ```
 
 ### Jupyter Support

@@ -10,9 +10,9 @@ This is a Python experiment that tests whether pre-June 2025 LLMs can "reinvent"
 
 ### Core Modules and Classes
 
-1. **concept.py** - Core `Concept` dataclass with concept_id, name, and hierarchical descriptions (sentence, paragraph, article)
-2. **concept_db.py** - `ConceptDB` registry for batch retrieval and combination iteration with ID-based lookups
-3. **model_client.py** - Simple LLM interface for content generation and evaluation
+1. **model_client.py** - Simple LLM interface for content generation and evaluation (in `src/daydreaming_experiment/utils/`)
+2. **eval_response_parser.py** - Response parsing utilities (in `src/daydreaming_experiment/utils/`)
+3. **nodes.py** - Pipeline node functions (in `src/daydreaming_experiment/pipelines/daydreaming/`)
 
 ### Kedro Pipeline Architecture
 
@@ -24,14 +24,17 @@ The project uses Kedro for data pipeline orchestration, with node functions in:
 ```
 src/daydreaming_experiment/
 ├── utils/
-│   ├── concept.py              # Core Concept dataclass with concept_id
-│   ├── concept_db.py           # ConceptDB registry with ID-based access
-│   └── model_client.py         # Simple LLM interface
-├── pipelines/daydreaming/
-│   ├── nodes.py                # Pipeline node functions
-│   ├── pipeline.py             # Kedro pipeline definition
-│   └── test_nodes.py           # Unit tests for pipeline nodes
-└── legacy/                     # Legacy CLI runners (archived)
+│   ├── model_client.py         # Simple LLM interface
+│   ├── test_model_client.py    # Unit tests for model client
+│   ├── eval_response_parser.py # Response parsing utilities
+│   └── test_eval_response_parser.py # Unit tests for parser
+├── pipelines/
+│   └── daydreaming/
+│       ├── nodes.py            # Pipeline node functions
+│       ├── pipeline.py         # Kedro pipeline definition
+│       └── test_nodes.py       # Unit tests for pipeline nodes
+├── pipeline_registry.py        # Pipeline registration
+└── settings.py                 # Kedro settings
 
 data/
 ├── 01_raw/                     # External inputs only
