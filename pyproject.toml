@@ -1,92 +1,95 @@
 [build-system]
-requires = ["setuptools>=45", "wheel", "setuptools_scm[toml]>=6.2"]
+requires = ["setuptools"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "daydreaming_experiment"
-description = "An experiment to test if LLMs can reinvent the Daydreaming Loop concept"
-readme = "daydreaming_experiment/README.md"
-authors = [
-    {name = "Daydreaming Research Team", email = "research@daydreaming.example.com"},
-]
-license = {text = "MIT"}
-classifiers = [
-    "Development Status :: 3 - Alpha",
-    "Intended Audience :: Science/Research",
-    "License :: OSI Approved :: MIT License",
-    "Operating System :: OS Independent",
-    "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.9",
-    "Programming Language :: Python :: 3.10",
-    "Programming Language :: Python :: 3.11",
-    "Programming Language :: Python :: 3.12",
-]
 requires-python = ">=3.9"
-dependencies = [
-    "openai>=1.0.0",
-    "pandas>=2.0.0",
-    "numpy>=1.26.0",
-    "jinja2>=3.0.0",
-    "click>=8.0.0",
-    "python-dotenv>=1.0.0",
-]
+name = "daydreaming_experiment"
+readme = "README.md"
 dynamic = ["version"]
+dependencies = [
+    "ipython>=8.10",
+    "jupyterlab>=3.0",
+    "notebook",
+    "kedro[jupyter]~=0.19.12",
+    "kedro-datasets[json-jsondataset,matplotlib-matplotlibwriter,pandas-csvdataset,pandas-exceldataset,pandas-parquetdataset,plotly-jsondataset,plotly-plotlydataset,text-textdataset]>=3.0",
+    "kedro-viz>=6.7.0",
+    "scikit-learn~=1.5.1",
+    "seaborn~=0.12.1",
+    "openai>=1.0.0",
+    "jinja2>=3.0.0",
+    "pandas>=1.5.0",
+    "pytest>=7.4.4",
+]
+
+[project.scripts]
+"daydreaming-experiment" = "daydreaming_experiment.__main__:main"
+
+[project.entry-points."kedro.hooks"]
 
 [project.optional-dependencies]
-dev = [
-    "pytest>=6.0",
-    "black>=21.0",
-    "flake8>=3.9.0",
+docs = [
+    "docutils<0.21",
+    "sphinx>=5.3,<7.3",
+    "sphinx_rtd_theme==2.0.0",
+    "nbsphinx==0.8.1",
+    "sphinx-autodoc-typehints==1.20.2",
+    "sphinx_copybutton==0.5.2",
+    "ipykernel>=5.3, <7.0",
+    "Jinja2<3.2.0",
+    "myst-parser>=1.0,<2.1"
 ]
-
-[project.urls]
-Homepage = "https://github.com/daydreaming-research/daydreaming_experiment"
-
-[tool.setuptools_scm]
-version_scheme = "guess-next-dev"
-local_scheme = "dirty-tag"
+dev = [
+    "pytest-cov~=3.0",
+    "pytest-mock>=1.7.1, <2.0",
+    "pytest~=7.2",
+    "ruff~=0.1.8"
+]
 
 [tool.setuptools.packages.find]
-where = ["daydreaming_experiment"]
+where = ["src"]
+namespaces = false
+
+[tool.setuptools.package-dir]
+"" = "src"
+
+[tool.setuptools.dynamic]
+version = {attr = "daydreaming_experiment.__version__"}
+
+[tool.kedro]
+package_name = "daydreaming_experiment"
+project_name = "daydreaming_experiment"
+kedro_init_version = "0.19.12"
+tools = "['None']"
+example_pipeline = "False"
+source_dir = "src"
 
 [tool.pytest.ini_options]
-testpaths = ["daydreaming_experiment/tests"]
+addopts = """
+--cov-report term-missing \
+--cov src/daydreaming_experiment -ra"""
 
-[tool.black]
+[tool.coverage.report]
+fail_under = 0
+show_missing = true
+exclude_lines = ["pragma: no cover", "raise NotImplementedError"]
+
+[tool.ruff.format]
+docstring-code-format = true
+
+[tool.ruff]
 line-length = 88
-target-version = ['py38', 'py39', 'py310', 'py311']
-include = '\.pyi?$'
-extend-exclude = '''
-/(
-  # directories
-  \.eggs
-  | \.git
-  | \.hg
-  | \.mypy_cache
-  | \.tox
-  | \.venv
-  | build
-  | dist
-)/
-'''
-
-[tool.flake8]
-max-line-length = 88
-extend-ignore = "E203,W503"
-exclude = [
-    ".eggs",
-    ".git",
-    ".hg",
-    ".mypy_cache",
-    ".tox",
-    ".venv",
-    "build",
-    "dist",
+show-fixes = true
+select = [
+    "F",   # Pyflakes
+    "W",   # pycodestyle
+    "E",   # pycodestyle
+    "I",   # isort
+    "UP",  # pyupgrade
+    "PL",  # Pylint
+    "T201", # Print Statement
 ]
+ignore = ["E501"]  # Ruff format takes care of line-too-long
 
-[dependency-groups]
-dev = [
-    "black>=25.1.0",
-    "flake8>=7.3.0",
-    "pytest>=8.4.1",
-]
+[tool.kedro_telemetry]
+project_id = "8d87b3838256422d94ab6e603b63efdd"

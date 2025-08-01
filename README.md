@@ -1,158 +1,100 @@
-# Daydreaming Experiment
+# daydreaming_experiment
 
-This project tests whether pre-June 2025 LLMs can "reinvent" Gwern's Daydreaming Loop concept when provided with minimal contextual hints through a structured prompt DAG approach.
+[![Powered by Kedro](https://img.shields.io/badge/powered_by-kedro-ffc900?logo=kedro)](https://kedro.org)
 
-## Installation
+## Overview
 
-This project uses [uv](https://docs.astral.sh/uv/) for fast Python package management.
+This is your new Kedro project, which was generated using `kedro 0.19.12`.
 
-```bash
-# Clone the repository
-git clone <repository-url>
-cd DayDreamingDayDreaming
+Take a look at the [Kedro documentation](https://docs.kedro.org) to get started.
 
-# Install the package and dependencies
-uv sync
+## Rules and guidelines
 
-# Install with development dependencies (includes testing and formatting tools)
-uv sync --dev
+In order to get the best out of the template:
+
+* Don't remove any lines from the `.gitignore` file we provide
+* Make sure your results can be reproduced by following a [data engineering convention](https://docs.kedro.org/en/stable/faq/faq.html#what-is-data-engineering-convention)
+* Don't commit data to your repository
+* Don't commit any credentials or your local configuration to your repository. Keep all your credentials and local configuration in `conf/local/`
+
+## How to install dependencies
+
+Declare any dependencies in `requirements.txt` for `pip` installation.
+
+To install them, run:
+
+```
+pip install -r requirements.txt
 ```
 
-## Usage
+## How to run your Kedro pipeline
 
-### Running an Experiment
+You can run your Kedro project with:
 
-The main experiment runner uses combinatorial testing to find minimal concept sets that can elicit the Day-Dreaming idea from LLMs:
-
-```bash
-# Run complete experiment with automated evaluation
-uv run python -m daydreaming_experiment.experiment_runner \
-    --k-max 4 \
-    --level paragraph \
-    --generator-model gpt-4 \
-    --evaluator-model gpt-4 \
-    --output experiments/my_experiment
-
-# Or run generation-only experiment (for later evaluation)
-uv run python -m daydreaming_experiment.experiment_runner \
-    --k-max 4 \
-    --level paragraph \
-    --generator-model gpt-4 \
-    --generation-only \
-    --output experiments/my_experiment
+```
+kedro run
 ```
 
-#### Parameters
+## How to test your Kedro project
 
-- `--k-max`: Maximum number of concepts to combine (default: 4)
-- `--level`: Content granularity level (`sentence`, `paragraph`, or `article`)
-- `--generator-model`: LLM model for content generation
-- `--evaluator-model`: LLM model for automated evaluation (ignored with `--generation-only`)
-- `--generation-only`: Skip evaluation during experiment (for later evaluation)
-- `--output`: Output directory for experiment results
+Have a look at the files `src/tests/test_run.py` and `src/tests/pipelines/data_science/test_pipeline.py` for instructions on how to write your tests. Run the tests as follows:
 
-### Separate Evaluation
-
-For generation-only experiments, run evaluation separately:
-
-```bash
-# Evaluate responses from a generation-only experiment
-uv run python -m daydreaming_experiment.evaluation_runner \
-    experiments/experiment_20250728_143022 \
-    --evaluator-model deepseek/deepseek-r1 \
-    --evaluation-template default
+```
+pytest
 ```
 
-#### Evaluation Parameters
+To configure the coverage threshold, look at the `.coveragerc` file.
 
-- `--evaluator-model`: LLM model for automated evaluation (default: deepseek/deepseek-r1)
-- `--evaluation-template`: Evaluation template to use (default: default)
+## Project dependencies
 
-### Analyzing Results
+To see and update the dependency requirements for your project use `requirements.txt`. You can install the project requirements with `pip install -r requirements.txt`.
 
-After running an experiment, analyze the results:
+[Further information about project dependencies](https://docs.kedro.org/en/stable/kedro_project_setup/dependencies.html#project-specific-dependencies)
 
-```bash
-# Analyze experiment results
-uv run python -m daydreaming_experiment.results_analysis \
-    experiments/experiment_20250728_143022
+## How to work with Kedro and notebooks
+
+> Note: Using `kedro jupyter` or `kedro ipython` to run your notebook provides these variables in scope: `catalog`, `context`, `pipelines` and `session`.
+>
+> Jupyter, JupyterLab, and IPython are already included in the project requirements by default, so once you have run `pip install -r requirements.txt` you will not need to take any extra steps before you use them.
+
+### Jupyter
+To use Jupyter notebooks in your Kedro project, you need to install Jupyter:
+
+```
+pip install jupyter
 ```
 
-## Testing
+After installing Jupyter, you can start a local notebook server:
 
-This project uses a clear testing strategy with separation between unit tests and integration tests.
-
-### Test Organization
-
-#### Unit Tests (Fast & Isolated)
-- **Location**: Colocated with source code (e.g., `test_concept.py` next to `concept.py`)
-- **Purpose**: Test individual components in isolation
-- **Restrictions**: Cannot access `data/` directory files
-- **Dependencies**: Use mocking for external services
-- **Speed**: Fast execution (<1s per test)
-
-#### Integration Tests (Data-Dependent)
-- **Location**: `tests/` directory
-- **Purpose**: Test component interactions with real data
-- **Data Access**: Can read from `data/` directory
-- **Data Requirements**: Must fail if required data files are missing
-- **Restrictions**: No real API calls (use mocking)
-
-### Running Tests
-
-```bash
-# Run all tests
-uv run pytest
-
-# Run only unit tests (fast, no data dependencies)
-uv run pytest daydreaming_experiment/
-
-# Run only integration tests (may require data files)
-uv run pytest tests/
-
-# Run tests with coverage report
-uv run pytest --cov=daydreaming_experiment
-
-# Run tests in parallel for speed
-uv run pytest -n auto
-
-# Run specific test file
-uv run pytest daydreaming_experiment/test_concept.py
-
-# Run with verbose output
-uv run pytest -v
+```
+kedro jupyter notebook
 ```
 
-### Test Examples
+### JupyterLab
+To use JupyterLab, you need to install it:
 
-**Unit Test** (isolated, mocked dependencies):
-```python
-def test_concept_get_description_fallback():
-    """Unit test with no external dependencies."""
-    concept = Concept(name="test", descriptions={"paragraph": "Test content"})
-    assert concept.get_description("sentence", strict=False) == "Test content"
+```
+pip install jupyterlab
 ```
 
-**Integration Test** (real data, fails if missing):
-```python
-def test_load_real_concept_database():
-    """Integration test that requires real data files."""
-    # Will fail with clear error if file doesn't exist
-    db = ConceptDB.load("data/concepts/day_dreaming_concepts.json")
-    assert len(db.get_concepts()) > 0
-    
-    # Validate expected structure
-    for concept in db.get_concepts():
-        assert concept.name
-        assert concept.descriptions
+You can also start JupyterLab:
+
+```
+kedro jupyter lab
 ```
 
-### Development Workflow
-1. Write unit tests for new functionality (fast feedback)
-2. Add integration tests for data-dependent features
-3. Run unit tests frequently during development
-4. Run full test suite before committing changes
+### IPython
+And if you want to run an IPython session:
 
-## License
+```
+kedro ipython
+```
 
-This project is licensed under the MIT License - see the LICENSE file for details.
+### How to ignore notebook output cells in `git`
+To automatically strip out all output cell contents before committing to `git`, you can use tools like [`nbstripout`](https://github.com/kynan/nbstripout). For example, you can add a hook in `.git/config` with `nbstripout --install`. This will run `nbstripout` before anything is committed to `git`.
+
+> *Note:* Your output cells will be retained locally.
+
+## Package your Kedro project
+
+[Further information about building project documentation and packaging your project](https://docs.kedro.org/en/stable/tutorial/package_a_project.html)

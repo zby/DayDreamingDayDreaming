@@ -10,37 +10,65 @@ This is a Python experiment that tests whether pre-June 2025 LLMs can "reinvent"
 
 ### Core Modules and Classes
 
-1. **concept.py** - Core `Concept` dataclass with three granularity levels (sentence, paragraph, article)
-2. **concept_db.py** - `ConceptDB` registry for batch retrieval and combination iteration
-3. **prompt_factory.py** - `PromptFactory` for template-based prompt generation from concept combinations
-4. **experiment_runner.py** - CLI experiment execution with combinatorial testing and automated evaluation
-5. **evaluation_runner.py** - Standalone CLI evaluator for post-hoc evaluation of generation-only experiments
-6. **model_client.py** - Simple LLM interface for content generation and evaluation
+1. **concept.py** - Core `Concept` dataclass with concept_id, name, and hierarchical descriptions (sentence, paragraph, article)
+2. **concept_db.py** - `ConceptDB` registry for batch retrieval and combination iteration with ID-based lookups
+3. **model_client.py** - Simple LLM interface for content generation and evaluation
+
+### Kedro Pipeline Architecture
+
+The project uses Kedro for data pipeline orchestration, with node functions in:
+- **nodes.py** - Pure pipeline node functions for task generation, prompt creation, LLM querying, and evaluation
 
 ### File Organization
 
 ```
-daydreaming_experiment/
-├── concept.py                    # Core Concept dataclass
-├── concept_db.py                 # ConceptDB registry and I/O
-├── prompt_factory.py             # PromptFactory for template-based generation  
-├── experiment_runner.py          # CLI experiment execution
-├── evaluation_runner.py          # Standalone CLI evaluator
-├── model_client.py              # Simple LLM interface
-└── results_analysis.py          # Post-experiment analysis tools
+src/daydreaming_experiment/
+├── utils/
+│   ├── concept.py              # Core Concept dataclass with concept_id
+│   ├── concept_db.py           # ConceptDB registry with ID-based access
+│   └── model_client.py         # Simple LLM interface
+├── pipelines/daydreaming/
+│   ├── nodes.py                # Pipeline node functions
+│   └── pipeline.py             # Kedro pipeline definition
+└── legacy/                     # Legacy CLI runners (archived)
 
 data/
-├── concepts/                     # Concept database
-│   ├── day_dreaming_concepts.json            # Manifest
-│   └── articles/               # Article files
-├── templates/                    # Prompt templates
-│   ├── 00_systematic_analytical.txt
-│   ├── 01_creative_synthesis.txt
-│   ├── 02_problem_solving.txt
-│   ├── 03_research_discovery.txt
-│   └── 04_application_implementation.txt
-└── experiments/                # Experiment results
-    └── experiment_YYYYMMDD_HHMMSS/
+├── 01_raw/                     # External inputs only
+│   ├── concepts/
+│   │   ├── day_dreaming_concepts.json  # Concept database with IDs and names
+│   │   └── articles/           # External article files
+│   ├── generation_templates/   # Jinja2 prompt templates
+│   │   ├── 00_systematic_analytical.txt
+│   │   ├── 01_creative_synthesis.txt
+│   │   ├── 02_problem_solving.txt
+│   │   ├── 03_research_discovery.txt
+│   │   └── 04_application_implementation.txt
+│   └── evaluation_templates/   # Evaluation prompt templates
+├── 02_tasks/                   # Generated task definitions
+│   ├── pipeline_tasks.csv              # Task metadata (run_id, template, models)
+│   ├── pipeline_task_concepts.csv      # Task-concept relationships (run_id, concept_id, concept_name, order)
+│   └── concept_contents/               # Individual concept content files (by concept_id)
+├── 03_generation/              # LLM generation results
+│   ├── generation_prompts/     # Prompts sent to generator LLM
+│   └── generation_responses/   # Raw generator responses
+├── 04_evaluation/              # LLM evaluation results
+│   ├── evaluation_prompts/     # Prompts sent to evaluator LLM
+│   └── evaluation_responses/   # Raw evaluator responses
+├── 05_parsing/                 # Parsed evaluation scores
+│   └── parsed_scores.csv       # Extracted scores with metadata
+├── 06_summary/                 # Final aggregated results
+│   └── final_results_summary.csv
+└── 07_reporting/               # Error logs and reporting
+    ├── generation_failures.csv
+    ├── evaluation_failures.csv
+    └── parsing_failures.csv
+
+conf/base/
+├── catalog.yml                 # Kedro data catalog configuration
+└── parameters.yml              # Pipeline parameters
+
+tests/                          # Integration tests with real data
+└── test_nodes.py              # Pipeline node integration tests
 ```
 
 # Package Management
@@ -201,13 +229,20 @@ Examples:
 - `ConceptDB` can be provided pre-loaded for experiment runs
 - Tests can easily inject mock dependencies without complex patching
 
-**Jinja2-based Templates**: Prompt templates are stored as separate text files in `data/templates/` using Jinja2 templating syntax for powerful and flexible prompt generation. Templates are automatically loaded by filename order and must reference the `concepts` variable.
+**Jinja2-based Templates**: Prompt templates are stored as separate text files in `data/01_raw/generation_templates/` using Jinja2 templating syntax for powerful and flexible prompt generation. Templates are automatically loaded as partitioned datasets and must reference the `concepts` variable.
 
 Template System Features:
-- **Dynamic concept access**: `{% for concept in concepts %}{{ concept.name }}: {{ concept.__getattribute__(level) }}{% endfor %}`
-- **Level-agnostic**: Templates work with any content level (sentence, paragraph, article)
+- **Clean concept access**: `{% for concept in concepts %}**{{ concept.name }}**: {{ concept.content }}{% endfor %}`
+- **Dictionary-based objects**: Templates receive concept dictionaries with `name`, `concept_id`, and `content` keys
+- **Human-readable names**: Templates display friendly names like "Default Mode Network" instead of IDs
 - **Rich formatting**: Bold concept names, structured layouts, conditional logic
 - **Extensible**: Easy to add new templates with complex logic and formatting
+
+Template Structure:
+Each template receives a `concepts` list where each concept is a dictionary with:
+- `concept.name` - Human-readable name (e.g., "Dearth of AI-driven Discoveries")
+- `concept.concept_id` - File-safe identifier (e.g., "dearth-ai-discoveries")  
+- `concept.content` - Paragraph-level description content
 
 Template Types:
 - `00_systematic_analytical.txt` - Structured step-by-step analysis
@@ -246,37 +281,58 @@ This modular approach allows for easy strategy experimentation and comparison wi
 
 ## Usage Workflow
 
-### Run Experiment
-```bash
-# Run complete experiment with automated evaluation
-uv run python -m daydreaming_experiment.experiment_runner \
-    --k-max 4 \
-    --level paragraph \
-    --generator-model gpt-4 \
-    --evaluator-model gpt-4 \
-    --output experiments/my_experiment
+### Kedro Pipeline Execution
 
-# Limit number of prompts tested
-uv run python -m daydreaming_experiment.experiment_runner \
-    --k-max 4 \
-    --max-prompts 50 \
-    --level paragraph \
-    --generator-model gpt-4 \
-    --evaluator-model gpt-4
+```bash
+# Run the complete daydreaming pipeline
+uv run kedro run
+
+# Run specific pipeline nodes
+uv run kedro run --node create_initial_tasks
+uv run kedro run --node generate_prompts_node
+
+# Run pipeline with parameters
+uv run kedro run --params k_max:3
+
+# Visualize the pipeline
+uv run kedro viz
 ```
 
-### Separate Evaluation
+### Data Layer Workflow
+
+The pipeline follows a clear data processing workflow:
+
+1. **Raw Data (01_raw/)**: External inputs only
+   - Concept database with IDs and human-readable names
+   - Jinja2 templates for generation and evaluation
+
+2. **Task Generation (02_tasks/)**: 
+   - Generate all k_max-combinations of concepts
+   - Create normalized task and task-concept tables
+   - Generate individual concept content files
+
+3. **Generation (03_generation/)**:
+   - Render prompts using templates and concept combinations
+   - Query generator LLM for responses
+
+4. **Evaluation (04_evaluation/)**:
+   - Generate evaluation prompts from responses
+   - Query evaluator LLM for scores
+
+5. **Parsing & Summary (05_parsing/, 06_summary/)**:
+   - Parse evaluation responses to extract scores
+   - Generate final aggregated results
+
+### Legacy CLI Support (Archived)
 ```bash
-# Evaluate responses from a generation-only experiment
+# Note: Legacy CLI runners are archived but available in src/legacy/
+# Use Kedro pipeline for new experiments
+
+# Legacy experiment runner (archived)
+uv run python -m daydreaming_experiment.experiment_runner \
+    --k-max 4 --level paragraph --generator-model gpt-4
+
+# Legacy evaluation runner (archived)  
 uv run python -m daydreaming_experiment.evaluation_runner \
-    experiments/experiment_20250728_143022 \
-    --evaluator-model deepseek/deepseek-r1 \
-    --evaluation-template default
-```
-
-### Analysis
-```bash
-# Analyze results
-uv run python -m daydreaming_experiment.results_analysis \
     experiments/experiment_20250728_143022
 ```
