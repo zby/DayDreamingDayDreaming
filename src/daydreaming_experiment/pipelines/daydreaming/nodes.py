@@ -4,12 +4,11 @@ These functions contain pure logic with no file I/O, following Kedro best practi
 for separation of concerns. All data loading/saving is handled by the Data Catalog.
 """
 
-from typing import Dict, Any, List, Tuple
+from typing import Any
 import pandas as pd
 import logging
 from itertools import combinations
 from jinja2 import Environment
-from pathlib import Path
 
 # Import utility classes
 from daydreaming_experiment.utils.model_client import SimpleModelClient
@@ -18,44 +17,30 @@ from daydreaming_experiment.utils.eval_response_parser import parse_llm_response
 logger = logging.getLogger(__name__)
 
 
-def create_task_list(
-    generation_models: pd.DataFrame,
-    evaluation_models: pd.DataFrame, 
-    generation_templates: Dict[str, str],
-    evaluation_templates: Dict[str, str],
+def load_and_prepare_concepts(
     concepts_metadata: pd.DataFrame,
-    concept_descriptions_sentence: Dict[str, Any],
-    concept_descriptions_paragraph: Dict[str, Any], 
-    concept_descriptions_article: Dict[str, Any],
-    parameters: Dict[str, Any]
-) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame, Dict[str, str]]:
+    concept_descriptions_sentence: dict[str, Any],
+    concept_descriptions_paragraph: dict[str, Any],
+    concept_descriptions_article: dict[str, Any],
+    parameters: dict[str, Any]
+) -> tuple[list[dict[str, str]], dict[str, str]]:
     """
-    Create task configurations and concept combinations using Kedro datasets.
+    Load concepts from metadata and generate content with fallback strategy.
     
     Args:
-        generation_models: DataFrame with generation model configurations
-        evaluation_models: DataFrame with evaluation model configurations
-        generation_templates: Dictionary of generation templates
-        evaluation_templates: Dictionary of evaluation templates
         concepts_metadata: DataFrame with concept_id and name columns
         concept_descriptions_sentence: Dict of sentence-level concept descriptions
         concept_descriptions_paragraph: Dict of paragraph-level concept descriptions
         concept_descriptions_article: Dict of article-level concept descriptions
-        parameters: Pipeline parameters including k_max, description_level, and template settings
+        parameters: Pipeline parameters including description_level
     
     Returns:
-        - concept_combinations: DataFrame with combo metadata
-        - concept_combo_relationships: DataFrame mapping combos to concepts  
-        - generation_tasks: DataFrame with generation task configs
-        - evaluation_tasks: DataFrame with evaluation task configs
+        - concepts_list: List of concept dictionaries with concept_id and name
         - concept_contents: Dict mapping concept_id to content
     """
-    k_max = parameters.get('k_max', 3)
     description_level = parameters.get('description_level', 'paragraph')
-    current_gen_template = parameters.get('current_gen_template', '00_systematic_analytical')
-    current_eval_template = parameters.get('current_eval_template', 'creativity_metrics')
     
-    logger.info(f"Creating task configurations with k_max={k_max}, description_level={description_level}")
+    logger.info(f"Loading and preparing concepts with description_level={description_level}")
     
     # Load concepts from the new filesystem-based structure
     concepts = []
@@ -108,12 +93,33 @@ def create_task_list(
     
     logger.info(f"Generated content for {len(concept_contents)} concepts using level {description_level} (with fallbacks)")
     
-    # Second: Generate concept combinations using itertools
+    return concepts, concept_contents
+
+
+def generate_concept_combinations(
+    concepts_list: list[dict[str, str]],
+    parameters: dict[str, Any]
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """
+    Generate concept combinations and relationships using itertools.
+    
+    Args:
+        concepts_list: List of concept dictionaries with concept_id and name
+        parameters: Pipeline parameters including k_max
+    
+    Returns:
+        - concept_combinations: DataFrame with combo metadata
+        - concept_combo_relationships: DataFrame mapping combos to concepts
+    """
+    k_max = parameters.get('k_max', 3)
+    
+    logger.info(f"Generating concept combinations with k_max={k_max}")
+    
     concept_combinations = []
     concept_combo_relationships = []
     
     combo_id = 1
-    for combo in combinations(concepts, k_max):
+    for combo in combinations(concepts_list, k_max):
         combo_id_str = f"combo_{combo_id:03d}"
         
         # Create description from concept names
@@ -143,19 +149,50 @@ def create_task_list(
     logger.info(f"Generated {len(concept_combinations)} concept combinations")
     logger.info(f"Generated {len(concept_combo_relationships)} concept-combo relationships")
     
+    # Create DataFrames
+    concept_combinations_df = pd.DataFrame(concept_combinations)
+    concept_combo_relationships_df = pd.DataFrame(concept_combo_relationships)
+    
+    return concept_combinations_df, concept_combo_relationships_df
+
+
+def create_all_tasks(
+    concept_combinations: pd.DataFrame,
+    generation_models: pd.DataFrame,
+    evaluation_models: pd.DataFrame,
+    parameters: dict[str, Any]
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """
+    Validate active models and create both generation and evaluation tasks.
+    
+    Args:
+        concept_combinations: DataFrame with combo metadata
+        generation_models: DataFrame with generation model configurations
+        evaluation_models: DataFrame with evaluation model configurations
+        parameters: Pipeline parameters including current templates
+    
+    Returns:
+        - generation_tasks: DataFrame with generation task configs
+        - evaluation_tasks: DataFrame with evaluation task configs
+    """
+    current_gen_template = parameters.get('current_gen_template', '00_systematic_analytical')
+    current_eval_template = parameters.get('current_eval_template', 'creativity_metrics')
+    
+    logger.info(f"Creating tasks with templates: {current_gen_template}, {current_eval_template}")
+    
     # Get active models
-    active_gen_models = generation_models[generation_models['active'] == True]
-    active_eval_models = evaluation_models[evaluation_models['active'] == True]
+    active_gen_models = generation_models[generation_models['active']]
+    active_eval_models = evaluation_models[evaluation_models['active']]
     
     if active_gen_models.empty:
         raise ValueError("No active generation models found")
     if active_eval_models.empty:
         raise ValueError("No active evaluation models found")
     
-    # Third: Generate generation tasks for all active models and current template
+    # Generate generation tasks for all active models and current template
     generation_tasks = []
-    for combo_data in concept_combinations:
-        combo_id_str = combo_data['combo_id']
+    for _, combo_row in concept_combinations.iterrows():
+        combo_id_str = combo_row['combo_id']
         
         # Create generation tasks for each active generation model
         for _, gen_model_row in active_gen_models.iterrows():
@@ -172,7 +209,7 @@ def create_task_list(
             }
             generation_tasks.append(gen_task_data)
     
-    # Fourth: Generate evaluation tasks for all active evaluation models
+    # Generate evaluation tasks for all active evaluation models
     evaluation_tasks = []
     for gen_task_data in generation_tasks:
         generation_task_id = gen_task_data['generation_task_id']
@@ -196,23 +233,57 @@ def create_task_list(
     logger.info(f"Generated {len(evaluation_tasks)} evaluation tasks")
     
     # Create DataFrames
-    concept_combinations_df = pd.DataFrame(concept_combinations)
-    concept_combo_relationships_df = pd.DataFrame(concept_combo_relationships)
     generation_tasks_df = pd.DataFrame(generation_tasks)
     evaluation_tasks_df = pd.DataFrame(evaluation_tasks)
     
-    return (concept_combinations_df, concept_combo_relationships_df, 
-            generation_tasks_df, evaluation_tasks_df, concept_contents)
+    return generation_tasks_df, evaluation_tasks_df
+
+
+def create_task_list(
+    generation_models: pd.DataFrame,
+    evaluation_models: pd.DataFrame,
+    generation_templates: dict[str, str],
+    evaluation_templates: dict[str, str],
+    concepts_metadata: pd.DataFrame,
+    concept_descriptions_sentence: dict[str, Any],
+    concept_descriptions_paragraph: dict[str, Any],
+    concept_descriptions_article: dict[str, Any],
+    parameters: dict[str, Any]
+) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame, dict[str, str]]:
+    """
+    DEPRECATED: Use the new 3-node pipeline instead.
+    
+    This function is kept for backward compatibility but should be replaced
+    with the new load_and_prepare_concepts -> generate_concept_combinations -> create_all_tasks pipeline.
+    """
+    logger.warning("create_task_list is deprecated. Use the new 3-node pipeline instead.")
+    
+    # Call the new functions in sequence to maintain compatibility
+    concepts_list, concept_contents = load_and_prepare_concepts(
+        concepts_metadata, concept_descriptions_sentence,
+        concept_descriptions_paragraph, concept_descriptions_article, parameters
+    )
+
+    concept_combinations, concept_combo_relationships = generate_concept_combinations(
+        concepts_list, parameters
+    )
+
+    generation_tasks, evaluation_tasks = create_all_tasks(
+        concept_combinations, generation_models, evaluation_models, parameters
+    )
+
+    return (concept_combinations, concept_combo_relationships,
+            generation_tasks, evaluation_tasks, concept_contents)
 
 
 def generate_prompts(
     generation_tasks: pd.DataFrame,
     concept_combinations: pd.DataFrame,
     concept_combo_relationships: pd.DataFrame,
-    concept_contents: Dict[str, str],
-    generation_templates: Dict[str, str],
+    concept_contents: dict[str, str],
+    generation_templates: dict[str, str],
     concepts_metadata: pd.DataFrame
-) -> Dict[str, str]:
+) -> dict[str, str]:
     """
     Generate prompts for all generation tasks.
     
@@ -293,10 +364,10 @@ def generate_prompts(
 
 
 def get_llm_responses(
-    generation_prompts: Dict[str, str],
+    generation_prompts: dict[str, str],
     generation_tasks: pd.DataFrame,
     generation_models: pd.DataFrame
-) -> Dict[str, str]:
+) -> dict[str, str]:
     """
     Get LLM responses for generation tasks.
     
@@ -341,10 +412,10 @@ def get_llm_responses(
 
 
 def generate_evaluation_prompts(
-    generation_responses: Dict[str, str],
+    generation_responses: dict[str, str],
     evaluation_tasks: pd.DataFrame,
-    evaluation_templates: Dict[str, str]
-) -> Dict[str, str]:
+    evaluation_templates: dict[str, str]
+) -> dict[str, str]:
     """
     Generate evaluation prompts for all evaluation tasks.
     
@@ -398,10 +469,10 @@ def generate_evaluation_prompts(
 
 
 def query_evaluation_llm(
-    evaluation_prompts: Dict[str, str],
+    evaluation_prompts: dict[str, str],
     evaluation_tasks: pd.DataFrame,
     evaluation_models: pd.DataFrame
-) -> Dict[str, str]:
+) -> dict[str, str]:
     """
     Get LLM responses for evaluation tasks.
     
@@ -445,7 +516,7 @@ def query_evaluation_llm(
 
 
 def parse_scores(
-    evaluation_responses: Dict[str, str],
+    evaluation_responses: dict[str, str],
     evaluation_tasks: pd.DataFrame,
     generation_tasks: pd.DataFrame,
     concept_combinations: pd.DataFrame

@@ -90,8 +90,8 @@ class TestSimpleModelClient:
             client.generate("Test prompt", "gpt-4")
     
     @patch('daydreaming_experiment.utils.model_client.OpenAI')
-    def test_evaluate_success(self, mock_openai_class):
-        """Test successful evaluation."""
+    def test_generate_evaluation_success(self, mock_openai_class):
+        """Test successful generation for evaluation (low temperature)."""
         mock_client = Mock()
         mock_openai_class.return_value = mock_client
         
@@ -102,14 +102,14 @@ class TestSimpleModelClient:
         mock_client.chat.completions.create.return_value = mock_response
         
         client = SimpleModelClient(api_key="test_key")
-        result = client.evaluate("Evaluate this:", "Sample response", "gpt-4")
+        result = client.generate("Evaluate this:", "gpt-4", temperature=0.1)
         
         assert result == "REASONING: Good analysis\nSCORE: 8.5"
         mock_client.chat.completions.create.assert_called_once()
     
     @patch('daydreaming_experiment.utils.model_client.OpenAI')
-    def test_evaluate_with_none_content(self, mock_openai_class):
-        """Test evaluation when API returns None content."""
+    def test_generate_with_none_content(self, mock_openai_class):
+        """Test generation when API returns None content."""
         mock_client = Mock()
         mock_openai_class.return_value = mock_client
         
@@ -120,7 +120,7 @@ class TestSimpleModelClient:
         mock_client.chat.completions.create.return_value = mock_response
         
         client = SimpleModelClient(api_key="test_key")
-        result = client.evaluate("Evaluate this:", "Sample response", "gpt-4")
+        result = client.generate("Evaluate this:", "gpt-4", temperature=0.1)
         
         assert result == ""
     

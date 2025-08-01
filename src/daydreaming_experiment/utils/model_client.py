@@ -2,6 +2,9 @@ import os
 import time
 from openai import OpenAI
 
+# Constants
+DEFAULT_MAX_TOKENS = 8192
+
 
 class SimpleModelClient:
     """Lightweight LLM client for experiment execution using OpenRouter API."""
@@ -32,12 +35,13 @@ class SimpleModelClient:
         self.rate_limit_delay = rate_limit_delay
         self.last_request_time = 0
 
-    def generate(self, prompt: str, model: str) -> str:
+    def generate(self, prompt: str, model: str, temperature: float = 0.7) -> str:
         """Generate content using specified model with rate limiting.
         
         Args:
             prompt: Text prompt to send to the model
             model: Model identifier
+            temperature: Sampling temperature (0.0-2.0). Lower values = more deterministic
             
         Returns:
             Generated response text
@@ -55,55 +59,19 @@ class SimpleModelClient:
             response = self.client.chat.completions.create(
                 model=model,
                 messages=[{"role": "user", "content": prompt}],
-                temperature=0.7,
-                max_tokens=8192,
+                temperature=temperature,
+                max_tokens=DEFAULT_MAX_TOKENS,
             )
             
             self.last_request_time = time.time()
-            response_text = response.choices[0].message.content.strip()
-            return response_text
+            response_text = response.choices[0].message.content
+            if response_text is None:
+                response_text = ''
+            return response_text.strip()
             
         except Exception as e:
             self.last_request_time = time.time()  # Update timestamp even on failure
             time.sleep(1)  # Brief delay before re-raising
             raise e
 
-    def evaluate(
-        self, prompt: str, response: str, model: str
-    ) -> str:
-        """LLM-based evaluation returning the raw response text with rate limiting.
-        
-        Note: This method expects evaluation templates that output REASONING and SCORE fields,
-        but parsing is now handled by the caller for better error handling.
-        The prompt parameter should contain the full evaluation template with the response inserted.
-        Returns: raw_response_text
-        
-        Raises:
-            Exception: For API errors and other failures
-        """
-        # Enforce rate limiting
-        time_since_last = time.time() - self.last_request_time
-        if time_since_last < self.rate_limit_delay:
-            time.sleep(self.rate_limit_delay - time_since_last)
-        
-        evaluation_prompt = prompt
 
-        try:
-            eval_response = self.client.chat.completions.create(
-                model=model,
-                messages=[{"role": "user", "content": evaluation_prompt}],
-                temperature=0.1,
-#                max_tokens=2048,  # Increased to allow for full REASONING + SCORE and avoid the bug with empty responses
-            )
-
-            self.last_request_time = time.time()
-            eval_text = eval_response.choices[0].message.content
-            if eval_text is None:
-                eval_text = ''
-
-            return eval_text.strip()
-
-        except Exception as e:
-            self.last_request_time = time.time()  # Update timestamp even on failure
-            time.sleep(1)
-            raise e

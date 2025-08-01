@@ -6,7 +6,9 @@ that orchestrates the complete experiment flow from concept loading to final res
 from kedro.pipeline import Pipeline, node, pipeline
 
 from .nodes import (
-    create_task_list,
+    load_and_prepare_concepts,
+    generate_concept_combinations,
+    create_all_tasks,
     generate_prompts,
     get_llm_responses,
     generate_evaluation_prompts,
@@ -18,28 +20,37 @@ from .nodes import (
 def create_pipeline(**kwargs) -> Pipeline:
     """Create the updated daydreaming experiment pipeline."""
     return pipeline([
-        # Stage 1: Task Configuration Generation
+        # Stage 1: Task Setup (3 focused nodes)
         node(
-            func=create_task_list,
+            func=load_and_prepare_concepts,
             inputs=[
-                "generation_models",
-                "evaluation_models", 
-                "generation_templates",
-                "evaluation_templates",
                 "concepts_metadata",
                 "concept_descriptions_sentence",
                 "concept_descriptions_paragraph",
                 "concept_descriptions_article",
                 "parameters"
             ],
-            outputs=[
-                "concept_combinations",
-                "concept_combo_relationships", 
-                "generation_tasks",
-                "evaluation_tasks",
-                "concept_contents"
+            outputs=["concepts_list", "concept_contents"],
+            name="load_and_prepare_concepts"
+        ),
+        
+        node(
+            func=generate_concept_combinations,
+            inputs=["concepts_list", "parameters"],
+            outputs=["concept_combinations", "concept_combo_relationships"],
+            name="generate_concept_combinations"
+        ),
+        
+        node(
+            func=create_all_tasks,
+            inputs=[
+                "concept_combinations", 
+                "generation_models", 
+                "evaluation_models", 
+                "parameters"
             ],
-            name="create_task_configurations"
+            outputs=["generation_tasks", "evaluation_tasks"],
+            name="create_all_tasks"
         ),
         
         # Stage 2: Generation Phase
