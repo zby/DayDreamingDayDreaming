@@ -103,13 +103,8 @@ def create_pipeline(**kwargs) -> Pipeline:
         # Stage 4: Results Processing
         node(
             func=parse_scores,
-            inputs=[
-                "evaluation_responses",
-                "evaluation_tasks",
-                "generation_tasks", 
-                "concept_combinations"
-            ],
-            outputs="final_results",
+            inputs="evaluation_responses",
+            outputs="parsed_scores_csv_path",
             name="parse_scores_node"
         )
     ])

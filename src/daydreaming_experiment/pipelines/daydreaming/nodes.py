@@ -515,24 +515,15 @@ def query_evaluation_llm(
     return eval_responses
 
 
-def parse_scores(
-    evaluation_responses: dict[str, str],
-    evaluation_tasks: pd.DataFrame,
-    generation_tasks: pd.DataFrame,
-    concept_combinations: pd.DataFrame
-) -> pd.DataFrame:
+def parse_scores(evaluation_responses: dict[str, str]) -> str:
     """
-    Parse scores and create final results with full traceability.
+    Parse scores from evaluation responses and create a CSV file.
     
     Args:
         evaluation_responses: Dictionary of raw evaluation responses
-        evaluation_tasks: DataFrame with evaluation task configs
-        generation_tasks: DataFrame with generation task configs
-        concept_combinations: DataFrame with concept combo metadata
     
     Returns:
-        DataFrame with columns: evaluation_task_id, generation_task_id, 
-        combo_id, score, model_info, etc.
+        String path to the created CSV file
     """
     logger.info(f"Parsing scores from {len(evaluation_responses)} evaluation responses")
     
@@ -550,27 +541,9 @@ def parse_scores(
             # Use the existing parsing function
             score = parse_llm_response(raw_eval)
             
-            # Get task information for full traceability
-            eval_task = evaluation_tasks[evaluation_tasks['evaluation_task_id'] == evaluation_task_id].iloc[0]
-            generation_task_id = eval_task['generation_task_id']
-            gen_task = generation_tasks[generation_tasks['generation_task_id'] == generation_task_id].iloc[0]
-            combo_id = gen_task['combo_id']
-            combo_info = concept_combinations[concept_combinations['combo_id'] == combo_id].iloc[0]
-            
             parsed_score_data = {
-                'evaluation_task_id': evaluation_task_id,
-                'generation_task_id': generation_task_id,
-                'combo_id': combo_id,
-                'combo_description': combo_info['description'],
-                'num_concepts': combo_info['num_concepts'],
-                'generation_template': gen_task['generation_template'],
-                'generation_model': gen_task['generation_model'],
-                'generation_model_short': gen_task['generation_model_short'],
-                'evaluation_template': eval_task['evaluation_template'],
-                'evaluation_model': eval_task['evaluation_model'],
-                'evaluation_model_short': eval_task['evaluation_model_short'],
-                'raw_score': score,
-                'raw_evaluation': raw_eval
+                'evaluation_response_filename': evaluation_task_id,
+                'score': score
             }
             parsed_scores.append(parsed_score_data)
             
@@ -585,6 +558,10 @@ def parse_scores(
     
     logger.info(f"Successfully parsed {len(parsed_scores)} scores")
     
-    # Convert to DataFrame
+    # Convert to DataFrame and save as CSV
     result_df = pd.DataFrame(parsed_scores)
-    return result_df
+    csv_path = "data/04_evaluation/parsed_scores.csv"
+    result_df.to_csv(csv_path, index=False)
+    logger.info(f"Saved parsed scores to {csv_path}")
+    
+    return csv_path
