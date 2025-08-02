@@ -1,6 +1,7 @@
 from dagster import asset
 from pathlib import Path
 import pandas as pd
+from jinja2 import Environment
 from .partitions import generation_tasks_partitions, evaluation_tasks_partitions
 from ..utils.nodes_standalone import (
     generate_prompts, 
@@ -17,32 +18,37 @@ from ..utils.nodes_standalone import (
 def generation_prompt(
     context, 
     generation_tasks, 
-    concept_combinations, 
-    concept_contents, 
-    generation_templates, 
-    concepts_metadata
+    content_combinations, 
+    generation_templates
 ) -> str:
     """
-    Generate one LLM prompt per partition and save as individual file.
+    Generate one LLM prompt per partition using ContentCombination directly.
     Each prompt is cached as a separate file for debugging.
     """
     task_id = context.partition_key
     
     # Get the specific task for this partition
     task_row = generation_tasks[generation_tasks["generation_task_id"] == task_id].iloc[0]
+    combo_id = task_row["combo_id"]
+    template_id = task_row["generation_template"]
     
-    # Generate prompt using existing logic
-    prompts_dict = generate_prompts(
-        generation_tasks.iloc[[task_row.name]],  # Single task
-        concept_combinations[0],  # combo_df  
-        concept_combinations[1],  # combo_relationships
-        concept_contents,
-        generation_templates,
-        concepts_metadata
-    )
+    # Find the ContentCombination for this combo_id directly
+    content_combination = None
+    for combo in content_combinations:
+        if combo.combo_id == combo_id:
+            content_combination = combo
+            break
     
-    prompt = prompts_dict[task_id]
-    context.log.info(f"Generated prompt for task {task_id}")
+    if content_combination is None:
+        raise ValueError(f"No ContentCombination found for combo_id: {combo_id}")
+    
+    # Render template using ContentCombination.contents (already has name + content)
+    template_content = generation_templates[template_id]
+    env = Environment()
+    template = env.from_string(template_content)
+    prompt = template.render(concepts=content_combination.contents)
+    
+    context.log.info(f"Generated prompt for task {task_id} using ContentCombination")
     return prompt
 
 @asset(

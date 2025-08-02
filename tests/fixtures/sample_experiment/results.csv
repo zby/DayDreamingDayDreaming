@@ -1,3 +1,0 @@
-experiment_id,attempt_id,concept_names,concept_count,level,template_id,prompt_file,response_file,generation_timestamp,generator_model
-test_fixture_exp,1,concept1|concept2,2,paragraph,0,prompt_001.txt,response_001.txt,2025-07-29T12:00:00,test-model
-test_fixture_exp,2,concept3|concept4,2,paragraph,1,prompt_002.txt,response_002.txt,2025-07-29T12:00:00,test-model

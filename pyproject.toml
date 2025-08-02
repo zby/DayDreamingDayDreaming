@@ -3,7 +3,7 @@ requires = ["setuptools"]
 build-backend = "setuptools.build_meta"
 
 [tool.dagster]
-code_location_file = "daydreaming_dagster/definitions.py"
+module_name = "daydreaming_dagster.definitions"
 
 [project]
 requires-python = ">=3.9"

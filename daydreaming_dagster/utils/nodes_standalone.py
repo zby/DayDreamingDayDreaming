@@ -16,94 +16,6 @@ from .eval_response_parser import parse_llm_response
 logger = logging.getLogger(__name__)
 
 
-def load_and_prepare_concepts(
-    concepts_metadata: pd.DataFrame,
-    concept_descriptions_sentence: dict[str, Any],
-    concept_descriptions_paragraph: dict[str, Any],
-    concept_descriptions_article: dict[str, Any],
-    parameters: dict[str, Any],
-) -> tuple[list[dict[str, str]], dict[str, str]]:
-    """
-    Load concepts from metadata and generate content with fallback strategy.
-
-    Args:
-        concepts_metadata: DataFrame with concept_id and name columns
-        concept_descriptions_sentence: Dict of sentence-level concept descriptions
-        concept_descriptions_paragraph: Dict of paragraph-level concept descriptions
-        concept_descriptions_article: Dict of article-level concept descriptions
-        parameters: Pipeline parameters including description_level
-
-    Returns:
-        - concepts_list: List of concept dictionaries with concept_id and name
-        - concept_contents: Dict mapping concept_id to content
-    """
-    description_level = parameters.get("description_level", "paragraph")
-
-    logger.info(
-        f"Loading and preparing concepts with description_level={description_level}"
-    )
-
-    # Load concepts from the new filesystem-based structure
-    concepts = []
-    for _, row in concepts_metadata.iterrows():
-        concept_id = row["concept_id"]
-        concept_name = row["name"]
-        concepts.append({"concept_id": concept_id, "name": concept_name})
-
-    logger.info(f"Loaded {len(concepts)} concepts from filesystem")
-
-    # First: Generate concept content with level flexibility and fallback strategy
-    concept_contents = {}
-
-    # Define fallback order: requested level -> paragraph -> sentence -> whatever's available
-    level_preference = [description_level]
-    if description_level != "paragraph":
-        level_preference.append("paragraph")
-    if description_level != "sentence":
-        level_preference.append("sentence")
-
-    # Add all levels to ensure we have fallbacks
-    all_levels = ["article", "paragraph", "sentence"]
-    for level in all_levels:
-        if level not in level_preference:
-            level_preference.append(level)
-
-    level_datasets = {
-        "sentence": concept_descriptions_sentence,
-        "paragraph": concept_descriptions_paragraph,
-        "article": concept_descriptions_article,
-    }
-
-    for concept in concepts:
-        concept_id = concept["concept_id"]
-        content = None
-
-        # Try each level in preference order
-        for level in level_preference:
-            if level in level_datasets and concept_id in level_datasets[level]:
-                content_dataset = level_datasets[level][concept_id]
-                # Handle callable datasets (from partitioned datasets)
-                content = (
-                    content_dataset() if callable(content_dataset) else content_dataset
-                )
-                logger.debug(
-                    f"Using {level} level description for concept {concept_id}"
-                )
-                break
-
-        if content is None:
-            raise ValueError(
-                f"No description found for concept {concept_id} at any level"
-            )
-
-        concept_contents[concept_id] = content
-
-    logger.info(
-        f"Generated content for {len(concept_contents)} concepts using level {description_level} (with fallbacks)"
-    )
-
-    return concepts, concept_contents
-
 
 def generate_concept_combinations(
     concepts_list: list[dict[str, str]], parameters: dict[str, Any]
@@ -163,6 +75,85 @@ def generate_concept_combinations(
     )
 
     return concept_combinations_df, concept_combo_relationships_df
+
+
+def create_tasks_from_content_combinations(
+    content_combinations: list,  # List[ContentCombination]
+    generation_models: pd.DataFrame,
+    evaluation_models: pd.DataFrame,
+    generation_templates: dict[str, str],
+    evaluation_templates: dict[str, str],
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """
+    Create generation and evaluation tasks directly from ContentCombination objects.
+
+    Args:
+        content_combinations: List of ContentCombination objects
+        generation_models: DataFrame with active generation models
+        evaluation_models: DataFrame with active evaluation models
+        generation_templates: Dict of template_id -> template_content
+        evaluation_templates: Dict of template_id -> template_content
+
+    Returns:
+        - generation_tasks: DataFrame with generation task definitions
+        - evaluation_tasks: DataFrame with evaluation task definitions
+    """
+    logger.info("Creating generation and evaluation tasks from ContentCombination objects")
+
+    # Filter for active models only
+    active_gen_models = generation_models[generation_models["active"] == True]
+    active_eval_models = evaluation_models[evaluation_models["active"] == True]
+
+    logger.info(
+        f"Found {len(active_gen_models)} active generation models and {len(active_eval_models)} active evaluation models"
+    )
+
+    generation_tasks = []
+    evaluation_tasks = []
+
+    # Create generation tasks for each combination of combo + template + model
+    for content_combo in content_combinations:
+        combo_id = content_combo.combo_id
+
+        for template_id in generation_templates.keys():
+            for _, model_row in active_gen_models.iterrows():
+                generation_model = model_row["model_name"]
+
+                # Create unique task ID
+                generation_task_id = f"{combo_id}_{template_id}_{generation_model}"
+
+                generation_task = {
+                    "generation_task_id": generation_task_id,
+                    "combo_id": combo_id,
+                    "generation_template": template_id,
+                    "generation_model": generation_model,
+                }
+                generation_tasks.append(generation_task)
+
+                # Create evaluation tasks for each evaluation template + model for this generation task
+                for eval_template_id in evaluation_templates.keys():
+                    for _, eval_model_row in active_eval_models.iterrows():
+                        evaluation_model = eval_model_row["model_name"]
+
+                        # Create unique evaluation task ID
+                        evaluation_task_id = f"{generation_task_id}_{eval_template_id}_{evaluation_model}"
+
+                        evaluation_task = {
+                            "evaluation_task_id": evaluation_task_id,
+                            "generation_task_id": generation_task_id,
+                            "evaluation_template": eval_template_id,
+                            "evaluation_model": evaluation_model,
+                        }
+                        evaluation_tasks.append(evaluation_task)
+
+    generation_tasks_df = pd.DataFrame(generation_tasks)
+    evaluation_tasks_df = pd.DataFrame(evaluation_tasks)
+
+    logger.info(
+        f"Created {len(generation_tasks_df)} generation tasks and {len(evaluation_tasks_df)} evaluation tasks"
+    )
+
+    return generation_tasks_df, evaluation_tasks_df
 
 
 def create_all_tasks(

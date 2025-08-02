@@ -1,166 +1,248 @@
-# Daydreaming Experiment
+# DayDreaming Dagster Pipeline
 
-[![Powered by Kedro](https://img.shields.io/badge/powered_by-kedro-ffc900?logo=kedro)](https://kedro.org)
+This is a Dagster-based data pipeline that tests whether pre-June 2025 LLMs can "reinvent" Gwern's Daydreaming Loop concept when provided with minimal contextual hints through a focused combinatorial testing approach.
 
-## Overview
+## Project Overview
 
-This is a Python experiment that tests whether pre-June 2025 LLMs can "reinvent" Gwern's Daydreaming Loop concept when provided with minimal contextual hints through a focused combinatorial testing approach. The system tests k_max-sized concept combinations to elicit the Day-Dreaming idea from offline LLMs using automated LLM-based evaluation.
+The system tests k_max-sized concept combinations to elicit the Day-Dreaming idea from offline LLMs using automated LLM-based evaluation. The pipeline orchestrates:
 
-The project uses Kedro for data pipeline orchestration with a hierarchical task architecture: concept combinations → generation tasks → evaluation tasks.
+- **Concept combination generation** from a curated database
+- **LLM prompt generation** using Jinja2 templates  
+- **Response generation** from multiple LLM models
+- **Automated evaluation** of responses for daydreaming-like insights
+- **Results aggregation** and analysis
 
-## Project Architecture
+## Architecture
 
-### Core Components
-- **ConceptDB**: Registry for batch concept retrieval and combination iteration
-- **Model Selection**: CSV-based active model selection for generation and evaluation
-- **Template System**: Jinja2-based prompt templates with rich concept formatting
-- **Hierarchical Tasks**: concept combinations → generation tasks → evaluation tasks
+### Dagster Pipeline Structure
 
-### Data Structure
 ```
-data/
-├── 01_raw/                     # External inputs
-│   ├── concepts/               # Concept database and articles
-│   ├── generation_templates/   # Jinja2 prompt templates
-│   ├── evaluation_templates/   # Evaluation prompt templates
-│   ├── generation_models.csv   # Available generation models
-│   └── evaluation_models.csv   # Available evaluation models
-├── 02_tasks/                   # Generated hierarchical tasks
-│   ├── concept_combinations.csv
-│   ├── concept_combo_relationships.csv
-│   ├── generation_tasks.csv
-│   └── evaluation_tasks.csv
-├── 03_generation/              # LLM generation results
-├── 04_evaluation/              # LLM evaluation results
-├── 05_parsing/                 # Parsed scores
-└── 06_summary/                 # Final results
+daydreaming_dagster/
+├── assets/
+│   ├── raw_data.py              # Raw data loading (concepts, templates, models)
+│   ├── core.py                  # Core processing (combinations, tasks)
+│   ├── partitions.py            # Partition management
+│   └── llm_prompts_responses.py # LLM interaction assets
+├── resources/
+│   ├── llm_client.py            # LLM API client resource
+│   ├── experiment_config.py     # Configuration resource
+│   └── io_managers.py           # Custom I/O managers
+└── definitions.py               # Single definitions file
 ```
 
-## Installation
+### Data Flow
 
-This project uses **uv** for fast Python package management:
+```
+Raw Data (01_raw/) 
+    ↓
+Task Generation (02_tasks/)
+    ↓  
+LLM Generation (03_generation/)
+    ↓
+LLM Evaluation (04_evaluation/)
+    ↓
+Results Processing (05_parsing/ & 06_summary/)
+```
+
+## Quick Start
+
+### Prerequisites
+
+- Python 3.9+
+- UV package manager
+- OpenRouter API key (or other LLM API)
+
+### Installation
 
 ```bash
-# Install the project and all dependencies
+# Clone and install
+git clone <repository>
+cd DayDreamingDayDreaming
 uv sync
 
-# Install development dependencies
-uv sync --dev
+# Set up environment variables
+cp .env.example .env
+# Edit .env with your API keys
 ```
 
-## Running the Pipeline
+### Running the Pipeline
+
+#### Option 1: Dagster UI (Recommended)
+```bash
+# Start the Dagster development server
+uv run dagster dev -f daydreaming_dagster/definitions.py
+
+# Open browser to http://localhost:3000
+# Use the UI to materialize assets interactively
+```
+
+#### Option 2: Command Line (3-Step Process)
+
+**Important**: The pipeline requires a specific sequence due to Dagster's dynamic partitioning system.
 
 ```bash
-# Run the complete daydreaming pipeline
-uv run kedro run
+# Step 1: Generate setup assets and task CSV files
+uv run dagster asset materialize --select "concepts,concepts_metadata,generation_models,evaluation_models,generation_templates,evaluation_templates,content_combinations,generation_tasks,evaluation_tasks" -f daydreaming_dagster/definitions.py
 
-# Run specific pipeline nodes
-uv run kedro run --node create_initial_tasks
-uv run kedro run --node generate_prompts_node
+# Step 2: Create dynamic partitions (REQUIRED before LLM assets)
+# This reads the CSV files and registers each task as a partition in Dagster
+uv run dagster asset materialize --select "task_definitions" -f daydreaming_dagster/definitions.py
 
-# Run pipeline with parameters
-uv run kedro run --params k_max:3
+# Step 3: Generate LLM responses for specific partitions
+# Now you can run individual partitions or use the UI to run all
+uv run dagster asset materialize --select "generation_prompt,generation_response" --partition "combo_001_02_problem_solving_deepseek/deepseek-r1:free" -f daydreaming_dagster/definitions.py
 
-# Visualize the pipeline
-uv run kedro viz
+# Step 4: Process results (after sufficient generation/evaluation data)
+uv run dagster asset materialize --select "parsed_scores,final_results" -f daydreaming_dagster/definitions.py
 ```
 
-## Testing
+**Why task_definitions is needed**: Dagster uses dynamic partitioning where partitions are created at runtime based on the actual tasks generated. The `task_definitions` asset reads the CSV files and calls `context.instance.add_dynamic_partitions()` to register each task ID as a partition that the LLM assets can use.
 
-The project follows a clear separation between unit tests and integration tests:
+### Running All LLM Partitions
+
+After completing Steps 1-2 above, you'll have ~150 LLM partitions available. To run them all:
+
+**Recommended**: Use the Dagster UI
+```bash
+uv run dagster dev -f daydreaming_dagster/definitions.py
+# Go to http://localhost:3000, find the partitioned assets, click "Materialize all partitions"
+```
+
+**Alternative**: CLI loop (sequential, slower)
+```bash
+# Get all partition names and run them one by one
+cut -d',' -f1 data/02_tasks/generation_tasks.csv | tail -n +2 | while read partition; do
+  echo "Running partition: $partition"
+  uv run dagster asset materialize --select "generation_prompt,generation_response" --partition "$partition" -f daydreaming_dagster/definitions.py
+done
+```
+
+## Development
+
+### Testing
 
 ```bash
 # Run all tests
 uv run pytest
 
-# Run only unit tests (fast, isolated - no data dependencies)
-uv run pytest daydreaming_experiment/
+# Run only unit tests (fast, isolated)
+uv run pytest daydreaming_dagster/
 
-# Run only integration tests (requires real data files)
-uv run pytest tests/
+# Run only integration tests (data-dependent)
+uv run pytest daydreaming_dagster_tests/
 
-# Run with coverage report
-uv run pytest --cov=daydreaming_experiment
-
-# Run tests in parallel for speed
-uv run pytest -n auto
+# Run with coverage
+uv run pytest --cov=daydreaming_dagster
 ```
 
-### Test Architecture
-- **Unit Tests**: Colocated with modules (e.g., `src/daydreaming_experiment/utils/test_model_client.py`)
-- **Integration Tests**: In `tests/` directory, use real data files and must fail if data is missing
-
-## Key Features
-
-- **Active Model Selection**: CSV-based model configuration with `active` column for easy switching
-- **Hierarchical Task Structure**: Efficient N:M relationship between concept combinations and model tasks
-- **Jinja2 Template System**: Rich formatting with concept names, IDs, and content
-- **Real Data Integration Testing**: Tests that fail fast if required data files are missing
-- **Dependency Injection**: Testable architecture with easy mocking
-
-## Dependencies
-
-Main dependencies:
-- Kedro for pipeline orchestration
-- Jinja2 for template processing
-- pandas for data manipulation
-- pytest for testing
-- OpenRouter for LLM API access
-
-## Configuration
-
-### Model Selection
-Models are configured in CSV files with an `active` column:
-- `data/01_raw/generation_models.csv`
-- `data/01_raw/evaluation_models.csv`
-
-Set `active=True` for models you want to use in the pipeline.
-
-### Templates
-Prompt templates use Jinja2 syntax and are stored in:
-- `data/01_raw/generation_templates/` - For LLM generation prompts
-- `data/01_raw/evaluation_templates/` - For evaluation prompts
-
-### Parameters
-Key pipeline parameters in `conf/base/parameters.yml`:
-- `k_max`: Maximum number of concepts in combinations
-- `current_gen_template`: Active generation template
-- `current_eval_template`: Active evaluation template
-
-## Development
+### Code Formatting
 
 ```bash
 # Format code
 uv run black .
 
 # Check style
-uv run flake8
-
-# Run specific test file
-uv run pytest daydreaming_experiment/utils/test_model_client.py
+uv run ruff check
 ```
 
-### Jupyter Support
+## Configuration
 
-```bash
-# Start Jupyter with Kedro context
-uv run kedro jupyter notebook
+### Environment Variables
 
-# Start JupyterLab
-uv run kedro jupyter lab
+- `OPENROUTER_API_KEY`: OpenRouter API key for LLM access
+- `DAGSTER_HOME`: Dagster metadata storage (defaults to `dagster_home/`)
 
-# IPython session
-uv run kedro ipython
+### Pipeline Parameters
+
+Configure in `daydreaming_dagster/resources/experiment_config.py`:
+
+- `k_max`: Maximum concept combination size
+- `description_level`: Description level ("sentence", "paragraph", "article")
+- `concept_ids_filter`: Optional list of concept IDs to load (None = all)
+- `template_names_filter`: Optional list of template names to load (None = all)
+- Model selection in `data/01_raw/generation_models.csv` and `data/01_raw/evaluation_models.csv`
+
+### Selective Loading for Development
+
+For faster development and testing, use selective loading:
+
+```python
+# Example: Load only 3 concepts and 2 templates for faster testing
+config = ExperimentConfig(
+    k_max=2,
+    concept_ids_filter=["dearth-ai-discoveries", "default-mode-network", "human-creativity-insight"],
+    template_names_filter=["00_systematic_analytical", "02_problem_solving"]
+)
+
+# Result: 3 combinations × 2 templates × 2 models = 12 tasks (vs 150+ for full dataset)
 ```
 
-## Documentation
+## Data Structure
 
-For detailed development guidelines, architecture decisions, and coding standards, see:
-- **[CLAUDE.md](CLAUDE.md)** - Comprehensive development guide and project architecture
+### Input Data
+- **Concepts**: `data/01_raw/concepts/day_dreaming_concepts.json`
+- **Templates**: `data/01_raw/generation_templates/` (Jinja2 templates)
+- **Models**: `data/01_raw/*_models.csv` (available LLM models)
 
-## Data Engineering Conventions
+### Output Data
+- **Tasks**: `data/02_tasks/` (generated combinations and tasks)
+- **Generation**: `data/03_generation/` (LLM prompts and responses)
+- **Evaluation**: `data/04_evaluation/` (evaluation prompts and scores)
+- **Results**: `data/05_parsing/` and `data/06_summary/` (processed results)
 
-- Raw data in `data/01_raw/` (external inputs only)
-- Generated data follows numbered convention (`02_tasks/`, `03_generation/`, etc.)
-- No data or credentials committed to repository
-- All configuration in `conf/base/` or `conf/local/`
+## Key Features
+
+- **Partitioned Assets**: Efficient processing of large task sets
+- **Template System**: Flexible Jinja2-based prompt generation
+- **Multi-Model Support**: Test across different LLM providers
+- **Automated Evaluation**: LLM-based scoring of creativity and insight
+- **Human-Readable Outputs**: CSV and text files for easy debugging
+- **Selective Loading**: Optional filtering for faster development and testing
+- **Performance Optimization**: Scale from full experiments to focused tests
+
+## Architecture Details
+
+### Assets
+
+- **Raw Data Assets**: Load concepts, templates, and model configurations
+- **Core Processing Assets**: Generate concept combinations and task definitions
+- **Partitioned LLM Assets**: Handle individual generation/evaluation tasks
+- **Results Assets**: Parse scores and create final summaries
+
+### Resources
+
+- **LLMClientResource**: Configurable API client for different LLM providers
+- **ExperimentConfig**: Centralized parameter management with selective loading support
+- **Custom I/O Managers**: Human-readable file formats (CSV, text)
+
+### Partitioning Strategy
+
+The pipeline uses dynamic partitioning:
+- **Generation tasks**: Partitioned by `{combo_id}_{template}_{model}`
+- **Evaluation tasks**: Partitioned by `{generation_task_id}_{eval_template}_{eval_model}`
+
+This enables:
+- Parallel processing of independent tasks
+- Easy restart of failed partitions
+- Incremental pipeline execution
+
+## Migration from Kedro
+
+This project was migrated from Kedro to Dagster for improved:
+- Asset lineage and dependency tracking
+- Partitioned asset processing
+- Web UI for pipeline monitoring
+- Integration with data catalogs and metadata
+
+Legacy Kedro pipeline code is available in `src/legacy/` for reference.
+
+## Contributing
+
+1. Follow the testing structure (unit tests in `daydreaming_dagster/`, integration tests in `daydreaming_dagster_tests/`)
+2. Use Black for code formatting
+3. Add type hints where appropriate
+4. Update tests for new functionality
+
+## License
+
+[Add your license information here]

@@ -6,6 +6,8 @@ from dagster import DagsterInstance
 from daydreaming_dagster.definitions import defs
 from daydreaming_dagster.resources.llm_client import LLMClientResource
 from dagster import ConfigurableResource
+import tempfile
+from pathlib import Path
 
 
 class MockLLMClient:
@@ -109,6 +111,13 @@ def test_resources_with_mock_llm(mock_creative_llm):
         **defs.resources,
         "openrouter_client": mock_creative_llm
     }
+
+
+@pytest.fixture
+def temp_directory():
+    """Provide a temporary directory for test data."""
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        yield Path(tmp_dir)
 
 
 @pytest.fixture

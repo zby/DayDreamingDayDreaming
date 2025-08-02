@@ -16,6 +16,8 @@ class ExperimentConfig(ConfigurableResource):
     evaluation_temperature: float = 0.1
     generation_max_tokens: int = 8192
     evaluation_max_tokens: int = 2048
+    concept_ids_filter: list[str] = None
+    template_names_filter: list[str] = None
     def to_dict(self) -> dict:
         """Convert to dictionary for compatibility with existing node functions."""
         return {
@@ -33,5 +35,7 @@ class ExperimentConfig(ConfigurableResource):
             "max_tokens": {
                 "generation": self.generation_max_tokens,
                 "evaluation": self.evaluation_max_tokens
-            }
+            },
+            "concept_ids_filter": self.concept_ids_filter,
+            "template_names_filter": self.template_names_filter
         }

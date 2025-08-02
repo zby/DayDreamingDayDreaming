@@ -24,20 +24,21 @@ class LLMClientResource(ConfigurableResource):
     max_retries: int = 3
     retry_delay: float = 5.0
     default_max_tokens: int = 8192
-    def __post_init__(self):
-        """Initialize OpenAI client after Dagster resource configuration."""
-        # Get API key from config or environment
-        effective_api_key = self.api_key or os.getenv("OPENROUTER_API_KEY")
-        if not effective_api_key:
-            raise ValueError(
-                "OpenRouter API key required. Set OPENROUTER_API_KEY environment variable or pass api_key parameter."
-            )
+    def _ensure_initialized(self):
+        """Lazy initialization of OpenAI client."""
+        if not hasattr(self, '_client'):
+            # Get API key from config or environment
+            effective_api_key = self.api_key or os.getenv("OPENROUTER_API_KEY")
+            if not effective_api_key:
+                raise ValueError(
+                    "OpenRouter API key required. Set OPENROUTER_API_KEY environment variable or pass api_key parameter."
+                )
 
-        self._client = OpenAI(
-            api_key=effective_api_key,
-            base_url=self.base_url,
-        )
-        self._last_request_time = 0
+            self._client = OpenAI(
+                api_key=effective_api_key,
+                base_url=self.base_url,
+            )
+            self._last_request_time = 0
 
     def generate(self, prompt: str, model: str, temperature: float = 0.7, max_tokens: Optional[int] = None) -> str:
         """Generate content using specified model with rate limiting and retry logic.
@@ -55,6 +56,7 @@ class LLMClientResource(ConfigurableResource):
             ValueError: For missing API key (immediate failure)
             Exception: For permanent failures after all retries exhausted
         """
+        self._ensure_initialized()
         effective_max_tokens = max_tokens or self.default_max_tokens
         last_exception = None
 

@@ -2,7 +2,7 @@
 
 import pytest
 
-from daydreaming_experiment.utils.eval_response_parser import parse_llm_response
+from daydreaming_dagster.utils.eval_response_parser import parse_llm_response
 
 
 class TestParseLLMResponse:

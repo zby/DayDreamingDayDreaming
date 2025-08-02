@@ -1,6 +1,0 @@
-Test prompt 1 for systematic analytical approach combining concept1 and concept2.
-
-**concept1**: Description of concept1 at paragraph level
-**concept2**: Description of concept2 at paragraph level
-
-Can you analyze these concepts and identify patterns or connections?

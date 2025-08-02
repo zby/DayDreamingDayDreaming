@@ -6,41 +6,49 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 This is a Python experiment that tests whether pre-June 2025 LLMs can "reinvent" Gwern's Daydreaming Loop concept when provided with minimal contextual hints through a focused combinatorial testing approach. The system tests k_max-sized concept combinations to elicit the Day-Dreaming idea from offline LLMs using automated LLM-based evaluation.
 
-## Core Modules and File Structure
+## Dagster Architecture
 
-### Core Modules and Classes
+### Core Architecture
 
-1. **model_client.py** - Simple LLM interface for content generation and evaluation (in `src/daydreaming_experiment/utils/`)
-2. **eval_response_parser.py** - Response parsing utilities (in `src/daydreaming_experiment/utils/`)
-3. **nodes.py** - Pipeline node functions (in `src/daydreaming_experiment/pipelines/daydreaming/`)
+The project uses **Dagster** for data pipeline orchestration, with a modern asset-based approach:
 
-### Kedro Pipeline Architecture
-
-The project uses Kedro for data pipeline orchestration, with node functions in:
-- **nodes.py** - Pure pipeline node functions for task generation, prompt creation, LLM querying, and evaluation
+- **Assets**: Data artifacts with lineage tracking and dependency management
+- **Resources**: Configurable services (LLM clients, experiment configuration, I/O managers)
+- **Partitions**: Dynamic partitioning for scalable LLM task processing
 
 ### File Organization
 
 ```
-src/daydreaming_experiment/
-├── utils/
-│   ├── model_client.py         # Simple LLM interface
-│   ├── test_model_client.py    # Unit tests for model client
-│   ├── eval_response_parser.py # Response parsing utilities
-│   └── test_eval_response_parser.py # Unit tests for parser
-├── pipelines/
-│   └── daydreaming/
-│       ├── nodes.py            # Pipeline node functions
-│       ├── pipeline.py         # Kedro pipeline definition
-│       └── test_nodes.py       # Unit tests for pipeline nodes
-├── pipeline_registry.py        # Pipeline registration
-└── settings.py                 # Kedro settings
+daydreaming_dagster/
+├── assets/                     # Dagster assets (data pipeline components)
+│   ├── raw_data.py            # Raw data loading assets (supports selective loading)
+│   ├── core.py                # Core processing assets (combinations, tasks)
+│   ├── partitions.py          # Partition management assets
+│   └── llm_prompts_responses.py # LLM interaction assets
+├── resources/                  # Dagster resources
+│   ├── llm_client.py          # LLM API client resource
+│   ├── experiment_config.py   # Experiment configuration resource (with filtering)
+│   └── io_managers.py         # Custom I/O managers for different file types
+├── definitions.py             # Single Dagster definitions file
+└── __init__.py                # Package initialization
+
+daydreaming_dagster_tests/     # Integration tests
+├── conftest.py                # Pytest fixtures and test utilities
+├── test_full_pipeline_integration.py # Complete pipeline integration tests
+├── test_dagster_cli_compatibility.py # CLI and asset tests
+├── test_partition_materialization.py # Partition-specific tests
+├── test_resource_dependencies.py     # Resource configuration tests
+├── test_simple_llm_mocking.py       # LLM mocking tests
+└── ...                        # Additional test modules
 
 data/
-├── 01_raw/                     # External inputs only
+├── 01_raw/                    # External inputs only
 │   ├── concepts/
 │   │   ├── day_dreaming_concepts.json  # Concept database with IDs and names
-│   │   └── articles/           # External article files
+│   │   └── descriptions/       # Concept descriptions by level
+│   │       ├── sentence/       # Sentence-level descriptions
+│   │       ├── paragraph/      # Paragraph-level descriptions
+│   │       └── article/        # Article-level descriptions
 │   ├── generation_templates/   # Jinja2 prompt templates
 │   │   ├── 00_systematic_analytical.txt
 │   │   ├── 01_creative_synthesis.txt
@@ -51,11 +59,11 @@ data/
 │   ├── generation_models.csv   # Available generation models with active selection
 │   └── evaluation_models.csv   # Available evaluation models with active selection
 ├── 02_tasks/                   # Generated task definitions (hierarchical structure)
-│   ├── concept_combinations.csv        # Concept combination definitions (combo_id, description, num_concepts)
-│   ├── concept_combo_relationships.csv # Concept-combo relationships (combo_id, concept_id, position)
-│   ├── generation_tasks.csv            # Generation tasks (generation_task_id, combo_id, template, model)
-│   ├── evaluation_tasks.csv            # Evaluation tasks (evaluation_task_id, generation_task_id, template, model)
-│   └── concept_contents/               # Individual concept content files (by concept_id)
+│   ├── concept_combinations_combinations.csv    # Concept combination definitions
+│   ├── concept_combinations_relationships.csv  # Concept-combo relationships
+│   ├── generation_tasks.csv                    # Generation tasks
+│   ├── evaluation_tasks.csv                    # Evaluation tasks
+│   └── concept_contents/                       # Individual concept content files
 ├── 03_generation/              # LLM generation results
 │   ├── generation_prompts/     # Prompts sent to generator LLM
 │   └── generation_responses/   # Raw generator responses
@@ -65,18 +73,9 @@ data/
 ├── 05_parsing/                 # Parsed evaluation scores
 │   └── parsed_scores.csv       # Extracted scores with metadata
 ├── 06_summary/                 # Final aggregated results
-│   └── final_results_summary.csv
+│   └── final_results.csv       # Final aggregated results
 └── 07_reporting/               # Error logs and reporting
-    ├── generation_failures.csv
-    ├── evaluation_failures.csv
-    └── parsing_failures.csv
-
-conf/base/
-├── catalog.yml                 # Kedro data catalog configuration
-└── parameters.yml              # Pipeline parameters
-
-tests/                          # Integration tests with real data
-└── test_working_integration.py # Real data integration tests
+    └── (error logs as needed)
 ```
 
 # Package Management
@@ -94,19 +93,34 @@ uv sync
 uv sync --dev
 ```
 
+### Running the Pipeline
+```bash
+# Start Dagster development server (recommended)
+uv run dagster dev -f daydreaming_dagster/definitions.py
+
+# Materialize specific assets via CLI
+uv run dagster asset materialize --select "concepts_metadata,generation_tasks"
+
+# Materialize partitioned assets
+uv run dagster asset materialize --select "generation_prompt,generation_response" --partition "combo_001_02_problem_solving_deepseek/deepseek-r1:free"
+```
+
 ### Running Tests
 ```bash
 # Run all tests
 uv run pytest
 
-# Run only unit tests (fast, isolated)
-uv run pytest daydreaming_experiment/
+# Run only unit tests (fast, isolated) - colocated with modules
+uv run pytest daydreaming_dagster/
 
 # Run only integration tests (data-dependent)
-uv run pytest tests/
+uv run pytest daydreaming_dagster_tests/
 
 # Run with coverage report
-uv run pytest --cov=daydreaming_experiment
+uv run pytest --cov=daydreaming_dagster
+
+# Run optimized integration test (uses selective loading for faster execution)
+uv run pytest daydreaming_dagster_tests/test_full_pipeline_integration.py
 ```
 
 ### Code Formatting
@@ -114,8 +128,8 @@ uv run pytest --cov=daydreaming_experiment
 # Format code with black
 uv run black .
 
-# Check for style issues with flake8
-uv run flake8
+# Check for style issues with ruff
+uv run ruff check
 ```
 
 ## Testing Structure
@@ -236,6 +250,26 @@ Examples:
 - `SimpleModelClient` can be injected for testing without requiring real API calls
 - `ConceptDB` can be provided pre-loaded for experiment runs
 - Tests can easily inject mock dependencies without complex patching
+
+**Selective Loading**: The pipeline supports selective loading of concepts and templates for faster development, testing, and experimentation. This enables:
+- **Development mode**: Test with small subsets of data for faster iteration
+- **Performance testing**: Validate pipeline logic without full dataset overhead
+- **Focused experiments**: Test specific concept combinations or template variations
+
+Selective Loading Configuration:
+```python
+# In ExperimentConfig
+config = ExperimentConfig(
+    k_max=2,
+    concept_ids_filter=["dearth-ai-discoveries", "default-mode-network"], 
+    template_names_filter=["00_systematic_analytical", "02_problem_solving"]
+)
+```
+
+Filtering Parameters:
+- `concept_ids_filter: list[str] = None` - Only load specified concept IDs (None = all)
+- `template_names_filter: list[str] = None` - Only load specified template names (None = all)
+- Backward compatible: filtering is optional and defaults to loading all data
 
 **Jinja2-based Templates**: Prompt templates are stored as separate text files in `data/01_raw/generation_templates/` using Jinja2 templating syntax for powerful and flexible prompt generation. Templates are automatically loaded as partitioned datasets and must reference the `concepts` variable.
 

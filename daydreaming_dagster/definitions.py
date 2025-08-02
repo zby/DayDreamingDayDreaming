@@ -1,4 +1,4 @@
-from dagster import Definitions
+from dagster import Definitions, multiprocess_executor
 from daydreaming_dagster.assets.llm_prompts_responses import (
     generation_prompt,
     generation_response,
@@ -6,19 +6,15 @@ from daydreaming_dagster.assets.llm_prompts_responses import (
     evaluation_response
 )
 from daydreaming_dagster.assets.raw_data import (
+    concepts,
     concepts_metadata,
-    concept_descriptions_sentence,
-    concept_descriptions_paragraph,
-    concept_descriptions_article,
     generation_models,
     evaluation_models,
     generation_templates,
     evaluation_templates
 )
 from daydreaming_dagster.assets.core import (
-    concepts_and_content,
-    concept_contents,
-    concept_combinations,
+    content_combinations,
     generation_tasks,
     evaluation_tasks
 )
@@ -36,19 +32,15 @@ from daydreaming_dagster.resources.io_managers import (
 defs = Definitions(
     assets=[
         # Raw data assets
+        concepts,
         concepts_metadata,
-        concept_descriptions_sentence,
-        concept_descriptions_paragraph,
-        concept_descriptions_article,
         generation_models,
         evaluation_models,
         generation_templates,
         evaluation_templates,
         
         # Core processing assets
-        concepts_and_content,
-        concept_contents,
-        concept_combinations,
+        content_combinations,
         generation_tasks,
         evaluation_tasks,
         
@@ -63,7 +55,7 @@ defs = Definitions(
     ],
     resources={
         "openrouter_client": LLMClientResource(),
-        "experiment_config": ExperimentConfig(),
+        "config": ExperimentConfig(),
         "csv_io_manager": CSVIOManager("data/02_tasks"),
         "partitioned_concept_io_manager": PartitionedConceptIOManager("data/02_tasks/concept_contents"),
         "generation_prompt_io_manager": PartitionedTextIOManager("data/03_generation/generation_prompts"),
@@ -73,5 +65,6 @@ defs = Definitions(
         "error_log_io_manager": CSVIOManager("data/07_reporting"),
         "parsing_results_io_manager": CSVIOManager("data/05_parsing"),
         "summary_results_io_manager": CSVIOManager("data/06_summary")
-    }
+    },
+    executor=multiprocess_executor.configured({"max_concurrent": 2})
 )
