@@ -388,8 +388,18 @@ def parse_scores(evaluation_responses: dict[str, str]) -> str:
             }
             parsed_scores.append(error_record)
 
-    # Save to CSV
-    parsed_scores_df = pd.DataFrame(parsed_scores)
+    # Save to CSV - ensure proper column structure even if empty
+    if not parsed_scores:
+        # Create empty DataFrame with expected column structure
+        parsed_scores_df = pd.DataFrame(columns=[
+            "evaluation_task_id", 
+            "score", 
+            "reasoning", 
+            "error"
+        ])
+    else:
+        parsed_scores_df = pd.DataFrame(parsed_scores)
+    
     output_path = "data/05_parsing/parsed_scores.csv"
     os.makedirs(os.path.dirname(output_path), exist_ok=True)
     parsed_scores_df.to_csv(output_path, index=False)

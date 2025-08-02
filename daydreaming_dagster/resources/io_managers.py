@@ -33,18 +33,7 @@ class PartitionedTextIOManager(IOManager):
             
         return file_path.read_text()
 
-# Factory functions for different file types
-def generation_prompt_io_manager():
-    return PartitionedTextIOManager("data/03_generation/generation_prompts")
-
-def generation_response_io_manager():
-    return PartitionedTextIOManager("data/03_generation/generation_responses")
-
-def evaluation_prompt_io_manager():
-    return PartitionedTextIOManager("data/04_evaluation/evaluation_prompts")
-
-def evaluation_response_io_manager():
-    return PartitionedTextIOManager("data/04_evaluation/evaluation_responses")
+# Factory functions removed - use direct class instantiation in definitions.py
 
 class CSVIOManager(IOManager):
     """
@@ -100,8 +89,7 @@ class CSVIOManager(IOManager):
         
         return pd.read_csv(file_path)
 
-def csv_io_manager():
-    return CSVIOManager("data/02_tasks")
+# csv_io_manager factory function removed - use direct instantiation
 
 class PartitionedConceptIOManager(IOManager):
     """
@@ -131,44 +119,7 @@ class PartitionedConceptIOManager(IOManager):
                 concept_contents[concept_id] = file_path.read_text()
         return concept_contents
 
-def partitioned_text_io_manager():
-    return PartitionedConceptIOManager("data/02_tasks/concept_contents")
+# partitioned_text_io_manager and partitioned_concept_io_manager removed - use direct instantiation
 
-class ErrorLogIOManager(IOManager):
-    """
-    Saves error logs and failure tracking as CSV files.
-    """
-    
-    def __init__(self, base_path: str):
-        self.base_path = Path(base_path)
-    
-    def handle_output(self, context: OutputContext, obj: pd.DataFrame):
-        """Save error log as CSV"""
-        asset_name = context.asset_key.path[-1]
-        file_path = self.base_path / f"{asset_name}.csv"
-        
-        # Ensure directory exists
-        file_path.parent.mkdir(parents=True, exist_ok=True)
-        
-        obj.to_csv(file_path, index=False)
-        context.log.info(f"Saved error log {asset_name} to {file_path}")
-    
-    def load_input(self, context: InputContext) -> pd.DataFrame:
-        """Load error log from CSV"""
-        asset_name = context.asset_key.path[-1]
-        file_path = self.base_path / f"{asset_name}.csv"
-        
-        if not file_path.exists():
-            # Return empty DataFrame if no errors yet
-            return pd.DataFrame()
-        
-        return pd.read_csv(file_path)
-
-def error_log_io_manager():
-    return ErrorLogIOManager("data/07_reporting")
-
-def parsing_results_io_manager():
-    return CSVIOManager("data/05_parsing")
-
-def summary_results_io_manager():
-    return CSVIOManager("data/06_summary")
+# ErrorLogIOManager removed - it's identical to CSVIOManager
+# Factory functions removed - use direct CSVIOManager instantiation

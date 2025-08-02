@@ -82,7 +82,7 @@ class TestDagsterAssetInstantiation:
     def test_dagster_definitions_load(self):
         """Test that our Dagster definitions load without errors."""
         try:
-            from daydreaming_dagster import defs
+            from daydreaming_dagster.definitions import defs
             assert defs is not None
             assert len(defs.assets) > 0
             print(f"✓ Dagster definitions loaded with {len(defs.assets)} assets")
@@ -92,7 +92,7 @@ class TestDagsterAssetInstantiation:
     def test_asset_names_accessible(self):
         """Test that we can access asset names without triggering ANTLR issues."""
         try:
-            from daydreaming_dagster import defs
+            from daydreaming_dagster.definitions import defs
             asset_names = [asset.key.to_user_string() for asset in defs.assets]
             assert len(asset_names) > 0
             print(f"✓ Successfully retrieved {len(asset_names)} asset names")

@@ -3,8 +3,8 @@
 import pytest
 from unittest.mock import Mock
 from dagster import DagsterInstance
-from daydreaming_dagster import defs
-from daydreaming_dagster.resources.api_client import OpenRouterResource
+from daydreaming_dagster.definitions import defs
+from daydreaming_dagster.resources.llm_client import LLMClientResource
 from dagster import ConfigurableResource
 
 
@@ -35,7 +35,7 @@ class MockLLMClient:
 
 
 class MockLLMResource(ConfigurableResource):
-    """Reusable mock LLM resource for testing."""
+    """Reusable mock LLM resource for testing - matches LLMClientResource interface."""
     
     responses: dict = {}
     should_fail: bool = False
@@ -46,12 +46,12 @@ class MockLLMResource(ConfigurableResource):
         # Create a persistent client that can be accessed for call tracking
         self._client = MockLLMClient(responses=self.responses, should_fail=self.should_fail)
     
-    def get_client(self):
-        """Return the same client instance for call tracking."""
+    def generate(self, prompt: str, model: str, temperature: float = 0.7, max_tokens: int = None) -> str:
+        """Generate method that matches LLMClientResource interface."""
         # Ensure client exists (in case of timing issues)
         if not hasattr(self, '_client'):
             self._client = MockLLMClient(responses=self.responses, should_fail=self.should_fail)
-        return self._client
+        return self._client.generate(prompt, model, temperature)
     
     @property
     def call_count(self):

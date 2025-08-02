@@ -29,7 +29,7 @@ def concepts_and_content(
 
 @asset(
     group_name="daydreaming_experiment",
-    io_manager_key="partitioned_text_io_manager"
+    io_manager_key="partitioned_concept_io_manager"
 )
 def concept_contents(concepts_and_content) -> dict[str, str]:
     """Save individual concept content files for clean access without ConceptDB dependencies."""
