@@ -82,7 +82,8 @@ def generation_response(context, generation_prompt, generation_tasks) -> str:
     partitions_def=evaluation_tasks_partitions,
     group_name="llm_evaluation",
     io_manager_key="evaluation_prompt_io_manager",
-    deps=["task_definitions", "generation_response"]  # Depend on generation_response but load manually
+    deps=["task_definitions"],  # Only depend on task_definitions, load generation_response manually
+    required_resource_keys={"generation_response_io_manager"}
 )
 def evaluation_prompt(context, evaluation_tasks, evaluation_templates) -> str:
     """
