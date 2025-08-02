@@ -82,9 +82,9 @@ def generation_response(context, generation_prompt, generation_tasks) -> str:
     partitions_def=evaluation_tasks_partitions,
     group_name="llm_evaluation",
     io_manager_key="evaluation_prompt_io_manager",
-    deps=["task_definitions"]  # Ensure partitions are created first
+    deps=["task_definitions", "generation_response"]  # Depend on generation_response but load manually
 )
-def evaluation_prompt(context, evaluation_tasks, generation_response, evaluation_templates) -> str:
+def evaluation_prompt(context, evaluation_tasks, evaluation_templates) -> str:
     """
     Generate one evaluation prompt per partition and save as individual file.
     Each prompt is cached as a separate file for debugging.
@@ -93,9 +93,26 @@ def evaluation_prompt(context, evaluation_tasks, generation_response, evaluation
     
     # Get the specific task for this partition
     task_row = evaluation_tasks[evaluation_tasks["evaluation_task_id"] == task_id].iloc[0]
+    generation_task_id = task_row["generation_task_id"]
+    
+    # Load the generation response from the correct partition using I/O manager
+    # Get the generation response I/O manager from resources to respect test vs production paths
+    gen_response_io_manager = context.resources.generation_response_io_manager
+    
+    # Create a mock context for the generation partition
+    class MockLoadContext:
+        def __init__(self, partition_key):
+            self.partition_key = partition_key
+    
+    mock_context = MockLoadContext(generation_task_id)
+    try:
+        generation_response = gen_response_io_manager.load_input(mock_context)
+    except FileNotFoundError:
+        raise ValueError(f"Generation response not found for partition {generation_task_id}. "
+                        f"Make sure to materialize generation_response for this partition first.")
     
     # Generate evaluation prompt using existing logic
-    response_dict = {task_row["generation_task_id"]: generation_response}
+    response_dict = {generation_task_id: generation_response}
     eval_prompts_dict = generate_evaluation_prompts(
         response_dict,
         evaluation_tasks.iloc[[task_row.name]],  # Single task
@@ -103,7 +120,7 @@ def evaluation_prompt(context, evaluation_tasks, generation_response, evaluation
     )
     
     eval_prompt = eval_prompts_dict[task_id]
-    context.log.info(f"Generated evaluation prompt for task {task_id}")
+    context.log.info(f"Generated evaluation prompt for task {task_id}, using generation response from {generation_task_id}")
     return eval_prompt
 
 @asset(
