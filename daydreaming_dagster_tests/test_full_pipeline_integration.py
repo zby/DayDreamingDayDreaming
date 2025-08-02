@@ -426,18 +426,60 @@ class TestFullPipelineIntegration:
                 evaluation_success = True
                 for eval_partition in test_evaluation_partitions:
                     try:
-                        eval_result = materialize(
-                            assets=defs.assets,
-                            partition_key=eval_partition,
-                            selection=[evaluation_prompt.key, evaluation_response.key],
-                            resources=pipeline_resources_with_test_paths,
-                            instance=test_dagster_home
-                        )
+                        # First, verify the cross-partition dependency will work
+                        # by checking that the required generation response file exists
+                        corresponding_gen_task = eval_tasks_df[
+                            eval_tasks_df["evaluation_task_id"] == eval_partition
+                        ]["generation_task_id"].iloc[0]
+                        
+                        expected_gen_file = test_directory / "data" / "03_generation" / "generation_responses" / f"{corresponding_gen_task}.txt"
+                        if not expected_gen_file.exists():
+                            print(f"✗ Cross-partition dependency check failed: {expected_gen_file} does not exist")
+                            evaluation_success = False
+                            break
+                        else:
+                            print(f"✓ Cross-partition dependency verified: {corresponding_gen_task} → {eval_partition}")
+                        
+                        # Test like production: simulate CLI execution with minimal context
+                        # Create a fresh instance to simulate separate CLI runs
+                        from dagster import DagsterInstance
+                        import tempfile
+                        
+                        # Create a completely separate instance for evaluation (like separate CLI runs)
+                        eval_dagster_home = test_directory / "eval_dagster_home"
+                        eval_dagster_home.mkdir(exist_ok=True)
+                        (eval_dagster_home / "dagster.yaml").touch()
+                        
+                        # Use the original environment variable temporarily
+                        import os
+                        original_home = os.environ.get("DAGSTER_HOME")
+                        os.environ["DAGSTER_HOME"] = str(eval_dagster_home)
+                        
+                        try:
+                            eval_instance = DagsterInstance.get()
+                            
+                            # Now try to materialize evaluation with no prior context
+                            # This should fail like production because generation_response won't be available
+                            eval_result = materialize(
+                                assets=[evaluation_prompt, evaluation_response],
+                                partition_key=eval_partition,
+                                resources=pipeline_resources_with_test_paths,
+                                instance=eval_instance
+                            )
+                        finally:
+                            # Restore original environment
+                            if original_home:
+                                os.environ["DAGSTER_HOME"] = original_home
+                            else:
+                                os.environ.pop("DAGSTER_HOME", None)
                         if not eval_result.success:
                             evaluation_success = False
                             break
                     except Exception as e:
                         print(f"Evaluation materialization failed for partition {eval_partition}: {e}")
+                        # Print more details about the error for debugging
+                        import traceback
+                        print(f"Full error traceback:\n{traceback.format_exc()}")
                         evaluation_success = False
                         break
                 
