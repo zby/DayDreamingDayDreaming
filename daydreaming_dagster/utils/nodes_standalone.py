@@ -338,7 +338,7 @@ def generate_evaluation_prompts(
         # Render evaluation template
         template_content = evaluation_templates[template_id]
         template = env.from_string(template_content)
-        eval_prompt = template.render(generation_response=generation_response)
+        eval_prompt = template.render(response=generation_response)
 
         eval_prompts[evaluation_task_id] = eval_prompt
 
