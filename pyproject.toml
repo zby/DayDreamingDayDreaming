@@ -11,14 +11,14 @@ dependencies = [
     "ipython>=8.10",
     "jupyterlab>=3.0",
     "notebook",
-    "kedro[jupyter]~=0.19.12",
-    "kedro-datasets[json-jsondataset,matplotlib-matplotlibwriter,pandas-csvdataset,pandas-exceldataset,pandas-parquetdataset,plotly-jsondataset,plotly-plotlydataset,text-textdataset]>=3.0",
-    "kedro-viz>=6.7.0",
     "scikit-learn~=1.5.1",
     "seaborn~=0.12.1",
     "openai>=1.0.0",
     "jinja2>=3.0.0",
     "pandas>=1.5.0",
+    "dagster>=1.11.4",
+    "dagster-webserver>=1.11.4",
+    "antlr4-python3-runtime>=4.13.2",
 ]
 
 [project.scripts]
