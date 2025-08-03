@@ -374,7 +374,6 @@ def parse_scores(evaluation_responses: dict[str, str]) -> str:
             error_record = {
                 "evaluation_task_id": evaluation_task_id,
                 "score": None,
-                "reasoning": None,
                 "error": str(e),
             }
             parsed_scores.append(error_record)
@@ -385,7 +384,6 @@ def parse_scores(evaluation_responses: dict[str, str]) -> str:
         parsed_scores_df = pd.DataFrame(columns=[
             "evaluation_task_id", 
             "score", 
-            "reasoning", 
             "error"
         ])
     else:

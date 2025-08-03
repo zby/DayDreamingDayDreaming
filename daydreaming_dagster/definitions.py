@@ -3,7 +3,10 @@ from daydreaming_dagster.assets.llm_prompts_responses import (
     generation_prompt,
     generation_response,
     evaluation_prompt,
-    evaluation_response
+    evaluation_response,
+    parsed_scores,
+    final_results,
+    perfect_score_paths
 )
 from daydreaming_dagster.assets.raw_data import (
     concepts,
@@ -55,7 +58,12 @@ defs = Definitions(
         generation_prompt,
         generation_response,
         evaluation_prompt,
-        evaluation_response
+        evaluation_response,
+        
+        # Results processing assets
+        parsed_scores,
+        final_results,
+        perfect_score_paths
     ],
     resources={
         "openrouter_client": LLMClientResource(),
