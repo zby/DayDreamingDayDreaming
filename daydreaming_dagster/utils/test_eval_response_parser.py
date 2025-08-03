@@ -11,8 +11,9 @@ class TestParseLLMResponse:
     def test_standard_format(self):
         """Test parsing standard REASONING/SCORE format."""
         response = "REASONING: This shows great creativity\nSCORE: 8.5"
-        score = parse_llm_response(response)
-        assert score == 8.5
+        result = parse_llm_response(response)
+        assert result["score"] == 8.5
+        assert result["error"] is None
 
     def test_multiline_reasoning(self):
         """Test parsing multiline reasoning."""
@@ -20,8 +21,9 @@ class TestParseLLMResponse:
 because it combines multiple concepts in novel ways.
 The ideas are well-structured and innovative.
 SCORE: 7.2"""
-        score = parse_llm_response(response)
-        assert score == 7.2
+        result = parse_llm_response(response)
+        assert result["score"] == 7.2
+        assert result["error"] is None
 
     def test_case_variations(self):
         """Test different case variations."""
@@ -32,26 +34,30 @@ SCORE: 7.2"""
         ]
 
         for response, expected_score in test_cases:
-            score = parse_llm_response(response)
-            assert score == expected_score
+            result = parse_llm_response(response)
+            assert result["score"] == expected_score
+            assert result["error"] is None
 
     def test_alternative_separators(self):
         """Test alternative separators like dashes."""
         response = "REASONING - Great creativity shown\nSCORE: 8.0"
-        score = parse_llm_response(response)
-        assert score == 8.0
+        result = parse_llm_response(response)
+        assert result["score"] == 8.0
+        assert result["error"] is None
 
     def test_score_with_explanation(self):
         """Test score followed by explanation in parentheses."""
         response = "REASONING: Shows innovation\nSCORE: 7.5 (above average creativity)"
-        score = parse_llm_response(response)
-        assert score == 7.5
+        result = parse_llm_response(response)
+        assert result["score"] == 7.5
+        assert result["error"] is None
 
     def test_score_as_fraction(self):
         """Test score in fraction format like 8/10."""
         response = "REASONING: Good work\nSCORE: 8/10"
-        score = parse_llm_response(response)
-        assert score == 8.0
+        result = parse_llm_response(response)
+        assert result["score"] == 8.0
+        assert result["error"] is None
 
     def test_no_score_found(self):
         """Test when no valid score is found."""
@@ -77,10 +83,121 @@ SCORE: 7.2"""
                 parse_llm_response(response)
 
     def test_multiple_score_lines(self):
-        """Test when multiple SCORE lines exist - should use first one."""
+        """Test when multiple SCORE lines exist - should use last one (most recent/final)."""
         response = """REASONING: Analysis
 SCORE: 7.5
 SCORE: 8.0
 Additional text"""
-        score = parse_llm_response(response)
-        assert score == 7.5
+        result = parse_llm_response(response)
+        assert result["score"] == 8.0  # Uses last/final score
+        assert result["error"] is None
+
+    def test_total_score_pattern_priority(self):
+        """Test that Total Score patterns take priority over intermediate scores."""
+        response = """
+        ### **Core Concepts Identified**  
+        **1. The Problem: Static LLMs**  
+        - **Score**: **1/1** (conceptual alignment exists but lacks exact phrasing).  
+        
+        **2. The Proposed Solution: "Daydreaming Loop" (DDL)**  
+        - **Score**: **1/1** (mechanism is present but not explicitly named).  
+        
+        ### **SCORE:**  
+        **Total Score: 7/10**
+        """
+        result = parse_llm_response(response)
+        assert result["score"] == 7.0
+        assert result["error"] is None
+
+    def test_avoids_intermediate_1_over_1_scores(self):
+        """Test parser avoids matching intermediate 1/1 style breakdown scores."""
+        # This was the bug: parser was matching **Score**: **1/1** and interpreting as (1/1)*10 = 10.0
+        response = """
+        **1. The Problem: Static LLMs**  
+        - **Score**: **1/1** (conceptual alignment exists).  
+        
+        **2. The Solution**  
+        - **Score**: **1/1** (mechanism is present).  
+        
+        **3. The Mechanism**  
+        - **Score**: **1/1** (generator/critic present).  
+        
+        **4. Economic Implications**  
+        - **Score**: **0/1** (no explicit references).  
+        
+        **Total for Core Concepts**: **3/5**  
+        
+        ### **Connections Between Concepts**  
+        **1. Problem → Solution**  
+        - **Score**: **1/1** (logically connected).  
+        
+        **Total for Connections**: **1/5**  
+        
+        ### **SCORE:**  
+        **Total Score: 4/10**
+        """
+        result = parse_llm_response(response)
+        # Should extract 4.0 from "Total Score: 4/10", NOT 10.0 from any 1/1 patterns
+        assert result["score"] == 4.0
+
+    def test_total_score_markdown_formats(self):
+        """Test various Total Score markdown formats."""
+        test_cases = [
+            ("Total Score: 6/10", 6.0),
+            ("**Total Score:** 7/10", 7.0), 
+            ("Total Score: **8/10**", 8.0),
+            ("**Total Score:** **9/10**", 9.0),
+            ("Total Score: 5", 5.0),
+            ("**Total Score:** 3", 3.0),
+        ]
+        
+        for response, expected_score in test_cases:
+            result = parse_llm_response(response)
+            assert result["score"] == expected_score, f"Failed for response: {response}"
+
+    def test_real_evaluation_response_format(self):
+        """Test parsing the actual format from our evaluation responses."""
+        # This is the exact format from our actual evaluation files
+        response = """
+        **REASONING:**  
+        The text partially reproduces core concepts from "AI Daydreaming" but lacks precise terminology.
+
+        ### **Core Concepts Identified**  
+        **1. The Problem: Static LLMs**  
+        - **Score**: **1/1** (conceptual alignment exists but lacks exact phrasing).  
+
+        **2. The Proposed Solution: "Daydreaming Loop" (DDL)**  
+        - **Score**: **1/1** (mechanism is present but not explicitly named).  
+
+        **3. The Mechanism of Daydreaming**  
+        - **Score**: **2/2** (both generator/critic and feedback loop are present).  
+
+        **4. Economic/Strategic Implications**  
+        - **Score**: **0/1** (no explicit references).  
+
+        **Total for Core Concepts**: **4/5**  
+
+        ### **Connections Between Concepts**  
+        **1. Problem → Solution**  
+        - **Score**: **1/1** (logically connected but under a different name).  
+
+        **2. Mechanism → Feedback Loop**  
+        - **Score**: **1/1** (explicit feedback connection exists).  
+
+        **3. Process → Economics**  
+        - **Score**: **0/1** (no link is made).  
+
+        **4. Coherent Narrative Arc**  
+        - **Score**: **1/2** (partial coherence due to missing economic links).  
+
+        **Total for Connections**: **3/5**  
+
+        ### **SCORE:**  
+        **Total Score: 7/10**  
+
+        **Summary:**  
+        The text captures the problem, solution, and mechanism but lacks terminology.
+        """
+        result = parse_llm_response(response)
+        # Should extract 7.0 from final "Total Score: 7/10", not 10.0 from any 1/1 patterns
+        assert result["score"] == 7.0
