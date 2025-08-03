@@ -270,8 +270,16 @@ class TestFullPipelineIntegration:
         assert len(filtered_concepts) == 3, f"Expected 3 filtered concepts, got {len(filtered_concepts)}"
         print(f"✓ Concept filtering: {len(filtered_concepts)} concepts loaded")
         
-        # Test template filtering 
-        filtered_templates = generation_templates(test_config)
+        # Test template filtering using Dagster context
+        from daydreaming_dagster.assets.raw_data import generation_templates_metadata, generation_templates
+        import pandas as pd
+        
+        # Load template metadata
+        templates_metadata = generation_templates_metadata()
+        
+        # Create a mock context for the template asset
+        mock_context = build_asset_context(resources={"config": test_config})
+        filtered_templates = generation_templates(mock_context, templates_metadata)
         assert len(filtered_templates) == 2, f"Expected 2 filtered templates, got {len(filtered_templates)}"
         print(f"✓ Template filtering: {len(filtered_templates)} templates loaded")
         

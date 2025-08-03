@@ -56,7 +56,8 @@ def generation_prompt(
     group_name="llm_generation",
     io_manager_key="generation_response_io_manager",
     required_resource_keys={"openrouter_client"},
-    deps=["task_definitions"]  # Ensure partitions are created first
+    deps=["task_definitions"],  # Ensure partitions are created first
+    pool="llm_api"  # NEW: Pool-based concurrency control
 )
 def generation_response(context, generation_prompt, generation_tasks) -> str:
     """
@@ -92,8 +93,17 @@ def evaluation_prompt(context, evaluation_tasks, evaluation_templates) -> str:
     """
     task_id = context.partition_key
     
-    # Get the specific task for this partition
-    task_row = evaluation_tasks[evaluation_tasks["evaluation_task_id"] == task_id].iloc[0]
+    # Get the specific task for this partition with debugging
+    matching_tasks = evaluation_tasks[evaluation_tasks["evaluation_task_id"] == task_id]
+    if len(matching_tasks) == 0:
+        available_tasks = evaluation_tasks["evaluation_task_id"].tolist()
+        context.log.error(f"Task ID '{task_id}' not found in evaluation_tasks.")
+        context.log.error(f"Available evaluation task IDs: {available_tasks[:5]}...")  # Show first 5
+        context.log.error(f"Total evaluation tasks: {len(evaluation_tasks)}")
+        raise ValueError(f"Evaluation task '{task_id}' not found in evaluation_tasks DataFrame. "
+                        f"Available tasks: {len(evaluation_tasks)}")
+    
+    task_row = matching_tasks.iloc[0]
     generation_task_id = task_row["generation_task_id"]
     
     # Load the generation response from the correct partition using I/O manager
@@ -129,13 +139,24 @@ def evaluation_prompt(context, evaluation_tasks, evaluation_templates) -> str:
     group_name="llm_evaluation",
     io_manager_key="evaluation_response_io_manager",
     required_resource_keys={"openrouter_client"},
-    deps=["task_definitions"]  # Ensure partitions are created first
+    deps=["task_definitions"],  # Ensure partitions are created first
+    pool="llm_api"  # NEW: Pool-based concurrency control
 )
 def evaluation_response(context, evaluation_prompt, evaluation_tasks) -> str:
     """Generate one evaluation response per partition."""
     task_id = context.partition_key
     
-    task_row = evaluation_tasks[evaluation_tasks["evaluation_task_id"] == task_id].iloc[0]
+    # Debug: Check if task_id exists in evaluation_tasks
+    matching_tasks = evaluation_tasks[evaluation_tasks["evaluation_task_id"] == task_id]
+    if len(matching_tasks) == 0:
+        available_tasks = evaluation_tasks["evaluation_task_id"].tolist()
+        context.log.error(f"Task ID '{task_id}' not found in evaluation_tasks.")
+        context.log.error(f"Available evaluation task IDs: {available_tasks[:5]}...")  # Show first 5
+        context.log.error(f"Total evaluation tasks: {len(evaluation_tasks)}")
+        raise ValueError(f"Evaluation task '{task_id}' not found in evaluation_tasks DataFrame. "
+                        f"Available tasks: {len(evaluation_tasks)}")
+    
+    task_row = matching_tasks.iloc[0]
     
     # The prompt is already generated and saved as a file by evaluation_prompt asset
     eval_prompt = evaluation_prompt

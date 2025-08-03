@@ -65,34 +65,55 @@ def evaluation_models() -> pd.DataFrame:
     return pd.read_csv("data/01_raw/evaluation_models.csv")
 
 @asset(group_name="raw_data")
-def generation_templates(config: ExperimentConfig) -> dict[str, str]:
-    """Load generation templates."""
+def generation_templates_metadata() -> pd.DataFrame:
+    """Load generation templates metadata."""
+    return pd.read_csv("data/01_raw/generation_templates.csv")
+
+@asset(group_name="raw_data", required_resource_keys={"config"})
+def generation_templates(context, generation_templates_metadata: pd.DataFrame) -> dict[str, str]:
+    """Load generation templates based on CSV configuration and active status."""
+    config = context.resources.config
     templates = {}
     templates_path = Path("data/01_raw/generation_templates")
-    for file_path in templates_path.glob("*.txt"):
-        template_name = file_path.stem
+    
+    # Filter to only active templates
+    active_templates = generation_templates_metadata[generation_templates_metadata["active"] == True]
+    
+    for _, row in active_templates.iterrows():
+        template_id = row["template_id"]
         
-        # Apply filter if provided
+        # Apply additional filter if provided
         if config.template_names_filter is not None:
-            if template_name not in config.template_names_filter:
+            if template_id not in config.template_names_filter:
                 continue
         
-        templates[template_name] = file_path.read_text()
+        template_file = templates_path / f"{template_id}.txt"
+        if template_file.exists():
+            templates[template_id] = template_file.read_text()
+    
     return templates
 
 @asset(group_name="raw_data")
-def evaluation_templates(config: ExperimentConfig) -> dict[str, str]:
-    """Load evaluation templates."""
+def evaluation_templates_metadata() -> pd.DataFrame:
+    """Load evaluation templates metadata."""
+    return pd.read_csv("data/01_raw/evaluation_templates.csv")
+
+@asset(group_name="raw_data", required_resource_keys={"config"})
+def evaluation_templates(context, evaluation_templates_metadata: pd.DataFrame) -> dict[str, str]:
+    """Load evaluation templates based on CSV configuration and active status."""
+    config = context.resources.config
     templates = {}
     templates_path = Path("data/01_raw/evaluation_templates")
-    for file_path in templates_path.glob("*.txt"):
-        template_name = file_path.stem
+    
+    # Filter to only active templates
+    active_templates = evaluation_templates_metadata[evaluation_templates_metadata["active"] == True]
+    
+    for _, row in active_templates.iterrows():
+        template_id = row["template_id"]
         
-        # Apply filter if provided (note: evaluation templates use same filter as generation for simplicity)
-        if config.template_names_filter is not None:
-            # For evaluation templates, we'll load all since they have different names
-            # This is a simplification - in practice you might want separate eval template filtering
-            pass
-        
-        templates[template_name] = file_path.read_text()
+        # Note: Currently no separate eval template filter, but could be added to ExperimentConfig
+        template_file = templates_path / f"{template_id}.txt"
+        if template_file.exists():
+            templates[template_id] = template_file.read_text()
+    
     return templates

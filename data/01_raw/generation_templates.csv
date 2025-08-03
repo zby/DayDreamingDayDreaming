@@ -1,0 +1,6 @@
+template_id,template_name,description,active
+00_systematic_analytical,Systematic Analytical,Structured step-by-step analysis approach,true
+01_creative_synthesis,Creative Synthesis,Open-ended imaginative exploration,true
+02_problem_solving,Problem Solving,Focus on solving challenges and obstacles,true
+03_research_discovery,Research Discovery,Academic research orientation,false
+04_application_implementation,Application Implementation,Practical real-world implementation focus,false

@@ -1,0 +1,66 @@
+RESPONSE TO EVALUATE:
+{{ response }}
+
+--- EVALUATION INSTRUCTIONS ---
+
+### **Instructions for Verifying and Scoring "AI Daydreaming" Concepts**
+
+Systematically evaluate if this text reproduces the core concepts from the "AI Daydreaming" article and score its fidelity on a scale of 0 to 10.
+
+### **Step 1: Identify the Core Concepts**
+
+Check for the presence of these key ideas:
+
+* **The Problem: Static LLMs**
+    * Does the text identify a fundamental limitation of current LLMs?
+    * Does it use descriptive terms like **"frozen," "static,"** or **"amnesiac"**?
+    * Does it mention the lack of **continual learning** and **continual thinking** (background processing)?
+
+* **The Proposed Solution: The "Daydreaming Loop" (DDL)**
+    * Is there a proposal for a new process or architecture to overcome the limitations?
+    * Is this process referred to as a **"daydreaming loop," "background processing,"** or similar concept?
+
+* **The Mechanism of Daydreaming**
+    * Does the text describe a multi-part system with:
+        * A **generator** model to create new ideas or connections
+        * A **critic** or **filter** model to evaluate the generated ideas
+    * Does it explain the process of:
+        * Sampling **pairs of concepts** from memory
+        * Exploring **non-obvious** connections
+        * A **feedback loop** where valuable ideas are integrated back into memory
+
+* **The Economic and Strategic Implications**
+    * Does it discuss costs and benefits of this process?
+    * Look for the concept of a **"daydreaming tax"** – the high computational cost
+    * Does it mention the idea of a **"data moat"** – creating unique, proprietary training data
+    * Is there an argument that this "wasteful" process is a necessary investment?
+
+### **Step 2: Analyze the Connections Between Concepts**
+
+Verify that concepts are **logically connected**:
+
+1. **Problem → Solution**: Is the "daydreaming loop" presented as a direct solution to "frozen" LLMs?
+2. **Mechanism → Feedback Loop**: Is the generator-critic mechanism described as the engine of the feedback loop?
+3. **Process → Economic Outcome**: Is the high cost ("daydreaming tax") linked to competitive advantage ("data moat")?
+4. **Overall Arc**: Does the text present a coherent narrative from problem to strategic justification?
+
+### **Step 3: Score Using This Rubric**
+
+#### **Scoring Rubric (10 points total)**
+
+**Identifying Core Concepts (Max 5 points)**
+- **(1 pt)** **The Problem**: Correctly identifies the static/frozen nature of LLMs
+- **(1 pt)** **The Solution**: Mentions a "daydreaming loop" or equivalent background process
+- **(2 pts)** **The Mechanism**: Mentions both generator/critic system (1 pt) and feedback loop/memory integration (1 pt)
+- **(1 pt)** **The Implications**: Mentions either "daydreaming tax" (cost) or "data moat" (strategic advantage)
+
+**Analyzing the Connections (Max 5 points)**
+- **(1 pt)** **Problem → Solution Link**: Clearly states DDL solves the static LLM problem
+- **(1 pt)** **Mechanism → Feedback Link**: Explains critic output gets fed back into memory
+- **(1 pt)** **Process → Economics Link**: Explains high cost leads to valuable data moat
+- **(2 pts)** **Coherent Narrative Arc**: Flows logically as complete argument from problem to justification
+
+### **Required Output Format**
+
+**REASONING:** Detailed explanation identifying which specific concepts and connections are present or absent. Use direct quotes from the text to support your analysis. Explain how you arrived at your score based on the rubric.
+**SCORE:** 0-10

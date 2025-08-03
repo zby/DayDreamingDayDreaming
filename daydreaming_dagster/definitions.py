@@ -10,7 +10,9 @@ from daydreaming_dagster.assets.raw_data import (
     concepts_metadata,
     generation_models,
     evaluation_models,
+    generation_templates_metadata,
     generation_templates,
+    evaluation_templates_metadata,
     evaluation_templates
 )
 from daydreaming_dagster.assets.core import (
@@ -36,7 +38,9 @@ defs = Definitions(
         concepts_metadata,
         generation_models,
         evaluation_models,
+        generation_templates_metadata,
         generation_templates,
+        evaluation_templates_metadata,
         evaluation_templates,
         
         # Core processing assets
@@ -66,5 +70,6 @@ defs = Definitions(
         "parsing_results_io_manager": CSVIOManager("data/05_parsing"),
         "summary_results_io_manager": CSVIOManager("data/06_summary")
     },
-    executor=multiprocess_executor.configured({"max_concurrent": 2})
+    executor=multiprocess_executor.configured({"max_concurrent": 4})
+    # Note: General operations can run in parallel, but LLM calls are limited by concurrency tags
 )

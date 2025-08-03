@@ -5,6 +5,8 @@ from typing import Optional
 
 from dagster import ConfigurableResource
 from openai import APIError, OpenAI, RateLimitError
+from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
+from ratelimit import limits, sleep_and_retry
 
 # HTTP status code constants
 HTTP_SERVER_ERROR_START = 500
@@ -15,15 +17,17 @@ logger = logging.getLogger(__name__)
 
 class LLMClientResource(ConfigurableResource):
     """
-    Dagster-native LLM client with built-in rate limiting and retry logic.
-    Replaces SimpleModelClient with cleaner Dagster ConfigurableResource pattern.
+    Dagster-native LLM client with built-in rate limiting and retry logic using tenacity and ratelimit.
+    Provides robust API calling with proactive rate limiting and reactive retries.
     """
     api_key: Optional[str] = None
     base_url: str = "https://openrouter.ai/api/v1"
-    rate_limit_delay: float = 0.1
-    max_retries: int = 3
-    retry_delay: float = 5.0
+    max_retries: int = 5
     default_max_tokens: int = 8192
+    # Rate limiting: VERY CONSERVATIVE for free tier APIs (some models allow only 1 call per minute)
+    rate_limit_calls: int = 1
+    rate_limit_period: int = 60  # 1 call per minute
+    mandatory_delay: float = 65.0  # Mandatory delay between calls (65 seconds to be extra safe)
     def _ensure_initialized(self):
         """Lazy initialization of OpenAI client."""
         if not hasattr(self, '_client'):
@@ -38,7 +42,6 @@ class LLMClientResource(ConfigurableResource):
                 api_key=effective_api_key,
                 base_url=self.base_url,
             )
-            self._last_request_time = 0
 
     def generate(self, prompt: str, model: str, temperature: float = 0.7, max_tokens: Optional[int] = None) -> str:
         """Generate content using specified model with rate limiting and retry logic.
@@ -58,52 +61,79 @@ class LLMClientResource(ConfigurableResource):
         """
         self._ensure_initialized()
         effective_max_tokens = max_tokens or self.default_max_tokens
-        last_exception = None
+        
+        # Call the decorated method that handles rate limiting and retries
+        return self._make_api_call(prompt, model, temperature, effective_max_tokens)
 
-        for attempt in range(self.max_retries + 1):  # +1 for initial attempt
-            # Enforce rate limiting
-            time_since_last = time.time() - self._last_request_time
-            if time_since_last < self.rate_limit_delay:
-                time.sleep(self.rate_limit_delay - time_since_last)
-
-            try:
-                # Make API call
-                response = self._client.chat.completions.create(
-                    model=model,
-                    messages=[{"role": "user", "content": prompt}],
-                    temperature=temperature,
-                    max_tokens=effective_max_tokens,
+    def _make_api_call(self, prompt: str, model: str, temperature: float, max_tokens: int) -> str:
+        """Make the actual API call with rate limiting and retry logic using tenacity and ratelimit."""
+        
+        # Create dynamic decorators based on instance configuration
+        def create_decorated_call():
+            @sleep_and_retry
+            @limits(calls=self.rate_limit_calls, period=self.rate_limit_period)
+            @retry(
+                wait=wait_exponential(multiplier=2, min=2, max=60),
+                stop=stop_after_attempt(self.max_retries),
+                retry=retry_if_exception_type((RateLimitError, APIError, ConnectionError, TimeoutError)),
+                before_sleep=lambda retry_state: logger.warning(
+                    f"API call failed (attempt {retry_state.attempt_number}): {retry_state.outcome.exception()}. "
+                    f"Retrying in {retry_state.next_action.sleep} seconds..."
                 )
+            )
+            def decorated_api_call():
+                return self._raw_api_call(prompt, model, temperature, max_tokens)
+            
+            return decorated_api_call
+        
+        # Create and call the decorated function
+        decorated_call = create_decorated_call()
+        return decorated_call()
 
-                self._last_request_time = time.time()
-                response_text = response.choices[0].message.content
-                if response_text is None:
-                    response_text = ""
-                return response_text.strip()
+    def _raw_api_call(self, prompt: str, model: str, temperature: float, max_tokens: int) -> str:
+        """Raw API call with mandatory delay for ultra-conservative rate limiting."""
+        
+        # Enforce mandatory delay between calls (ultra-conservative for free tier)
+        if hasattr(self, '_last_call_time'):
+            time_since_last = time.time() - self._last_call_time
+            if time_since_last < self.mandatory_delay:
+                delay_needed = self.mandatory_delay - time_since_last
+                logger.info(f"Mandatory delay: waiting {delay_needed:.1f}s before API call (free tier protection)")
+                time.sleep(delay_needed)
+        
+        try:
+            logger.info(f"Making API call to {model} (prompt length: {len(prompt)} chars)")
+            response = self._client.chat.completions.create(
+                model=model,
+                messages=[{"role": "user", "content": prompt}],
+                temperature=temperature,
+                max_tokens=max_tokens,
+            )
+            
+            # Record the time of this successful call
+            self._last_call_time = time.time()
 
-            except Exception as e:
-                self._last_request_time = time.time()  # Update timestamp even on failure
-                last_exception = e
+            response_text = response.choices[0].message.content
+            if response_text is None:
+                response_text = ""
+            
+            logger.info(f"API call successful, response length: {len(response_text)} chars")
+            return response_text.strip()
 
-                # Check if this is a retryable error
-                if self._is_retryable_error(e) and attempt < self.max_retries:
-                    delay = self.retry_delay * (2**attempt)  # Exponential backoff
-                    logger.warning(
-                        f"API call failed (attempt {attempt + 1}/{self.max_retries + 1}): {e}. Retrying in {delay}s..."
-                    )
-                    time.sleep(delay)
-                    continue
-                else:
-                    # Non-retryable error or max retries exceeded
-                    if attempt == self.max_retries:
-                        logger.error(
-                            f"API call failed after {self.max_retries + 1} attempts. Final error: {e}"
-                        )
-                    raise e
-
-        # This should never be reached, but just in case
-        if last_exception:
-            raise last_exception
+        except Exception as e:
+            # Record the time even for failed calls to maintain delay
+            self._last_call_time = time.time()
+            
+            # Log the error for debugging
+            logger.debug(f"API call error: {e}")
+            
+            # Only retry if it's a retryable error
+            if not self._is_retryable_error(e):
+                logger.error(f"Non-retryable error, failing immediately: {e}")
+                raise e
+            
+            # Re-raise retryable errors for tenacity to handle
+            raise e
 
     def _is_retryable_error(self, error: Exception) -> bool:
         """Determine if an error should trigger a retry.
