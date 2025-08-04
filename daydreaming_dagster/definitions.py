@@ -71,6 +71,6 @@ defs = Definitions(
         "parsing_results_io_manager": CSVIOManager("data/5_parsing"),
         "summary_results_io_manager": CSVIOManager("data/6_summary")
     },
-    executor=multiprocess_executor.configured({"max_concurrent": 4})
-    # Note: General operations can run in parallel, but LLM calls are limited by concurrency tags
+    executor=multiprocess_executor.configured({"max_concurrent": 10})
+    # Note: Pool concurrency limits are set via CLI: dagster instance concurrency set llm_api 1
 )

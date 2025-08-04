@@ -28,7 +28,16 @@ def generation_prompt(
     task_id = context.partition_key
     
     # Get the specific task for this partition
-    task_row = generation_tasks[generation_tasks["generation_task_id"] == task_id].iloc[0]
+    matching_tasks = generation_tasks[generation_tasks["generation_task_id"] == task_id]
+    if matching_tasks.empty:
+        available_tasks = generation_tasks["generation_task_id"].tolist()[:5]  # Show first 5
+        raise ValueError(
+            f"Task ID '{task_id}' not found in generation_tasks. "
+            f"Available tasks include: {available_tasks}... "
+            f"Total tasks: {len(generation_tasks)}. "
+            f"This might indicate stale partitions - try regenerating the tasks first."
+        )
+    task_row = matching_tasks.iloc[0]
     combo_id = task_row["combo_id"]
     template_id = task_row["generation_template"]
     
@@ -57,7 +66,7 @@ def generation_prompt(
     io_manager_key="generation_response_io_manager",
     required_resource_keys={"openrouter_client"},
     deps=["generation_tasks"],  # Remove generation_models dependency
-    pool="llm_api"  # NEW: Pool-based concurrency control
+    pool="llm_api"  # Pool-based concurrency control
 )
 def generation_response(context, generation_prompt, generation_tasks) -> str:
     """
@@ -143,7 +152,7 @@ def evaluation_prompt(context, evaluation_tasks, evaluation_templates) -> str:
     io_manager_key="evaluation_response_io_manager",
     required_resource_keys={"openrouter_client"},
     deps=["generation_tasks"],  # Remove evaluation_models dependency
-    pool="llm_api"  # NEW: Pool-based concurrency control
+    pool="llm_api"  # Pool-based concurrency control
 )
 def evaluation_response(context, evaluation_prompt, evaluation_tasks) -> str:
     """Generate one evaluation response per partition."""
