@@ -177,7 +177,7 @@ def parsed_scores(context, evaluation_tasks, generation_tasks) -> pd.DataFrame:
     Aggregates all evaluation responses and parses them into structured data.
     """
     # Collect all materialized evaluation responses
-    evaluation_responses_path = Path("data/04_evaluation/evaluation_responses")
+    evaluation_responses_path = Path("data/4_evaluation/evaluation_responses")
     evaluation_responses = {}
     
     if evaluation_responses_path.exists():
@@ -292,10 +292,18 @@ def parsed_scores(context, evaluation_tasks, generation_tasks) -> pd.DataFrame:
         
         return None, None, None, None, None
     
-    # Apply extraction to all task IDs
-    parsed_df[['combo_id', 'generation_template', 'generation_model_provider', 'evaluation_template', 'evaluation_model_provider']] = parsed_df['evaluation_task_id'].apply(
-        lambda x: pd.Series(extract_task_info(x))
-    )
+    # Apply extraction to all task IDs - but only if DataFrame is not empty
+    if not parsed_df.empty:
+        parsed_df[['combo_id', 'generation_template', 'generation_model_provider', 'evaluation_template', 'evaluation_model_provider']] = parsed_df['evaluation_task_id'].apply(
+            lambda x: pd.Series(extract_task_info(x))
+        )
+    else:
+        # For empty DataFrame, just add the columns with appropriate defaults
+        parsed_df['combo_id'] = pd.Series(dtype='object')
+        parsed_df['generation_template'] = pd.Series(dtype='object')
+        parsed_df['generation_model_provider'] = pd.Series(dtype='object')
+        parsed_df['evaluation_template'] = pd.Series(dtype='object')
+        parsed_df['evaluation_model_provider'] = pd.Series(dtype='object')
     
     # Fix evaluation model provider by parsing the evaluation_template field
     def extract_eval_model_from_template(eval_template):
@@ -313,13 +321,14 @@ def parsed_scores(context, evaluation_tasks, generation_tasks) -> pd.DataFrame:
         else:
             return 'unknown'
     
-    # Apply the corrected evaluation model extraction
-    parsed_df['evaluation_model_provider'] = parsed_df['evaluation_template'].apply(extract_eval_model_from_template)
-    
-    # Clean up evaluation_template to just be the template name
-    parsed_df['evaluation_template'] = parsed_df['evaluation_template'].apply(
-        lambda x: 'daydreaming_verification' if pd.notna(x) and 'daydreaming_verification' in str(x) else str(x) if pd.notna(x) else 'unknown'
-    )
+    # Apply the corrected evaluation model extraction - but only if DataFrame is not empty
+    if not parsed_df.empty:
+        parsed_df['evaluation_model_provider'] = parsed_df['evaluation_template'].apply(extract_eval_model_from_template)
+        
+        # Clean up evaluation_template to just be the template name
+        parsed_df['evaluation_template'] = parsed_df['evaluation_template'].apply(
+            lambda x: 'daydreaming_verification' if pd.notna(x) and 'daydreaming_verification' in str(x) else str(x) if pd.notna(x) else 'unknown'
+        )
     
     # Reorder columns for better readability
     column_order = [
@@ -507,7 +516,7 @@ def perfect_score_paths(context, parsed_scores: pd.DataFrame) -> pd.DataFrame:
             gen_model_full = gen_model_provider
             
         gen_dir = f"{row['combo_id']}_{row['generation_template']}_{gen_model_provider}"
-        generation_path = f"data/03_generation/generation_responses/{gen_dir}/{gen_model_full}.txt"
+        generation_path = f"data/3_generation/generation_responses/{gen_dir}/{gen_model_full}.txt"
         
         # Reconstruct evaluation response path from the original task ID structure
         # We need to rebuild the complex path structure
@@ -515,7 +524,7 @@ def perfect_score_paths(context, parsed_scores: pd.DataFrame) -> pd.DataFrame:
         
         # Try to extract the original evaluation task ID pattern from the parsed data
         # This is complex due to the nested directory structure
-        eval_base_path = "data/04_evaluation/evaluation_responses"
+        eval_base_path = "data/4_evaluation/evaluation_responses"
         
         # Build the evaluation path based on the directory structure we know exists
         # Format: combo_X_template_generator/evaluator_model.txt

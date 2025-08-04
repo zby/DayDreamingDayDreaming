@@ -10,7 +10,7 @@ from ..resources.experiment_config import ExperimentConfig
 def concepts(config: ExperimentConfig) -> List[Concept]:
     """Load concepts from metadata CSV and description files."""
     # Load metadata
-    metadata_df = pd.read_csv("data/01_raw/concepts/concepts_metadata.csv")
+    metadata_df = pd.read_csv("data/1_raw/concepts/concepts_metadata.csv")
     
     # Load all description levels
     description_levels = ["sentence", "paragraph", "article"]
@@ -18,7 +18,7 @@ def concepts(config: ExperimentConfig) -> List[Concept]:
     
     for level in description_levels:
         level_descriptions = {}
-        level_path = Path(f"data/01_raw/concepts/descriptions/{level}")
+        level_path = Path(f"data/1_raw/concepts/descriptions-{level}")
         if level_path.exists():
             for file_path in level_path.glob("*.txt"):
                 concept_id = file_path.stem
@@ -57,24 +57,28 @@ def concepts_metadata(concepts: List[Concept]) -> pd.DataFrame:
 @asset(group_name="raw_data")
 def generation_models() -> pd.DataFrame:
     """Load generation models configuration."""
-    return pd.read_csv("data/01_raw/generation_models.csv")
+    # Filter for generation models only
+    models_df = pd.read_csv("data/1_raw/llm_models.csv")
+    return models_df[models_df["for_generation"] == True]
 
 @asset(group_name="raw_data")
 def evaluation_models() -> pd.DataFrame:
     """Load evaluation models configuration."""
-    return pd.read_csv("data/01_raw/evaluation_models.csv")
+    # Filter for evaluation models only
+    models_df = pd.read_csv("data/1_raw/llm_models.csv")
+    return models_df[models_df["for_evaluation"] == True]
 
 @asset(group_name="raw_data")
 def generation_templates_metadata() -> pd.DataFrame:
     """Load generation templates metadata."""
-    return pd.read_csv("data/01_raw/generation_templates.csv")
+    return pd.read_csv("data/1_raw/generation_templates.csv")
 
 @asset(group_name="raw_data", required_resource_keys={"config"})
 def generation_templates(context, generation_templates_metadata: pd.DataFrame) -> dict[str, str]:
     """Load generation templates based on CSV configuration and active status."""
     config = context.resources.config
     templates = {}
-    templates_path = Path("data/01_raw/generation_templates")
+    templates_path = Path("data/1_raw/generation_templates")
     
     # Filter to only active templates
     active_templates = generation_templates_metadata[generation_templates_metadata["active"] == True]
@@ -96,14 +100,14 @@ def generation_templates(context, generation_templates_metadata: pd.DataFrame) -
 @asset(group_name="raw_data")
 def evaluation_templates_metadata() -> pd.DataFrame:
     """Load evaluation templates metadata."""
-    return pd.read_csv("data/01_raw/evaluation_templates.csv")
+    return pd.read_csv("data/1_raw/evaluation_templates.csv")
 
 @asset(group_name="raw_data", required_resource_keys={"config"})
 def evaluation_templates(context, evaluation_templates_metadata: pd.DataFrame) -> dict[str, str]:
     """Load evaluation templates based on CSV configuration and active status."""
     config = context.resources.config
     templates = {}
-    templates_path = Path("data/01_raw/evaluation_templates")
+    templates_path = Path("data/1_raw/evaluation_templates")
     
     # Filter to only active templates
     active_templates = evaluation_templates_metadata[evaluation_templates_metadata["active"] == True]

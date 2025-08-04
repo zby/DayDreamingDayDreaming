@@ -27,8 +27,7 @@ from daydreaming_dagster.resources.llm_client import LLMClientResource
 from daydreaming_dagster.resources.experiment_config import ExperimentConfig
 from daydreaming_dagster.resources.io_managers import (
     PartitionedTextIOManager,
-    CSVIOManager,
-    PartitionedConceptIOManager
+    CSVIOManager
 )
 
 defs = Definitions(
@@ -63,15 +62,14 @@ defs = Definitions(
     resources={
         "openrouter_client": LLMClientResource(),
         "config": ExperimentConfig(),
-        "csv_io_manager": CSVIOManager("data/02_tasks"),
-        "partitioned_concept_io_manager": PartitionedConceptIOManager("data/02_tasks/concept_contents"),
-        "generation_prompt_io_manager": PartitionedTextIOManager("data/03_generation/generation_prompts"),
-        "generation_response_io_manager": PartitionedTextIOManager("data/03_generation/generation_responses"),
-        "evaluation_prompt_io_manager": PartitionedTextIOManager("data/04_evaluation/evaluation_prompts"),
-        "evaluation_response_io_manager": PartitionedTextIOManager("data/04_evaluation/evaluation_responses"),
-        "error_log_io_manager": CSVIOManager("data/07_reporting"),
-        "parsing_results_io_manager": CSVIOManager("data/05_parsing"),
-        "summary_results_io_manager": CSVIOManager("data/06_summary")
+        "csv_io_manager": CSVIOManager("data/2_tasks"),
+        "generation_prompt_io_manager": PartitionedTextIOManager("data/3_generation/generation_prompts"),
+        "generation_response_io_manager": PartitionedTextIOManager("data/3_generation/generation_responses"),
+        "evaluation_prompt_io_manager": PartitionedTextIOManager("data/4_evaluation/evaluation_prompts"),
+        "evaluation_response_io_manager": PartitionedTextIOManager("data/4_evaluation/evaluation_responses"),
+        "error_log_io_manager": CSVIOManager("data/7_reporting"),
+        "parsing_results_io_manager": CSVIOManager("data/5_parsing"),
+        "summary_results_io_manager": CSVIOManager("data/6_summary")
     },
     executor=multiprocess_executor.configured({"max_concurrent": 4})
     # Note: General operations can run in parallel, but LLM calls are limited by concurrency tags

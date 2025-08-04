@@ -32,7 +32,7 @@ daydreaming_dagster/
 ├── definitions.py             # Single Dagster definitions file
 └── __init__.py                # Package initialization
 
-daydreaming_dagster_tests/     # Integration tests
+tests/                         # Integration tests
 ├── conftest.py                # Pytest fixtures and test utilities
 ├── test_full_pipeline_integration.py # Complete pipeline integration tests
 ├── test_dagster_cli_compatibility.py # CLI and asset tests
@@ -114,13 +114,13 @@ uv run pytest
 uv run pytest daydreaming_dagster/
 
 # Run only integration tests (data-dependent)
-uv run pytest daydreaming_dagster_tests/
+uv run pytest tests/
 
 # Run with coverage report
 uv run pytest --cov=daydreaming_dagster
 
 # Run optimized integration test (uses selective loading for faster execution)
-uv run pytest daydreaming_dagster_tests/test_full_pipeline_integration.py
+uv run pytest tests/test_full_pipeline_integration.py
 ```
 
 ### Code Formatting

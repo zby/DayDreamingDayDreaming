@@ -56,7 +56,7 @@ addopts = """
 --cov daydreaming_dagster \
 --cov-fail-under 0
 """
-testpaths = ["daydreaming_dagster_tests"]
+testpaths = ["tests"]
 
 [tool.coverage.report]
 fail_under = 0

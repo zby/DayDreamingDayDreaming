@@ -91,34 +91,6 @@ class CSVIOManager(IOManager):
 
 # csv_io_manager factory function removed - use direct instantiation
 
-class PartitionedConceptIOManager(IOManager):
-    """
-    Saves concept contents as individual text files, matching Kedro's partitioned structure.
-    """
-    
-    def __init__(self, base_path: str):
-        self.base_path = Path(base_path)
-    
-    def handle_output(self, context: OutputContext, obj: dict[str, str]):
-        """Save each concept as individual file"""
-        # Ensure directory exists
-        self.base_path.mkdir(parents=True, exist_ok=True)
-        
-        # Save each concept as a separate file
-        for concept_id, content in obj.items():
-            file_path = self.base_path / concept_id
-            file_path.write_text(content)
-            context.log.info(f"Saved concept {concept_id} to {file_path}")
-    
-    def load_input(self, context: InputContext) -> dict[str, str]:
-        """Load all concept files"""
-        concept_contents = {}
-        for file_path in self.base_path.iterdir():
-            if file_path.is_file():
-                concept_id = file_path.name
-                concept_contents[concept_id] = file_path.read_text()
-        return concept_contents
-
 # partitioned_text_io_manager and partitioned_concept_io_manager removed - use direct instantiation
 
 # ErrorLogIOManager removed - it's identical to CSVIOManager

@@ -95,10 +95,9 @@ def create_generation_tasks_from_content_combinations(
     """
     logger.info("Creating generation tasks from ContentCombination objects")
 
-    # Filter for active models only
-    active_gen_models = generation_models[generation_models["active"] == True]
-
-    logger.info(f"Found {len(active_gen_models)} active generation models")
+    # Models are already filtered for generation in the raw_data asset
+    # No need to filter for "active" anymore since we filter by for_generation=True
+    logger.info(f"Found {len(generation_models)} generation models")
 
     generation_tasks = []
 
@@ -107,11 +106,13 @@ def create_generation_tasks_from_content_combinations(
         combo_id = content_combo.combo_id
 
         for template_id in generation_templates.keys():
-            for _, model_row in active_gen_models.iterrows():
-                generation_model = model_row["model_name"]
+            for _, model_row in generation_models.iterrows():
+                # Use the new 'model' column instead of 'model_name'
+                generation_model = model_row["model"]
 
-                # Create unique task ID
-                generation_task_id = f"{combo_id}_{template_id}_{generation_model}"
+                # Create unique task ID using clean model ID instead of full model string
+                model_id = model_row["id"]
+                generation_task_id = f"{combo_id}_{template_id}_{model_id}"
 
                 generation_task = {
                     "generation_task_id": generation_task_id,
@@ -146,10 +147,9 @@ def create_evaluation_tasks_from_generation_tasks(
     """
     logger.info("Creating evaluation tasks from generation tasks")
 
-    # Filter for active models only
-    active_eval_models = evaluation_models[evaluation_models["active"] == True]
-
-    logger.info(f"Found {len(active_eval_models)} active evaluation models")
+    # Models are already filtered for evaluation in the raw_data asset
+    # No need to filter for "active" anymore since we filter by for_evaluation=True
+    logger.info(f"Found {len(evaluation_models)} evaluation models")
 
     evaluation_tasks = []
 
@@ -158,11 +158,13 @@ def create_evaluation_tasks_from_generation_tasks(
         generation_task_id = gen_task_row["generation_task_id"]
 
         for eval_template_id in evaluation_templates.keys():
-            for _, eval_model_row in active_eval_models.iterrows():
-                evaluation_model = eval_model_row["model_name"]
+            for _, eval_model_row in evaluation_models.iterrows():
+                # Use the new 'model' column instead of 'model_name'
+                evaluation_model = eval_model_row["model"]
 
-                # Create unique evaluation task ID
-                evaluation_task_id = f"{generation_task_id}_{eval_template_id}_{evaluation_model}"
+                # Create unique evaluation task ID using clean model ID
+                model_id = eval_model_row["id"]
+                evaluation_task_id = f"{generation_task_id}_{eval_template_id}_{model_id}"
 
                 evaluation_task = {
                     "evaluation_task_id": evaluation_task_id,
@@ -177,89 +179,6 @@ def create_evaluation_tasks_from_generation_tasks(
     logger.info(f"Created {len(evaluation_tasks_df)} evaluation tasks")
 
     return evaluation_tasks_df
-
-
-
-def create_all_tasks(
-    concept_combinations: tuple[pd.DataFrame, pd.DataFrame],
-    generation_models: pd.DataFrame,
-    evaluation_models: pd.DataFrame,
-    generation_templates: dict[str, str],
-    evaluation_templates: dict[str, str],
-) -> tuple[pd.DataFrame, pd.DataFrame]:
-    """
-    Create generation and evaluation tasks from concept combinations and available models/templates.
-
-    Args:
-        concept_combinations: Tuple of (combinations_df, relationships_df)
-        generation_models: DataFrame with active generation models
-        evaluation_models: DataFrame with active evaluation models
-        generation_templates: Dict of template_id -> template_content
-        evaluation_templates: Dict of template_id -> template_content
-
-    Returns:
-        - generation_tasks: DataFrame with generation task definitions
-        - evaluation_tasks: DataFrame with evaluation task definitions
-    """
-    combo_df, combo_relationships = concept_combinations
-
-    logger.info("Creating generation and evaluation tasks")
-
-    # Filter for active models only
-    active_gen_models = generation_models[generation_models["active"] == True]
-    active_eval_models = evaluation_models[evaluation_models["active"] == True]
-
-    logger.info(
-        f"Found {len(active_gen_models)} active generation models and {len(active_eval_models)} active evaluation models"
-    )
-
-    generation_tasks = []
-    evaluation_tasks = []
-
-    # Create generation tasks for each combination of combo + template + model
-    for _, combo_row in combo_df.iterrows():
-        combo_id = combo_row["combo_id"]
-
-        for template_id in generation_templates.keys():
-            for _, model_row in active_gen_models.iterrows():
-                generation_model = model_row["model_name"]
-
-                # Create unique task ID
-                generation_task_id = f"{combo_id}_{template_id}_{generation_model}"
-
-                generation_task = {
-                    "generation_task_id": generation_task_id,
-                    "combo_id": combo_id,
-                    "generation_template": template_id,
-                    "generation_model": generation_model,
-                }
-                generation_tasks.append(generation_task)
-
-                # Create evaluation tasks for each evaluation template + model for this generation task
-                for eval_template_id in evaluation_templates.keys():
-                    for _, eval_model_row in active_eval_models.iterrows():
-                        evaluation_model = eval_model_row["model_name"]
-
-                        # Create unique evaluation task ID
-                        evaluation_task_id = f"{generation_task_id}_{eval_template_id}_{evaluation_model}"
-
-                        evaluation_task = {
-                            "evaluation_task_id": evaluation_task_id,
-                            "generation_task_id": generation_task_id,
-                            "evaluation_template": eval_template_id,
-                            "evaluation_model": evaluation_model,
-                        }
-                        evaluation_tasks.append(evaluation_task)
-
-    generation_tasks_df = pd.DataFrame(generation_tasks)
-    evaluation_tasks_df = pd.DataFrame(evaluation_tasks)
-
-    logger.info(
-        f"Created {len(generation_tasks_df)} generation tasks and {len(evaluation_tasks_df)} evaluation tasks"
-    )
-
-    return generation_tasks_df, evaluation_tasks_df
-
 
 def generate_prompts(
     generation_tasks: pd.DataFrame,
@@ -416,7 +335,7 @@ def parse_scores(evaluation_responses: dict[str, str]) -> str:
     else:
         parsed_scores_df = pd.DataFrame(parsed_scores)
     
-    output_path = "data/05_parsing/parsed_scores.csv"
+    output_path = "data/5_parsing/parsed_scores.csv"
     os.makedirs(os.path.dirname(output_path), exist_ok=True)
     parsed_scores_df.to_csv(output_path, index=False)
 
