@@ -107,18 +107,17 @@ def create_generation_tasks_from_content_combinations(
 
         for template_id in generation_templates.keys():
             for _, model_row in generation_models.iterrows():
-                # Use the new 'model' column instead of 'model_name'
-                generation_model = model_row["model"]
-
-                # Create unique task ID using clean model ID instead of full model string
+                # Store both model ID (for task IDs) and model name (for LLM API)
                 model_id = model_row["id"]
+                model_name = model_row["model"]
                 generation_task_id = f"{combo_id}_{template_id}_{model_id}"
 
                 generation_task = {
                     "generation_task_id": generation_task_id,
                     "combo_id": combo_id,
                     "generation_template": template_id,
-                    "generation_model": generation_model,
+                    "generation_model": model_id,
+                    "generation_model_name": model_name,
                 }
                 generation_tasks.append(generation_task)
 
@@ -159,18 +158,17 @@ def create_evaluation_tasks_from_generation_tasks(
 
         for eval_template_id in evaluation_templates.keys():
             for _, eval_model_row in evaluation_models.iterrows():
-                # Use the new 'model' column instead of 'model_name'
-                evaluation_model = eval_model_row["model"]
-
-                # Create unique evaluation task ID using clean model ID
+                # Store both model ID (for task IDs) and model name (for LLM API)
                 model_id = eval_model_row["id"]
+                model_name = eval_model_row["model"]
                 evaluation_task_id = f"{generation_task_id}_{eval_template_id}_{model_id}"
 
                 evaluation_task = {
                     "evaluation_task_id": evaluation_task_id,
                     "generation_task_id": generation_task_id,
                     "evaluation_template": eval_template_id,
-                    "evaluation_model": evaluation_model,
+                    "evaluation_model": model_id,
+                    "evaluation_model_name": model_name,
                 }
                 evaluation_tasks.append(evaluation_task)
 

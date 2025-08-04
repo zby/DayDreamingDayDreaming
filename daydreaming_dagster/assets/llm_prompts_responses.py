@@ -56,7 +56,7 @@ def generation_prompt(
     group_name="llm_generation",
     io_manager_key="generation_response_io_manager",
     required_resource_keys={"openrouter_client"},
-    deps=["generation_tasks"],  # Ensure partitions are created first
+    deps=["generation_tasks"],  # Remove generation_models dependency
     pool="llm_api"  # NEW: Pool-based concurrency control
 )
 def generation_response(context, generation_prompt, generation_tasks) -> str:
@@ -69,14 +69,17 @@ def generation_response(context, generation_prompt, generation_tasks) -> str:
     # Get the specific task for this partition
     task_row = generation_tasks[generation_tasks["generation_task_id"] == task_id].iloc[0]
     
+    # Use the model name directly from the task
+    model_name = task_row["generation_model_name"]
+    
     # The prompt is already generated and saved as a file by generation_prompt asset
     prompt = generation_prompt
     
     # Generate using Dagster LLM resource directly  
     llm_client = context.resources.openrouter_client
-    response = llm_client.generate(prompt, model=task_row["generation_model"])
+    response = llm_client.generate(prompt, model=model_name)
     
-    context.log.info(f"Generated LLM response for task {task_id}")
+    context.log.info(f"Generated LLM response for task {task_id} using model {model_name}")
     return response
 
 @asset(
@@ -139,7 +142,7 @@ def evaluation_prompt(context, evaluation_tasks, evaluation_templates) -> str:
     group_name="llm_evaluation",
     io_manager_key="evaluation_response_io_manager",
     required_resource_keys={"openrouter_client"},
-    deps=["generation_tasks"],  # Ensure partitions are created first
+    deps=["generation_tasks"],  # Remove evaluation_models dependency
     pool="llm_api"  # NEW: Pool-based concurrency control
 )
 def evaluation_response(context, evaluation_prompt, evaluation_tasks) -> str:
@@ -158,13 +161,16 @@ def evaluation_response(context, evaluation_prompt, evaluation_tasks) -> str:
     
     task_row = matching_tasks.iloc[0]
     
+    # Use the model name directly from the task
+    model_name = task_row["evaluation_model_name"]
+    
     # The prompt is already generated and saved as a file by evaluation_prompt asset
     eval_prompt = evaluation_prompt
     
     llm_client = context.resources.openrouter_client
-    response = llm_client.generate(eval_prompt, model=task_row["evaluation_model"])
+    response = llm_client.generate(eval_prompt, model=model_name)
     
-    context.log.info(f"Generated evaluation response for task {task_id}")
+    context.log.info(f"Generated evaluation response for task {task_id} using model {model_name}")
     return response
 
 @asset(
