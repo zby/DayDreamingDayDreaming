@@ -12,38 +12,6 @@ The system tests k_max-sized concept combinations to elicit the Day-Dreaming ide
 - **Automated evaluation** of responses for daydreaming-like insights
 - **Results aggregation** and analysis
 
-## Architecture
-
-### Dagster Pipeline Structure
-
-```
-daydreaming_dagster/
-├── assets/
-│   ├── raw_data.py              # Raw data loading (concepts, templates, models)
-│   ├── core.py                  # Core processing (combinations, tasks)
-│   ├── partitions.py            # Partition management
-│   └── llm_prompts_responses.py # LLM interaction assets
-├── resources/
-│   ├── llm_client.py            # LLM API client resource
-│   ├── experiment_config.py     # Configuration resource
-│   └── io_managers.py           # Custom I/O managers
-└── definitions.py               # Single definitions file
-```
-
-### Data Flow
-
-```
-Raw Data (01_raw/) 
-    ↓
-Task Generation (02_tasks/)
-    ↓  
-LLM Generation (03_generation/)
-    ↓
-LLM Evaluation (04_evaluation/)
-    ↓
-Results Processing (05_parsing/ & 06_summary/)
-```
-
 ## Quick Start
 
 ### Prerequisites
@@ -82,7 +50,14 @@ uv run dagster dev -f daydreaming_dagster/definitions.py
 
 ```bash
 # Step 1: Generate setup assets and task CSV files
-uv run dagster asset materialize --select "concepts,concepts_metadata,generation_models,evaluation_models,generation_templates,evaluation_templates,content_combinations,generation_tasks,evaluation_tasks" -f daydreaming_dagster/definitions.py
+# Option A: Use asset groups (recommended - simpler)
+uv run dagster asset materialize --select "group:raw_data,group:llm_tasks" -f daydreaming_dagster/definitions.py
+
+# Option B: Use dependency resolution (alternative)
+uv run dagster asset materialize --select "+generation_tasks,+evaluation_tasks" -f daydreaming_dagster/definitions.py
+
+# Option C: Explicit list with all dependencies (if you prefer explicit control)
+uv run dagster asset materialize --select "concepts,concepts_metadata,generation_models,evaluation_models,generation_templates_metadata,generation_templates,evaluation_templates_metadata,evaluation_templates,content_combinations,generation_tasks,evaluation_tasks" -f daydreaming_dagster/definitions.py
 
 # Step 2: Create dynamic partitions (REQUIRED before LLM assets)
 # This reads the CSV files and registers each task as a partition in Dagster
@@ -95,6 +70,16 @@ uv run dagster asset materialize --select "generation_prompt,generation_response
 # Step 4: Process results (after sufficient generation/evaluation data)
 uv run dagster asset materialize --select "parsed_scores,final_results" -f daydreaming_dagster/definitions.py
 ```
+
+**Asset Group Breakdown**:
+- `group:raw_data`: concepts, models, templates, and their metadata (loads from `data/01_raw/`)
+- `group:llm_tasks`: content_combinations, generation_tasks, evaluation_tasks (creates `data/02_tasks/`)
+
+**Why the specific asset dependencies matter**: 
+- `generation_templates` depends on `generation_templates_metadata` 
+- `evaluation_templates` depends on `evaluation_templates_metadata`
+- These metadata assets load CSV files that specify which templates are active
+- Using asset groups or dependency resolution (`+`) automatically includes these dependencies
 
 **Why task_definitions is needed**: Dagster uses dynamic partitioning where partitions are created at runtime based on the actual tasks generated. The `task_definitions` asset reads the CSV files and calls `context.instance.add_dynamic_partitions()` to register each task ID as a partition that the LLM assets can use.
 
@@ -129,7 +114,7 @@ uv run pytest
 uv run pytest daydreaming_dagster/
 
 # Run only integration tests (data-dependent)
-uv run pytest daydreaming_dagster_tests/
+uv run pytest tests/
 
 # Run with coverage
 uv run pytest --cov=daydreaming_dagster
@@ -199,32 +184,62 @@ config = ExperimentConfig(
 - **Human-Readable Outputs**: CSV and text files for easy debugging
 - **Selective Loading**: Optional filtering for faster development and testing
 - **Performance Optimization**: Scale from full experiments to focused tests
+- **Interruption Recovery**: Failed or interrupted runs automatically resume from where they left off
 
-## Architecture Details
+## Troubleshooting
 
-### Assets
+### Common Issues
 
-- **Raw Data Assets**: Load concepts, templates, and model configurations
-- **Core Processing Assets**: Generate concept combinations and task definitions
-- **Partitioned LLM Assets**: Handle individual generation/evaluation tasks
-- **Results Assets**: Parse scores and create final summaries
+1. **Missing Asset Dependencies**:
+   ```
+   FileNotFoundError: [Errno 2] No such file or directory: '.../storage/generation_templates_metadata'
+   ```
+   **Solution**: Template assets need their metadata dependencies. Use one of these approaches:
+   ```bash
+   # Recommended: Use asset groups
+   uv run dagster asset materialize --select "group:raw_data,group:llm_tasks" -f daydreaming_dagster/definitions.py
+   
+   # Alternative: Use dependency resolution
+   uv run dagster asset materialize --select "+generation_tasks,+evaluation_tasks" -f daydreaming_dagster/definitions.py
+   ```
 
-### Resources
+2. **Missing DAGSTER_HOME**:
+   ```
+   DagsterHomeNotSetError: The environment variable $DAGSTER_HOME is not set
+   ```
+   **Solution**: Always set DAGSTER_HOME before running any commands:
+   ```bash
+   export DAGSTER_HOME=./dagster_home
+   mkdir -p $DAGSTER_HOME
+   ```
 
-- **LLMClientResource**: Configurable API client for different LLM providers
-- **ExperimentConfig**: Centralized parameter management with selective loading support
-- **Custom I/O Managers**: Human-readable file formats (CSV, text)
+3. **Partition Not Found Error**:
+   ```
+   DagsterUnknownPartitionError: Could not find a partition with key `combo_001_...`
+   ```
+   **Solution**: Run task assets first to create the dynamic partitions:
+   ```bash
+   uv run dagster asset materialize --select "task_definitions" -f daydreaming_dagster/definitions.py
+   ```
 
-### Partitioning Strategy
+4. **Partitioned Asset Group Error**:
+   ```
+   CheckError: Asset has partitions, but no '--partition' option was provided
+   ```
+   **Solution**: Cannot use group selection with partitioned assets. Use individual partition specification or the Dagster UI.
 
-The pipeline uses dynamic partitioning:
-- **Generation tasks**: Partitioned by `{combo_id}_{template}_{model}`
-- **Evaluation tasks**: Partitioned by `{generation_task_id}_{eval_template}_{eval_model}`
+5. **Missing API Key**:
+   ```bash
+   export OPENROUTER_API_KEY="your_api_key_here"
+   ```
 
-This enables:
-- Parallel processing of independent tasks
-- Easy restart of failed partitions
-- Incremental pipeline execution
+## Documentation
+
+For detailed architecture and implementation information, see:
+
+- [Architecture Overview](docs/architecture.md) - Detailed system design and components
+- [LLM Concurrency Guide](docs/llm_concurrency_guide.md) - LLM API optimization patterns
+- [CLAUDE.md](CLAUDE.md) - Development guidelines and project instructions
 
 ## Migration from Kedro
 
@@ -233,12 +248,11 @@ This project was migrated from Kedro to Dagster for improved:
 - Partitioned asset processing
 - Web UI for pipeline monitoring
 - Integration with data catalogs and metadata
-
-Legacy Kedro pipeline code is available in `src/legacy/` for reference.
+- Python 3.13 compatibility (fixed ANTLR4 issues)
 
 ## Contributing
 
-1. Follow the testing structure (unit tests in `daydreaming_dagster/`, integration tests in `daydreaming_dagster_tests/`)
+1. Follow the testing structure (unit tests in `daydreaming_dagster/`, integration tests in `tests/`)
 2. Use Black for code formatting
 3. Add type hints where appropriate
 4. Update tests for new functionality

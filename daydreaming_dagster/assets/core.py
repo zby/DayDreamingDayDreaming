@@ -10,7 +10,7 @@ from ..models import Concept, ContentCombination
 from .partitions import generation_tasks_partitions, evaluation_tasks_partitions
 
 @asset(
-    group_name="daydreaming_experiment",
+    group_name="llm_tasks",
     required_resource_keys={"config"}
 )
 def content_combinations(
@@ -44,7 +44,7 @@ def content_combinations(
     return content_combos
 
 @asset(
-    group_name="daydreaming_experiment", 
+    group_name="llm_tasks", 
     io_manager_key="csv_io_manager",
     required_resource_keys={"config"}
 )
@@ -72,7 +72,7 @@ def generation_tasks(
     return tasks_df
 
 @asset(
-    group_name="daydreaming_experiment",
+    group_name="llm_tasks",
     io_manager_key="csv_io_manager",
     required_resource_keys={"config"}
 )
