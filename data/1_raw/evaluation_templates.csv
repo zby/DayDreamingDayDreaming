@@ -4,3 +4,5 @@ scientific-rigor,Scientific Rigor,Assesses methodological soundness and evidence
 iterative-loops,Iterative Loops,Evaluates capacity for iterative refinement and continuous improvement,false
 daydreaming-verification,Daydreaming Verification,Systematically verifies AI Daydreaming concepts with 0-10 scoring rubric,false
 daydreaming-verification-v2,Daydreaming Verification V2,Enhanced template with reliable 0-9 scoring and strict SCORE format,true
+o3-prior-art-eval,Prior Art o3, O3 research based prior art evaluation,true
+gemini-prior-art-eval,Prior Art gemini, Gemini research based prior art evaluation,true

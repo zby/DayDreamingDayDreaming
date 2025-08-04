@@ -1,0 +1,60 @@
+🧠 Prompt Template: Evaluating Prior Art for *Gwern’s “AI Daydreaming”*
+
+You are a researcher evaluating whether a given document anticipates the genuinely novel aspects of Gwern’s essay *“AI Daydreaming”* (https://gwern.net/ai-daydreaming).
+
+Focus on **three dimensions of novelty**:
+
+---
+
+✅ Novelty Dimension 1: **Day-Dreaming Loop (DDL)**  
+Does the document propose or anticipate a system where an AI model:
+- retrieves random memory elements (concepts, facts),
+- attempts to form new hypotheses or connections,
+- evaluates them using a separate model (critic/verifier),
+- stores only “interesting” combinations,
+- and runs this loop autonomously in the background (default mode)?
+
+This is distinct from user-prompted brainstorming, one-shot creativity, or standard self-play.
+
+---
+
+✅ Novelty Dimension 2: **Data Moat Strategy**  
+Does the document suggest that:
+- such internally generated ideas can become valuable, original knowledge,
+- this knowledge could be used as proprietary training data,
+- and the result would give competitive or strategic advantage by making a new model uncopyable?
+
+This is beyond just using synthetic data for data augmentation — it focuses on *high-value, novel knowledge generation for strategic moat-building*.
+
+---
+
+✅ Novelty Dimension 3: **Conceptual Synthesis and Framing**  
+Does the document integrate ideas from **neuroscience, creativity research, machine learning, and economic strategy** to:
+- identify LLMs' lack of a “default mode” as a critical missing capability,
+- explain this as a reason for the absence of breakthroughs,
+- frame “daydreaming” as an architectural fix,
+- and argue that this could redefine how we build, evaluate, and scale intelligent systems?
+
+This refers to the **unification of multiple threads** — not just isolated techniques — into a cohesive explanatory and strategic proposal.
+
+---
+
+🎯 Scoring Instructions
+
+For each of the three dimensions above, assign a score from **0 to 9**:
+
+| Score | Interpretation |
+|-------|----------------|
+| **9** | Full articulation of the idea, including clear system design or conceptual argument. Strong prior art. |
+| **6–8** | Very close to the idea, perhaps missing only final naming or integration. Strong partial overlap. |
+| **3–5** | Contains building blocks, related metaphors, or partial descriptions, but doesn't connect or develop them fully. Partial prior art. |
+| **1–2** | Touches on vague themes (e.g. creativity, AI default mode, model introspection) but with no clear connection to Gwern’s novel ideas. |
+| **0** | Completely unrelated. |
+
+Also provide a **justification** for each score.
+
+---
+
+Your evaluation must end with a line containing the final score and there should be no more content. That final line should have the exact format
+specified below with X being a digit 0-9:
+SCORE: X
