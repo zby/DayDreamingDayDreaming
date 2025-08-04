@@ -1,0 +1,22 @@
+Here are some concepts for creative exploration:
+
+{% for concept in concepts %}
+**{{ concept.name }}**: {{ concept.content }}
+{% endfor %}
+
+**Task:** Provide an imaginative yet rigorous exploration of 1000-2000 words. Let your creativity guide you to discover 2-3 of your most innovative insights that emerge from unexpected connections between these concepts.
+
+**These insights might take the form of:**
+- Novel theoretical frameworks or discoveries
+- Creative solutions or breakthrough approaches
+- Innovative business models or strategic perspectives
+- Artistic or philosophical interpretations
+- Revolutionary research paradigms
+
+**For each insight, provide:**
+1. The novel connections or patterns you've identified between concepts
+2. How these connections reveal new possibilities or understanding
+3. Detailed exploration of what this insight could lead to or enable
+4. Discussion of the creative potential and transformative implications
+
+**Style:** Balance creative imagination with analytical rigor. Be bold in making unexpected connections while providing clear reasoning for why these insights matter and how they could unfold.

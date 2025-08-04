@@ -1,0 +1,22 @@
+Below are several concepts to work with:
+
+{% for concept in concepts %}
+**{{ concept.name }}**: {{ concept.content }}
+{% endfor %}
+
+**Task:** Provide a focused analytical exploration of 1000-2000 words. Systematically examine these concepts to identify 2-3 of your most significant insights that emerge from combining them.
+
+**These insights might take the form of:**
+- New theoretical understanding or discoveries
+- Innovative approaches or solutions  
+- Strategic frameworks or business insights
+- Research directions or hypotheses
+- Philosophical perspectives or redefinitions
+
+**For each insight, provide:**
+1. The core principles or patterns from each contributing concept
+2. How these principles interact, complement, or reveal new understanding
+3. Detailed explanation of the implications, applications, or significance
+4. Analysis of why this insight matters and what it reveals
+
+**Style:** Write analytically, focusing on systematic reasoning and depth of understanding. Explain your logic clearly and explore the significance of your insights thoroughly.

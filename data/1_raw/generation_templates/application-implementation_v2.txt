@@ -1,0 +1,22 @@
+Review these concepts:
+
+{% for concept in concepts %}
+**{{ concept.name }}**: {{ concept.content }}
+{% endfor %}
+
+**Task:** Provide a practically-oriented analysis of 1000-2000 words. Consider how these concepts could be applied or implemented in real-world contexts to identify 2-3 of your most viable and impactful insights.
+
+**These insights might take the form of:**
+- Practical applications or implementations
+- Business innovations or strategic approaches
+- Technological solutions or products
+- Policy frameworks or social initiatives
+- Organizational models or processes
+
+**For each insight, provide:**
+1. The specific application, implementation, or practical approach
+2. How the combined concepts enable this real-world application
+3. Detailed explanation of how this would work in practice
+4. Analysis of the potential impact, benefits, and implementation considerations
+
+**Style:** Focus on practical viability and real-world impact. Be specific about how these insights could be implemented and what value they would create in actual applications.
