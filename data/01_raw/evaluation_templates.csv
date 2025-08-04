@@ -2,4 +2,5 @@ template_id,template_name,description,active
 creativity_metrics,Creativity Metrics,Evaluates novel creative thinking patterns for breakthrough innovations,false
 scientific_rigor,Scientific Rigor,Assesses methodological soundness and evidence quality,false
 iterative_loops,Iterative Loops,Evaluates capacity for iterative refinement and continuous improvement,false
-daydreaming_verification,Daydreaming Verification,Systematically verifies AI Daydreaming concepts with 0-10 scoring rubric,true
+daydreaming_verification,Daydreaming Verification,Systematically verifies AI Daydreaming concepts with 0-10 scoring rubric,false
+daydreaming_verification_v2,Daydreaming Verification V2,Enhanced template with reliable 0-9 scoring and strict SCORE format,true

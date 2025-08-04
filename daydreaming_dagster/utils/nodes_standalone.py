@@ -11,7 +11,7 @@ from jinja2 import Environment
 import os
 
 # Import utility classes from local copies
-from .eval_response_parser import parse_llm_response
+from .eval_response_parser import parse_llm_response, extract_template_name
 
 logger = logging.getLogger(__name__)
 
@@ -77,39 +77,30 @@ def generate_concept_combinations(
     return concept_combinations_df, concept_combo_relationships_df
 
 
-def create_tasks_from_content_combinations(
+def create_generation_tasks_from_content_combinations(
     content_combinations: list,  # List[ContentCombination]
     generation_models: pd.DataFrame,
-    evaluation_models: pd.DataFrame,
     generation_templates: dict[str, str],
-    evaluation_templates: dict[str, str],
-) -> tuple[pd.DataFrame, pd.DataFrame]:
+) -> pd.DataFrame:
     """
-    Create generation and evaluation tasks directly from ContentCombination objects.
+    Create generation tasks directly from ContentCombination objects.
 
     Args:
         content_combinations: List of ContentCombination objects
         generation_models: DataFrame with active generation models
-        evaluation_models: DataFrame with active evaluation models
         generation_templates: Dict of template_id -> template_content
-        evaluation_templates: Dict of template_id -> template_content
 
     Returns:
-        - generation_tasks: DataFrame with generation task definitions
-        - evaluation_tasks: DataFrame with evaluation task definitions
+        generation_tasks: DataFrame with generation task definitions
     """
-    logger.info("Creating generation and evaluation tasks from ContentCombination objects")
+    logger.info("Creating generation tasks from ContentCombination objects")
 
     # Filter for active models only
     active_gen_models = generation_models[generation_models["active"] == True]
-    active_eval_models = evaluation_models[evaluation_models["active"] == True]
 
-    logger.info(
-        f"Found {len(active_gen_models)} active generation models and {len(active_eval_models)} active evaluation models"
-    )
+    logger.info(f"Found {len(active_gen_models)} active generation models")
 
     generation_tasks = []
-    evaluation_tasks = []
 
     # Create generation tasks for each combination of combo + template + model
     for content_combo in content_combinations:
@@ -130,30 +121,63 @@ def create_tasks_from_content_combinations(
                 }
                 generation_tasks.append(generation_task)
 
-                # Create evaluation tasks for each evaluation template + model for this generation task
-                for eval_template_id in evaluation_templates.keys():
-                    for _, eval_model_row in active_eval_models.iterrows():
-                        evaluation_model = eval_model_row["model_name"]
-
-                        # Create unique evaluation task ID
-                        evaluation_task_id = f"{generation_task_id}_{eval_template_id}_{evaluation_model}"
-
-                        evaluation_task = {
-                            "evaluation_task_id": evaluation_task_id,
-                            "generation_task_id": generation_task_id,
-                            "evaluation_template": eval_template_id,
-                            "evaluation_model": evaluation_model,
-                        }
-                        evaluation_tasks.append(evaluation_task)
-
     generation_tasks_df = pd.DataFrame(generation_tasks)
+
+    logger.info(f"Created {len(generation_tasks_df)} generation tasks")
+
+    return generation_tasks_df
+
+
+def create_evaluation_tasks_from_generation_tasks(
+    generation_tasks: pd.DataFrame,
+    evaluation_models: pd.DataFrame,
+    evaluation_templates: dict[str, str],
+) -> pd.DataFrame:
+    """
+    Create evaluation tasks from generation tasks.
+
+    Args:
+        generation_tasks: DataFrame with generation task definitions
+        evaluation_models: DataFrame with active evaluation models
+        evaluation_templates: Dict of template_id -> template_content
+
+    Returns:
+        evaluation_tasks: DataFrame with evaluation task definitions
+    """
+    logger.info("Creating evaluation tasks from generation tasks")
+
+    # Filter for active models only
+    active_eval_models = evaluation_models[evaluation_models["active"] == True]
+
+    logger.info(f"Found {len(active_eval_models)} active evaluation models")
+
+    evaluation_tasks = []
+
+    # Create evaluation tasks for each evaluation template + model for each generation task
+    for _, gen_task_row in generation_tasks.iterrows():
+        generation_task_id = gen_task_row["generation_task_id"]
+
+        for eval_template_id in evaluation_templates.keys():
+            for _, eval_model_row in active_eval_models.iterrows():
+                evaluation_model = eval_model_row["model_name"]
+
+                # Create unique evaluation task ID
+                evaluation_task_id = f"{generation_task_id}_{eval_template_id}_{evaluation_model}"
+
+                evaluation_task = {
+                    "evaluation_task_id": evaluation_task_id,
+                    "generation_task_id": generation_task_id,
+                    "evaluation_template": eval_template_id,
+                    "evaluation_model": evaluation_model,
+                }
+                evaluation_tasks.append(evaluation_task)
+
     evaluation_tasks_df = pd.DataFrame(evaluation_tasks)
 
-    logger.info(
-        f"Created {len(generation_tasks_df)} generation tasks and {len(evaluation_tasks_df)} evaluation tasks"
-    )
+    logger.info(f"Created {len(evaluation_tasks_df)} evaluation tasks")
 
-    return generation_tasks_df, evaluation_tasks_df
+    return evaluation_tasks_df
+
 
 
 def create_all_tasks(
@@ -362,8 +386,11 @@ def parse_scores(evaluation_responses: dict[str, str]) -> str:
 
     for evaluation_task_id, response_text in evaluation_responses.items():
         try:
-            # Use the existing parser
-            score_data = parse_llm_response(response_text)
+            # Extract template name from evaluation_task_id for template-aware parsing
+            template_name = extract_template_name(evaluation_task_id)
+            
+            # Use template-aware parser
+            score_data = parse_llm_response(response_text, template_name)
             score_data["evaluation_task_id"] = evaluation_task_id
             parsed_scores.append(score_data)
         except Exception as e:

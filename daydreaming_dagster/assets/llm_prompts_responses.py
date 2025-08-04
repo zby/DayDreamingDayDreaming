@@ -13,7 +13,7 @@ from ..utils.nodes_standalone import (
     partitions_def=generation_tasks_partitions,
     group_name="llm_generation",
     io_manager_key="generation_prompt_io_manager",
-    deps=["task_definitions"]  # Ensure partitions are created first
+    deps=["generation_tasks"]  # Ensure partitions are created first
 )
 def generation_prompt(
     context, 
@@ -56,7 +56,7 @@ def generation_prompt(
     group_name="llm_generation",
     io_manager_key="generation_response_io_manager",
     required_resource_keys={"openrouter_client"},
-    deps=["task_definitions"],  # Ensure partitions are created first
+    deps=["generation_tasks"],  # Ensure partitions are created first
     pool="llm_api"  # NEW: Pool-based concurrency control
 )
 def generation_response(context, generation_prompt, generation_tasks) -> str:
@@ -83,7 +83,7 @@ def generation_response(context, generation_prompt, generation_tasks) -> str:
     partitions_def=evaluation_tasks_partitions,
     group_name="llm_evaluation",
     io_manager_key="evaluation_prompt_io_manager",
-    deps=["task_definitions"],  # Only depend on task_definitions, load generation_response manually
+    deps=["evaluation_tasks"],  # Only depend on evaluation_tasks, load generation_response manually
     required_resource_keys={"generation_response_io_manager"}
 )
 def evaluation_prompt(context, evaluation_tasks, evaluation_templates) -> str:
@@ -139,7 +139,7 @@ def evaluation_prompt(context, evaluation_tasks, evaluation_templates) -> str:
     group_name="llm_evaluation",
     io_manager_key="evaluation_response_io_manager",
     required_resource_keys={"openrouter_client"},
-    deps=["task_definitions"],  # Ensure partitions are created first
+    deps=["generation_tasks"],  # Ensure partitions are created first
     pool="llm_api"  # NEW: Pool-based concurrency control
 )
 def evaluation_response(context, evaluation_prompt, evaluation_tasks) -> str:

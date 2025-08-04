@@ -23,9 +23,6 @@ from daydreaming_dagster.assets.core import (
     generation_tasks,
     evaluation_tasks
 )
-from daydreaming_dagster.assets.partitions import (
-    task_definitions
-)
 from daydreaming_dagster.resources.llm_client import LLMClientResource
 from daydreaming_dagster.resources.experiment_config import ExperimentConfig
 from daydreaming_dagster.resources.io_managers import (
@@ -51,8 +48,6 @@ defs = Definitions(
         generation_tasks,
         evaluation_tasks,
         
-        # Partition management
-        task_definitions,
         
         # LLM prompt and response assets
         generation_prompt,

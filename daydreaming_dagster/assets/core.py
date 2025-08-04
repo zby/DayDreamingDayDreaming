@@ -2,8 +2,12 @@ from dagster import asset
 from typing import Dict, Tuple, List
 import pandas as pd
 from itertools import combinations
-from ..utils.nodes_standalone import create_tasks_from_content_combinations
+from ..utils.nodes_standalone import (
+    create_generation_tasks_from_content_combinations,
+    create_evaluation_tasks_from_generation_tasks,
+)
 from ..models import Concept, ContentCombination
+from .partitions import generation_tasks_partitions, evaluation_tasks_partitions
 
 @asset(
     group_name="daydreaming_experiment",
@@ -48,19 +52,24 @@ def generation_tasks(
     context,
     content_combinations: List[ContentCombination],
     generation_models: pd.DataFrame,
-    evaluation_models: pd.DataFrame,
     generation_templates: dict,
-    evaluation_templates: dict,
 ) -> pd.DataFrame:
     """Create generation tasks and save as CSV for understanding task IDs."""
-    tasks, _ = create_tasks_from_content_combinations(
+    tasks_df = create_generation_tasks_from_content_combinations(
         content_combinations, 
         generation_models, 
-        evaluation_models, 
-        generation_templates,
-        evaluation_templates
+        generation_templates
     )
-    return tasks
+    
+    # Register dynamic partitions for LLM processing
+    context.instance.add_dynamic_partitions(
+        generation_tasks_partitions.name,
+        tasks_df["generation_task_id"].tolist()
+    )
+    
+    context.log.info(f"Created {len(tasks_df)} generation task partitions")
+    
+    return tasks_df
 
 @asset(
     group_name="daydreaming_experiment",
@@ -69,18 +78,23 @@ def generation_tasks(
 )
 def evaluation_tasks(
     context,
-    content_combinations: List[ContentCombination],
-    generation_models: pd.DataFrame,
+    generation_tasks: pd.DataFrame,
     evaluation_models: pd.DataFrame,
-    generation_templates: dict,
     evaluation_templates: dict,
 ) -> pd.DataFrame:
     """Create evaluation tasks and save as CSV for understanding task IDs."""
-    _, tasks = create_tasks_from_content_combinations(
-        content_combinations, 
-        generation_models, 
+    tasks_df = create_evaluation_tasks_from_generation_tasks(
+        generation_tasks,
         evaluation_models, 
-        generation_templates,
         evaluation_templates
     )
-    return tasks
+    
+    # Register dynamic partitions for LLM processing
+    context.instance.add_dynamic_partitions(
+        evaluation_tasks_partitions.name,
+        tasks_df["evaluation_task_id"].tolist()
+    )
+    
+    context.log.info(f"Created {len(tasks_df)} evaluation task partitions")
+    
+    return tasks_df

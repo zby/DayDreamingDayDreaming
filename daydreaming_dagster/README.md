@@ -106,7 +106,7 @@ mkdir -p $DAGSTER_HOME
 touch $DAGSTER_HOME/dagster.yaml
 
 # STEP 1: REQUIRED - Create partitions first
-dagster asset materialize --select "task_definitions" --module-name daydreaming_dagster
+dagster asset materialize --select "generation_tasks,evaluation_tasks" --module-name daydreaming_dagster
 
 # STEP 2: Materialize specific partitions (not groups!)
 dagster asset materialize --select "generation_response" --partition "combo_001_02_problem_solving_deepseek/deepseek-r1:free" --module-name daydreaming_dagster
@@ -121,7 +121,7 @@ dagster dev --module-name daydreaming_dagster
 
 **Why this workflow is required:**
 1. **DAGSTER_HOME**: Partitions must persist between CLI commands in a Dagster instance
-2. **Dynamic partitions**: Don't exist until `task_definitions` creates them  
+2. **Dynamic partitions**: Don't exist until `generation_tasks` and `evaluation_tasks` create them  
 3. **CLI limitation**: Cannot materialize entire groups containing partitioned assets
 4. **Individual specification**: Each partition must be specified individually for partitioned assets
 
@@ -199,9 +199,9 @@ python daydreaming_dagster_tests/test_dagster_cli_compatibility.py
    ```
    DagsterUnknownPartitionError: Could not find a partition with key `combo_001_...`
    ```
-   **Solution**: Run `task_definitions` asset first to create the dynamic partitions:
+   **Solution**: Run task assets first to create the dynamic partitions:
    ```bash
-   dagster asset materialize --select "task_definitions" --module-name daydreaming_dagster
+   dagster asset materialize --select "generation_tasks,evaluation_tasks" --module-name daydreaming_dagster
    ```
 
 3. **Partitioned Asset Group Error**:
