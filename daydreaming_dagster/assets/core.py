@@ -61,10 +61,20 @@ def generation_tasks(
         generation_templates
     )
     
-    # Register dynamic partitions for LLM processing
+    # Clear existing partitions and register new ones for LLM processing
+    existing_partitions = context.instance.get_dynamic_partitions(generation_tasks_partitions.name)
+    if existing_partitions:
+        context.log.info(f"Removing {len(existing_partitions)} existing partitions")
+        for partition in existing_partitions:
+            context.instance.delete_dynamic_partition(
+                generation_tasks_partitions.name, 
+                partition
+            )
+    
+    new_partitions = tasks_df["generation_task_id"].tolist()
     context.instance.add_dynamic_partitions(
         generation_tasks_partitions.name,
-        tasks_df["generation_task_id"].tolist()
+        new_partitions
     )
     
     context.log.info(f"Created {len(tasks_df)} generation task partitions")
@@ -89,10 +99,20 @@ def evaluation_tasks(
         evaluation_templates
     )
     
-    # Register dynamic partitions for LLM processing
+    # Clear existing partitions and register new ones for LLM processing
+    existing_partitions = context.instance.get_dynamic_partitions(evaluation_tasks_partitions.name)
+    if existing_partitions:
+        context.log.info(f"Removing {len(existing_partitions)} existing evaluation partitions")
+        for partition in existing_partitions:
+            context.instance.delete_dynamic_partition(
+                evaluation_tasks_partitions.name, 
+                partition
+            )
+    
+    new_partitions = tasks_df["evaluation_task_id"].tolist()
     context.instance.add_dynamic_partitions(
         evaluation_tasks_partitions.name,
-        tasks_df["evaluation_task_id"].tolist()
+        new_partitions
     )
     
     context.log.info(f"Created {len(tasks_df)} evaluation task partitions")
