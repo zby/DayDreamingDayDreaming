@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 This is a Python experiment that tests whether pre-June 2025 LLMs can "reinvent" Gwern's Daydreaming Loop concept when provided with minimal contextual hints through a focused combinatorial testing approach. The system tests k_max-sized concept combinations to elicit the Day-Dreaming idea from offline LLMs using automated LLM-based evaluation.
 
-## Dagster Architecture
+## Architecture
 
 ### Core Architecture
 
@@ -16,67 +16,11 @@ The project uses **Dagster** for data pipeline orchestration, with a modern asse
 - **Resources**: Configurable services (LLM clients, experiment configuration, I/O managers)
 - **Partitions**: Dynamic partitioning for scalable LLM task processing
 
-### File Organization
+### Project Structure
 
-```
-daydreaming_dagster/
-├── assets/                     # Dagster assets (data pipeline components)
-│   ├── raw_data.py            # Raw data loading assets (supports selective loading)
-│   ├── core.py                # Core processing assets (combinations, tasks)
-│   ├── partitions.py          # Partition management assets
-│   └── llm_prompts_responses.py # LLM interaction assets
-├── resources/                  # Dagster resources
-│   ├── llm_client.py          # LLM API client resource
-│   ├── experiment_config.py   # Experiment configuration resource (with filtering)
-│   └── io_managers.py         # Custom I/O managers for different file types
-├── definitions.py             # Single Dagster definitions file
-└── __init__.py                # Package initialization
-
-tests/                         # Integration tests
-├── conftest.py                # Pytest fixtures and test utilities
-├── test_full_pipeline_integration.py # Complete pipeline integration tests
-├── test_dagster_cli_compatibility.py # CLI and asset tests
-├── test_partition_materialization.py # Partition-specific tests
-├── test_resource_dependencies.py     # Resource configuration tests
-├── test_simple_llm_mocking.py       # LLM mocking tests
-└── ...                        # Additional test modules
-
-data/
-├── 01_raw/                    # External inputs only
-│   ├── concepts/
-│   │   ├── day_dreaming_concepts.json  # Concept database with IDs and names
-│   │   └── descriptions/       # Concept descriptions by level
-│   │       ├── sentence/       # Sentence-level descriptions
-│   │       ├── paragraph/      # Paragraph-level descriptions
-│   │       └── article/        # Article-level descriptions
-│   ├── generation_templates/   # Jinja2 prompt templates
-│   │   ├── 00_systematic_analytical.txt
-│   │   ├── 01_creative_synthesis.txt
-│   │   ├── 02_problem_solving.txt
-│   │   ├── 03_research_discovery.txt
-│   │   └── 04_application_implementation.txt
-│   ├── evaluation_templates/   # Evaluation prompt templates
-│   ├── generation_models.csv   # Available generation models with active selection
-│   └── evaluation_models.csv   # Available evaluation models with active selection
-├── 02_tasks/                   # Generated task definitions (hierarchical structure)
-│   ├── concept_combinations_combinations.csv    # Concept combination definitions
-│   ├── concept_combinations_relationships.csv  # Concept-combo relationships
-│   ├── generation_tasks.csv                    # Generation tasks
-│   ├── evaluation_tasks.csv                    # Evaluation tasks
-│   └── concept_contents/                       # Individual concept content files
-├── 03_generation/              # LLM generation results
-│   ├── generation_prompts/     # Prompts sent to generator LLM
-│   └── generation_responses/   # Raw generator responses
-├── 04_evaluation/              # LLM evaluation results
-│   ├── evaluation_prompts/     # Prompts sent to evaluator LLM
-│   └── evaluation_responses/   # Raw evaluator responses
-├── 05_parsing/                 # Parsed evaluation scores
-│   └── parsed_scores.csv       # Extracted scores with metadata
-├── 06_summary/                 # Final aggregated results
-│   └── final_results.csv       # Final aggregated results
-└── 07_reporting/               # Error logs and reporting
-    └── (error logs as needed)
-```
+- `daydreaming_dagster/` - Main Dagster package with assets, resources, and definitions
+- `tests/` - Integration tests (mostly what we have)
+- `data/` - Data pipeline stages (1_raw, 2_tasks, 5_parsing, experiments)
 
 # Package Management
 
@@ -86,66 +30,35 @@ This project uses **uv** for fast Python package management and dependency resol
 
 ### Installation
 ```bash
-# Install the project and all dependencies
-uv sync
-
-# Install development dependencies
-uv sync --dev
+uv sync                    # Install project and dependencies
+uv sync --dev             # Install with development dependencies
 ```
 
 ### Running the Pipeline
 ```bash
-# Start Dagster development server (recommended)
-uv run dagster dev -f daydreaming_dagster/definitions.py
-
-# Materialize specific assets via CLI
-uv run dagster asset materialize --select "concepts_metadata,generation_tasks"
-
-# Materialize partitioned assets
-uv run dagster asset materialize --select "generation_prompt,generation_response" --partition "combo_001_02_problem_solving_deepseek/deepseek-r1:free"
+uv run dagster dev -f daydreaming_dagster/definitions.py    # Start Dagster UI
+uv run dagster asset materialize --select "asset_name"     # Materialize specific assets
 ```
 
-### Running Tests
+### Testing & Code Quality
 ```bash
-# Run all tests
-uv run pytest
-
-# Run only unit tests (fast, isolated) - colocated with modules
-uv run pytest daydreaming_dagster/
-
-# Run only integration tests (data-dependent)
-uv run pytest tests/
-
-# Run with coverage report
-uv run pytest --cov=daydreaming_dagster
-
-# Run optimized integration test (uses selective loading for faster execution)
-uv run pytest tests/test_full_pipeline_integration.py
-```
-
-### Code Formatting
-```bash
-# Format code with black
-uv run black .
-
-# Check for style issues with ruff
-uv run ruff check
+uv run pytest                                 # Run all tests
+uv run pytest daydreaming_dagster/           # Unit tests only
+uv run pytest tests/                         # Integration tests only
+uv run black .                               # Format code
+uv run ruff check                            # Check code style
 ```
 
 ## Testing Structure
 
-### Overview
-This project follows a clear separation between unit tests and integration tests to ensure fast, reliable testing with proper isolation.
-
-### Test Categories and Placement
+### Test Organization
 
 #### Unit Tests (Fast, Isolated)
-- **Location**: Colocated with the modules they test (e.g., `test_concept.py` next to `concept.py`)
+- **Location**: Colocated with the modules they test
 - **Purpose**: Test individual functions/classes in isolation
 - **Data Access**: **MUST NOT** access files in the `data/` directory
 - **Dependencies**: Use mocking for external dependencies (APIs, file systems, etc.)
 - **Performance**: Should run quickly (<1 second per test)
-- **Examples**: `daydreaming_experiment/utils/test_concept.py`, `daydreaming_experiment/pipelines/daydreaming/test_nodes.py`
 
 #### Integration Tests (Component Interaction)
 - **Location**: `tests/` directory only
@@ -153,229 +66,23 @@ This project follows a clear separation between unit tests and integration tests
 - **Data Access**: **CAN** read from `data/` directory when testing data-dependent functionality
 - **Data Requirements**: **MUST FAIL** if required data files are missing (no graceful skipping)
 - **API Restrictions**: **MUST NOT** make real API calls (use proper mocking)
-- **Examples**: `tests/test_working_integration.py`
 
-### Running Tests
 
-```bash
-# Run only unit tests (fast, no data dependencies)
-uv run pytest daydreaming_experiment/
+## Design Principles
 
-# Run only integration tests (may require data files)
-uv run pytest tests/
+**Dependency Injection**: Dependencies are passed as constructor parameters rather than created internally for better testability and modularity.
 
-# Run all tests
-uv run pytest
+**Selective Loading**: The pipeline supports filtering concepts and templates for faster development and focused experiments using `concept_ids_filter` and `template_names_filter` parameters.
 
-# Run tests with coverage report
-uv run pytest --cov=daydreaming_experiment
-
-# Run tests in parallel for speed
-uv run pytest -n auto
-
-# Run specific test file
-uv run pytest daydreaming_experiment/utils/test_concept.py
-
-# Run specific test method
-uv run pytest daydreaming_experiment/pipelines/daydreaming/test_nodes.py::TestCreateTaskList::test_create_task_list_with_real_concepts
-```
-
-### Testing Best Practices
-
-#### For Unit Tests:
-- Use dependency injection to make components testable
-- Mock external dependencies with `unittest.mock` or `pytest-mock`
-- Test edge cases and error conditions
-- Keep tests focused on a single behavior
-- Use descriptive test names that explain the expected behavior
-
-```python
-# Good unit test example
-def test_concept_get_description_with_fallback():
-    """Should return paragraph when sentence is missing but paragraph exists."""
-    concept = Concept(
-        name="test",
-        descriptions={"paragraph": "Test paragraph", "article": "Test article"}
-    )
-    
-    # Should fall back to paragraph level
-    assert concept.get_description("sentence", strict=False) == "Test paragraph"
-```
-
-#### For Integration Tests:
-- **Fail fast** if required data files are missing (do not skip)
-- Test realistic workflows end-to-end
-- Use real data files and validate their expected structure
-- Mock API calls even in integration tests
-
-```python
-# Good integration test example
-def test_concept_database_loading():
-    """Test loading real concept database - fails if data missing."""
-    # Should fail with clear error if file doesn't exist
-    concept_db = ConceptDB.load("data/concepts/day_dreaming_concepts.json")
-    concepts = concept_db.get_concepts()
-    assert len(concepts) > 0
-    
-    # Verify structure without depending on specific content
-    for concept in concepts:
-        assert hasattr(concept, 'name')
-        assert hasattr(concept, 'descriptions')
-```
-
-#### Naming Conventions:
-- Test files: `test_*.py`
-- Test classes: `TestClassName`
-- Test methods: `test_method_name_condition_expected_result`
-- Use underscores for readability in test names
-
-#### Mock Usage:
-- Mock external services (APIs, file systems when not testing I/O)
-- Use `@patch` decorator for clean mocking
-- Inject mocks through dependency injection when possible
-- Verify mock calls when testing interaction behavior
-
-### Test Framework Configuration
-- **Framework**: pytest (configured in `pytest.ini`)
-- **Coverage**: pytest-cov for coverage reporting
-- **Mocking**: unittest.mock (built-in) and pytest-mock
-- **Fixtures**: Create reusable test data in `conftest.py` files
-- **Parallel Execution**: pytest-xdist for faster test runs
-
-## Design Preferences
-
-**Dependency Injection**: This project uses dependency injection patterns for better testability and modularity. Dependencies should be passed as constructor parameters rather than created internally.
-
-Examples:
-- `SimpleModelClient` can be injected for testing without requiring real API calls
-- `ConceptDB` can be provided pre-loaded for experiment runs
-- Tests can easily inject mock dependencies without complex patching
-
-**Selective Loading**: The pipeline supports selective loading of concepts and templates for faster development, testing, and experimentation. This enables:
-- **Development mode**: Test with small subsets of data for faster iteration
-- **Performance testing**: Validate pipeline logic without full dataset overhead
-- **Focused experiments**: Test specific concept combinations or template variations
-
-Selective Loading Configuration:
-```python
-# In ExperimentConfig
-config = ExperimentConfig(
-    k_max=2,
-    concept_ids_filter=["dearth-ai-discoveries", "default-mode-network"], 
-    template_names_filter=["00_systematic_analytical", "02_problem_solving"]
-)
-```
-
-Filtering Parameters:
-- `concept_ids_filter: list[str] = None` - Only load specified concept IDs (None = all)
-- `template_names_filter: list[str] = None` - Only load specified template names (None = all)
-- Backward compatible: filtering is optional and defaults to loading all data
-
-**Jinja2-based Templates**: Prompt templates are stored as separate text files in `data/01_raw/generation_templates/` using Jinja2 templating syntax for powerful and flexible prompt generation. Templates are automatically loaded as partitioned datasets and must reference the `concepts` variable.
-
-Template System Features:
-- **Clean concept access**: `{% for concept in concepts %}**{{ concept.name }}**: {{ concept.content }}{% endfor %}`
-- **Dictionary-based objects**: Templates receive concept dictionaries with `name`, `concept_id`, and `content` keys
-- **Human-readable names**: Templates display friendly names like "Default Mode Network" instead of IDs
-- **Rich formatting**: Bold concept names, structured layouts, conditional logic
-- **Extensible**: Easy to add new templates with complex logic and formatting
-
-Template Structure:
-Each template receives a `concepts` list where each concept is a dictionary with:
-- `concept.name` - Human-readable name (e.g., "Dearth of AI-driven Discoveries")
-- `concept.concept_id` - File-safe identifier (e.g., "dearth-ai-discoveries")  
-- `concept.content` - Paragraph-level description content
-
-Template Types:
-- `00_systematic_analytical.txt` - Structured step-by-step analysis
-- `01_creative_synthesis.txt` - Open-ended imaginative exploration  
-- `02_problem_solving.txt` - Focus on solving challenges
-- `03_research_discovery.txt` - Academic research orientation
-- `04_application_implementation.txt` - Practical real-world focus
-
-## Dependencies
-
-Main dependencies include:
-- Standard library modules for core functionality
-- jinja2 for advanced template processing
-- pytest for testing
-- black and flake8 for code formatting
-- LLM API clients (we can start with openrouter)
+**Jinja2 Templates**: Prompt templates are stored as text files using Jinja2 syntax. Templates receive a `concepts` list with `name`, `concept_id`, and `content` keys.
 
 ## Development Guidelines
 
-- Never add defensive coding when not explicitly asked for it, the code should fail early
-- Focus on simplicity
+- Code should fail early rather than using defensive programming
+- Focus on simplicity and clarity
+- Commit formatting changes separately from functional changes
+- Only run `black` when there are no uncommitted changes
 
-## Coding Guidelines
+## File Management Notes
 
-- **Formatting Changes**: 
-  - Formatting changes (e.g., the result of running `black`) should be committed separately from functional changes
-  - We should only run black when we have no uncommitted changes
-
-## Search Strategy
-
-The experiment supports multiple search strategies for testing concept combinations. The current active strategy is documented in:
-
-📄 **[Current Search Strategy](data/current_search_strategy.md)**
-
-This modular approach allows for easy strategy experimentation and comparison without frequent documentation updates.
-
-## Usage Workflow
-
-### Kedro Pipeline Execution
-
-```bash
-# Run the complete daydreaming pipeline
-uv run kedro run
-
-# Run specific pipeline nodes
-uv run kedro run --node create_initial_tasks
-uv run kedro run --node generate_prompts_node
-
-# Run pipeline with parameters
-uv run kedro run --params k_max:3
-
-# Visualize the pipeline
-uv run kedro viz
-```
-
-### Data Layer Workflow
-
-The pipeline follows a clear data processing workflow:
-
-1. **Raw Data (01_raw/)**: External inputs only
-   - Concept database with IDs and human-readable names
-   - Jinja2 templates for generation and evaluation
-
-2. **Task Generation (02_tasks/)**: 
-   - Generate all k_max-combinations of concepts as concept_combinations
-   - Create hierarchical task structure: combinations → generation tasks → evaluation tasks
-   - Active model selection from CSV files with `active` column
-   - Generate individual concept content files by concept_id
-
-3. **Generation (03_generation/)**:
-   - Render prompts using templates and concept combinations
-   - Query generator LLM for responses
-
-4. **Evaluation (04_evaluation/)**:
-   - Generate evaluation prompts from responses
-   - Query evaluator LLM for scores
-
-5. **Parsing & Summary (05_parsing/, 06_summary/)**:
-   - Parse evaluation responses to extract scores
-   - Generate final aggregated results
-
-### Legacy CLI Support (Archived)
-```bash
-# Note: Legacy CLI runners are archived but available in src/legacy/
-# Use Kedro pipeline for new experiments
-
-# Legacy experiment runner (archived)
-uv run python -m daydreaming_experiment.experiment_runner \
-    --k-max 4 --level paragraph --generator-model gpt-4
-
-# Legacy evaluation runner (archived)  
-uv run python -m daydreaming_experiment.evaluation_runner \
-    experiments/experiment_20250728_143022
-```
+- Don't edit data/1_raw/generation_templates/gwern_original.txt - it is copied from the essay and we don't optimize it

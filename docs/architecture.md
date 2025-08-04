@@ -1,0 +1,365 @@
+# DayDreaming Pipeline Architecture
+
+This document provides a detailed technical overview of the DayDreaming Dagster pipeline architecture, including system design, data flow, and implementation details.
+
+## System Overview
+
+The DayDreaming pipeline is built on **Dagster**, a modern data orchestration platform that provides asset-based dependency management, partitioned processing, and rich observability features.
+
+### Core Architectural Principles
+
+1. **Asset-Based Architecture**: Each data artifact is modeled as a Dagster asset with explicit dependencies
+2. **Dynamic Partitioning**: LLM tasks are processed as individual partitions for granular caching and recovery
+3. **Dependency Injection**: Resources are injected for testability and configurability
+4. **Human-Readable Storage**: All outputs stored as CSV/text files for debugging and analysis
+5. **Selective Loading**: Configurable filtering for development and focused experiments
+
+## Architecture Diagram
+
+```
+┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
+│   Raw Data      │    │  Task Generation │    │ LLM Processing  │
+│   (01_raw/)     │───▶│   (02_tasks/)    │───▶│ (03_generation/ │
+│                 │    │                  │    │  04_evaluation/)│
+│ • Concepts      │    │ • Combinations   │    │                 │
+│ • Templates     │    │ • Generation     │    │ • Partitioned   │
+│ • Models        │    │   Tasks          │    │   by Task ID    │
+└─────────────────┘    │ • Evaluation     │    │ • Cached        │
+                       │   Tasks          │    │   Responses     │
+                       └─────────────────┘    └─────────────────┘
+                                                       │
+                              ┌─────────────────┐     │
+                              │ Results         │◀────┘
+                              │ (05_parsing/    │
+                              │  06_summary/)   │
+                              │                 │
+                              │ • Parsed Scores │
+                              │ • Final Results │
+                              └─────────────────┘
+```
+
+## Dagster Implementation Structure
+
+### Assets Organization
+
+```
+daydreaming_dagster/
+├── assets/                     # Dagster assets (data pipeline components)
+│   ├── raw_data.py            # Raw data loading assets (supports selective loading)
+│   ├── core.py                # Core processing assets (combinations, tasks)
+│   ├── partitions.py          # Partition management assets
+│   └── llm_prompts_responses.py # LLM interaction assets
+├── resources/                  # Dagster resources
+│   ├── llm_client.py          # LLM API client resource
+│   ├── experiment_config.py   # Experiment configuration resource (with filtering)
+│   └── io_managers.py         # Custom I/O managers for different file types
+├── definitions.py             # Single Dagster definitions file
+└── __init__.py                # Package initialization
+```
+
+### Asset Groups
+
+Assets are organized into logical groups for easy selection and understanding:
+
+| Group | Assets | Purpose |
+|-------|--------|---------|
+| **`raw_data`** | concepts, concepts_metadata, generation_models, evaluation_models, generation_templates, evaluation_templates | Load external data files |
+| **`llm_tasks`** | content_combinations, generation_tasks, evaluation_tasks, task_definitions | Generate LLM task definitions |
+| **`llm_generation`** | generation_prompt, generation_response | LLM prompt/response generation (partitioned) |
+| **`llm_evaluation`** | evaluation_prompt, evaluation_response | LLM evaluation (partitioned) |
+| **`results_processing`** | parsed_scores, final_results | Parse and aggregate results |
+
+## Data Flow Architecture
+
+### 1. Raw Data Loading (`raw_data.py`)
+
+**Assets**: `concepts`, `concepts_metadata`, `generation_models`, `evaluation_models`, `generation_templates`, `evaluation_templates`
+
+**Purpose**: Load and validate external data files from `data/01_raw/`
+
+**Key Features**:
+- **Selective Loading**: Filter concepts and templates based on configuration
+- **Validation**: Ensure required fields and structure
+- **Metadata Extraction**: Generate searchable metadata for concepts
+- **Template Processing**: Load and validate Jinja2 templates
+
+**Implementation Details**:
+```python
+@asset(group_name="raw_data")
+def concepts(experiment_config: ExperimentConfig) -> List[Dict]:
+    # Load concepts with optional filtering
+    if experiment_config.concept_ids_filter:
+        return filtered_concepts
+    return all_concepts
+```
+
+### 2. Core Processing (`core.py`)
+
+**Assets**: `content_combinations`, `generation_tasks`, `evaluation_tasks`
+
+**Purpose**: Generate experiment structure and task definitions
+
+**Data Flow**:
+1. **Concept Combinations**: Generate k_max-sized combinations from concepts
+2. **Generation Tasks**: Cross-product combinations with templates and models
+3. **Evaluation Tasks**: Cross-product generation tasks with evaluation templates and models
+
+**Key Features**:
+- **Combinatorial Generation**: Efficient k-sized combination generation
+- **Task Hierarchies**: Structured task dependencies (generation → evaluation)
+- **CSV Output**: Human-readable task definitions for debugging
+
+### 3. Partition Management (`partitions.py`)
+
+**Assets**: `task_definitions`
+
+**Purpose**: Create dynamic partitions from generated tasks
+
+**Critical Function**: This asset reads the CSV task files and registers each task ID as a dynamic partition in Dagster, enabling partitioned LLM processing.
+
+**Why This Is Required**:
+- Dagster's dynamic partitions don't exist until explicitly created
+- Each LLM task becomes an independent partition for caching and recovery
+- Partitions must be registered before partitioned assets can be materialized
+
+### 4. LLM Processing (`llm_prompts_responses.py`)
+
+**Assets**: `generation_prompt`, `generation_response`, `evaluation_prompt`, `evaluation_response`
+
+**Purpose**: Execute LLM API calls with partitioned processing
+
+**Partitioning Strategy**:
+- **Generation**: Partitioned by `{combo_id}_{template}_{model}`
+- **Evaluation**: Partitioned by `{generation_task_id}_{eval_template}_{eval_model}`
+
+**Key Features**:
+- **Individual File Storage**: Each prompt/response stored as separate files
+- **Automatic Caching**: Failed tasks can be rerun without affecting completed ones
+- **API Error Handling**: Structured error logging and recovery
+- **Rate Limiting**: Built-in throttling for API calls
+
+### 5. Results Processing (`llm_prompts_responses.py`)
+
+**Assets**: `parsed_scores`, `final_results`
+
+**Purpose**: Parse LLM responses and generate final analysis
+
+**Processing Pipeline**:
+1. **Score Extraction**: Parse evaluation responses to extract numerical scores
+2. **Metadata Enhancement**: Add task metadata (combo, template, model info)
+3. **Aggregation**: Calculate summary statistics and perfect score analysis
+4. **CSV Output**: Structured results for further analysis
+
+## Resource Architecture
+
+### 1. LLM Client Resource (`llm_client.py`)
+
+**Purpose**: Configurable LLM API client with provider abstraction
+
+**Features**:
+- **Multi-Provider Support**: OpenRouter, direct API endpoints
+- **Retry Logic**: Exponential backoff for failed requests
+- **Rate Limiting**: Configurable request throttling
+- **Error Handling**: Structured error responses and logging
+
+**Implementation Pattern**:
+```python
+@resource(config_schema={"api_key": str, "base_url": str})
+def llm_client_resource(context) -> LLMClientResource:
+    return LLMClientResource(
+        api_key=context.resource_config["api_key"],
+        base_url=context.resource_config["base_url"]
+    )
+```
+
+### 2. Experiment Configuration (`experiment_config.py`)
+
+**Purpose**: Centralized parameter management with selective loading
+
+**Configuration Options**:
+- `k_max`: Maximum concept combination size
+- `description_level`: Concept description detail level
+- `concept_ids_filter`: Optional concept filtering for focused experiments
+- `template_names_filter`: Optional template filtering
+
+**Selective Loading Benefits**:
+- **Development Speed**: Test with small data subsets
+- **Focused Experiments**: Test specific concept/template combinations
+- **Resource Conservation**: Reduce API costs during development
+
+### 3. I/O Managers (`io_managers.py`)
+
+**Purpose**: Custom storage managers for different data types
+
+**Managers**:
+- **TextFileIOManager**: Individual text files for prompts/responses
+- **CSVIOManager**: Structured data with human-readable format
+- **JSONIOManager**: Complex objects with structured format
+
+**Benefits**:
+- **Debugging**: Easy inspection of intermediate results
+- **Version Control**: Text-based formats for diff tracking
+- **Portability**: Standard formats for external tool integration
+
+## Partitioning Architecture
+
+### Dynamic Partitioning Strategy
+
+The pipeline uses Dagster's dynamic partitioning to create fine-grained, recoverable processing:
+
+1. **Task Definition Phase**:
+   ```python
+   # task_definitions asset creates partitions
+   context.instance.add_dynamic_partitions(
+       partition_def_name="generation_tasks_partition",
+       partition_keys=list(task_ids)
+   )
+   ```
+
+2. **Partitioned Asset Execution**:
+   ```python
+   @asset(partitions_def=generation_tasks_partition)
+   def generation_response(context, generation_prompt):
+       partition_key = context.partition_key
+       # Process specific task
+   ```
+
+### Benefits of This Architecture
+
+1. **Granular Caching**: Each LLM call cached independently
+2. **Fault Tolerance**: Failed partitions don't affect successful ones  
+3. **Parallel Processing**: Independent tasks can run concurrently
+4. **Incremental Execution**: Only missing partitions are materialized
+5. **Progress Tracking**: UI shows per-partition status
+
+### Partition Key Structure
+
+**Generation Tasks**: `combo_{id}_{template}_{model}`
+- Example: `combo_001_02_problem_solving_deepseek`
+
+**Evaluation Tasks**: `{generation_task}_{eval_template}_{eval_model}/{eval_model_version}`
+- Example: `combo_001_02_problem_solving_deepseek_creativity_metrics_deepseek/deepseek-r1:free`
+
+## Storage Architecture
+
+### File System Organization
+
+```
+data/
+├── 01_raw/                    # External inputs only
+│   ├── concepts/
+│   │   ├── day_dreaming_concepts.json
+│   │   └── descriptions/       # Concept descriptions by level
+│   ├── generation_templates/   # Jinja2 prompt templates
+│   ├── evaluation_templates/   # Evaluation prompt templates
+│   ├── generation_models.csv   # Available models with active selection
+│   └── evaluation_models.csv   # Available evaluation models
+├── 02_tasks/                   # Generated task definitions
+│   ├── concept_combinations_combinations.csv
+│   ├── concept_combinations_relationships.csv
+│   ├── generation_tasks.csv
+│   ├── evaluation_tasks.csv
+│   └── concept_contents/       # Individual concept content files
+├── 03_generation/              # LLM generation results
+│   ├── generation_prompts/     # Prompts sent to generator LLM
+│   └── generation_responses/   # Raw generator responses
+├── 04_evaluation/              # LLM evaluation results
+│   ├── evaluation_prompts/     # Prompts sent to evaluator LLM
+│   └── evaluation_responses/   # Raw evaluator responses
+├── 05_parsing/                 # Parsed evaluation scores
+│   └── parsed_scores.csv       # Extracted scores with metadata
+├── 06_summary/                 # Final aggregated results
+│   └── final_results.csv       # Final aggregated results
+└── 07_reporting/               # Error logs and reporting
+```
+
+### Storage Design Principles
+
+1. **Human-Readable**: All outputs in CSV/text for easy inspection
+2. **Granular**: Individual files for each prompt/response for debugging
+3. **Hierarchical**: Clear directory structure reflecting data flow
+4. **Cacheable**: File-based storage enables Dagster caching
+5. **Portable**: Standard formats for external tool integration
+
+## Performance and Scalability
+
+### Concurrency Architecture
+
+The pipeline is designed for efficient concurrent processing:
+
+1. **Asset-Level Parallelism**: Independent assets run concurrently
+2. **Partition-Level Parallelism**: Independent partitions can be processed simultaneously
+3. **Resource Pooling**: Shared LLM client resource across partitions
+4. **Rate Limiting**: Configurable throttling to respect API limits
+
+### Scalability Features
+
+1. **Selective Loading**: Scale down for development/testing
+2. **Incremental Processing**: Only process missing/failed partitions
+3. **Resource Management**: Configurable resource limits and timeouts
+4. **Error Isolation**: Failed partitions don't affect successful ones
+
+### Performance Optimization
+
+1. **Template Caching**: Jinja2 templates compiled once and reused
+2. **Metadata Precomputation**: Concept metadata calculated once
+3. **Efficient Storage**: CSV format for structured data, text for content
+4. **Lazy Loading**: Data loaded only when needed by downstream assets
+
+## Error Handling and Recovery
+
+### Error Handling Strategy
+
+1. **Asset-Level**: Each asset handles its specific error conditions
+2. **Partition-Level**: Individual partitions can fail without affecting others
+3. **Resource-Level**: LLM client handles API errors with retry logic
+4. **System-Level**: Dagster provides monitoring and alerting
+
+### Recovery Mechanisms
+
+1. **Automatic Retry**: Failed API calls retried with exponential backoff
+2. **Partial Recovery**: Failed partitions can be rerun individually
+3. **State Preservation**: Successful partitions remain cached
+4. **Error Logging**: Structured error information for debugging
+
+### Monitoring and Observability
+
+1. **Dagster UI**: Real-time asset and partition status
+2. **Structured Logging**: Detailed logs for debugging
+3. **Asset Lineage**: Visual dependency tracking
+4. **Performance Metrics**: Execution time and resource usage tracking
+
+## Migration Benefits from Kedro
+
+### Technical Improvements
+
+1. **Asset Lineage**: Visual dependency tracking vs. implicit pipeline dependencies
+2. **Partitioned Processing**: Fine-grained caching vs. monolithic pipeline runs
+3. **Dynamic Partitioning**: Runtime partition creation vs. static configuration
+4. **Web UI**: Rich monitoring vs. command-line only
+5. **Python 3.13 Compatibility**: Fixed ANTLR4 issues that affected Kedro
+
+### Operational Benefits
+
+1. **Interruption Recovery**: Resume from exact failure point vs. full restart
+2. **Parallel Execution**: Asset-level parallelism vs. sequential pipeline
+3. **Selective Materialization**: Run specific assets/partitions vs. full pipeline
+4. **Resource Management**: Shared resources across assets vs. per-node isolation
+
+## Future Architecture Considerations
+
+### Potential Enhancements
+
+1. **Multi-Node Processing**: Distribute partitions across multiple machines
+2. **Cloud Storage**: Migrate to S3/GCS for larger scale deployments
+3. **Database Integration**: Add metadata database for advanced querying
+4. **Streaming**: Real-time processing for continuous experiment updates
+5. **ML Pipelines**: Integration with ML training and inference pipelines
+
+### Extensibility Points
+
+1. **New LLM Providers**: Add support for additional API providers
+2. **Custom Evaluation**: Extend evaluation templates and scoring methods
+3. **Data Sources**: Add support for additional concept/template sources
+4. **Output Formats**: Support additional output formats (JSON, Parquet, etc.)
+5. **Monitoring**: Integration with external monitoring systems
