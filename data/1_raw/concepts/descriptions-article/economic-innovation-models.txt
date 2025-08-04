@@ -1,0 +1,5 @@
+[Article content for Economic Innovation Models - placeholder for future detailed article content]
+
+The work of economist Charles I. Jones on economic innovation, particularly his research on how continuous streams of innovation can arise from the combination of existing ideas, provides a mathematical foundation for AI creativity. His models demonstrate that even when the most obvious ideas have already been discovered, novel innovation can continue through increasingly sophisticated combinations of existing concepts. This economic perspective suggests that AI systems could generate genuinely new ideas through systematic combinatorial exploration of their knowledge base.
+
+This concept would expand into detailed mathematical models, economic theory, and quantitative frameworks for measuring and optimizing AI creativity.

@@ -1,0 +1,1 @@
+Combinatorial search systematically explores combinations of possibilities to discover novel solutions.

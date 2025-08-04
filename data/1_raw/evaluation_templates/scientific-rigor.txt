@@ -1,0 +1,21 @@
+RESPONSE TO EVALUATE:
+{{ response }}
+
+--- EVALUATION INSTRUCTIONS ---
+
+Does this response demonstrate scientific thinking and methodological rigor in approaching research questions?
+
+Assess the response for these scientific thinking patterns:
+- **Systematic methodology**: Structured, step-by-step approaches to problem solving
+- **Evidence-based reasoning**: Claims supported by data, observations, or logical inference
+- **Hypothesis formation**: Clear, testable predictions or propositions
+- **Experimental thinking**: Consideration of how ideas could be tested or validated
+- **Methodological awareness**: Recognition of research design, controls, and limitations
+- **Reproducibility focus**: Ideas that could be replicated or verified by others
+- **Causal reasoning**: Understanding of cause-and-effect relationships
+- **Quantitative thinking**: Use of metrics, measurements, or statistical concepts
+- **Falsifiability**: Ideas that could potentially be proven wrong
+
+Provide your evaluation in this format:
+REASONING: Detailed explanation of what scientific elements are present or missing, with specific examples from the text
+SCORE: 0-10 (0 = no scientific rigor, 10 = exemplary scientific methodology and thinking)
