@@ -4,19 +4,12 @@ Consider the following concepts:
 **{{ concept.name }}**: {{ concept.content }}
 {% endfor %}
 
-**Task:** Provide a solution-oriented analysis of 1000-2000 words. Explore how these concepts might address current challenges, limitations, or unsolved problems to identify 2-3 of your most promising insights.
+**Task:** Provide a solution-oriented analysis of approximately 3000 words. Explore how these concepts might address current challenges, limitations, or unsolved problems to identify the 2 most promising and diverse insights.
 
-**These insights might take the form of:**
-- Solutions to existing theoretical or practical problems
-- New understanding of why current approaches fall short
-- Strategic approaches to overcoming limitations
-- Innovative methodologies or frameworks
-- Breakthrough perspectives on persistent challenges
+**Your exploration should:**
+- Develop each insight thoroughly with extensive analysis, proposed solutions, and implementation strategies
+- Ensure each insight is internally cohesive and well-developed
+- Avoid fragmented structure
+- Write as a flowing, problem-solving exploration of ideas
 
-**For each insight, provide:**
-1. The specific problem, limitation, or challenge being addressed
-2. How the combined concepts offer new understanding or approaches
-3. Detailed explanation of the proposed solution or breakthrough
-4. Analysis of why this approach could succeed where others have not
-
-**Style:** Focus on clear problem identification and logical solution development. Be precise about what makes these approaches different from existing attempts and why they might be more effective.
+**Style:** Write as if you're working through complex challenges with fresh perspective. Focus on deep problem analysis and innovative solution development. Develop ideas extensively and show how they could fundamentally change current approaches. Emphasize breakthrough thinking and the organic development of transformative solutions.

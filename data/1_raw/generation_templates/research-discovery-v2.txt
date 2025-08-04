@@ -4,19 +4,12 @@ Examine these concepts:
 **{{ concept.name }}**: {{ concept.content }}
 {% endfor %}
 
-**Task:** Provide a research-oriented exploration of 1000-2000 words. Approach these concepts as a researcher or investigator to identify 2-3 of your most significant discoveries or research insights that emerge from their connections.
+**Task:** Provide a research-oriented exploration of approximately 3000 words. Approach these concepts as a researcher or investigator to identify the 2 most significant and diverse discoveries or research insights that emerge from their connections.
 
-**These insights might take the form of:**
-- New knowledge or theoretical discoveries
-- Novel research questions or hypotheses
-- Methodological innovations or approaches
-- Empirical patterns or principles
-- Interdisciplinary connections or frameworks
+**Your exploration should:**
+- Develop each insight thoroughly with extensive research implications, methodological approaches, and empirical possibilities
+- Ensure each insight is internally cohesive and well-developed
+- Avoid fragmented structure
+- Write as a flowing, investigative exploration of ideas
 
-**For each insight, provide:**
-1. The specific discovery, pattern, or research question you've identified
-2. How the combined concepts led to this new understanding
-3. Detailed explanation of the research implications and potential investigations
-4. Analysis of what this could reveal or contribute to broader knowledge
-
-**Style:** Write with scholarly rigor, emphasizing discovery and investigation. Focus on what new knowledge emerges and how it could advance understanding in relevant fields.
+**Style:** Write as if you're making groundbreaking discoveries in your field. Emphasize the excitement of new knowledge and the potential for advancing understanding. Develop ideas extensively and show how they could open entirely new research directions. Focus on scholarly depth and the organic development of transformative insights.

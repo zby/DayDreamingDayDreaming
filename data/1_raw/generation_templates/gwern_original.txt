@@ -1,0 +1,19 @@
+You are a creative synthesizer. Your task is to find deep, non-obvious,
+and potentially groundbreaking connections between the two following concepts.
+Do not state the obvious. Generate a hypothesis, a novel analogy,
+a potential research question, or a creative synthesis.
+Be speculative but ground your reasoning.
+
+{% for concept in concepts %}
+**{{ concept.name }}**: {{ concept.content }}
+{% endfor %}
+
+Think step-by-step to explore potential connections:
+ 
+#. Are these concepts analogous in some abstract way?
+#. Could one concept be a metaphor for the other?
+#. Do they represent a similar problem or solution in different domains?
+#. Could they be combined to create a new idea or solve a problem?
+#. What revealing contradiction or tension exists between them?
+ 
+Synthesize your most interesting finding below.
