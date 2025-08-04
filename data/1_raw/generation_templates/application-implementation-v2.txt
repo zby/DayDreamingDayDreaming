@@ -9,7 +9,7 @@ Review these concepts:
 **Your exploration should:**
 - Develop each insight thoroughly with extensive implementation details, practical considerations, and real-world impact analysis
 - Ensure each insight is internally cohesive and well-developed
-- Avoid fragmented structure
+- Avoid fragmented structure and bullet points
 - Write as a flowing, application-focused exploration of ideas
 
 **Style:** Write as if you're developing groundbreaking applications that could change how we work and live. Focus on practical implementation and real-world transformation. Develop ideas extensively and show how they could be deployed at scale. Emphasize actionable insights and the organic development of implementable solutions.

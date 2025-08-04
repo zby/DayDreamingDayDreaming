@@ -9,7 +9,7 @@ Below are several concepts to work with:
 **Your exploration should:**
 - Develop each insight thoroughly with extensive examples, mechanisms, and implications
 - Ensure each insight is internally cohesive and well-developed
-- Avoid fragmented structure
+- Avoid fragmented structure and bullet points
 - Write as a flowing, conversational exploration of ideas
 
 **Style:** Write as if you're thinking through a fascinating problem aloud. Let your reasoning unfold naturally, building from basic principles to complex implications. Develop ideas extensively rather than covering many points briefly. Focus on depth, connection, and the organic development of understanding.
