@@ -132,6 +132,7 @@ def create_evaluation_tasks_from_generation_tasks(
     generation_tasks: pd.DataFrame,
     evaluation_models: pd.DataFrame,
     evaluation_templates: dict[str, str],
+    # num_evaluation_runs: int = 3  # COMMENTED OUT: Multiple runs feature for future use
 ) -> pd.DataFrame:
     """
     Create evaluation tasks from generation tasks.
@@ -140,6 +141,7 @@ def create_evaluation_tasks_from_generation_tasks(
         generation_tasks: DataFrame with generation task definitions
         evaluation_models: DataFrame with active evaluation models
         evaluation_templates: Dict of template_id -> template_content
+        # num_evaluation_runs: Number of evaluation runs per generation response (for variance tracking)
 
     Returns:
         evaluation_tasks: DataFrame with evaluation task definitions
@@ -161,8 +163,23 @@ def create_evaluation_tasks_from_generation_tasks(
                 # Store both model ID (for task IDs) and model name (for LLM API)
                 model_id = eval_model_row["id"]
                 model_name = eval_model_row["model"]
+                
+                # COMMENTED OUT: Multiple runs for variance tracking (future feature)
+                # for run_num in range(1, num_evaluation_runs + 1):
+                #     evaluation_task_id = f"{generation_task_id}_{eval_template_id}_{model_id}_run{run_num:02d}"
+                #     evaluation_task = {
+                #         "evaluation_task_id": evaluation_task_id,
+                #         "generation_task_id": generation_task_id,
+                #         "evaluation_template": eval_template_id,
+                #         "evaluation_model": model_id,
+                #         "evaluation_model_name": model_name,
+                #         "run_number": run_num,
+                #         "total_runs": num_evaluation_runs,
+                #     }
+                #     evaluation_tasks.append(evaluation_task)
+                
+                # Current implementation: Single evaluation per model/template combination
                 evaluation_task_id = f"{generation_task_id}_{eval_template_id}_{model_id}"
-
                 evaluation_task = {
                     "evaluation_task_id": evaluation_task_id,
                     "generation_task_id": generation_task_id,

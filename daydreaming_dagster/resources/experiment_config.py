@@ -17,6 +17,8 @@ class ExperimentConfig(ConfigurableResource):
     evaluation_max_tokens: int = 2048
     concept_ids_filter: list[str] = None
     template_names_filter: list[str] = None
+    # COMMENTED OUT: Variance tracking configuration (future feature)
+    # num_evaluation_runs: int = 3  # Number of evaluation runs per generation response for variance tracking
     # Concurrency control for LLM API calls - STRICT SEQUENTIAL for free tier APIs
     llm_concurrency_limit: int = 1  # NO CONCURRENCY: Only 1 LLM call at a time globally
     def to_dict(self) -> dict:
@@ -38,5 +40,6 @@ class ExperimentConfig(ConfigurableResource):
             },
             "concept_ids_filter": self.concept_ids_filter,
             "template_names_filter": self.template_names_filter,
+            # "num_evaluation_runs": self.num_evaluation_runs,  # COMMENTED OUT
             "llm_concurrency_limit": self.llm_concurrency_limit
         }

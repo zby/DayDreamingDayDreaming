@@ -5,6 +5,8 @@ from daydreaming_dagster.assets.llm_prompts_responses import (
     evaluation_prompt,
     evaluation_response,
     parsed_scores,
+    evaluator_agreement_analysis,
+    comprehensive_variance_analysis,
     final_results,
     perfect_score_paths
 )
@@ -56,6 +58,8 @@ defs = Definitions(
         
         # Results processing assets
         parsed_scores,
+        evaluator_agreement_analysis,
+        comprehensive_variance_analysis,
         final_results,
         perfect_score_paths
     ],

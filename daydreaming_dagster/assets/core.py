@@ -93,10 +93,15 @@ def evaluation_tasks(
     evaluation_templates: dict,
 ) -> pd.DataFrame:
     """Create evaluation tasks and save as CSV for understanding task IDs."""
+    # COMMENTED OUT: Multiple runs feature for future use
+    # config = context.resources.config
+    # num_evaluation_runs = getattr(config, 'num_evaluation_runs', 3)  # Default to 3 runs
+    
     tasks_df = create_evaluation_tasks_from_generation_tasks(
         generation_tasks,
         evaluation_models, 
         evaluation_templates
+        # num_evaluation_runs=num_evaluation_runs  # COMMENTED OUT
     )
     
     # Clear existing partitions and register new ones for LLM processing
