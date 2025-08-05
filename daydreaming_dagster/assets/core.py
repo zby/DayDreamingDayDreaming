@@ -1,4 +1,4 @@
-from dagster import asset
+from dagster import asset, MetadataValue
 from typing import Dict, Tuple, List
 import pandas as pd
 from itertools import combinations
@@ -41,6 +41,15 @@ def content_combinations(
     
     context.log.info(f"Generated {len(content_combos)} content combinations")
     
+    # Add output metadata
+    context.add_output_metadata({
+        "combination_count": MetadataValue.int(len(content_combos)),
+        "k_max_used": MetadataValue.int(k_max),
+        "source_concepts": MetadataValue.int(len(concepts)),
+        "description_level": MetadataValue.text(config.description_level),
+        "combo_ids_range": MetadataValue.text(f"combo_001 to combo_{len(content_combos):03d}")
+    })
+    
     return content_combos
 
 @asset(
@@ -63,6 +72,8 @@ def generation_tasks(
     
     # Clear existing partitions and register new ones for LLM processing
     existing_partitions = context.instance.get_dynamic_partitions(generation_tasks_partitions.name)
+    partitions_removed = len(existing_partitions) if existing_partitions else 0
+    
     if existing_partitions:
         context.log.info(f"Removing {len(existing_partitions)} existing partitions")
         for partition in existing_partitions:
@@ -78,6 +89,16 @@ def generation_tasks(
     )
     
     context.log.info(f"Created {len(tasks_df)} generation task partitions")
+    
+    # Add output metadata
+    context.add_output_metadata({
+        "task_count": MetadataValue.int(len(tasks_df)),
+        "partitions_created": MetadataValue.int(len(new_partitions)),
+        "partitions_removed": MetadataValue.int(partitions_removed),
+        "unique_combinations": MetadataValue.int(tasks_df["combo_id"].nunique()),
+        "unique_templates": MetadataValue.int(tasks_df["generation_template"].nunique()),
+        "unique_models": MetadataValue.int(tasks_df["generation_model"].nunique())
+    })
     
     return tasks_df
 
@@ -106,6 +127,8 @@ def evaluation_tasks(
     
     # Clear existing partitions and register new ones for LLM processing
     existing_partitions = context.instance.get_dynamic_partitions(evaluation_tasks_partitions.name)
+    partitions_removed = len(existing_partitions) if existing_partitions else 0
+    
     if existing_partitions:
         context.log.info(f"Removing {len(existing_partitions)} existing evaluation partitions")
         for partition in existing_partitions:
@@ -121,5 +144,15 @@ def evaluation_tasks(
     )
     
     context.log.info(f"Created {len(tasks_df)} evaluation task partitions")
+    
+    # Add output metadata
+    context.add_output_metadata({
+        "task_count": MetadataValue.int(len(tasks_df)),
+        "partitions_created": MetadataValue.int(len(new_partitions)),
+        "partitions_removed": MetadataValue.int(partitions_removed),
+        "unique_generation_tasks": MetadataValue.int(tasks_df["generation_task_id"].nunique()),
+        "unique_eval_templates": MetadataValue.int(tasks_df["evaluation_template"].nunique()),
+        "unique_eval_models": MetadataValue.int(tasks_df["evaluation_model"].nunique())
+    })
     
     return tasks_df

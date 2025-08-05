@@ -419,6 +419,29 @@ def parsed_scores(context, evaluation_tasks, generation_tasks) -> pd.DataFrame:
     existing_columns = [col for col in column_order if col in parsed_df.columns]
     
     context.log.info(f"Parsed {len(parsed_df)} evaluation responses with extracted metadata")
+    
+    # Add output metadata
+    total_responses = len(parsed_df)
+    successful_parses = len(parsed_df[parsed_df['error'].isna()]) if 'error' in parsed_df.columns else total_responses
+    failed_parses = total_responses - successful_parses
+    success_rate = (successful_parses / total_responses * 100) if total_responses > 0 else 0.0
+    
+    # Handle potential NaN values and ensure float type
+    import math
+    if math.isnan(success_rate):
+        success_rate = 0.0
+    else:
+        success_rate = float(success_rate)  # Ensure it's a float type
+    
+    context.add_output_metadata({
+        "total_responses": MetadataValue.int(total_responses),
+        "successful_parses": MetadataValue.int(successful_parses),
+        "failed_parses": MetadataValue.int(failed_parses),
+        "success_rate": MetadataValue.float(round(success_rate, 2)),
+        "unique_combinations": MetadataValue.int(parsed_df['combo_id'].nunique() if 'combo_id' in parsed_df.columns else 0),
+        "columns_extracted": MetadataValue.text(", ".join(existing_columns))
+    })
+    
     return parsed_df[existing_columns]
 
 @asset(
@@ -547,6 +570,21 @@ def evaluator_agreement_analysis(context, parsed_scores: pd.DataFrame) -> pd.Dat
             context.log.warning(f"Found {high_disagreement} generation responses with high evaluator disagreement (range > 3.0)")
     
     context.log.info(f"Analyzed evaluator agreement for {len(multi_evaluator)} generation responses with multiple evaluators")
+    
+    # Add output metadata
+    agreement_counts = multi_evaluator['agreement_classification'].value_counts().to_dict() if not multi_evaluator.empty else {}
+    
+    context.add_output_metadata({
+        "responses_analyzed": MetadataValue.int(len(multi_evaluator)),
+        "total_valid_scores": MetadataValue.int(len(valid_scores)),
+        "multi_evaluator_cases": MetadataValue.int(len(multi_evaluator)),
+        "high_agreement": MetadataValue.int(agreement_counts.get('high_agreement', 0)),
+        "moderate_agreement": MetadataValue.int(agreement_counts.get('moderate_agreement', 0)),
+        "low_agreement": MetadataValue.int(agreement_counts.get('low_agreement', 0)),
+        "poor_agreement": MetadataValue.int(agreement_counts.get('poor_agreement', 0)),
+        "median_score_range": MetadataValue.float(round(float(multi_evaluator['score_range'].median()), 2) if not multi_evaluator.empty and not pd.isna(multi_evaluator['score_range'].median()) else 0.0)
+    })
+    
     return multi_evaluator
 
 @asset(
@@ -726,9 +764,34 @@ def comprehensive_variance_analysis(context, parsed_scores: pd.DataFrame) -> pd.
             context.log.info(f"{analysis_type} - Median range: {median_range:.2f}, Stability: {dict(stability_summary)}")
         
         context.log.info(f"Comprehensive variance analysis complete: {len(combined_analysis)} variance measurements")
+        
+        # Add output metadata
+        analysis_type_counts = combined_analysis['analysis_type'].value_counts().to_dict()
+        stability_counts = combined_analysis['stability_classification'].value_counts().to_dict()
+        
+        context.add_output_metadata({
+            "variance_measurements": MetadataValue.int(len(combined_analysis)),
+            "overall_variance": MetadataValue.int(analysis_type_counts.get('overall_variance', 0)),
+            "template_variance": MetadataValue.int(analysis_type_counts.get('template_variance', 0)),
+            "model_variance": MetadataValue.int(analysis_type_counts.get('model_variance', 0)),
+            "high_agreement": MetadataValue.int(stability_counts.get('high_agreement', 0)),
+            "moderate_agreement": MetadataValue.int(stability_counts.get('moderate_agreement', 0)),
+            "low_agreement": MetadataValue.int(stability_counts.get('low_agreement', 0)),
+            "poor_agreement": MetadataValue.int(stability_counts.get('poor_agreement', 0)),
+            "median_score_range": MetadataValue.float(round(float(combined_analysis['score_range'].median()), 2) if not combined_analysis.empty and not pd.isna(combined_analysis['score_range'].median()) else 0.0)
+        })
+        
         return combined_analysis
     else:
         context.log.warning("No variance patterns found - all evaluations appear to be single instances")
+        
+        # Add output metadata for empty result
+        context.add_output_metadata({
+            "variance_measurements": MetadataValue.int(0),
+            "source_evaluations": MetadataValue.int(len(valid_scores)),
+            "analysis_result": MetadataValue.text("No multi-evaluator patterns found")
+        })
+        
         return pd.DataFrame()
 
 @asset(
@@ -859,9 +922,32 @@ def final_results(context, parsed_scores: pd.DataFrame) -> pd.DataFrame:
         final_summary = final_summary[existing_columns]
         
         context.log.info(f"Created comprehensive analysis with {len(final_summary)} summary rows from {len(valid_scores)} valid scores")
+        
+        # Add output metadata
+        analysis_type_counts = final_summary['analysis_type'].value_counts().to_dict() if 'analysis_type' in final_summary.columns else {}
+        
+        context.add_output_metadata({
+            "summary_rows": MetadataValue.int(len(final_summary)),
+            "source_evaluations": MetadataValue.int(len(valid_scores)),
+            "analysis_categories": MetadataValue.int(len(analysis_type_counts)),
+            "by_template": MetadataValue.int(analysis_type_counts.get('by_generation_template', 0)),
+            "by_model": MetadataValue.int(analysis_type_counts.get('by_generation_model_provider', 0)),
+            "by_combo": MetadataValue.int(analysis_type_counts.get('by_combo_id', 0)),
+            "overall_stats": MetadataValue.int(analysis_type_counts.get('overall_statistics', 0)),
+            "columns_included": MetadataValue.text(", ".join(existing_columns))
+        })
+        
         return final_summary
     else:
         context.log.warning("No valid scores found for analysis")
+        
+        # Add output metadata for empty result
+        context.add_output_metadata({
+            "summary_rows": MetadataValue.int(0),
+            "source_evaluations": MetadataValue.int(0),
+            "analysis_result": MetadataValue.text("No valid scores found for analysis")
+        })
+        
         return pd.DataFrame()
 
 @asset(
@@ -951,5 +1037,20 @@ def perfect_score_paths(context, parsed_scores: pd.DataFrame) -> pd.DataFrame:
     context.log.info(f"Found {len(result_df)} perfect score responses")
     context.log.info(f"Perfect scores by evaluator: {perfect_scores['evaluation_model_provider'].value_counts().to_dict()}")
     context.log.info(f"Perfect scores by template: {perfect_scores['generation_template'].value_counts().to_dict()}")
+    
+    # Add output metadata
+    evaluator_counts = perfect_scores['evaluation_model_provider'].value_counts().to_dict() if not perfect_scores.empty else {}
+    template_counts = perfect_scores['generation_template'].value_counts().to_dict() if not perfect_scores.empty else {}
+    
+    context.add_output_metadata({
+        "perfect_scores": MetadataValue.int(len(result_df)),
+        "unique_combinations": MetadataValue.int(result_df['combo_id'].nunique() if 'combo_id' in result_df.columns else 0),
+        "unique_templates": MetadataValue.int(result_df['generation_template'].nunique() if 'generation_template' in result_df.columns else 0),
+        "unique_evaluators": MetadataValue.int(result_df['evaluation_model_provider'].nunique() if 'evaluation_model_provider' in result_df.columns else 0),
+        "deepseek_perfect": MetadataValue.int(evaluator_counts.get('deepseek', 0)),
+        "qwen_perfect": MetadataValue.int(evaluator_counts.get('qwen', 0)),
+        "google_perfect": MetadataValue.int(evaluator_counts.get('google', 0)),
+        "top_template": MetadataValue.text(max(template_counts.keys(), key=template_counts.get) if template_counts else "None")
+    })
     
     return result_df
