@@ -325,6 +325,8 @@ def parse_scores(evaluation_responses: dict[str, str]) -> str:
             for old_template_name in old_template_names:
                 if old_template_name in evaluation_task_id:
                     strategy = 'complex'
+            if 'daydreaming-verification-v2' in evaluation_task_id:
+                strategy = 'in_last_line'
             
             # Use template-aware parser
             score_data = parse_llm_response(response_text, strategy)

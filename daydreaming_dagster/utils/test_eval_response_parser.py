@@ -213,11 +213,23 @@ class TestParseLLMResponseInLastLine:
             ("Some text here\n*SCORE: 8*", 8.0),
             ("Some text here\n**Score:** 5", 5.0),
             ("Some text here\nTotal Score: 6", 6.0),
+            ("Some text here\nScore: 456", 5.0),
+            ("Some text here\nScore: 4,5,6", 5.0),
         ],
     )
     def test_score_in_last_line_variations(self, response, expected_score):
         """Test parsing various score formats in the last line."""
         result = parse_llm_response(response, "in_last_line")
         assert result["score"] == expected_score
+        assert result["error"] is None
+
+    def test_score_with_markdown_formatting_and_explanation(self):
+        """Test parsing score in markdown format with explanation in parentheses."""
+        response = """The text clearly addresses the conceptual framework and architectural synthesis (core to the AI Daydreaming thesis). It aligns with the strategic rationale but lacks explicit alignment with the "data wall," "moat," and "tax" terminology. However, the functional goals (self-sustaining knowledge creation, proprietary outputs) are present.  
+
+**SCORE: 7**  
+*(The text describes the core concept and architecture but falls short in explicitly framing the strategic rationale with the exact terminology of the thesis.)*"""
+        result = parse_llm_response(response, "in_last_line")
+        assert result["score"] == 7.0
         assert result["error"] is None
 
