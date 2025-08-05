@@ -55,21 +55,50 @@ def _parse_single_response(evaluation_task_id: str, response_file: Path, context
 
 
 def _process_evaluation_responses(evaluation_tasks: pd.DataFrame, base_path: Path, context) -> List[Dict[str, Any]]:
-    """Process all evaluation response files sequentially."""
+    """Process all evaluation response files sequentially.
+    
+    This function implements the core aggregation logic for consolidating
+    partitioned evaluation_response assets into a single dataset.
+    
+    Args:
+        evaluation_tasks: DataFrame with evaluation task definitions
+        base_path: Base directory containing response files
+        context: Dagster execution context for logging and metadata
+        
+    Returns:
+        List of parsed score dictionaries
+    """
     parsed_scores = []
     processed_count = 0
+    missing_count = 0
+    error_count = 0
     
-    for _, task_row in evaluation_tasks.iterrows():
+    total_tasks = len(evaluation_tasks)
+    context.log.info(f"Processing {total_tasks} evaluation tasks sequentially")
+    
+    for i, (_, task_row) in enumerate(evaluation_tasks.iterrows()):
         evaluation_task_id = task_row['evaluation_task_id']
         response_file = base_path / f"{evaluation_task_id}.txt"
+        
+        # Log progress for long-running operations
+        if i > 0 and i % 100 == 0:
+            context.log.info(f"Processed {i}/{total_tasks} tasks ({(i/total_tasks)*100:.1f}%)")
         
         result = _parse_single_response(evaluation_task_id, response_file, context)
         if result:
             parsed_scores.append(result)
             if result.get('error') is None:
                 processed_count += 1
+            else:
+                error_count += 1
+        else:
+            missing_count += 1
     
-    context.log.info(f"Successfully processed {processed_count} evaluation responses")
+    context.log.info(
+        f"Evaluation response processing complete: "
+        f"{processed_count} successful, {error_count} errors, {missing_count} missing files"
+    )
+    
     return parsed_scores
 
 
@@ -116,19 +145,45 @@ def _add_missing_columns(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def _calculate_metadata(df: pd.DataFrame) -> Dict[str, Any]:
-    """Calculate summary metadata for the parsed results."""
+    """Calculate comprehensive metadata for Dagster observability.
+    
+    This metadata helps track the asset's performance and provides
+    visibility into the evaluation pipeline's health and completeness.
+    """
     total_responses = len(df)
     successful_parses = len(df[df['error'].isna()]) if 'error' in df.columns else total_responses
     failed_parses = total_responses - successful_parses
     success_rate = (successful_parses / total_responses * 100) if total_responses > 0 else 0.0
     
-    return {
+    metadata = {
         "total_responses": MetadataValue.int(total_responses),
         "successful_parses": MetadataValue.int(successful_parses),
         "failed_parses": MetadataValue.int(failed_parses),
         "success_rate": MetadataValue.float(round(success_rate, 2)),
-        "unique_combinations": MetadataValue.int(df['combo_id'].nunique() if 'combo_id' in df.columns else 0)
     }
+    
+    # Add pipeline-specific metadata if data exists
+    if not df.empty and 'combo_id' in df.columns:
+        metadata.update({
+            "unique_combinations": MetadataValue.int(df['combo_id'].nunique()),
+            "generation_templates": MetadataValue.int(df['generation_template'].nunique() if 'generation_template' in df.columns else 0),
+            "evaluation_templates": MetadataValue.int(df['evaluation_template'].nunique() if 'evaluation_template' in df.columns else 0),
+            "generation_models": MetadataValue.int(df['generation_model'].nunique() if 'generation_model' in df.columns else 0),
+            "evaluation_models": MetadataValue.int(df['evaluation_model'].nunique() if 'evaluation_model' in df.columns else 0),
+        })
+        
+        # Add score distribution metadata if scores exist
+        if 'score' in df.columns and successful_parses > 0:
+            valid_scores = df[df['error'].isna()]['score']
+            if len(valid_scores) > 0:
+                metadata.update({
+                    "avg_score": MetadataValue.float(round(valid_scores.mean(), 2)),
+                    "min_score": MetadataValue.float(round(valid_scores.min(), 2)),
+                    "max_score": MetadataValue.float(round(valid_scores.max(), 2)),
+                    "perfect_scores": MetadataValue.int(len(valid_scores[valid_scores == 10.0]))
+                })
+    
+    return metadata
 
 
 @asset(
@@ -136,8 +191,8 @@ def _calculate_metadata(df: pd.DataFrame) -> Dict[str, Any]:
     io_manager_key="parsing_results_io_manager",
     required_resource_keys={"evaluation_response_io_manager"},
     ins={
-        "evaluation_tasks": AssetIn(description="Evaluation task definitions with metadata"),
-        "generation_tasks": AssetIn(description="Generation task definitions with metadata")
+        "evaluation_tasks": AssetIn(),
+        "generation_tasks": AssetIn()
     },
     description="Aggregate and parse evaluation responses from partitioned evaluation_response assets. "
                 "Reads evaluation response files sequentially to extract scores and enrich with task metadata. "
