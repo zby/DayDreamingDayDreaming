@@ -1,4 +1,4 @@
-from dagster import asset, MetadataValue
+from dagster import asset, MetadataValue, AssetKey, Failure
 from pathlib import Path
 import pandas as pd
 from ..utils.nodes_standalone import parse_scores
@@ -15,56 +15,54 @@ def parsed_scores(context, evaluation_tasks, generation_tasks) -> pd.DataFrame:
     Parse evaluation responses to extract scores and metadata.
     Aggregates all evaluation responses and parses them into structured data.
     """
-    # Collect all materialized evaluation responses
-    evaluation_responses_path = Path("data/4_evaluation/evaluation_responses")
+    # CLEAN APPROACH: Use Dagster's asset value loader to collect all evaluation responses
+    # This is the proper way to load partitioned asset data in Dagster
     evaluation_responses = {}
     
-    if evaluation_responses_path.exists():
-        for file_path in evaluation_responses_path.glob("**/*.txt"):
-            # Extract evaluation task ID from the nested path structure
-            # Path format: combo_X_Y_template_generator/evaluator_model.txt
-            # We want to reconstruct the evaluation_task_id: combo_X_Y_template_generator_evaluation_template_evaluator
-            relative_path = file_path.relative_to(evaluation_responses_path)
-            path_parts = relative_path.parts
+    if not evaluation_tasks.empty:
+        # Get the definitions to access the asset value loader
+        # Note: We need access to the definitions object for this approach
+        try:
+            # TODO: Remove this ugly import when Dagster implements asset value loader in context
+            # Currently waiting on: https://github.com/dagster-io/dagster/issues/15452
+            # "Allow accessing the asset value loader from OpExecutionContext"
+            # This would let us do: context.load_asset_value() instead of defs.get_asset_value_loader()
+            from ..definitions import defs
             
-            if len(path_parts) >= 2:
-                generation_task_part = path_parts[0]  # e.g., combo_001_02_problem_solving_deepseek
-                eval_part = path_parts[1]  # e.g., deepseek-r1:free_daydreaming_verification_qwen
-                model_file = path_parts[2]  # e.g., qwq-32b:free.txt
-                
-                # Convert back to the original evaluation_task_id format used in CSV files
-                # From: combo_001_02_problem_solving_deepseek/deepseek-r1:free_daydreaming_verification_qwen/qwq-32b:free
-                # The path structure removes slashes and colons, so we need to reconstruct them
-                
-                # Parse the generation task part to add slash before model
-                gen_parts = generation_task_part.split('_')
-                if len(gen_parts) >= 4:
-                    # e.g., ['combo', '001', '02', 'problem', 'solving', 'deepseek']
-                    combo_template = '_'.join(gen_parts[:-1])  # combo_001_02_problem_solving
-                    gen_model_provider = gen_parts[-1]  # deepseek
-                    generation_task_with_slash = f"{combo_template}_{gen_model_provider}"  # Keep as is for now
-                else:
-                    generation_task_with_slash = generation_task_part
-                
-                # Parse the eval part to add slash before model
-                eval_parts = eval_part.split('_')
-                if len(eval_parts) >= 3:
-                    # e.g., ['deepseek-r1:free', 'daydreaming', 'verification', 'qwen']
-                    eval_model_and_template = '_'.join(eval_parts[:-1])  # deepseek-r1:free_daydreaming_verification  
-                    eval_model_provider = eval_parts[-1]  # qwen
-                    eval_part_with_slash = f"{eval_model_and_template}_{eval_model_provider}"
-                else:
-                    eval_part_with_slash = eval_part
-                
-                # Reconstruct with proper format
-                model_name = model_file.replace('.txt', '')  # qwq-32b:free
-                task_id = f"{generation_task_with_slash}_{eval_part_with_slash}/{model_name}"
-                evaluation_responses[task_id] = file_path.read_text()
-            else:
-                context.log.warning(f"Unexpected file path structure: {file_path}")
+            # Use Dagster's built-in method for loading partitioned asset values
+            with defs.get_asset_value_loader() as loader:
+                for _, task_row in evaluation_tasks.iterrows():
+                    evaluation_task_id = task_row['evaluation_task_id']
+                    
+                    try:
+                        # Load the evaluation response for this partition
+                        response_text = loader.load_asset_value(
+                            AssetKey("evaluation_response"), 
+                            partition_key=evaluation_task_id,
+                            instance=context.instance  # Required for dynamic partitions
+                        )
+                        evaluation_responses[evaluation_task_id] = response_text
+                        
+                    except Exception as e:
+                        context.log.warning(f"Could not load evaluation response for {evaluation_task_id}: {e}")
+                        continue
+                        
+        except Exception as e:
+            context.log.error(f"Could not use asset value loader: {e}")
+            raise Failure(f"Failed to load evaluation responses using asset value loader: {e}")
     
-    # Use existing parse_scores function
-    parsed_csv_path = parse_scores(evaluation_responses)
+    context.log.info(f"Collected {len(evaluation_responses)} evaluation responses using Dagster asset value loader")
+    
+    # Use existing parse_scores function if we have responses
+    if evaluation_responses:
+        parsed_csv_path = parse_scores(evaluation_responses)
+    else:
+        # Create empty CSV if no responses found
+        import tempfile
+        empty_df = pd.DataFrame(columns=['evaluation_task_id', 'score', 'error'])
+        temp_file = tempfile.NamedTemporaryFile(mode='w', suffix='.csv', delete=False)
+        empty_df.to_csv(temp_file.name, index=False)
+        parsed_csv_path = temp_file.name
     
     # Load the basic parsed scores
     parsed_df = pd.read_csv(parsed_csv_path)
