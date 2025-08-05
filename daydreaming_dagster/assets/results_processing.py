@@ -1,153 +1,220 @@
-from dagster import asset, MetadataValue, AssetKey, Failure
+from dagster import asset, MetadataValue, AssetIn, Failure
 from pathlib import Path
 import pandas as pd
-import numpy as np
-import math
+from typing import List, Dict, Any
+
+
+def _detect_parsing_strategy(evaluation_task_id: str) -> str:
+    """Detect appropriate parsing strategy based on evaluation task ID."""
+    legacy_templates = ['creativity-metrics', 'daydreaming-verification', 'iterative-loops', 'scientific-rigor']
+    
+    for template_name in legacy_templates:
+        if template_name in evaluation_task_id:
+            return 'complex'
+    
+    return 'in_last_line'  # Default for modern templates
+
+
+def _parse_single_response(evaluation_task_id: str, response_file: Path, context) -> Dict[str, Any]:
+    """Parse a single evaluation response file.
+    
+    Args:
+        evaluation_task_id: Unique identifier for the evaluation task
+        response_file: Path to the evaluation response file
+        context: Dagster execution context for logging
+        
+    Returns:
+        Dictionary with evaluation_task_id, score, and error fields
+    """
+    from ..utils.eval_response_parser import parse_llm_response
+    
+    try:
+        if not response_file.exists():
+            # Missing files are expected during development/partial runs
+            context.log.debug(f"Response file not found (expected during partial runs): {response_file}")
+            return None
+            
+        response_text = response_file.read_text()
+        strategy = _detect_parsing_strategy(evaluation_task_id)
+        result = parse_llm_response(response_text, strategy)
+        
+        return {
+            "evaluation_task_id": evaluation_task_id,
+            "score": result["score"],
+            "error": result["error"]
+        }
+        
+    except Exception as e:
+        # Log parsing errors but continue processing other files
+        context.log.warning(f"Failed to parse response for {evaluation_task_id}: {e}")
+        return {
+            "evaluation_task_id": evaluation_task_id,
+            "score": None,
+            "error": f"Parse error: {str(e)}"
+        }
+
+
+def _process_evaluation_responses(evaluation_tasks: pd.DataFrame, base_path: Path, context) -> List[Dict[str, Any]]:
+    """Process all evaluation response files sequentially."""
+    parsed_scores = []
+    processed_count = 0
+    
+    for _, task_row in evaluation_tasks.iterrows():
+        evaluation_task_id = task_row['evaluation_task_id']
+        response_file = base_path / f"{evaluation_task_id}.txt"
+        
+        result = _parse_single_response(evaluation_task_id, response_file, context)
+        if result:
+            parsed_scores.append(result)
+            if result.get('error') is None:
+                processed_count += 1
+    
+    context.log.info(f"Successfully processed {processed_count} evaluation responses")
+    return parsed_scores
+
+
+def _enrich_with_metadata(parsed_df: pd.DataFrame, evaluation_tasks: pd.DataFrame, generation_tasks: pd.DataFrame) -> pd.DataFrame:
+    """Enrich parsed scores with task metadata via DataFrame joins."""
+    if parsed_df.empty or evaluation_tasks.empty:
+        return _add_missing_columns(parsed_df)
+    
+    # Join with evaluation metadata
+    enriched_df = parsed_df.merge(
+        evaluation_tasks[['evaluation_task_id', 'generation_task_id', 'evaluation_template', 'evaluation_model']],
+        on='evaluation_task_id',
+        how='left'
+    )
+    
+    # Join with generation metadata
+    if not generation_tasks.empty:
+        final_df = enriched_df.merge(
+            generation_tasks[['generation_task_id', 'combo_id', 'generation_template', 'generation_model']],
+            on='generation_task_id',
+            how='left'
+        )
+    else:
+        final_df = enriched_df.copy()
+        for col in ['combo_id', 'generation_template', 'generation_model']:
+            final_df[col] = 'unknown'
+    
+    return final_df
+
+
+def _add_missing_columns(df: pd.DataFrame) -> pd.DataFrame:
+    """Add missing columns with default values for empty datasets."""
+    required_columns = [
+        'combo_id', 'generation_template', 'generation_model', 
+        'evaluation_template', 'evaluation_model', 'generation_task_id'
+    ]
+    
+    df_copy = df.copy()
+    for col in required_columns:
+        if col not in df_copy.columns:
+            df_copy[col] = 'unknown'
+    
+    return df_copy
+
+
+def _calculate_metadata(df: pd.DataFrame) -> Dict[str, Any]:
+    """Calculate summary metadata for the parsed results."""
+    total_responses = len(df)
+    successful_parses = len(df[df['error'].isna()]) if 'error' in df.columns else total_responses
+    failed_parses = total_responses - successful_parses
+    success_rate = (successful_parses / total_responses * 100) if total_responses > 0 else 0.0
+    
+    return {
+        "total_responses": MetadataValue.int(total_responses),
+        "successful_parses": MetadataValue.int(successful_parses),
+        "failed_parses": MetadataValue.int(failed_parses),
+        "success_rate": MetadataValue.float(round(success_rate, 2)),
+        "unique_combinations": MetadataValue.int(df['combo_id'].nunique() if 'combo_id' in df.columns else 0)
+    }
 
 
 @asset(
     group_name="results_processing",
     io_manager_key="parsing_results_io_manager",
-    required_resource_keys={"evaluation_response_io_manager"}
+    required_resource_keys={"evaluation_response_io_manager"},
+    ins={
+        "evaluation_tasks": AssetIn(description="Evaluation task definitions with metadata"),
+        "generation_tasks": AssetIn(description="Generation task definitions with metadata")
+    },
+    description="Aggregate and parse evaluation responses from partitioned evaluation_response assets. "
+                "Reads evaluation response files sequentially to extract scores and enrich with task metadata. "
+                "This asset consolidates results from the partitioned evaluation pipeline into a single dataset.",
+    compute_kind="pandas"
 )
-def parsed_scores(context, evaluation_tasks, generation_tasks) -> pd.DataFrame:
+def parsed_scores(context, evaluation_tasks: pd.DataFrame, generation_tasks: pd.DataFrame) -> pd.DataFrame:
+    """Parse evaluation responses to extract scores and enrich with metadata.
+    
+    This asset serves as the aggregation point for partitioned evaluation results,
+    reading individual evaluation response files and consolidating them into a 
+    structured dataset with full task metadata lineage.
+    
+    Dependencies:
+    - evaluation_tasks: Task definitions (determines which files to read)
+    - generation_tasks: Generation metadata (for enrichment)
+    - evaluation_response (partitioned): Individual response files (implicit dependency)
+    
+    Returns:
+        DataFrame with columns: combo_id, generation_template, generation_model,
+        evaluation_template, evaluation_model, score, error, evaluation_response_path
     """
-    Parse evaluation responses to extract scores and metadata.
-    Processes evaluation response files sequentially to avoid memory issues.
-    """
-    # Get the base path from configured evaluation_response_io_manager
+    # Validate inputs - critical for asset dependency tracking
+    if evaluation_tasks is None:
+        raise Failure("evaluation_tasks input is required but was None")
+    if generation_tasks is None:
+        raise Failure("generation_tasks input is required but was None")
+        
+    # Get configured response file path from I/O manager
     evaluation_response_manager = context.resources.evaluation_response_io_manager
     base_path = Path(evaluation_response_manager.base_path)
     
-    context.log.info(f"Processing evaluation responses from {base_path}")
+    context.log.info(
+        f"Processing evaluation responses from {base_path} "
+        f"({len(evaluation_tasks)} evaluation tasks defined)"
+    )
     
-    # Process evaluation responses sequentially to avoid loading all into memory
-    parsed_scores = []
-    processed_count = 0
-    
-    if not evaluation_tasks.empty:
-        # Import the parsing logic directly instead of using the filesystem-bypassing function
-        from ..utils.eval_response_parser import parse_llm_response
-        
-        # Process each evaluation task sequentially to avoid memory issues
-        for _, task_row in evaluation_tasks.iterrows():
-            evaluation_task_id = task_row['evaluation_task_id']
-            response_file = base_path / f"{evaluation_task_id}.txt"
-            
-            try:
-                if response_file.exists():
-                    # Read single file (not keeping in memory)
-                    response_text = response_file.read_text()
-                    processed_count += 1
-                    
-                    # Detect parsing strategy
-                    strategy = 'in_last_line'  # Default strategy
-                    old_template_names = ['creativity-metrics', 'daydreaming-verification', 'iterative-loops', 'scientific-rigor']
-                    for old_template_name in old_template_names:
-                        if old_template_name in evaluation_task_id:
-                            strategy = 'complex'
-                    if 'daydreaming-verification-v2' in evaluation_task_id:
-                        strategy = 'in_last_line'
-                    
-                    # Parse the response
-                    result = parse_llm_response(response_text, strategy)
-                    score_data = {
-                        "evaluation_task_id": evaluation_task_id,
-                        "score": result["score"], 
-                        "error": result["error"]
-                    }
-                    parsed_scores.append(score_data)
-                else:
-                    context.log.warning(f"Response file not found: {response_file}")
-                    
-            except Exception as e:
-                context.log.error(f"Failed to parse response for {evaluation_task_id}: {e}")
-                error_record = {
-                    "evaluation_task_id": evaluation_task_id,
-                    "score": None,
-                    "error": str(e)
-                }
-                parsed_scores.append(error_record)
-        
-        context.log.info(f"Processed {processed_count} evaluation responses sequentially")
-    
-    # Create DataFrame from parsed results
-    parsed_df = pd.DataFrame(parsed_scores) if parsed_scores else pd.DataFrame(columns=['evaluation_task_id', 'score', 'error'])
-    
-    # CLEAN APPROACH: Use DataFrame joins instead of fragile string parsing
-    # Join with evaluation_tasks to get clean evaluation metadata
-    if not parsed_df.empty and not evaluation_tasks.empty:
-        # Join with evaluation_tasks to get evaluation metadata and generation_task_id
-        enriched_df = parsed_df.merge(
-            evaluation_tasks[['evaluation_task_id', 'generation_task_id', 'evaluation_template', 'evaluation_model']],
-            on='evaluation_task_id',
-            how='left'
-        )
-        
-        # Join with generation_tasks to get generation metadata
-        if not generation_tasks.empty:
-            final_df = enriched_df.merge(
-                generation_tasks[['generation_task_id', 'combo_id', 'generation_template', 'generation_model']],
-                on='generation_task_id',
-                how='left'
-            )
-        else:
-            final_df = enriched_df
-            # Add missing generation columns
-            final_df['combo_id'] = 'unknown'
-            final_df['generation_template'] = 'unknown'
-            final_df['generation_model'] = 'unknown'
+    # Process responses sequentially to avoid memory issues with large datasets
+    if evaluation_tasks.empty:
+        context.log.info("No evaluation tasks defined - returning empty results")
+        parsed_scores_list = []
     else:
-        final_df = parsed_df.copy()
-        # Add missing columns for empty case
-        for col in ['combo_id', 'generation_template', 'generation_model', 'evaluation_template', 'evaluation_model', 'generation_task_id']:
-            if col not in final_df.columns:
-                final_df[col] = 'unknown'
+        parsed_scores_list = _process_evaluation_responses(evaluation_tasks, base_path, context)
     
-    # No need for model provider extraction - we have clean model IDs from DataFrame joins
+    # Create base DataFrame
+    if parsed_scores_list:
+        parsed_df = pd.DataFrame(parsed_scores_list)
+    else:
+        parsed_df = pd.DataFrame(columns=['evaluation_task_id', 'score', 'error'])
     
-    # Use final_df instead of parsed_df for the rest of the function
-    parsed_df = final_df
+    # Enrich with task metadata
+    enriched_df = _enrich_with_metadata(parsed_df, evaluation_tasks, generation_tasks)
     
-    # Add evaluation response path column for compatibility
-    parsed_df['evaluation_response_path'] = 'managed_by_dagster'
+    # Add compatibility column and reorder
+    enriched_df['evaluation_response_path'] = 'managed_by_dagster'
     
-    # Reorder columns for better readability
     column_order = [
-        'combo_id',
-        'generation_template', 
-        'generation_model',
-        'evaluation_template',
-        'evaluation_model',
-        'score',
-        'error',
+        'combo_id', 'generation_template', 'generation_model',
+        'evaluation_template', 'evaluation_model', 'score', 'error',
         'evaluation_response_path'
     ]
+    existing_columns = [col for col in column_order if col in enriched_df.columns]
+    result_df = enriched_df[existing_columns]
     
-    # Only keep columns that exist in the dataframe
-    existing_columns = [col for col in column_order if col in parsed_df.columns]
-    
-    context.log.info(f"Parsed {len(parsed_df)} evaluation responses with extracted metadata")
-    
-    # Add output metadata
-    total_responses = len(parsed_df)
-    successful_parses = len(parsed_df[parsed_df['error'].isna()]) if 'error' in parsed_df.columns else total_responses
-    failed_parses = total_responses - successful_parses
-    success_rate = (successful_parses / total_responses * 100) if total_responses > 0 else 0.0
-    
-    # Handle potential NaN values and ensure float type
-    if math.isnan(success_rate):
-        success_rate = 0.0
-    else:
-        success_rate = float(success_rate)  # Ensure it's a float type
-    
-    context.add_output_metadata({
-        "total_responses": MetadataValue.int(total_responses),
-        "successful_parses": MetadataValue.int(successful_parses),
-        "failed_parses": MetadataValue.int(failed_parses),
-        "success_rate": MetadataValue.float(round(success_rate, 2)),
-        "unique_combinations": MetadataValue.int(parsed_df['combo_id'].nunique() if 'combo_id' in parsed_df.columns else 0),
-        "columns_extracted": MetadataValue.text(", ".join(existing_columns))
+    # Add comprehensive metadata for Dagster observability
+    metadata = _calculate_metadata(result_df)
+    metadata.update({
+        "evaluation_tasks_processed": MetadataValue.int(len(evaluation_tasks)),
+        "generation_tasks_available": MetadataValue.int(len(generation_tasks)),
+        "response_file_path": MetadataValue.path(base_path),
+        "output_columns": MetadataValue.text(", ".join(existing_columns))
     })
     
-    return parsed_df[existing_columns]
+    context.add_output_metadata(metadata)
+    context.log.info(
+        f"Successfully parsed {len(result_df)} evaluation responses with metadata "
+        f"(success rate: {metadata['success_rate'].value}%)"
+    )
+    
+    return result_df
