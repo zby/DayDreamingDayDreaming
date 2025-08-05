@@ -1,12 +1,20 @@
 from dagster import Definitions, multiprocess_executor
-from daydreaming_dagster.assets.llm_prompts_responses import (
+from daydreaming_dagster.assets.llm_generation import (
     generation_prompt,
-    generation_response,
+    generation_response
+)
+from daydreaming_dagster.assets.llm_evaluation import (
     evaluation_prompt,
-    evaluation_response,
-    parsed_scores,
+    evaluation_response
+)
+from daydreaming_dagster.assets.results_processing import (
+    parsed_scores
+)
+from daydreaming_dagster.assets.results_analysis import (
     evaluator_agreement_analysis,
-    comprehensive_variance_analysis,
+    comprehensive_variance_analysis
+)
+from daydreaming_dagster.assets.results_summary import (
     final_results,
     perfect_score_paths
 )
