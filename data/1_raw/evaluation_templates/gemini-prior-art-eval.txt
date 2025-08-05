@@ -1,3 +1,8 @@
+RESPONSE TO EVALUATE:
+{{ response }}
+
+====
+
 Prompt: Prior Art Analysis for the "AI Daydreaming" Concept
 Objective:
 You are an expert AI researcher specializing in novelty assessment. Your task is to analyze the provided text to determine if it constitutes prior art for the "AI Daydreaming" concept. Your analysis must be comprehensive, considering not only individual technical components but also the overarching conceptual framework and strategic vision.

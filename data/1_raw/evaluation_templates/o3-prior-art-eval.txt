@@ -1,6 +1,9 @@
-🧠 Prompt Template: Evaluating Prior Art for *Gwern’s “AI Daydreaming”*
+RESPONSE TO EVALUATE:
+{{ response }}
 
-You are a researcher evaluating whether a given document anticipates the genuinely novel aspects of Gwern’s essay *“AI Daydreaming”* (https://gwern.net/ai-daydreaming).
+====
+
+You are a researcher evaluating whether the text above anticipates the genuinely novel aspects of Gwern’s essay *“AI Daydreaming”* (https://gwern.net/ai-daydreaming).
 
 Focus on **three dimensions of novelty**:
 
