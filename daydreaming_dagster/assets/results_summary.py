@@ -56,13 +56,13 @@ def final_results(context, parsed_scores: pd.DataFrame) -> pd.DataFrame:
     
     # 2. By Generation Model Provider
     gen_model_summary = create_pivot_summary(
-        analysis_df, ['generation_model_provider'], 'by_generation_model_provider'
+        analysis_df, ['generation_model'], 'by_generation_model'
     )
     summaries.append(gen_model_summary)
     
     # 3. By Evaluation Model Provider
     eval_model_summary = create_pivot_summary(
-        analysis_df, ['evaluation_model_provider'], 'by_evaluation_model_provider'
+        analysis_df, ['evaluation_model'], 'by_evaluation_model'
     )
     summaries.append(eval_model_summary)
     
@@ -74,13 +74,13 @@ def final_results(context, parsed_scores: pd.DataFrame) -> pd.DataFrame:
     
     # 5. By Template + Generation Model combination
     template_model_summary = create_pivot_summary(
-        analysis_df, ['generation_template', 'generation_model_provider'], 'by_template_and_generation_model'
+        analysis_df, ['generation_template', 'generation_model'], 'by_template_and_generation_model'
     )
     summaries.append(template_model_summary)
     
     # 6. By Generation Model + Evaluation Model combination
     gen_eval_model_summary = create_pivot_summary(
-        analysis_df, ['generation_model_provider', 'evaluation_model_provider'], 'by_generation_vs_evaluation_model'
+        analysis_df, ['generation_model', 'evaluation_model'], 'by_generation_vs_evaluation_model'
     )
     summaries.append(gen_eval_model_summary)
     
@@ -109,8 +109,8 @@ def final_results(context, parsed_scores: pd.DataFrame) -> pd.DataFrame:
         column_order = [
             'analysis_type',
             'generation_template', 
-            'generation_model_provider',
-            'evaluation_model_provider',
+            'generation_model',
+            'evaluation_model',
             'combo_id',
             'count',
             'average',
@@ -138,7 +138,7 @@ def final_results(context, parsed_scores: pd.DataFrame) -> pd.DataFrame:
             "source_evaluations": MetadataValue.int(len(valid_scores)),
             "analysis_categories": MetadataValue.int(len(analysis_type_counts)),
             "by_template": MetadataValue.int(analysis_type_counts.get('by_generation_template', 0)),
-            "by_model": MetadataValue.int(analysis_type_counts.get('by_generation_model_provider', 0)),
+            "by_model": MetadataValue.int(analysis_type_counts.get('by_generation_model', 0)),
             "by_combo": MetadataValue.int(analysis_type_counts.get('by_combo_id', 0)),
             "overall_stats": MetadataValue.int(analysis_type_counts.get('overall_statistics', 0)),
             "columns_included": MetadataValue.text(", ".join(existing_columns))
@@ -176,8 +176,8 @@ def perfect_score_paths(context, parsed_scores: pd.DataFrame) -> pd.DataFrame:
     if perfect_scores.empty:
         context.log.warning("No perfect scores found")
         return pd.DataFrame(columns=[
-            'combo_id', 'generation_template', 'generation_model_provider', 
-            'evaluation_model_provider', 'score',
+            'combo_id', 'generation_template', 'generation_model', 
+            'evaluation_model', 'score',
             'generation_response_path', 'evaluation_response_path'
         ])
     
@@ -185,76 +185,42 @@ def perfect_score_paths(context, parsed_scores: pd.DataFrame) -> pd.DataFrame:
     paths_data = []
     
     for _, row in perfect_scores.iterrows():
-        # Reconstruct generation response path
-        # Format: data/03_generation/generation_responses/combo_X_template_provider/full_model_id.txt
-        gen_model_provider = row['generation_model_provider']
-        if gen_model_provider == 'google':
-            gen_model_full = 'gemma-3-27b-it:free'
-        elif gen_model_provider == 'deepseek':
-            gen_model_full = 'deepseek-r1:free'
-        else:
-            gen_model_full = gen_model_provider
-            
-        gen_dir = f"{row['combo_id']}_{row['generation_template']}_{gen_model_provider}"
-        generation_path = f"data/3_generation/generation_responses/{gen_dir}/{gen_model_full}.txt"
+        # Reconstruct generation response path using actual model IDs
+        # Format: data/3_generation/generation_responses/combo_X_template_model/model_name.txt
+        generation_path = f"data/3_generation/generation_responses/{row['combo_id']}_{row['generation_template']}_{row['generation_model']}/{row['generation_model']}.txt"
         
-        # Reconstruct evaluation response path from the original task ID structure
-        # We need to rebuild the complex path structure
-        task_id = row.name if hasattr(row, 'name') else ''
-        
-        # Try to extract the original evaluation task ID pattern from the parsed data
-        # This is complex due to the nested directory structure
-        eval_base_path = "data/4_evaluation/evaluation_responses"
-        
-        # Build the evaluation path based on the directory structure we know exists
-        # Format: combo_X_template_generator/evaluator_model.txt
-        gen_model_clean = row['generation_model_provider']
-        if gen_model_clean == 'google':
-            gen_model_full = 'gemma-3-27b-it:free'
-        elif gen_model_clean == 'deepseek':
-            gen_model_full = 'deepseek-r1:free'
-        else:
-            gen_model_full = gen_model_clean
-            
-        eval_model_clean = row['evaluation_model_provider']
-        if eval_model_clean == 'qwen':
-            eval_model_full = 'qwq-32b:free'
-        elif eval_model_clean == 'deepseek':
-            eval_model_full = 'deepseek-r1:free'
-        else:
-            eval_model_full = eval_model_clean
-            
-        # Reconstruct the nested path structure
-        generation_dir = f"{row['combo_id']}_{row['generation_template']}_{gen_model_clean}"
-        eval_subdir = f"{gen_model_full}_{row['evaluation_template']}_{eval_model_clean}"
-        evaluation_path = f"{eval_base_path}/{generation_dir}/{eval_subdir}/{eval_model_full}.txt"
+        # Reconstruct evaluation response path using actual model IDs
+        # Format: data/4_evaluation/evaluation_responses/gen_dir/gen_model_eval_template_eval_model/eval_model.txt
+        generation_dir = f"{row['combo_id']}_{row['generation_template']}_{row['generation_model']}"
+        eval_subdir = f"{row['generation_model']}_{row.get('evaluation_template', 'daydreaming-verification-v2')}_{row['evaluation_model']}"
+        evaluation_path = f"data/4_evaluation/evaluation_responses/{generation_dir}/{eval_subdir}/{row['evaluation_model']}.txt"
         
         paths_data.append({
             'combo_id': row['combo_id'],
             'generation_template': row['generation_template'],
-            'generation_model_provider': row['generation_model_provider'],
-            'evaluation_model_provider': row['evaluation_model_provider'],
+            'generation_model': row['generation_model'],
+            'evaluation_model': row['evaluation_model'],
             'score': row['score'],
             'generation_response_path': generation_path,
             'evaluation_response_path': evaluation_path,
-            'notes': f"Perfect score from {row['generation_model_provider']} generation + {row['evaluation_model_provider']} evaluation"
+            'notes': f"Perfect score from {row['generation_model']} generation + {row['evaluation_model']} evaluation"
         })
     
     result_df = pd.DataFrame(paths_data)
     
     context.log.info(f"Found {len(result_df)} perfect score responses")
-    context.log.info(f"Perfect scores by evaluator: {perfect_scores['evaluation_model_provider'].value_counts().to_dict()}")
+    context.log.info(f"Perfect scores by evaluator: {perfect_scores['evaluation_model'].value_counts().to_dict()}")
     context.log.info(f"Perfect scores by template: {perfect_scores['generation_template'].value_counts().to_dict()}")
     
     # Add output metadata
-    evaluator_counts = perfect_scores['evaluation_model_provider'].value_counts().to_dict() if not perfect_scores.empty else {}
+    evaluator_counts = perfect_scores['evaluation_model'].value_counts().to_dict() if not perfect_scores.empty else {}
     template_counts = perfect_scores['generation_template'].value_counts().to_dict() if not perfect_scores.empty else {}
     
     context.add_output_metadata({
         "perfect_scores": MetadataValue.int(len(result_df)),
         "unique_combinations": MetadataValue.int(result_df['combo_id'].nunique() if 'combo_id' in result_df.columns else 0),
         "unique_templates": MetadataValue.int(result_df['generation_template'].nunique() if 'generation_template' in result_df.columns else 0),
-        "unique_evaluators": MetadataValue.int(result_df['evaluation_model_provider'].nunique() if 'evaluation_model_provider' in result_df.columns else 0),
+        "unique_evaluators": MetadataValue.int(result_df['evaluation_model'].nunique() if 'evaluation_model' in result_df.columns else 0),
         "deepseek_perfect": MetadataValue.int(evaluator_counts.get('deepseek', 0)),
         "qwen_perfect": MetadataValue.int(evaluator_counts.get('qwen', 0)),
         "google_perfect": MetadataValue.int(evaluator_counts.get('google', 0)),

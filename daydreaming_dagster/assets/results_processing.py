@@ -15,43 +15,42 @@ def parsed_scores(context, evaluation_tasks, generation_tasks) -> pd.DataFrame:
     Parse evaluation responses to extract scores and metadata.
     Aggregates all evaluation responses and parses them into structured data.
     """
-    # CLEAN APPROACH: Use Dagster's asset value loader to collect all evaluation responses
-    # This is the proper way to load partitioned asset data in Dagster
+    # PRAGMATIC APPROACH: Load evaluation responses directly from files
+    # The asset value loader requires partitions to be registered in Dagster's dynamic partitions,
+    # but we need to load all existing evaluation responses regardless of partition status.
+    # This approach respects the same file structure as the PartitionedTextIOManager.
     evaluation_responses = {}
+    evaluation_response_paths = {}  # Track file paths for debugging
     
     if not evaluation_tasks.empty:
-        # Get the definitions to access the asset value loader
-        # Note: We need access to the definitions object for this approach
         try:
-            # TODO: Remove this ugly import when Dagster implements asset value loader in context
-            # Currently waiting on: https://github.com/dagster-io/dagster/issues/15452
-            # "Allow accessing the asset value loader from OpExecutionContext"
-            # This would let us do: context.load_asset_value() instead of defs.get_asset_value_loader()
-            from ..definitions import defs
+            from pathlib import Path
             
-            # Use Dagster's built-in method for loading partitioned asset values
-            with defs.get_asset_value_loader() as loader:
-                for _, task_row in evaluation_tasks.iterrows():
-                    evaluation_task_id = task_row['evaluation_task_id']
-                    
-                    try:
-                        # Load the evaluation response for this partition
-                        response_text = loader.load_asset_value(
-                            AssetKey("evaluation_response"), 
-                            partition_key=evaluation_task_id,
-                            instance=context.instance  # Required for dynamic partitions
-                        )
+            # Use the same path structure as the evaluation_response_io_manager
+            base_path = Path("data/4_evaluation/evaluation_responses")
+            
+            for _, task_row in evaluation_tasks.iterrows():
+                evaluation_task_id = task_row['evaluation_task_id']
+                response_file = base_path / f"{evaluation_task_id}.txt"
+                
+                try:
+                    if response_file.exists():
+                        response_text = response_file.read_text()
                         evaluation_responses[evaluation_task_id] = response_text
-                        
-                    except Exception as e:
-                        context.log.warning(f"Could not load evaluation response for {evaluation_task_id}: {e}")
+                        evaluation_response_paths[evaluation_task_id] = str(response_file)
+                    else:
+                        context.log.warning(f"Could not load evaluation response for {evaluation_task_id}: Response file not found: {response_file}")
                         continue
                         
+                except Exception as e:
+                    context.log.warning(f"Could not load evaluation response for {evaluation_task_id}: {e}")
+                    continue
+                    
         except Exception as e:
-            context.log.error(f"Could not use asset value loader: {e}")
-            raise Failure(f"Failed to load evaluation responses using asset value loader: {e}")
+            context.log.error(f"Could not load evaluation responses: {e}")
+            raise Failure(f"Failed to load evaluation responses: {e}")
     
-    context.log.info(f"Collected {len(evaluation_responses)} evaluation responses using Dagster asset value loader")
+    context.log.info(f"Collected {len(evaluation_responses)} evaluation responses from existing files")
     
     # Use existing parse_scores function if we have responses
     if evaluation_responses:
@@ -97,44 +96,38 @@ def parsed_scores(context, evaluation_tasks, generation_tasks) -> pd.DataFrame:
             if col not in final_df.columns:
                 final_df[col] = 'unknown'
     
-    # Add model provider columns using simple mapping logic
-    def get_model_provider(model_id):
-        """Extract provider from model ID like 'deepseek_r1_f' or 'qwq_32b_f'."""
-        if pd.isna(model_id):
-            return 'unknown'
-        
-        model_str = str(model_id).lower()
-        if 'deepseek' in model_str:
-            return 'deepseek'
-        elif 'qwq' in model_str or 'qwen' in model_str:
-            return 'qwen'
-        elif 'gemma' in model_str or 'google' in model_str:
-            return 'google'
-        else:
-            return 'unknown'
-    
-    # Apply provider mapping - only if DataFrame is not empty
-    if not final_df.empty:
-        final_df['generation_model_provider'] = final_df['generation_model'].apply(get_model_provider)
-        final_df['evaluation_model_provider'] = final_df['evaluation_model'].apply(get_model_provider)
-    else:
-        # Add columns for empty DataFrame
-        final_df['generation_model_provider'] = pd.Series(dtype='object')
-        final_df['evaluation_model_provider'] = pd.Series(dtype='object')
+    # No need for model provider extraction - we have clean model IDs from DataFrame joins
     
     # Use final_df instead of parsed_df for the rest of the function
     parsed_df = final_df
+    
+    # Add evaluation response file paths for debugging
+    if evaluation_response_paths:
+        # Create a DataFrame with paths for merging
+        paths_df = pd.DataFrame([
+            {'evaluation_task_id': task_id, 'evaluation_response_path': path}
+            for task_id, path in evaluation_response_paths.items()
+        ])
+        
+        # Merge paths into the main DataFrame
+        parsed_df = parsed_df.merge(paths_df, on='evaluation_task_id', how='left')
+        
+        # Fill missing paths with 'not_found' for tasks that had no response file
+        parsed_df['evaluation_response_path'] = parsed_df['evaluation_response_path'].fillna('not_found')
+    else:
+        # Add empty path column if no responses were loaded
+        parsed_df['evaluation_response_path'] = 'not_found'
     
     # Reorder columns for better readability
     column_order = [
         'combo_id',
         'generation_template', 
-        'generation_model_provider',
+        'generation_model',
         'evaluation_template',
-        'evaluation_model_provider',
-        # 'run_number',  # COMMENTED OUT
+        'evaluation_model',
         'score',
-        'error'
+        'error',
+        'evaluation_response_path'
     ]
     
     # Only keep columns that exist in the dataframe
