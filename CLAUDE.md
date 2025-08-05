@@ -49,6 +49,27 @@ uv run black .                               # Format code
 uv run ruff check                            # Check code style
 ```
 
+## Test-Driven Development (TDD)
+
+This project follows strict TDD practices:
+
+    Always write tests first - Use the test-writer subagent for creating failing tests
+    Red-Green-Refactor cycle - Tests must fail before implementation begins
+    No implementation without tests - Every feature needs failing tests first
+
+#### Available Subagents
+
+    test-writer: Creates failing tests for new features and bug reproduction. Use when you need comprehensive test coverage before implementation.
+
+#### TDD Workflow
+
+1. Define feature requirements or bug reports
+2. Invoke test-writer to create failing tests
+3. Verify tests fail for the correct reasons
+4. Implement code to make tests pass
+5. Refactor while keeping tests green
+
+
 ## Testing Structure
 
 ### Test Organization
