@@ -97,6 +97,16 @@ This project follows strict TDD practices:
 
 **Jinja2 Templates**: Prompt templates are stored as text files using Jinja2 syntax. Templates receive a `concepts` list with `name`, `concept_id`, and `content` keys.
 
+**Memory-Efficient Processing**: Assets process data sequentially to handle large datasets without memory constraints. Files are read one at a time rather than loading all into memory.
+
+**Proper Dagster I/O Architecture**: All file access uses configured I/O managers rather than hardcoded paths, ensuring test isolation and production flexibility.
+
+**Robust Parser Architecture**: The evaluation response parser handles multiple LLM response formats:
+- Multi-line score detection (searches last 3 non-empty lines)
+- Markdown formatting support (`**SCORE: 7**`)  
+- Multiple score formats (standard numeric and three-digit averages)
+- Automatic strategy selection based on evaluation template
+
 ## Development Guidelines
 
 - Code should fail early rather than using defensive programming

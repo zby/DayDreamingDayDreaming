@@ -161,6 +161,9 @@ config = ExperimentConfig(
 - **Template System**: Flexible Jinja2-based prompt generation
 - **Multi-Model Support**: Test across different LLM providers
 - **Selective Loading**: Optional filtering for faster development and testing
+- **Robust Parser**: Automatic detection and parsing of various LLM evaluation response formats
+- **Scalable Processing**: Memory-efficient sequential processing handles large datasets
+- **Isolated Testing**: Complete test environment separation from production data
 
 ## Troubleshooting
 
@@ -205,6 +208,13 @@ config = ExperimentConfig(
    ```bash
    export OPENROUTER_API_KEY="your_api_key_here"
    ```
+
+6. **Evaluation Response Formats**:
+   The system automatically detects and parses various LLM evaluation response formats:
+   - **Score location**: Searches the last 3 non-empty lines for score patterns
+   - **Formatting support**: Handles markdown formatting like `**SCORE: 7**`
+   - **Score formats**: Standard numeric (e.g., 8.5) and three-digit averages (e.g., 456 → 5.0)
+   - **Strategy detection**: Automatically selects parsing strategy based on evaluation template
 
 ## Documentation
 

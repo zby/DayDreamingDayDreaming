@@ -138,17 +138,25 @@ def concepts(experiment_config: ExperimentConfig) -> List[Dict]:
 - **API Error Handling**: Structured error logging and recovery
 - **Rate Limiting**: Built-in throttling for API calls
 
-### 5. Results Processing (`llm_prompts_responses.py`)
+### 5. Results Processing (`results_processing.py`)
 
 **Assets**: `parsed_scores`, `final_results`
 
 **Purpose**: Parse LLM responses and generate final analysis
 
 **Processing Pipeline**:
-1. **Score Extraction**: Parse evaluation responses to extract numerical scores
-2. **Metadata Enhancement**: Add task metadata (combo, template, model info)
-3. **Aggregation**: Calculate summary statistics and perfect score analysis
-4. **CSV Output**: Structured results for further analysis
+1. **Sequential File Processing**: Read evaluation response files one at a time to avoid memory issues
+2. **Multi-Format Score Extraction**: Automatically detect and parse various LLM response formats
+3. **Strategy Selection**: Choose parsing strategy based on evaluation template type
+4. **Metadata Enhancement**: Add task metadata (combo, template, model info) via DataFrame joins
+5. **Aggregation**: Calculate summary statistics and perfect score analysis
+6. **CSV Output**: Structured results for further analysis
+
+**Parser Capabilities**:
+- **Multi-line detection**: Searches last 3 non-empty lines for scores
+- **Format support**: Handles markdown (`**SCORE: 7**`), plain text, and various separators
+- **Score formats**: Standard numeric (8.5) and three-digit averages (456 → 5.0)
+- **Error handling**: Continues processing when individual files fail to parse
 
 ## Resource Architecture
 
@@ -303,8 +311,10 @@ The pipeline is designed for efficient concurrent processing:
 
 1. **Template Caching**: Jinja2 templates compiled once and reused
 2. **Metadata Precomputation**: Concept metadata calculated once
-3. **Efficient Storage**: CSV format for structured data, text for content
-4. **Lazy Loading**: Data loaded only when needed by downstream assets
+3. **Sequential Processing**: Files processed one at a time to avoid memory constraints
+4. **Efficient Storage**: CSV format for structured data, text for content
+5. **Lazy Loading**: Data loaded only when needed by downstream assets
+6. **Configurable I/O Paths**: All file access through I/O managers for flexibility
 
 ## Error Handling and Recovery
 
