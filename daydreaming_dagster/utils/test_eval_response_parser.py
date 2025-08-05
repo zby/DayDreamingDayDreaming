@@ -5,13 +5,13 @@ import pytest
 from daydreaming_dagster.utils.eval_response_parser import parse_llm_response
 
 
-class TestParseLLMResponse:
-    """Test the parse_llm_response function."""
+class TestParseLLMResponseComplex:
+    """Test the parse_llm_response function with the 'complex' strategy."""
 
     def test_standard_format(self):
         """Test parsing standard REASONING/SCORE format."""
         response = "REASONING: This shows great creativity\nSCORE: 8.5"
-        result = parse_llm_response(response)
+        result = parse_llm_response(response, "complex")
         assert result["score"] == 8.5
         assert result["error"] is None
 
@@ -21,7 +21,7 @@ class TestParseLLMResponse:
 because it combines multiple concepts in novel ways.
 The ideas are well-structured and innovative.
 SCORE: 7.2"""
-        result = parse_llm_response(response)
+        result = parse_llm_response(response, "complex")
         assert result["score"] == 7.2
         assert result["error"] is None
 
@@ -34,28 +34,28 @@ SCORE: 7.2"""
         ]
 
         for response, expected_score in test_cases:
-            result = parse_llm_response(response)
+            result = parse_llm_response(response, "complex")
             assert result["score"] == expected_score
             assert result["error"] is None
 
     def test_alternative_separators(self):
         """Test alternative separators like dashes."""
         response = "REASONING - Great creativity shown\nSCORE: 8.0"
-        result = parse_llm_response(response)
+        result = parse_llm_response(response, "complex")
         assert result["score"] == 8.0
         assert result["error"] is None
 
     def test_score_with_explanation(self):
         """Test score followed by explanation in parentheses."""
         response = "REASONING: Shows innovation\nSCORE: 7.5 (above average creativity)"
-        result = parse_llm_response(response)
+        result = parse_llm_response(response, "complex")
         assert result["score"] == 7.5
         assert result["error"] is None
 
     def test_score_as_fraction(self):
         """Test score in fraction format like 8/10."""
         response = "REASONING: Good work\nSCORE: 8/10"
-        result = parse_llm_response(response)
+        result = parse_llm_response(response, "complex")
         assert result["score"] == 8.0
         assert result["error"] is None
 
@@ -63,13 +63,13 @@ SCORE: 7.2"""
         """Test when no valid score is found."""
         response = "REASONING: Good analysis but no score provided"
         with pytest.raises(ValueError, match="No SCORE field found in response"):
-            parse_llm_response(response)
+            parse_llm_response(response, "complex")
 
     def test_invalid_score_value(self):
         """Test when score value is not a valid number."""
         response = "REASONING: Analysis done\nSCORE: not_a_number"
         with pytest.raises(ValueError, match="No SCORE field found in response"):
-            parse_llm_response(response)
+            parse_llm_response(response, "complex")
 
     def test_score_out_of_range(self):
         """Test handling of scores outside 0-10 range."""
@@ -80,7 +80,7 @@ SCORE: 7.2"""
 
         for response, expected_error in test_cases:
             with pytest.raises(ValueError, match=expected_error):
-                parse_llm_response(response)
+                parse_llm_response(response, "complex")
 
     def test_multiple_score_lines(self):
         """Test when multiple SCORE lines exist - should use last one (most recent/final)."""
@@ -88,7 +88,7 @@ SCORE: 7.2"""
 SCORE: 7.5
 SCORE: 8.0
 Additional text"""
-        result = parse_llm_response(response)
+        result = parse_llm_response(response, "complex")
         assert result["score"] == 8.0  # Uses last/final score
         assert result["error"] is None
 
@@ -105,7 +105,7 @@ Additional text"""
         ### **SCORE:**  
         **Total Score: 7/10**
         """
-        result = parse_llm_response(response)
+        result = parse_llm_response(response, "complex")
         assert result["score"] == 7.0
         assert result["error"] is None
 
@@ -136,7 +136,7 @@ Additional text"""
         ### **SCORE:**  
         **Total Score: 4/10**
         """
-        result = parse_llm_response(response)
+        result = parse_llm_response(response, "complex")
         # Should extract 4.0 from "Total Score: 4/10", NOT 10.0 from any 1/1 patterns
         assert result["score"] == 4.0
 
@@ -152,7 +152,7 @@ Additional text"""
         ]
         
         for response, expected_score in test_cases:
-            result = parse_llm_response(response)
+            result = parse_llm_response(response, "complex")
             assert result["score"] == expected_score, f"Failed for response: {response}"
 
     def test_real_evaluation_response_format(self):
@@ -198,6 +198,26 @@ Additional text"""
         **Summary:**  
         The text captures the problem, solution, and mechanism but lacks terminology.
         """
-        result = parse_llm_response(response)
+        result = parse_llm_response(response, "complex")
         # Should extract 7.0 from final "Total Score: 7/10", not 10.0 from any 1/1 patterns
         assert result["score"] == 7.0
+
+
+class TestParseLLMResponseInLastLine:
+    """Test the parse_llm_response function with the 'in_last_line' strategy."""
+
+    @pytest.mark.parametrize(
+        "response, expected_score",
+        [
+            ("Some text here\n**SCORE: 8**", 8.0),
+            ("Some text here\n*SCORE: 8*", 8.0),
+            ("Some text here\n**Score:** 5", 5.0),
+            ("Some text here\nTotal Score: 6", 6.0),
+        ],
+    )
+    def test_score_in_last_line_variations(self, response, expected_score):
+        """Test parsing various score formats in the last line."""
+        result = parse_llm_response(response, "in_last_line")
+        assert result["score"] == expected_score
+        assert result["error"] is None
+

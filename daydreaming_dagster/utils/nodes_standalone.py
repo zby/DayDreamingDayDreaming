@@ -11,7 +11,7 @@ from jinja2 import Environment
 import os
 
 # Import utility classes from local copies
-from .eval_response_parser import parse_llm_response, extract_template_name
+from .eval_response_parser import parse_llm_response
 
 logger = logging.getLogger(__name__)
 
@@ -320,11 +320,14 @@ def parse_scores(evaluation_responses: dict[str, str]) -> str:
 
     for evaluation_task_id, response_text in evaluation_responses.items():
         try:
-            # Extract template name from evaluation_task_id for template-aware parsing
-            template_name = extract_template_name(evaluation_task_id)
+            strategy = 'in_last_line'  # Default strategy
+            old_template_names = ['creativity-metrics', 'daydreaming-verification', 'iterative-loops', 'scientific-rigor']
+            for old_template_name in old_template_names:
+                if old_template_name in evaluation_task_id:
+                    strategy = 'complex'
             
             # Use template-aware parser
-            score_data = parse_llm_response(response_text, template_name)
+            score_data = parse_llm_response(response_text, strategy)
             score_data["evaluation_task_id"] = evaluation_task_id
             parsed_scores.append(score_data)
         except Exception as e:

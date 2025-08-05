@@ -23,9 +23,7 @@ from daydreaming_dagster.assets.raw_data import (
     concepts_metadata,
     generation_models,
     evaluation_models,
-    generation_templates_metadata,
     generation_templates,
-    evaluation_templates_metadata,
     evaluation_templates
 )
 from daydreaming_dagster.assets.core import (
@@ -37,19 +35,20 @@ from daydreaming_dagster.resources.llm_client import LLMClientResource
 from daydreaming_dagster.resources.experiment_config import ExperimentConfig
 from daydreaming_dagster.resources.io_managers import (
     PartitionedTextIOManager,
-    CSVIOManager
+    CSVIOManager,
+    TemplateIOManager
 )
 
 defs = Definitions(
     assets=[
-        # Raw data assets
-        concepts,
-        concepts_metadata,
+        # Raw data assets (now use enhanced I/O managers)
+        concepts_metadata,  # Now source of truth, loads from CSV
+        concepts,           # Now depends on concepts_metadata
         generation_models,
         evaluation_models,
-        generation_templates_metadata,
+        
+        # Template assets (single-stage loading)
         generation_templates,
-        evaluation_templates_metadata,
         evaluation_templates,
         
         # Core processing assets
@@ -74,7 +73,38 @@ defs = Definitions(
     resources={
         "openrouter_client": LLMClientResource(),
         "config": ExperimentConfig(),
-        "csv_io_manager": CSVIOManager("data/2_tasks"),
+        
+        # Enhanced CSV I/O manager with source mappings
+        "enhanced_csv_io_manager": CSVIOManager(
+            base_path="data/2_tasks",
+            source_mappings={
+                # Raw data assets that load from data/1_raw/
+                "concepts_metadata": {
+                    "source_file": "data/1_raw/concepts/concepts_metadata.csv"
+                },
+                "generation_models": {
+                    "source_file": "data/1_raw/llm_models.csv",
+                    "filters": [{"column": "for_generation", "value": True}]
+                },
+                "evaluation_models": {
+                    "source_file": "data/1_raw/llm_models.csv", 
+                    "filters": [{"column": "for_evaluation", "value": True}]
+                },
+            }
+        ),
+        
+        # Template I/O managers (single-stage)
+        "generation_template_io_manager": TemplateIOManager(
+            templates_dir="data/1_raw/generation_templates",
+            metadata_csv="data/1_raw/generation_templates.csv"
+        ),
+        "evaluation_template_io_manager": TemplateIOManager(
+            templates_dir="data/1_raw/evaluation_templates", 
+            metadata_csv="data/1_raw/evaluation_templates.csv"
+        ),
+        
+        # Existing I/O managers (unchanged)
+        "csv_io_manager": CSVIOManager("data/2_tasks"),  # For processed assets
         "generation_prompt_io_manager": PartitionedTextIOManager("data/3_generation/generation_prompts"),
         "generation_response_io_manager": PartitionedTextIOManager("data/3_generation/generation_responses"),
         "evaluation_prompt_io_manager": PartitionedTextIOManager("data/4_evaluation/evaluation_prompts"),

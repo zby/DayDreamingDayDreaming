@@ -37,12 +37,15 @@ class PartitionedTextIOManager(IOManager):
 
 class CSVIOManager(IOManager):
     """
+    Enhanced CSV I/O Manager with source mapping and filtering capabilities.
     Saves DataFrames as CSV files for easy inspection and debugging.
     Critical for understanding what combo_001, combo_002, etc. actually contain.
     """
     
-    def __init__(self, base_path: str):
+    def __init__(self, base_path: str, source_mappings: dict = None):
         self.base_path = Path(base_path)
+        # Maps asset names to their source files and filters
+        self.source_mappings = source_mappings or {}
     
     def handle_output(self, context: OutputContext, obj):
         """Save DataFrame as CSV file"""
@@ -70,9 +73,41 @@ class CSVIOManager(IOManager):
                 raise ValueError(f"Unsupported object type for CSV saving: {type(obj)}")
     
     def load_input(self, context: InputContext):
-        """Load DataFrame from CSV file"""
+        """Load DataFrame - enhanced with source mapping support"""
         asset_name = context.asset_key.path[-1]
         
+        # Check if this asset has a source mapping (raw data)
+        if asset_name in self.source_mappings:
+            mapping = self.source_mappings[asset_name]
+            source_file = Path(mapping["source_file"])
+            
+            if not source_file.exists():
+                raise FileNotFoundError(f"Source file not found: {source_file}")
+            
+            df = pd.read_csv(source_file)
+            
+            # Apply filters if specified
+            if "filters" in mapping:
+                for filter_config in mapping["filters"]:
+                    column = filter_config["column"]
+                    value = filter_config["value"]
+                    operator = filter_config.get("operator", "==")
+                    
+                    if column not in df.columns:
+                        raise KeyError(f"Column '{column}' not found in DataFrame. Available columns: {list(df.columns)}")
+                    
+                    if operator == "==":
+                        df = df[df[column] == value]
+                    elif operator == "!=":
+                        df = df[df[column] != value]
+                    elif operator == "isin":
+                        df = df[df[column].isin(value)]  # value should be a list
+                    else:
+                        raise ValueError(f"Unsupported filter operator: {operator}. Supported operators: ==, !=, isin")
+            
+            return df
+        
+        # Fall back to normal CSV loading for processed assets
         # Check if it's a tuple asset first
         combinations_file = self.base_path / f"{asset_name}_combinations.csv"
         relationships_file = self.base_path / f"{asset_name}_relationships.csv"
@@ -95,3 +130,56 @@ class CSVIOManager(IOManager):
 
 # ErrorLogIOManager removed - it's identical to CSVIOManager
 # Factory functions removed - use direct CSVIOManager instantiation
+
+
+class TemplateIOManager(IOManager):
+    """
+    I/O Manager that loads templates based on CSV metadata - single-stage solution.
+    Handles both CSV metadata filtering and template file loading in one operation.
+    """
+    
+    def __init__(self, templates_dir: str, metadata_csv: str, output_path: str = "data/2_tasks"):
+        self.templates_dir = Path(templates_dir)
+        self.metadata_csv = Path(metadata_csv)
+        self.output_path = Path(output_path)
+    
+    def handle_output(self, context: OutputContext, obj):
+        """Save templates as JSON for easy inspection and debugging."""
+        asset_name = context.asset_key.path[-1]
+        output_path = self.output_path / f"{asset_name}.json"
+        
+        # Ensure directory exists
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        
+        # Save templates as JSON for inspection
+        import json
+        with open(output_path, 'w') as f:
+            json.dump(obj, f, indent=2)
+        
+        context.log.info(f"Saved {len(obj)} templates to {output_path}")
+    
+    def load_input(self, context: InputContext) -> dict[str, str]:
+        """Load templates based on CSV metadata - all in one stage."""
+        templates = {}
+        
+        # Load and filter metadata
+        if not self.metadata_csv.exists():
+            context.log.warning(f"Template metadata CSV not found: {self.metadata_csv}")
+            return templates
+            
+        metadata_df = pd.read_csv(self.metadata_csv)
+        active_templates = metadata_df[metadata_df["active"] == True]
+        
+        # Load only active template files
+        for _, row in active_templates.iterrows():
+            template_id = row["template_id"]
+            template_file = self.templates_dir / f"{template_id}.txt"
+            
+            if template_file.exists():
+                templates[template_id] = template_file.read_text().strip()
+                context.log.info(f"Loaded template: {template_id}")
+            else:
+                context.log.warning(f"Template file not found: {template_file}")
+        
+        context.log.info(f"Loaded {len(templates)} active templates from {self.templates_dir}")
+        return templates
