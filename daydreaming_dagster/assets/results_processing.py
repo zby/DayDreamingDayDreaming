@@ -1,14 +1,14 @@
 from dagster import asset, MetadataValue, AssetKey, Failure
 from pathlib import Path
 import pandas as pd
-from ..utils.nodes_standalone import parse_scores
 import numpy as np
 import math
 
 
 @asset(
     group_name="results_processing",
-    io_manager_key="parsing_results_io_manager"
+    io_manager_key="parsing_results_io_manager",
+    required_resource_keys={"evaluation_response_io_manager"}
 )
 def parsed_scores(context, evaluation_tasks, generation_tasks) -> pd.DataFrame:
     """
@@ -26,8 +26,9 @@ def parsed_scores(context, evaluation_tasks, generation_tasks) -> pd.DataFrame:
         try:
             from pathlib import Path
             
-            # Use the same path structure as the evaluation_response_io_manager
-            base_path = Path("data/4_evaluation/evaluation_responses")
+            # Get the base path from the configured evaluation_response_io_manager
+            evaluation_response_manager = context.resources.evaluation_response_io_manager
+            base_path = Path(evaluation_response_manager.base_path)
             
             for _, task_row in evaluation_tasks.iterrows():
                 evaluation_task_id = task_row['evaluation_task_id']
@@ -52,19 +53,45 @@ def parsed_scores(context, evaluation_tasks, generation_tasks) -> pd.DataFrame:
     
     context.log.info(f"Collected {len(evaluation_responses)} evaluation responses from existing files")
     
-    # Use existing parse_scores function if we have responses
+    # Parse evaluation responses directly without bypassing Dagster I/O system
     if evaluation_responses:
-        parsed_csv_path = parse_scores(evaluation_responses)
+        # Import the parsing logic directly instead of using the filesystem-bypassing function
+        from ..utils.eval_response_parser import parse_llm_response
+        
+        parsed_scores = []
+        for evaluation_task_id, response_text in evaluation_responses.items():
+            try:
+                strategy = 'in_last_line'  # Default strategy
+                old_template_names = ['creativity-metrics', 'daydreaming-verification', 'iterative-loops', 'scientific-rigor']
+                for old_template_name in old_template_names:
+                    if old_template_name in evaluation_task_id:
+                        strategy = 'complex'
+                if 'daydreaming-verification-v2' in evaluation_task_id:
+                    strategy = 'in_last_line'
+                
+                # Parse the response
+                result = parse_llm_response(response_text, strategy)
+                score_data = {
+                    "evaluation_task_id": evaluation_task_id,
+                    "score": result["score"], 
+                    "error": result["error"]
+                }
+                parsed_scores.append(score_data)
+                
+            except Exception as e:
+                context.log.error(f"Failed to parse response for {evaluation_task_id}: {e}")
+                error_record = {
+                    "evaluation_task_id": evaluation_task_id,
+                    "score": None,
+                    "error": str(e)
+                }
+                parsed_scores.append(error_record)
+        
+        # Create DataFrame directly
+        parsed_df = pd.DataFrame(parsed_scores) if parsed_scores else pd.DataFrame(columns=['evaluation_task_id', 'score', 'error'])
     else:
-        # Create empty CSV if no responses found
-        import tempfile
-        empty_df = pd.DataFrame(columns=['evaluation_task_id', 'score', 'error'])
-        temp_file = tempfile.NamedTemporaryFile(mode='w', suffix='.csv', delete=False)
-        empty_df.to_csv(temp_file.name, index=False)
-        parsed_csv_path = temp_file.name
-    
-    # Load the basic parsed scores
-    parsed_df = pd.read_csv(parsed_csv_path)
+        # Create empty DataFrame if no responses found
+        parsed_df = pd.DataFrame(columns=['evaluation_task_id', 'score', 'error'])
     
     # CLEAN APPROACH: Use DataFrame joins instead of fragile string parsing
     # Join with evaluation_tasks to get clean evaluation metadata

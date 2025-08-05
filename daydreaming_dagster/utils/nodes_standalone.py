@@ -11,7 +11,6 @@ from jinja2 import Environment
 import os
 
 # Import utility classes from local copies
-from .eval_response_parser import parse_llm_response
 
 logger = logging.getLogger(__name__)
 
@@ -303,61 +302,3 @@ def generate_evaluation_prompts(
     logger.info(f"Generated {len(eval_prompts)} evaluation prompts")
     return eval_prompts
 
-
-def parse_scores(evaluation_responses: dict[str, str]) -> str:
-    """
-    Parse evaluation responses to extract scores.
-
-    Args:
-        evaluation_responses: Dict mapping evaluation_task_id to response text
-
-    Returns:
-        Path to the saved parsed scores CSV file
-    """
-    logger.info("Parsing evaluation responses")
-
-    parsed_scores = []
-
-    for evaluation_task_id, response_text in evaluation_responses.items():
-        try:
-            strategy = 'in_last_line'  # Default strategy
-            old_template_names = ['creativity-metrics', 'daydreaming-verification', 'iterative-loops', 'scientific-rigor']
-            for old_template_name in old_template_names:
-                if old_template_name in evaluation_task_id:
-                    strategy = 'complex'
-            if 'daydreaming-verification-v2' in evaluation_task_id:
-                strategy = 'in_last_line'
-            
-            # Use template-aware parser
-            score_data = parse_llm_response(response_text, strategy)
-            score_data["evaluation_task_id"] = evaluation_task_id
-            parsed_scores.append(score_data)
-        except Exception as e:
-            logger.error(
-                f"Failed to parse response for {evaluation_task_id}: {e}"
-            )
-            # Add error record
-            error_record = {
-                "evaluation_task_id": evaluation_task_id,
-                "score": None,
-                "error": str(e),
-            }
-            parsed_scores.append(error_record)
-
-    # Save to CSV - ensure proper column structure even if empty
-    if not parsed_scores:
-        # Create empty DataFrame with expected column structure
-        parsed_scores_df = pd.DataFrame(columns=[
-            "evaluation_task_id", 
-            "score", 
-            "error"
-        ])
-    else:
-        parsed_scores_df = pd.DataFrame(parsed_scores)
-    
-    output_path = "data/5_parsing/parsed_scores.csv"
-    os.makedirs(os.path.dirname(output_path), exist_ok=True)
-    parsed_scores_df.to_csv(output_path, index=False)
-
-    logger.info(f"Parsed {len(parsed_scores)} evaluation responses to {output_path}")
-    return output_path
