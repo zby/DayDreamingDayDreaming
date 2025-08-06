@@ -8,15 +8,10 @@ module_name = "daydreaming_dagster.definitions"
 [project]
 requires-python = ">=3.9"
 name = "daydreaming-dagster"
+version = "0.0.1"
 readme = "README.md"
 description = "Dagster pipeline for testing whether LLMs can reinvent Gwern's Daydreaming Loop concept"
-dynamic = ["version"]
 dependencies = [
-    "ipython>=8.10",
-    "jupyterlab>=3.0",
-    "notebook",
-    "scikit-learn~=1.5.1",
-    "seaborn~=0.12.1",
     "openai>=1.0.0",
     "jinja2>=3.0.0",
     "pandas>=1.5.0",
@@ -28,6 +23,7 @@ dependencies = [
     "antlr4-python3-runtime>=4.13.2",
     "tenacity>=8.0.0",
     "ratelimit>=2.2.0",
+    "pytest>=8.4.1",
 ]
 
 [project.optional-dependencies]
@@ -41,9 +37,6 @@ dev = [
     "ruff>=0.5.3",
     "black>=25.1.0",
 ]
-
-[tool.setuptools.dynamic]
-version = {attr = "daydreaming_dagster.__version__"}
 
 [tool.setuptools.packages.find]
 where = ["."]
