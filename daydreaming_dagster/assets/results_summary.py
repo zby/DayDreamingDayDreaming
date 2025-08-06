@@ -185,15 +185,13 @@ def perfect_score_paths(context, parsed_scores: pd.DataFrame) -> pd.DataFrame:
     paths_data = []
     
     for _, row in perfect_scores.iterrows():
-        # Reconstruct generation response path using actual model IDs
-        # Format: data/3_generation/generation_responses/combo_X_template_model/model_name.txt
-        generation_path = f"data/3_generation/generation_responses/{row['combo_id']}_{row['generation_template']}_{row['generation_model']}/{row['generation_model']}.txt"
+        # Reconstruct generation response path - flat file structure
+        # Format: data/3_generation/generation_responses/combo_X_template_model.txt
+        generation_path = f"data/3_generation/generation_responses/{row['combo_id']}_{row['generation_template']}_{row['generation_model']}.txt"
         
-        # Reconstruct evaluation response path using actual model IDs
-        # Format: data/4_evaluation/evaluation_responses/gen_dir/gen_model_eval_template_eval_model/eval_model.txt
-        generation_dir = f"{row['combo_id']}_{row['generation_template']}_{row['generation_model']}"
-        eval_subdir = f"{row['generation_model']}_{row.get('evaluation_template', 'daydreaming-verification-v2')}_{row['evaluation_model']}"
-        evaluation_path = f"data/4_evaluation/evaluation_responses/{generation_dir}/{eval_subdir}/{row['evaluation_model']}.txt"
+        # Reconstruct evaluation response path - flat file structure
+        # Format: data/4_evaluation/evaluation_responses/combo_X_template_model_eval_template_eval_model.txt
+        evaluation_path = f"data/4_evaluation/evaluation_responses/{row['combo_id']}_{row['generation_template']}_{row['generation_model']}_{row.get('evaluation_template', 'daydreaming-verification-v2')}_{row['evaluation_model']}.txt"
         
         paths_data.append({
             'combo_id': row['combo_id'],

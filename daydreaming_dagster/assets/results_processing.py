@@ -3,30 +3,34 @@ from pathlib import Path
 import pandas as pd
 from typing import List, Dict, Any
 
+from ..utils.eval_response_parser import parse_llm_response
 
-def _detect_parsing_strategy(evaluation_task_id: str) -> str:
-    """Detect appropriate parsing strategy based on evaluation task ID."""
+def _detect_parsing_strategy(evaluation_template: str) -> str:
+    """Detect appropriate parsing strategy based on evaluation template."""
+
+    if evaluation_template == 'daydreaming-verification-v2':
+        return 'in_last_line'
+
     legacy_templates = ['creativity-metrics', 'daydreaming-verification', 'iterative-loops', 'scientific-rigor']
     
-    for template_name in legacy_templates:
-        if template_name in evaluation_task_id:
-            return 'complex'
+    if evaluation_template in legacy_templates:
+        return 'complex'
     
     return 'in_last_line'  # Default for modern templates
 
 
-def _parse_single_response(evaluation_task_id: str, response_file: Path, context) -> Dict[str, Any]:
+def _parse_single_response(evaluation_task_id: str, evaluation_template: str, response_file: Path, context) -> Dict[str, Any]:
     """Parse a single evaluation response file.
     
     Args:
         evaluation_task_id: Unique identifier for the evaluation task
+        evaluation_template: The evaluation template name (used for parsing strategy)
         response_file: Path to the evaluation response file
         context: Dagster execution context for logging
         
     Returns:
         Dictionary with evaluation_task_id, score, and error fields
     """
-    from ..utils.eval_response_parser import parse_llm_response
     
     try:
         if not response_file.exists():
@@ -35,7 +39,7 @@ def _parse_single_response(evaluation_task_id: str, response_file: Path, context
             return None
             
         response_text = response_file.read_text()
-        strategy = _detect_parsing_strategy(evaluation_task_id)
+        strategy = _detect_parsing_strategy(evaluation_template)
         result = parse_llm_response(response_text, strategy)
         
         return {
@@ -78,13 +82,14 @@ def _process_evaluation_responses(evaluation_tasks: pd.DataFrame, base_path: Pat
     
     for i, (_, task_row) in enumerate(evaluation_tasks.iterrows()):
         evaluation_task_id = task_row['evaluation_task_id']
+        evaluation_template = task_row['evaluation_template']
         response_file = base_path / f"{evaluation_task_id}.txt"
         
         # Log progress for long-running operations
         if i > 0 and i % 100 == 0:
             context.log.info(f"Processed {i}/{total_tasks} tasks ({(i/total_tasks)*100:.1f}%)")
         
-        result = _parse_single_response(evaluation_task_id, response_file, context)
+        result = _parse_single_response(evaluation_task_id, evaluation_template, response_file, context)
         if result:
             parsed_scores.append(result)
             if result.get('error') is None:
@@ -252,8 +257,12 @@ def parsed_scores(context, evaluation_tasks: pd.DataFrame, generation_tasks: pd.
     # Enrich with task metadata
     enriched_df = _enrich_with_metadata(parsed_df, evaluation_tasks, generation_tasks)
     
-    # Add compatibility column and reorder
-    enriched_df['evaluation_response_path'] = 'managed_by_dagster'
+    # Add evaluation response paths based on actual file structure
+    # pandas handles empty DataFrames gracefully - apply() returns empty Series for empty DataFrame
+    enriched_df['evaluation_response_path'] = enriched_df.apply(
+        lambda row: f"data/4_evaluation/evaluation_responses/{row['combo_id']}_{row['generation_template']}_{row['generation_model']}_{row['evaluation_template']}_{row['evaluation_model']}.txt",
+        axis=1
+    )
     
     column_order = [
         'combo_id', 'generation_template', 'generation_model',
