@@ -176,11 +176,17 @@ def _calculate_metadata(df: pd.DataFrame) -> Dict[str, Any]:
         if 'score' in df.columns and successful_parses > 0:
             valid_scores = df[df['error'].isna()]['score']
             if len(valid_scores) > 0:
+                # Convert numpy types to Python types for Dagster serialization
+                mean_score = float(valid_scores.mean())
+                min_score = float(valid_scores.min())
+                max_score = float(valid_scores.max())
+                perfect_count = int(len(valid_scores[valid_scores == 10.0]))
+                
                 metadata.update({
-                    "avg_score": MetadataValue.float(round(valid_scores.mean(), 2)),
-                    "min_score": MetadataValue.float(round(valid_scores.min(), 2)),
-                    "max_score": MetadataValue.float(round(valid_scores.max(), 2)),
-                    "perfect_scores": MetadataValue.int(len(valid_scores[valid_scores == 10.0]))
+                    "avg_score": MetadataValue.float(round(mean_score, 2)),
+                    "min_score": MetadataValue.float(round(min_score, 2)),
+                    "max_score": MetadataValue.float(round(max_score, 2)),
+                    "perfect_scores": MetadataValue.int(perfect_count)
                 })
     
     return metadata

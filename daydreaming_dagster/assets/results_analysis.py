@@ -26,32 +26,10 @@ def evaluator_agreement_analysis(context, parsed_scores: pd.DataFrame) -> pd.Dat
         context.log.warning("No valid scores found for evaluator agreement analysis")
         return pd.DataFrame()
     
-    # Use generation_task_id column if available (from new clean DataFrame joins)
-    # Otherwise fall back to extraction from evaluation_task_id
-    if 'generation_task_id' not in valid_scores.columns:
-        def extract_generation_task_id(eval_task_id):
-            """Extract generation_task_id from evaluation_task_id - fallback method"""
-            if pd.isna(eval_task_id):
-                return None
-            
-            # Look for the daydreaming-verification part to know where generation task ends
-            if 'daydreaming-verification-v2' in eval_task_id:
-                verification_index = eval_task_id.find('_daydreaming-verification-v2')
-                if verification_index > 0:
-                    return eval_task_id[:verification_index]
-            
-            # Fallback: assume first 4 parts (combo_001_template_model)
-            parts = eval_task_id.split('_')
-            if len(parts) >= 4:
-                return '_'.join(parts[:4])
-            
-            return eval_task_id
-        
-        # Add generation_task_id column using extraction
-        valid_scores['generation_task_id'] = valid_scores['evaluation_task_id'].apply(extract_generation_task_id)
-    
-    # Group by generation_task_id to find cases where multiple evaluators scored the same response
-    agreement_stats = valid_scores.groupby('generation_task_id')['score'].agg([
+    # Group by the combination that identifies the same generated response
+    # This groups evaluations that scored the same generated content (same combo + generation method)
+    generation_group_cols = ['combo_id', 'generation_template', 'generation_model']
+    agreement_stats = valid_scores.groupby(generation_group_cols)['score'].agg([
         ('evaluator_count', 'count'),
         ('mean_score', 'mean'),
         ('std_dev', 'std'),
@@ -91,39 +69,14 @@ def evaluator_agreement_analysis(context, parsed_scores: pd.DataFrame) -> pd.Dat
     multi_evaluator['relative_std_dev'] = multi_evaluator['std_dev'] / 10.0
     multi_evaluator['relative_range'] = multi_evaluator['score_range'] / 10.0
     
-    # Use clean metadata columns if available (from new DataFrame joins)
-    # Otherwise extract from generation_task_id as fallback
-    metadata_columns = ['combo_id', 'generation_template', 'generation_model']
-    missing_columns = [col for col in metadata_columns if col not in valid_scores.columns]
-    
-    if missing_columns:
-        def extract_metadata(gen_task_id):
-            """Extract combo and template info from generation_task_id - fallback method"""
-            if pd.isna(gen_task_id):
-                return None, None, None
-            
-            parts = gen_task_id.split('_')
-            if len(parts) >= 4:
-                combo_id = f"{parts[0]}_{parts[1]}"  # combo_001
-                template = parts[2] if len(parts) > 2 else 'unknown'  # systematic-analytical-v2
-                model = parts[3] if len(parts) > 3 else 'unknown'  # deepseek
-                return combo_id, template, model
-            return None, None, None
-        
-        # Extract metadata and add to multi_evaluator
-        metadata_df = multi_evaluator['generation_task_id'].apply(
-            lambda x: pd.Series(extract_metadata(x), index=['combo_id', 'generation_template', 'generation_model'])
-        )
-        multi_evaluator = pd.concat([multi_evaluator, metadata_df], axis=1)
-    else:
-        # Use existing clean metadata by merging with valid_scores
-        # Get unique generation_task_id metadata from valid_scores
-        gen_metadata = valid_scores[['generation_task_id'] + metadata_columns].drop_duplicates()
-        multi_evaluator = multi_evaluator.merge(gen_metadata, on='generation_task_id', how='left')
+    # The groupby operation already includes combo_id, generation_template, generation_model columns
+    # No additional metadata extraction needed
     
     # Create summary statistics
     agreement_summary = multi_evaluator['agreement_classification'].value_counts()
-    context.log.info(f"Evaluator agreement summary: {dict(agreement_summary)}")
+    # Convert numpy types to Python types for clean logging
+    agreement_dict = {k: int(v) for k, v in agreement_summary.items()}
+    context.log.info(f"Evaluator agreement summary: {agreement_dict}")
     
     # Log overall agreement statistics
     if len(multi_evaluator) > 0:
@@ -179,70 +132,18 @@ def comprehensive_variance_analysis(context, parsed_scores: pd.DataFrame) -> pd.
         context.log.warning("No valid scores found for comprehensive variance analysis")
         return pd.DataFrame()
     
-    # Use generation_task_id if available from clean DataFrame joins
-    if 'generation_task_id' not in valid_scores.columns:
-        def extract_generation_task_id(eval_task_id):
-            if pd.isna(eval_task_id):
-                return None
-            
-            if 'daydreaming-verification-v2' in eval_task_id:
-                verification_index = eval_task_id.find('_daydreaming-verification-v2')
-                if verification_index > 0:
-                    return eval_task_id[:verification_index]
-            
-            # Generalized fallback
-            parts = eval_task_id.split('_')
-            if len(parts) >= 6:  # combo_XXX_gentemplate_genmodel_evaltemplate_evalmodel
-                return '_'.join(parts[:-2])  # Remove last 2 parts (eval template + eval model)
-            
-            return eval_task_id
-        
-        valid_scores['generation_task_id'] = valid_scores['evaluation_task_id'].apply(extract_generation_task_id)
+    # Define the columns that identify the same generated response
+    generation_group_cols = ['combo_id', 'generation_template', 'generation_model']
     
-    # Use eval_template and eval_model if available from clean joins
-    eval_columns = ['eval_template', 'eval_model']
-    if not all(col in valid_scores.columns for col in eval_columns):
-        # Map from clean column names if available
-        if 'evaluation_template' in valid_scores.columns:
-            valid_scores['eval_template'] = valid_scores['evaluation_template']
-        if 'evaluation_model' in valid_scores.columns:
-            valid_scores['eval_model'] = valid_scores['evaluation_model']
-        
-        # Fallback to parsing if still missing
-        missing_eval_columns = [col for col in eval_columns if col not in valid_scores.columns]
-        if missing_eval_columns:
-            def parse_evaluation_info(eval_task_id):
-                """Extract evaluation template and model from task ID - fallback method"""
-                if pd.isna(eval_task_id):
-                    return None, None
-                    
-                # Look for known evaluation templates
-                eval_templates = ['daydreaming-verification-v2', 'creativity-metrics', 'scientific-rigor', 'iterative-loops']
-                
-                eval_template = 'unknown'
-                eval_model = 'unknown'
-                
-                for template in eval_templates:
-                    if template in eval_task_id:
-                        eval_template = template
-                        # Extract model after template
-                        template_index = eval_task_id.find(f'_{template}_')
-                        if template_index >= 0:
-                            remaining = eval_task_id[template_index + len(template) + 2:]  # +2 for underscores
-                            eval_model = remaining if remaining else 'unknown'
-                        break
-                
-                return eval_template, eval_model
-            
-            valid_scores[['eval_template', 'eval_model']] = valid_scores['evaluation_task_id'].apply(
-                lambda x: pd.Series(parse_evaluation_info(x))
-            )
+    # Map from existing column names (always available in parsed_scores)
+    valid_scores['eval_template'] = valid_scores['evaluation_template']
+    valid_scores['eval_model'] = valid_scores['evaluation_model']
     
     # Now we can analyze variance across multiple dimensions
     variance_analyses = []
     
-    # 1. Overall variance: Group only by generation_task_id
-    overall_variance = valid_scores.groupby('generation_task_id').agg({
+    # 1. Overall variance: Group by generation method (same generated content)
+    overall_variance = valid_scores.groupby(generation_group_cols).agg({
         'score': ['count', 'mean', 'std', 'min', 'max'],
         'eval_template': lambda x: x.nunique(),  # How many different templates
         'eval_model': lambda x: x.nunique()     # How many different models
@@ -254,15 +155,19 @@ def comprehensive_variance_analysis(context, parsed_scores: pd.DataFrame) -> pd.
     overall_variance['coefficient_of_variation'] = overall_variance['std_dev'] / overall_variance['mean_score']
     overall_variance['analysis_type'] = 'overall_variance'
     
-    # 2. Template variance: Same generation + same model, different templates
-    template_groups = valid_scores.groupby(['generation_task_id', 'eval_model'])
+    # 2. Template variance: Same generation method + same eval model, different eval templates
+    template_groups = valid_scores.groupby(generation_group_cols + ['eval_model'])
     template_variance_list = []
     
-    for (gen_id, model), group in template_groups:
+    for group_keys, group in template_groups:
         if len(group) >= 2:  # Need multiple evaluations to calculate variance
+            # Unpack the group keys based on the number of grouping columns
+            combo_id, gen_template, gen_model, eval_model = group_keys
             template_stats = {
-                'generation_task_id': gen_id,
-                'eval_model': model,
+                'combo_id': combo_id,
+                'generation_template': gen_template,
+                'generation_model': gen_model,
+                'eval_model': eval_model,
                 'template_evaluations': len(group),
                 'mean_score': group['score'].mean(),
                 'std_dev': group['score'].std(),
@@ -278,15 +183,19 @@ def comprehensive_variance_analysis(context, parsed_scores: pd.DataFrame) -> pd.
     
     template_variance = pd.DataFrame(template_variance_list) if template_variance_list else pd.DataFrame()
     
-    # 3. Model variance: Same generation + same template, different models  
-    model_groups = valid_scores.groupby(['generation_task_id', 'eval_template'])
+    # 3. Model variance: Same generation method + same eval template, different eval models  
+    model_groups = valid_scores.groupby(generation_group_cols + ['eval_template'])
     model_variance_list = []
     
-    for (gen_id, template), group in model_groups:
+    for group_keys, group in model_groups:
         if len(group) >= 2:  # Need multiple evaluations to calculate variance
+            # Unpack the group keys
+            combo_id, gen_template, gen_model, eval_template = group_keys
             model_stats = {
-                'generation_task_id': gen_id,
-                'eval_template': template,
+                'combo_id': combo_id,
+                'generation_template': gen_template,
+                'generation_model': gen_model,
+                'eval_template': eval_template,
                 'model_evaluations': len(group),
                 'mean_score': group['score'].mean(),
                 'std_dev': group['score'].std(),
@@ -341,7 +250,9 @@ def comprehensive_variance_analysis(context, parsed_scores: pd.DataFrame) -> pd.
             subset = combined_analysis[combined_analysis['analysis_type'] == analysis_type]
             stability_summary = subset['stability_classification'].value_counts()
             median_range = subset['score_range'].median()
-            context.log.info(f"{analysis_type} - Median range: {median_range:.2f}, Stability: {dict(stability_summary)}")
+            # Convert numpy types to Python types for clean logging
+            stability_dict = {k: int(v) for k, v in stability_summary.items()}
+            context.log.info(f"{analysis_type} - Median range: {median_range:.2f}, Stability: {stability_dict}")
         
         context.log.info(f"Comprehensive variance analysis complete: {len(combined_analysis)} variance measurements")
         
