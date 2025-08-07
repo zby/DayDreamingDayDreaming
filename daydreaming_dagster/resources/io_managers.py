@@ -37,9 +37,8 @@ class PartitionedTextIOManager(IOManager):
 
 class CSVIOManager(IOManager):
     """
-    Simple CSV I/O Manager for loading and saving DataFrames.
+    Generic CSV I/O Manager for loading and saving pandas DataFrames.
     Saves DataFrames as CSV files for easy inspection and debugging.
-    Critical for understanding what combo_001, combo_002, etc. actually contain.
     """
     
     def __init__(self, base_path):
@@ -63,33 +62,13 @@ class CSVIOManager(IOManager):
             obj.to_csv(file_path, index=False)
             context.log.info(f"Saved {asset_name} to {file_path}")
         else:
-            # Handle tuple of DataFrames (like concept_combinations output)
-            if isinstance(obj, tuple) and len(obj) == 2:
-                df1, df2 = obj
-                if hasattr(df1, 'to_csv') and hasattr(df2, 'to_csv'):
-                    df1.to_csv(self.base_path / f"{asset_name}_combinations.csv", index=False)
-                    df2.to_csv(self.base_path / f"{asset_name}_relationships.csv", index=False)
-                    context.log.info(f"Saved {asset_name} tuple to {self.base_path}")
-                else:
-                    raise ValueError(f"Expected DataFrames, got {type(df1)}, {type(df2)}")
-            else:
-                raise ValueError(f"Unsupported object type for CSV saving: {type(obj)}")
+            raise ValueError(f"Expected pandas DataFrame for CSV saving, got {type(obj)}")
     
     def load_input(self, context: InputContext):
         """Load DataFrame from CSV file"""
         asset_name = context.asset_key.path[-1]
-        
-        # Check if it's a tuple asset first
-        combinations_file = self.base_path / f"{asset_name}_combinations.csv"
-        relationships_file = self.base_path / f"{asset_name}_relationships.csv"
-        
-        if combinations_file.exists() and relationships_file.exists():
-            df1 = pd.read_csv(combinations_file)
-            df2 = pd.read_csv(relationships_file)
-            return (df1, df2)
-        
-        # Single DataFrame
         file_path = self.base_path / f"{asset_name}.csv"
+        
         if not file_path.exists():
             raise FileNotFoundError(f"CSV file not found: {file_path}")
         
