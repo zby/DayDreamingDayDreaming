@@ -53,6 +53,35 @@ def content_combinations(
     return content_combos
 
 @asset(
+    group_name="llm_tasks",
+    io_manager_key="csv_io_manager"
+)
+def content_combinations_csv(
+    context,
+    content_combinations: List[ContentCombination],
+) -> pd.DataFrame:
+    """Export content combinations as normalized relational table with combo_id and concept_id columns."""
+    # Create normalized rows: one row per concept in each combination
+    rows = []
+    for combo in content_combinations:
+        for concept_id in combo.concept_ids:
+            rows.append({
+                "combo_id": combo.combo_id,
+                "concept_id": concept_id
+            })
+    
+    df = pd.DataFrame(rows)
+    
+    context.add_output_metadata({
+        "total_rows": MetadataValue.int(len(df)),
+        "unique_combinations": MetadataValue.int(len(content_combinations)),
+        "unique_concepts": MetadataValue.int(df["concept_id"].nunique()),
+        "sample_rows": MetadataValue.text(str(df.head(5).to_dict("records")))
+    })
+    
+    return df
+
+@asset(
     group_name="llm_tasks", 
     io_manager_key="csv_io_manager",
     required_resource_keys={"config"}

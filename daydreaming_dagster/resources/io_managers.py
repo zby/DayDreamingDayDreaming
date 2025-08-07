@@ -49,6 +49,11 @@ class CSVIOManager(IOManager):
     
     def handle_output(self, context: OutputContext, obj):
         """Save DataFrame as CSV file"""
+        # Skip saving empty outputs
+        if obj is None or (hasattr(obj, 'empty') and obj.empty):
+            context.log.info(f"Skipping output for {context.asset_key} as it is empty")
+            return
+            
         asset_name = context.asset_key.path[-1]
         file_path = self.base_path / f"{asset_name}.csv"
         
@@ -97,7 +102,17 @@ class CSVIOManager(IOManager):
                         raise KeyError(f"Column '{column}' not found in DataFrame. Available columns: {list(df.columns)}")
                     
                     if operator == "==":
-                        df = df[df[column] == value]
+                        # Handle boolean filtering with type safety
+                        if isinstance(value, bool):
+                            # CSV loading converts booleans to strings, so we need to handle both cases
+                            # Match only boolean True/False and their string representations, not integers
+                            if value is True:
+                                mask = df[column].map(lambda x: x is True or x == 'True')
+                            else:  # value is False
+                                mask = df[column].map(lambda x: x is False or x == 'False')
+                            df = df[mask]
+                        else:
+                            df = df[df[column] == value]
                     elif operator == "!=":
                         df = df[df[column] != value]
                     elif operator == "isin":
@@ -145,6 +160,11 @@ class TemplateIOManager(IOManager):
     
     def handle_output(self, context: OutputContext, obj):
         """Save templates as JSON for easy inspection and debugging."""
+        # Skip saving empty outputs
+        if obj is None or (isinstance(obj, dict) and not obj):
+            context.log.info(f"Skipping output for {context.asset_key} as it is empty")
+            return
+            
         asset_name = context.asset_key.path[-1]
         output_path = self.output_path / f"{asset_name}.json"
         

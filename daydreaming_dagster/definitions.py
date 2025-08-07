@@ -28,6 +28,7 @@ from daydreaming_dagster.assets.raw_data import (
 )
 from daydreaming_dagster.assets.core import (
     content_combinations,
+    content_combinations_csv,
     generation_tasks,
     evaluation_tasks
 )
@@ -53,6 +54,7 @@ defs = Definitions(
         
         # Core processing assets
         content_combinations,
+        content_combinations_csv,
         generation_tasks,
         evaluation_tasks,
         
@@ -80,7 +82,8 @@ defs = Definitions(
             source_mappings={
                 # Raw data assets that load from data/1_raw/
                 "concepts_metadata": {
-                    "source_file": "data/1_raw/concepts/concepts_metadata.csv"
+                    "source_file": "data/1_raw/concepts/concepts_metadata.csv",
+                    "filters": [{"column": "active", "value": True}]
                 },
                 "generation_models": {
                     "source_file": "data/1_raw/llm_models.csv",
