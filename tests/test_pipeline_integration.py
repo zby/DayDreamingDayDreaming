@@ -82,8 +82,7 @@ class TestPipelineIntegration:
                 # Import the assets we want to test
                 from daydreaming_dagster.assets.raw_data import (
                     concepts_metadata, concepts, llm_models, 
-                    generation_templates, generation_templates_metadata,
-                    evaluation_templates, evaluation_templates_metadata
+                    generation_templates, evaluation_templates
                 )
                 from daydreaming_dagster.assets.core import (
                     content_combinations, content_combinations_csv, 
@@ -94,8 +93,7 @@ class TestPipelineIntegration:
                 all_assets = [
                     # Raw data assets
                     concepts_metadata, concepts, llm_models,
-                    generation_templates, generation_templates_metadata,
-                    evaluation_templates, evaluation_templates_metadata,
+                    generation_templates, evaluation_templates,
                     # LLM task assets
                     content_combinations, content_combinations_csv,
                     generation_tasks, evaluation_tasks
@@ -353,7 +351,7 @@ class TestPipelineIntegration:
                 
                 from daydreaming_dagster.assets.raw_data import (
                     concepts_metadata, concepts, llm_models, 
-                    generation_templates, generation_templates_metadata
+                    generation_templates
                 )
                 from daydreaming_dagster.assets.core import (
                     content_combinations, generation_tasks
@@ -371,8 +369,7 @@ class TestPipelineIntegration:
                 
                 result = materialize([
                     concepts_metadata, concepts, llm_models,
-                    generation_templates, generation_templates_metadata,
-                    content_combinations, generation_tasks
+                    generation_templates, content_combinations, generation_tasks
                 ], resources=resources, instance=instance)
                 
                 assert result.success, "Template filtering test materialization should succeed"

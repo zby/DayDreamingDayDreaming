@@ -1,4 +1,4 @@
-from dagster import asset, MetadataValue
+from dagster import asset, MetadataValue, Failure
 import pandas as pd
 from pathlib import Path
 from typing import List
@@ -102,81 +102,77 @@ def llm_models(context) -> pd.DataFrame:
     return df
 
 @asset(group_name="raw_data", required_resource_keys={"data_root"})
-def generation_templates_metadata(context) -> pd.DataFrame:
-    """Load ALL generation template metadata from CSV - no filtering."""
+def generation_templates(context) -> pd.DataFrame:
+    """Load generation templates CSV with template file content."""
     data_root = context.resources.data_root
     metadata_path = Path(data_root) / "1_raw" / "generation_templates.csv"
-    
-    if not metadata_path.exists():
-        raise FileNotFoundError(f"Required generation templates metadata CSV not found: {metadata_path}")
-    
-    df = pd.read_csv(metadata_path)
-    
-    context.add_output_metadata({
-        "total_templates": MetadataValue.int(len(df)),
-        "active_templates": MetadataValue.int(len(df[df["active"] == True]) if "active" in df.columns else 0),
-        "inactive_templates": MetadataValue.int(len(df[df["active"] == False]) if "active" in df.columns else 0),
-        "source_file": MetadataValue.text(str(metadata_path))
-    })
-    
-    return df
-
-@asset(group_name="raw_data", required_resource_keys={"data_root"})
-def generation_templates(context) -> dict[str, str]:
-    """Load ALL generation templates from directory - no filtering."""
-    data_root = context.resources.data_root
     templates_dir = Path(data_root) / "1_raw" / "generation_templates"
     
-    templates = {}
-    if templates_dir.exists():
-        for template_file in templates_dir.glob("*.txt"):
-            template_name = template_file.stem
-            templates[template_name] = template_file.read_text().strip()
+    if not metadata_path.exists():
+        raise Failure(f"Required generation templates CSV not found: {metadata_path}")
+    
+    # Load CSV metadata
+    templates_df = pd.read_csv(metadata_path)
+    
+    # Add content column by reading template files in explicit loop
+    content_list = []
+    for _, row in templates_df.iterrows():
+        template_id = row["template_id"]
+        template_file = templates_dir / f"{template_id}.txt"
+        
+        if not template_file.exists():
+            raise Failure(f"Required template file not found: {template_file}")
+        
+        content = template_file.read_text().strip()
+        content_list.append(content)
+        context.log.info(f"Loaded template content for {template_id}")
+    
+    templates_df['content'] = content_list
     
     context.add_output_metadata({
-        "template_count": MetadataValue.int(len(templates)),
-        "templates_dir": MetadataValue.text(str(templates_dir)),
-        "template_names": MetadataValue.text(str(list(templates.keys())))
+        "total_templates": MetadataValue.int(len(templates_df)),
+        "active_templates": MetadataValue.int(len(templates_df[templates_df["active"] == True])),
+        "inactive_templates": MetadataValue.int(len(templates_df[templates_df["active"] == False])),
+        "source_csv": MetadataValue.text(str(metadata_path)),
+        "templates_dir": MetadataValue.text(str(templates_dir))
     })
     
-    return templates
+    return templates_df
 
 @asset(group_name="raw_data", required_resource_keys={"data_root"})
-def evaluation_templates_metadata(context) -> pd.DataFrame:
-    """Load ALL evaluation template metadata from CSV - no filtering."""
+def evaluation_templates(context) -> pd.DataFrame:
+    """Load evaluation templates CSV with template file content."""
     data_root = context.resources.data_root
     metadata_path = Path(data_root) / "1_raw" / "evaluation_templates.csv"
-    
-    if not metadata_path.exists():
-        raise FileNotFoundError(f"Required evaluation templates metadata CSV not found: {metadata_path}")
-    
-    df = pd.read_csv(metadata_path)
-    
-    context.add_output_metadata({
-        "total_templates": MetadataValue.int(len(df)),
-        "active_templates": MetadataValue.int(len(df[df["active"] == True]) if "active" in df.columns else 0),
-        "inactive_templates": MetadataValue.int(len(df[df["active"] == False]) if "active" in df.columns else 0),
-        "source_file": MetadataValue.text(str(metadata_path))
-    })
-    
-    return df
-
-@asset(group_name="raw_data", required_resource_keys={"data_root"})
-def evaluation_templates(context) -> dict[str, str]:
-    """Load ALL evaluation templates from directory - no filtering."""
-    data_root = context.resources.data_root
     templates_dir = Path(data_root) / "1_raw" / "evaluation_templates"
     
-    templates = {}
-    if templates_dir.exists():
-        for template_file in templates_dir.glob("*.txt"):
-            template_name = template_file.stem
-            templates[template_name] = template_file.read_text().strip()
+    if not metadata_path.exists():
+        raise Failure(f"Required evaluation templates CSV not found: {metadata_path}")
+    
+    # Load CSV metadata
+    templates_df = pd.read_csv(metadata_path)
+    
+    # Add content column by reading template files in explicit loop
+    content_list = []
+    for _, row in templates_df.iterrows():
+        template_id = row["template_id"]
+        template_file = templates_dir / f"{template_id}.txt"
+        
+        if not template_file.exists():
+            raise Failure(f"Required template file not found: {template_file}")
+        
+        content = template_file.read_text().strip()
+        content_list.append(content)
+        context.log.info(f"Loaded template content for {template_id}")
+    
+    templates_df['content'] = content_list
     
     context.add_output_metadata({
-        "template_count": MetadataValue.int(len(templates)),
-        "templates_dir": MetadataValue.text(str(templates_dir)),
-        "template_names": MetadataValue.text(str(list(templates.keys())))
+        "total_templates": MetadataValue.int(len(templates_df)),
+        "active_templates": MetadataValue.int(len(templates_df[templates_df["active"] == True])),
+        "inactive_templates": MetadataValue.int(len(templates_df[templates_df["active"] == False])),
+        "source_csv": MetadataValue.text(str(metadata_path)),
+        "templates_dir": MetadataValue.text(str(templates_dir))
     })
     
-    return templates
+    return templates_df

@@ -23,9 +23,7 @@ from daydreaming_dagster.assets.raw_data import (
     concepts_metadata,
     llm_models,
     generation_templates,
-    generation_templates_metadata,
-    evaluation_templates,
-    evaluation_templates_metadata
+    evaluation_templates
 )
 from daydreaming_dagster.assets.core import (
     content_combinations,
@@ -47,10 +45,8 @@ defs = Definitions(
         concepts_metadata,              # Loads ALL concepts metadata
         concepts,                       # Filters for active concepts
         llm_models,                     # Loads ALL models
-        generation_templates,           # Loads ALL generation templates
-        generation_templates_metadata,  # Loads ALL generation template metadata
-        evaluation_templates,           # Loads ALL evaluation templates
-        evaluation_templates_metadata,  # Loads ALL evaluation template metadata
+        generation_templates,           # Loads ALL generation templates with content
+        evaluation_templates,           # Loads ALL evaluation templates with content
         
         # Core processing assets
         content_combinations,
