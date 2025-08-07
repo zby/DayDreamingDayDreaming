@@ -34,13 +34,6 @@ class TestConceptsActiveColumnIntegration:
         # This test now verifies that filtering happens in the concepts asset itself
         # rather than in the I/O manager, which aligns with our new architecture
         
-        # Test data with mixed active/inactive concepts
-        test_metadata = pd.DataFrame([
-            {"concept_id": "active-1", "name": "Active 1", "active": True},
-            {"concept_id": "active-2", "name": "Active 2", "active": True},
-            {"concept_id": "inactive-1", "name": "Inactive 1", "active": False},
-        ])
-        
         # Import the actual concepts asset function and test its filtering logic
         from daydreaming_dagster.assets.raw_data import concepts
         from daydreaming_dagster.resources.experiment_config import ExperimentConfig
@@ -49,34 +42,38 @@ class TestConceptsActiveColumnIntegration:
         # Create a proper Dagster context for testing
         config = ExperimentConfig(k_max=2, description_level="paragraph")
         
-        # Create temporary directory structure for description files
+        # Create temporary directory structure for test data
         with tempfile.TemporaryDirectory() as temp_dir:
-            desc_dir = Path(temp_dir) / "descriptions-paragraph"
+            # Create concepts directory structure
+            concepts_dir = Path(temp_dir) / "1_raw" / "concepts"
+            concepts_dir.mkdir(parents=True)
+            
+            # Create test CSV with mixed active/inactive concepts
+            test_metadata = pd.DataFrame([
+                {"concept_id": "active-1", "name": "Active 1", "active": True},
+                {"concept_id": "active-2", "name": "Active 2", "active": True},
+                {"concept_id": "inactive-1", "name": "Inactive 1", "active": False},
+            ])
+            test_metadata.to_csv(concepts_dir / "concepts_metadata.csv", index=False)
+            
+            # Create description files
+            desc_dir = concepts_dir / "descriptions-paragraph"
             desc_dir.mkdir(parents=True)
             desc_dir.joinpath("active-1.txt").write_text("Active 1 description")
             desc_dir.joinpath("active-2.txt").write_text("Active 2 description")
             desc_dir.joinpath("inactive-1.txt").write_text("Inactive 1 description")
             
-            # Patch the data path to point to our test directory
-            from unittest.mock import patch
-            with patch('daydreaming_dagster.assets.raw_data.Path') as mock_path:
-                def path_side_effect(arg):
-                    if arg == "data/1_raw/concepts/descriptions-paragraph":
-                        return desc_dir
-                    return Path(arg)
-                mock_path.side_effect = path_side_effect
-                
-                # Create proper asset context
-                context = build_asset_context()
-                
-                # Call the concepts asset function directly
-                result_concepts = concepts(context, test_metadata, config)
-                
-                # Verify only active concepts are returned
-                assert len(result_concepts) == 2, "Should return only active concepts"
-                concept_ids = {concept.concept_id for concept in result_concepts}
-                expected_ids = {"active-1", "active-2"}
-                assert concept_ids == expected_ids, "Should return correct active concepts"
+            # Create proper asset context with test data root and config
+            context = build_asset_context(resources={"data_root": str(temp_dir), "config": config})
+            
+            # Call the concepts asset function directly
+            result_concepts = concepts(context)
+            
+            # Verify only active concepts are returned
+            assert len(result_concepts) == 2, "Should return only active concepts"
+            concept_ids = {concept.concept_id for concept in result_concepts}
+            expected_ids = {"active-1", "active-2"}
+            assert concept_ids == expected_ids, "Should return correct active concepts"
 
     def test_dagster_definitions_use_simplified_architecture(self):
         """Test that Dagster definitions use the new simplified architecture."""
@@ -91,9 +88,11 @@ class TestConceptsActiveColumnIntegration:
         # Verify we have the new merged assets
         asset_names = {asset.key.to_user_string() for asset in defs.assets}
         
+        assert "concepts" in asset_names, "Should have consolidated concepts asset"
         assert "llm_models" in asset_names, "Should have merged llm_models asset"
         assert "generation_templates" in asset_names, "Should have generation_templates asset"
         assert "evaluation_templates" in asset_names, "Should have evaluation_templates asset"
+        assert "concepts_metadata" not in asset_names, "Should not have separate concepts_metadata asset"
         assert "generation_models" not in asset_names, "Should not have separate generation_models asset"
         assert "evaluation_models" not in asset_names, "Should not have separate evaluation_models asset"
 

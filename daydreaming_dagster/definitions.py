@@ -20,7 +20,6 @@ from daydreaming_dagster.assets.results_summary import (
 )
 from daydreaming_dagster.assets.raw_data import (
     concepts,
-    concepts_metadata,
     llm_models,
     generation_templates,
     evaluation_templates
@@ -42,8 +41,7 @@ from pathlib import Path
 defs = Definitions(
     assets=[
         # Raw data assets (now load all data, no filtering)
-        concepts_metadata,              # Loads ALL concepts metadata
-        concepts,                       # Filters for active concepts
+        concepts,                       # Loads ALL concepts with descriptions and applies filtering
         llm_models,                     # Loads ALL models
         generation_templates,           # Loads ALL generation templates with content
         evaluation_templates,           # Loads ALL evaluation templates with content

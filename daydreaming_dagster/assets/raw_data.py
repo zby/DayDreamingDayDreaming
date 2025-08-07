@@ -6,39 +6,28 @@ from typing import List
 from ..models import Concept
 from ..resources.experiment_config import ExperimentConfig
 
-@asset(group_name="raw_data", required_resource_keys={"data_root"})
-def concepts_metadata(context) -> pd.DataFrame:
-    """Load ALL concepts metadata from CSV - no filtering."""
+@asset(group_name="raw_data", required_resource_keys={"data_root", "config"})
+def concepts(context) -> List[Concept]:
+    """Load ALL concepts from CSV with description files, then apply filtering."""
     data_root = context.resources.data_root
+    config = context.resources.config
     metadata_path = Path(data_root) / "1_raw" / "concepts" / "concepts_metadata.csv"
     
     if not metadata_path.exists():
-        raise FileNotFoundError(f"Required concepts metadata CSV not found: {metadata_path}")
+        raise Failure(f"Required concepts metadata CSV not found: {metadata_path}")
     
-    df = pd.read_csv(metadata_path)
-    
-    context.add_output_metadata({
-        "total_concepts": MetadataValue.int(len(df)),
-        "active_concepts": MetadataValue.int(len(df[df["active"] == True]) if "active" in df.columns else 0),
-        "inactive_concepts": MetadataValue.int(len(df[df["active"] == False]) if "active" in df.columns else 0),
-        "source_file": MetadataValue.text(str(metadata_path))
-    })
-    
-    return df
-
-@asset(group_name="raw_data")
-def concepts(context, concepts_metadata: pd.DataFrame, config: ExperimentConfig) -> List[Concept]:
-    """Create concept objects from metadata DataFrame."""
-    total_available = len(concepts_metadata)
+    # Load CSV metadata
+    concepts_df = pd.read_csv(metadata_path)
+    total_available = len(concepts_df)
     
     # Filter for active concepts first
-    if "active" in concepts_metadata.columns:
-        concepts_metadata = concepts_metadata[concepts_metadata["active"] == True]
+    if "active" in concepts_df.columns:
+        concepts_df = concepts_df[concepts_df["active"] == True]
     
     # Apply concept filtering if configured
     if config.concept_ids_filter:
-        concepts_metadata = concepts_metadata[
-            concepts_metadata["concept_id"].isin(config.concept_ids_filter)
+        concepts_df = concepts_df[
+            concepts_df["concept_id"].isin(config.concept_ids_filter)
         ]
     
     # Load all description levels
@@ -47,16 +36,16 @@ def concepts(context, concepts_metadata: pd.DataFrame, config: ExperimentConfig)
     
     for level in description_levels:
         level_descriptions = {}
-        level_path = Path(f"data/1_raw/concepts/descriptions-{level}")
+        level_path = Path(data_root) / "1_raw" / "concepts" / f"descriptions-{level}"
         if level_path.exists():
             for file_path in level_path.glob("*.txt"):
                 concept_id = file_path.stem
                 level_descriptions[concept_id] = file_path.read_text().strip()
         all_descriptions[level] = level_descriptions
     
-    # Build concept objects
+    # Build concept objects (explicit loop)
     concepts = []
-    for _, row in concepts_metadata.iterrows():
+    for _, row in concepts_df.iterrows():
         concept_id = row["concept_id"]
         name = row["name"]
         
@@ -67,6 +56,7 @@ def concepts(context, concepts_metadata: pd.DataFrame, config: ExperimentConfig)
                 descriptions[level] = all_descriptions[level][concept_id]
         
         concepts.append(Concept(concept_id=concept_id, name=name, descriptions=descriptions))
+        context.log.info(f"Loaded concept {concept_id} with {len(descriptions)} description levels")
     
     # Add output metadata
     filtered_out = total_available - len(concepts)

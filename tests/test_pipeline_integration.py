@@ -81,7 +81,7 @@ class TestPipelineIntegration:
                 
                 # Import the assets we want to test
                 from daydreaming_dagster.assets.raw_data import (
-                    concepts_metadata, concepts, llm_models, 
+                    concepts, llm_models, 
                     generation_templates, evaluation_templates
                 )
                 from daydreaming_dagster.assets.core import (
@@ -92,7 +92,7 @@ class TestPipelineIntegration:
                 # Materialize all assets in correct dependency order
                 all_assets = [
                     # Raw data assets
-                    concepts_metadata, concepts, llm_models,
+                    concepts, llm_models,
                     generation_templates, evaluation_templates,
                     # LLM task assets
                     content_combinations, content_combinations_csv,
@@ -246,7 +246,7 @@ class TestPipelineIntegration:
                 instance = DagsterInstance.ephemeral(tempdir=str(temp_dagster_home))
                 
                 # Import and test just the content_combinations_csv asset
-                from daydreaming_dagster.assets.raw_data import concepts_metadata, concepts
+                from daydreaming_dagster.assets.raw_data import concepts
                 from daydreaming_dagster.assets.core import content_combinations, content_combinations_csv
                 from daydreaming_dagster.resources.io_managers import CSVIOManager
                 from daydreaming_dagster.resources.experiment_config import ExperimentConfig
@@ -260,7 +260,7 @@ class TestPipelineIntegration:
                 }
                 
                 result = materialize(
-                    [concepts_metadata, concepts, content_combinations, content_combinations_csv],
+                    [concepts, content_combinations, content_combinations_csv],
                     resources=resources,
                     instance=instance
                 )
@@ -350,7 +350,7 @@ class TestPipelineIntegration:
                 instance = DagsterInstance.ephemeral(tempdir=str(temp_dagster_home))
                 
                 from daydreaming_dagster.assets.raw_data import (
-                    concepts_metadata, concepts, llm_models, 
+                    concepts, llm_models, 
                     generation_templates
                 )
                 from daydreaming_dagster.assets.core import (
@@ -368,7 +368,7 @@ class TestPipelineIntegration:
                 }
                 
                 result = materialize([
-                    concepts_metadata, concepts, llm_models,
+                    concepts, llm_models,
                     generation_templates, content_combinations, generation_tasks
                 ], resources=resources, instance=instance)
                 
