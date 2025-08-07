@@ -14,76 +14,92 @@ from unittest.mock import patch
 from dagster import materialize, DagsterInstance
 
 
+@pytest.fixture(scope="function")
+def pipeline_data_root_prepared():
+    """Prepare persistent test data under tests/data_pipeline_test by copying live data and limiting scope.
+
+    Steps:
+    - Clean tests/data_pipeline_test
+    - Copy data/1_raw into tests/data_pipeline_test/1_raw
+    - Create output dirs (2_tasks, 3_generation/{generation_prompts,generation_responses})
+    - Limit active rows: concepts (2), generation_templates (2), evaluation_templates (2), llm_models for_generation (2)
+    - Return Path to tests/data_pipeline_test
+    """
+    repo_root = Path(__file__).resolve().parents[1]
+    live_source = repo_root / "data" / "1_raw"
+    assert live_source.exists(), f"Live data not found: {live_source}"
+
+    pipeline_data_root = repo_root / "tests" / "data_pipeline_test"
+    if pipeline_data_root.exists():
+        shutil.rmtree(pipeline_data_root)
+    (pipeline_data_root / "1_raw").mkdir(parents=True)
+    (pipeline_data_root / "2_tasks").mkdir(parents=True)
+    (pipeline_data_root / "3_generation" / "generation_prompts").mkdir(parents=True)
+    (pipeline_data_root / "3_generation" / "generation_responses").mkdir(parents=True)
+
+    # Copy live 1_raw
+    for item in live_source.iterdir():
+        dest = pipeline_data_root / "1_raw" / item.name
+        if item.is_dir():
+            shutil.copytree(item, dest)
+        else:
+            shutil.copy2(item, dest)
+
+    # Limit active rows in key CSVs
+    concepts_csv = pipeline_data_root / "1_raw" / "concepts" / "concepts_metadata.csv"
+    gen_templates_csv = pipeline_data_root / "1_raw" / "generation_templates.csv"
+    eval_templates_csv = pipeline_data_root / "1_raw" / "evaluation_templates.csv"
+    models_csv = pipeline_data_root / "1_raw" / "llm_models.csv"
+
+    # Concepts: keep only first two active
+    cdf = pd.read_csv(concepts_csv)
+    if "active" in cdf.columns:
+        cdf["active"] = False
+        cdf.loc[cdf.index[:2], "active"] = True
+    pd.testing.assert_series_equal((cdf["active"] == True).reset_index(drop=True)[:2], pd.Series([True, True]), check_names=False)
+    cdf.to_csv(concepts_csv, index=False)
+
+    # Generation templates: keep only first two active
+    gtdf = pd.read_csv(gen_templates_csv)
+    if "active" in gtdf.columns:
+        gtdf["active"] = False
+        gtdf.loc[gtdf.index[:2], "active"] = True
+    gtdf.to_csv(gen_templates_csv, index=False)
+
+    # Evaluation templates: keep only first two active
+    etdf = pd.read_csv(eval_templates_csv)
+    if "active" in etdf.columns:
+        etdf["active"] = False
+        etdf.loc[etdf.index[:2], "active"] = True
+    etdf.to_csv(eval_templates_csv, index=False)
+
+    # LLM models: keep only first two generation-capable models active
+    mdf = pd.read_csv(models_csv)
+    if "for_generation" in mdf.columns:
+        mdf["for_generation"] = False
+        mdf.loc[mdf.index[:2], "for_generation"] = True
+    mdf.to_csv(models_csv, index=False)
+
+    return pipeline_data_root
+
+
 class TestPipelineIntegration:
     """Full pipeline integration test with temporary DAGSTER_HOME."""
 
-    def test_pipeline_e2e_live_data_limited_generations(self):
-        """Copy live data into a temp data root, limit active rows, then run limited generations.
+    def test_pipeline_e2e_live_data_limited_generations(self, pipeline_data_root_prepared):
+        """Copy live data into tests/data_pipeline_test, limit active rows, then run limited generations.
 
-        - Copy from data/1_raw into a temporary data root
+        - Clean tests/data_pipeline_test and copy from data/1_raw into tests/data_pipeline_test/1_raw
         - Limit active rows: concepts (2), generation_templates (2), evaluation_templates (2), llm generation models (2)
-        - Materialize raw assets and task CSVs using temp data root
-        - Run generations for a small set of partitions (mocked client)
+        - Materialize raw assets and task CSVs using tests/data_pipeline_test as data_root
+        - Run generations for a small set of partitions (mocked client). Data persists for inspection.
         """
-        repo_root = Path(__file__).resolve().parents[1]
-        live_source = repo_root / "data" / "1_raw"
-        assert live_source.exists(), f"Live data not found: {live_source}"
+        pipeline_data_root = pipeline_data_root_prepared
 
-        with tempfile.TemporaryDirectory() as temp_root:
-            temp_root = Path(temp_root)
-            temp_dagster_home = temp_root / "dagster_home"
-            temp_data_root = temp_root / "data"
-            (temp_data_root / "1_raw").mkdir(parents=True)
-            (temp_data_root / "2_tasks").mkdir(parents=True)
-            (temp_data_root / "3_generation" / "generation_prompts").mkdir(parents=True)
-            (temp_data_root / "3_generation" / "generation_responses").mkdir(parents=True)
+        # Use a temporary DAGSTER_HOME for isolation, but persistent data_root
+        with tempfile.TemporaryDirectory() as temp_home:
+            temp_dagster_home = Path(temp_home) / "dagster_home"
             temp_dagster_home.mkdir(parents=True)
-
-            # Copy live 1_raw into temp data
-            for item in live_source.iterdir():
-                dest = temp_data_root / "1_raw" / item.name
-                if item.is_dir():
-                    shutil.copytree(item, dest)
-                else:
-                    shutil.copy2(item, dest)
-
-            # Limit active rows in key CSVs
-            concepts_csv = temp_data_root / "1_raw" / "concepts" / "concepts_metadata.csv"
-            gen_templates_csv = temp_data_root / "1_raw" / "generation_templates.csv"
-            eval_templates_csv = temp_data_root / "1_raw" / "evaluation_templates.csv"
-            models_csv = temp_data_root / "1_raw" / "llm_models.csv"
-
-            # Concepts: keep only first two active
-            cdf = pd.read_csv(concepts_csv)
-            if "active" in cdf.columns:
-                cdf["active"] = False
-                cdf.loc[cdf.index[:2], "active"] = True
-            pd.testing.assert_series_equal((cdf["active"] == True).reset_index(drop=True)[:2], pd.Series([True, True]), check_names=False)
-            cdf.to_csv(concepts_csv, index=False)
-
-            # Generation templates: keep only first two active
-            gtdf = pd.read_csv(gen_templates_csv)
-            if "active" in gtdf.columns:
-                gtdf["active"] = False
-                gtdf.loc[gtdf.index[:2], "active"] = True
-            gtdf.to_csv(gen_templates_csv, index=False)
-
-            # Evaluation templates: keep only first two active (even if not used here)
-            etdf = pd.read_csv(eval_templates_csv)
-            if "active" in etdf.columns:
-                etdf["active"] = False
-                etdf.loc[etdf.index[:2], "active"] = True
-            etdf.to_csv(eval_templates_csv, index=False)
-
-            # LLM models: keep only first two generation-capable models active
-            mdf = pd.read_csv(models_csv)
-            if "for_generation" in mdf.columns:
-                # reset and set first two rows to generation True
-                mdf["for_generation"] = False
-                # Preserve existing ordering; set first two rows to True
-                mdf.loc[mdf.index[:2], "for_generation"] = True
-            mdf.to_csv(models_csv, index=False)
-
             with patch.dict(os.environ, {"DAGSTER_HOME": str(temp_dagster_home)}):
                 instance = DagsterInstance.ephemeral(tempdir=str(temp_dagster_home))
 
@@ -102,13 +118,13 @@ class TestPipelineIntegration:
                 from daydreaming_dagster.resources.experiment_config import ExperimentConfig
 
                 resources = {
-                    "data_root": str(temp_data_root),
-                    "csv_io_manager": CSVIOManager(base_path=temp_data_root / "2_tasks"),
+                    "data_root": str(pipeline_data_root),
+                    "csv_io_manager": CSVIOManager(base_path=pipeline_data_root / "2_tasks"),
                     "generation_prompt_io_manager": PartitionedTextIOManager(
-                        base_path=temp_data_root / "3_generation" / "generation_prompts"
+                        base_path=pipeline_data_root / "3_generation" / "generation_prompts"
                     ),
                     "generation_response_io_manager": PartitionedTextIOManager(
-                        base_path=temp_data_root / "3_generation" / "generation_responses"
+                        base_path=pipeline_data_root / "3_generation" / "generation_responses"
                     ),
                     "experiment_config": ExperimentConfig(k_max=2, description_level="paragraph"),
                 }
@@ -127,7 +143,7 @@ class TestPipelineIntegration:
                 assert result.success
 
                 # Verify no empty files and required files created under 2_tasks
-                task_dir = temp_data_root / "2_tasks"
+                task_dir = pipeline_data_root / "2_tasks"
                 empty_files = []
                 for file_path in task_dir.rglob("*"):
                     if file_path.is_file() and file_path.stat().st_size <= 2:
@@ -154,7 +170,7 @@ class TestPipelineIntegration:
                 assert all(cid.startswith("combo_") for cid in combo_ids)
 
                 # Active concept IDs subset check
-                active_concepts_df = pd.read_csv(temp_data_root / "1_raw" / "concepts" / "concepts_metadata.csv")
+                active_concepts_df = pd.read_csv(pipeline_data_root / "1_raw" / "concepts" / "concepts_metadata.csv")
                 expected_active_concept_ids = set(active_concepts_df[active_concepts_df["active"] == True]["concept_id"])
                 actual_concept_ids = set(combinations_csv["concept_id"].unique())
                 assert actual_concept_ids.issubset(expected_active_concept_ids)
@@ -167,13 +183,13 @@ class TestPipelineIntegration:
                 assert "generation_template" in gen_tasks_csv.columns
                 assert "generation_model" in gen_tasks_csv.columns
 
-                gen_templates_metadata = pd.read_csv(temp_data_root / "1_raw" / "generation_templates.csv")
+                gen_templates_metadata = pd.read_csv(pipeline_data_root / "1_raw" / "generation_templates.csv")
                 expected_active_templates = set(gen_templates_metadata[gen_templates_metadata["active"] == True]["template_id"].tolist())
                 templates_used = set(gen_tasks_csv["generation_template"].unique())
                 assert templates_used == expected_active_templates
 
                 combinations_count = len(combinations_csv["combo_id"].unique())
-                llm_models_df = pd.read_csv(temp_data_root / "1_raw" / "llm_models.csv")
+                llm_models_df = pd.read_csv(pipeline_data_root / "1_raw" / "llm_models.csv")
                 generation_models_count = len(llm_models_df[llm_models_df["for_generation"] == True])
                 expected_task_count = combinations_count * len(expected_active_templates) * generation_models_count
                 actual_task_count = len(gen_tasks_csv)
@@ -189,7 +205,7 @@ class TestPipelineIntegration:
                 unique_combos_in_gen_tasks = len(gen_tasks_csv["combo_id"].unique())
                 assert unique_combos_in_combinations == unique_combos_in_gen_tasks
 
-                gen_tasks_df = pd.read_csv(temp_data_root / "2_tasks" / "generation_tasks.csv")
+                gen_tasks_df = pd.read_csv(pipeline_data_root / "2_tasks" / "generation_tasks.csv")
                 # Select small set of partitions: up to 4
                 partitions = gen_tasks_df["generation_task_id"].head(4).tolist()
                 assert len(partitions) > 0
@@ -212,8 +228,8 @@ class TestPipelineIntegration:
                         partition_key=pk,
                     )
                     assert gen_res.success
-                    assert (temp_data_root / "3_generation" / "generation_prompts" / f"{pk}.txt").exists()
-                    assert (temp_data_root / "3_generation" / "generation_responses" / f"{pk}.txt").exists()
+                    assert (pipeline_data_root / "3_generation" / "generation_prompts" / f"{pk}.txt").exists()
+                    assert (pipeline_data_root / "3_generation" / "generation_responses" / f"{pk}.txt").exists()
 
     
     def test_content_combinations_csv_normalized_structure(self):
