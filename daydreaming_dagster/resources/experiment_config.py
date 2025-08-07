@@ -7,15 +7,10 @@ class ExperimentConfig(ConfigurableResource):
     """
     k_max: int = 4
     description_level: str = "paragraph"
-    current_gen_template: str = "00_systematic_analytical"
-    current_eval_template: str = "creativity_metrics"
-    default_generation_template: str = "00_systematic_analytical"
-    default_evaluation_template: str = "creativity_metrics"
     generation_temperature: float = 0.7
     evaluation_temperature: float = 0.1
     generation_max_tokens: int = 8192
     evaluation_max_tokens: int = 2048
-    template_names_filter: list[str] = None
     # COMMENTED OUT: Variance tracking configuration (future feature)
     # num_evaluation_runs: int = 3  # Number of evaluation runs per generation response for variance tracking
     # Concurrency control for LLM API calls - STRICT SEQUENTIAL for free tier APIs
@@ -25,10 +20,6 @@ class ExperimentConfig(ConfigurableResource):
         return {
             "k_max": self.k_max,
             "description_level": self.description_level,
-            "current_gen_template": self.current_gen_template,
-            "current_eval_template": self.current_eval_template,
-            "default_generation_template": self.default_generation_template,
-            "default_evaluation_template": self.default_evaluation_template,
             "temperature": {
                 "generation": self.generation_temperature,
                 "evaluation": self.evaluation_temperature
@@ -37,7 +28,6 @@ class ExperimentConfig(ConfigurableResource):
                 "generation": self.generation_max_tokens,
                 "evaluation": self.evaluation_max_tokens
             },
-            "template_names_filter": self.template_names_filter,
             # "num_evaluation_runs": self.num_evaluation_runs,  # COMMENTED OUT
             "llm_concurrency_limit": self.llm_concurrency_limit
         }
