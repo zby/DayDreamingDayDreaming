@@ -9,7 +9,8 @@ from .partitions import generation_tasks_partitions
     partitions_def=generation_tasks_partitions,
     group_name="llm_generation",
     io_manager_key="generation_prompt_io_manager",
-    deps=["generation_tasks"]  # Ensure partitions are created first
+    deps=["generation_tasks"],  # Ensure partitions are created first
+    pool="llm_api"  # Pool-based concurrency control
 )
 def generation_prompt(
     context, 

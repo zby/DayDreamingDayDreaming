@@ -13,8 +13,6 @@ class ExperimentConfig(ConfigurableResource):
     evaluation_max_tokens: int = 2048
     # COMMENTED OUT: Variance tracking configuration (future feature)
     # num_evaluation_runs: int = 3  # Number of evaluation runs per generation response for variance tracking
-    # Concurrency control for LLM API calls - STRICT SEQUENTIAL for free tier APIs
-    llm_concurrency_limit: int = 1  # NO CONCURRENCY: Only 1 LLM call at a time globally
     def to_dict(self) -> dict:
         """Convert to dictionary for compatibility with existing node functions."""
         return {
@@ -29,5 +27,4 @@ class ExperimentConfig(ConfigurableResource):
                 "evaluation": self.evaluation_max_tokens
             },
             # "num_evaluation_runs": self.num_evaluation_runs,  # COMMENTED OUT
-            "llm_concurrency_limit": self.llm_concurrency_limit
         }
