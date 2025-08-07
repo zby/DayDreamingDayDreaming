@@ -67,8 +67,23 @@ def generation_prompt(
             }
         )
     
+    # Get template content from DataFrame
+    template_rows = generation_templates[generation_templates["template_id"] == template_id]
+    if template_rows.empty:
+        available_templates = generation_templates["template_id"].tolist()
+        context.log.error(f"Template '{template_id}' not found in generation_templates DataFrame")
+        raise Failure(
+            description=f"Generation template '{template_id}' not found",
+            metadata={
+                "template_id": MetadataValue.text(template_id),
+                "available_templates": MetadataValue.text(str(available_templates)),
+                "total_templates": MetadataValue.int(len(generation_templates))
+            }
+        )
+    
+    template_content = template_rows.iloc[0]["content"]
+    
     # Render template using ContentCombination.contents (already has name + content)
-    template_content = generation_templates[template_id]
     env = Environment()
     template = env.from_string(template_content)
     prompt = template.render(concepts=content_combination.contents)

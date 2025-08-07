@@ -66,12 +66,15 @@ def evaluation_prompt(context, evaluation_tasks, evaluation_templates) -> str:
             }
         ) from e
     
+    # Convert DataFrame to dict format expected by generate_evaluation_prompts
+    evaluation_templates_dict = evaluation_templates.set_index('template_id')['content'].to_dict()
+    
     # Generate evaluation prompt using existing logic
     response_dict = {generation_task_id: generation_response}
     eval_prompts_dict = generate_evaluation_prompts(
         response_dict,
         evaluation_tasks.iloc[[task_row.name]],  # Single task
-        evaluation_templates
+        evaluation_templates_dict
     )
     
     eval_prompt = eval_prompts_dict[task_id]

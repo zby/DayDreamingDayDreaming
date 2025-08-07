@@ -402,3 +402,194 @@ class TestPipelineIntegration:
                 print(f"✅ Template filtering test passed!")
                 print(f"   Used {len(templates_used)} active templates out of {len(test_gen_templates_metadata)} total")
                 print(f"   Generated {actual_task_count} tasks as expected")
+
+    def test_prompt_generation_with_consolidated_templates(self):
+        """Test that prompt generation works correctly with consolidated template DataFrames."""
+        with tempfile.TemporaryDirectory() as temp_root:
+            temp_dagster_home = Path(temp_root) / "dagster_home"
+            temp_data_dir = Path(temp_root) / "data"
+            
+            temp_dagster_home.mkdir()
+            temp_data_dir.mkdir()
+            (temp_data_dir / "1_raw").mkdir()
+            (temp_data_dir / "2_tasks").mkdir()
+            (temp_data_dir / "3_generation").mkdir()
+            (temp_data_dir / "3_generation" / "generation_prompts").mkdir()
+            (temp_data_dir / "4_evaluation").mkdir()
+            (temp_data_dir / "4_evaluation" / "evaluation_prompts").mkdir()
+            
+            # Create test data
+            raw_data = temp_data_dir / "1_raw"
+            
+            # Create minimal concepts data
+            concepts_dir = raw_data / "concepts"
+            concepts_dir.mkdir()
+            
+            test_concepts = pd.DataFrame([
+                {"concept_id": "test-concept-1", "name": "Test Concept 1", "active": True},
+                {"concept_id": "test-concept-2", "name": "Test Concept 2", "active": True},
+            ])
+            test_concepts.to_csv(concepts_dir / "concepts_metadata.csv", index=False)
+            
+            desc_para_dir = concepts_dir / "descriptions-paragraph"
+            desc_para_dir.mkdir()
+            desc_para_dir.joinpath("test-concept-1.txt").write_text("Test concept 1 description for daydreaming")
+            desc_para_dir.joinpath("test-concept-2.txt").write_text("Test concept 2 description for daydreaming")
+            
+            # Create LLM models data
+            test_models = pd.DataFrame([
+                {"id": "test_gen_model", "model": "test/generation-model", "provider": "test", "display_name": "Test Gen Model", "for_generation": True, "for_evaluation": False, "specialization": "test"},
+                {"id": "test_eval_model", "model": "test/evaluation-model", "provider": "test", "display_name": "Test Eval Model", "for_generation": False, "for_evaluation": True, "specialization": "test"}
+            ])
+            test_models.to_csv(raw_data / "llm_models.csv", index=False)
+            
+            # Create generation templates with Jinja2 template content
+            test_gen_templates_metadata = pd.DataFrame([
+                {"template_id": "test-generation-template", "template_name": "Test Generation Template", "description": "Test template for generation", "active": True}
+            ])
+            test_gen_templates_metadata.to_csv(raw_data / "generation_templates.csv", index=False)
+            
+            gen_templates_dir = raw_data / "generation_templates"
+            gen_templates_dir.mkdir()
+            # Template with Jinja2 syntax that should render concepts
+            template_content = """Generate creative ideas combining these concepts:
+
+{% for concept in concepts %}
+**{{ concept.name }}**: {{ concept.content }}
+{% endfor %}
+
+Please create an innovative synthesis."""
+            gen_templates_dir.joinpath("test-generation-template.txt").write_text(template_content)
+            
+            # Create evaluation templates
+            test_eval_templates_metadata = pd.DataFrame([
+                {"template_id": "test-evaluation-template", "template_name": "Test Evaluation Template", "description": "Test template for evaluation", "active": True}
+            ])
+            test_eval_templates_metadata.to_csv(raw_data / "evaluation_templates.csv", index=False)
+            
+            eval_templates_dir = raw_data / "evaluation_templates"
+            eval_templates_dir.mkdir()
+            eval_content = """Rate this response on a scale of 1-10:
+
+{{ generation_response }}
+
+SCORE: """
+            eval_templates_dir.joinpath("test-evaluation-template.txt").write_text(eval_content)
+            
+            with patch.dict(os.environ, {'DAGSTER_HOME': str(temp_dagster_home)}):
+                instance = DagsterInstance.ephemeral(tempdir=str(temp_dagster_home))
+                
+                from daydreaming_dagster.assets.raw_data import (
+                    concepts, llm_models, 
+                    generation_templates, evaluation_templates
+                )
+                from daydreaming_dagster.assets.core import (
+                    content_combinations, generation_tasks, evaluation_tasks
+                )
+                from daydreaming_dagster.assets.llm_generation import generation_prompt
+                from daydreaming_dagster.assets.llm_evaluation import evaluation_prompt
+                from daydreaming_dagster.resources.io_managers import CSVIOManager, PartitionedTextIOManager
+                from daydreaming_dagster.resources.experiment_config import ExperimentConfig
+                
+                test_data_root = str(temp_data_dir)
+                
+                resources = {
+                    "data_root": test_data_root,
+                    "experiment_config": ExperimentConfig(k_max=2, description_level="paragraph"),
+                    "csv_io_manager": CSVIOManager(base_path=Path(test_data_root) / "2_tasks"),
+                    "generation_prompt_io_manager": PartitionedTextIOManager(base_path=Path(test_data_root) / "3_generation" / "generation_prompts"),
+                    "generation_response_io_manager": PartitionedTextIOManager(base_path=Path(test_data_root) / "3_generation" / "generation_responses"),
+                    "evaluation_prompt_io_manager": PartitionedTextIOManager(base_path=Path(test_data_root) / "4_evaluation" / "evaluation_prompts"),
+                }
+                
+                # First materialize all dependencies up to generation_tasks
+                result = materialize([
+                    concepts, llm_models,
+                    generation_templates, evaluation_templates,
+                    content_combinations, generation_tasks, evaluation_tasks
+                ], resources=resources, instance=instance)
+                
+                assert result.success, "Dependency materialization should succeed"
+                
+                # Load the generation tasks to get partition keys
+                gen_tasks_file = temp_data_dir / "2_tasks" / "generation_tasks.csv"
+                gen_tasks_df = pd.read_csv(gen_tasks_file)
+                
+                # Get the first generation task partition for testing
+                test_partition = gen_tasks_df.iloc[0]["generation_task_id"]
+                
+                # Test generation prompt asset with specific partition
+                from dagster import build_asset_context
+                
+                # Build context with the test partition
+                context = build_asset_context(
+                    resources=resources,
+                    partition_key=test_partition,
+                    instance=instance
+                )
+                
+                # Manually materialize the generation_prompt asset with a specific partition
+                # This tests the actual consolidated template functionality
+                
+                # Get first task partition to test with
+                test_partition = gen_tasks_df.iloc[0]["generation_task_id"]
+                
+                # Materialize the generation_prompt asset for this partition
+                # We need to include all its dependencies
+                from daydreaming_dagster.assets.llm_generation import generation_prompt
+                
+                prompt_result = materialize(
+                    [concepts, llm_models, generation_templates, evaluation_templates,
+                     content_combinations, generation_tasks, generation_prompt],
+                    resources=resources,
+                    instance=instance,
+                    partition_key=test_partition
+                )
+                
+                # Verify the prompt generation succeeded
+                assert prompt_result.success, "Generation prompt materialization should succeed"
+                
+                # Read the generated prompt file to verify content
+                prompt_file = temp_data_dir / "3_generation" / "generation_prompts" / f"{test_partition}.txt"
+                assert prompt_file.exists(), f"Prompt file should exist: {prompt_file}"
+                
+                generated_prompt = prompt_file.read_text()
+                
+                # Verify the prompt was generated correctly
+                assert isinstance(generated_prompt, str), "Prompt should be a string"
+                assert len(generated_prompt) > 0, "Prompt should not be empty"
+                
+                # Verify template rendering worked (concepts were injected)
+                assert "Test Concept 1" in generated_prompt, "Should contain concept 1 name"
+                assert "Test Concept 2" in generated_prompt, "Should contain concept 2 name"
+                assert "Test concept 1 description" in generated_prompt, "Should contain concept 1 content"
+                assert "Test concept 2 description" in generated_prompt, "Should contain concept 2 content"
+                assert "Generate creative ideas" in generated_prompt, "Should contain template content"
+                
+                # Test evaluation templates conversion
+                eval_templates_content = []
+                eval_templates_metadata = pd.read_csv(raw_data / "evaluation_templates.csv")
+                for _, row in eval_templates_metadata[eval_templates_metadata["active"]].iterrows():
+                    template_path = eval_templates_dir / f"{row['template_id']}.txt"
+                    content = template_path.read_text()
+                    eval_templates_content.append({
+                        "template_id": row["template_id"],
+                        "template_name": row["template_name"],
+                        "description": row["description"], 
+                        "active": row["active"],
+                        "content": content
+                    })
+                
+                evaluation_templates_df = pd.DataFrame(eval_templates_content)
+                
+                # Test DataFrame to dict conversion works
+                eval_templates_dict = evaluation_templates_df.set_index('template_id')['content'].to_dict()
+                
+                assert isinstance(eval_templates_dict, dict), "Should convert to dict"
+                assert "test-evaluation-template" in eval_templates_dict, "Should contain template ID as key"
+                assert "Rate this response" in eval_templates_dict["test-evaluation-template"], "Should contain template content"
+                
+                print("✅ Prompt generation test passed!")
+                print(f"   Generated prompt length: {len(generated_prompt)} characters")
+                print(f"   Template rendering correctly injected concepts")
+                print(f"   Evaluation template conversion: {len(eval_templates_dict)} templates")
