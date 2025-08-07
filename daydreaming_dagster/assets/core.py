@@ -11,15 +11,15 @@ from .partitions import generation_tasks_partitions, evaluation_tasks_partitions
 
 @asset(
     group_name="llm_tasks",
-    required_resource_keys={"config"}
+    required_resource_keys={"experiment_config"}
 )
 def content_combinations(
     context,
     concepts: List[Concept],
 ) -> List[ContentCombination]:
     """Generate k-max combinations of concepts with resolved content using ContentCombination."""
-    config = context.resources.config
-    k_max = config.k_max
+    experiment_config = context.resources.experiment_config
+    k_max = experiment_config.k_max
     
     context.log.info(f"Generating content combinations with k_max={k_max}")
     
@@ -33,7 +33,7 @@ def content_combinations(
         # Create ContentCombination with resolved content and explicit combo_id
         content_combo = ContentCombination.from_concepts(
             list(combo), 
-            config.description_level,
+            experiment_config.description_level,
             combo_id=combo_id_str
         )
         content_combos.append(content_combo)
@@ -46,7 +46,7 @@ def content_combinations(
         "combination_count": MetadataValue.int(len(content_combos)),
         "k_max_used": MetadataValue.int(k_max),
         "source_concepts": MetadataValue.int(len(concepts)),
-        "description_level": MetadataValue.text(config.description_level),
+        "description_level": MetadataValue.text(experiment_config.description_level),
         "combo_ids_range": MetadataValue.text(f"combo_001 to combo_{len(content_combos):03d}")
     })
     
@@ -84,7 +84,7 @@ def content_combinations_csv(
 @asset(
     group_name="llm_tasks", 
     io_manager_key="csv_io_manager",
-    required_resource_keys={"config"}
+    required_resource_keys={"experiment_config"}
 )
 def generation_tasks(
     context,
@@ -145,7 +145,7 @@ def generation_tasks(
 @asset(
     group_name="llm_tasks",
     io_manager_key="csv_io_manager",
-    required_resource_keys={"config"}
+    required_resource_keys={"experiment_config"}
 )
 def evaluation_tasks(
     context,

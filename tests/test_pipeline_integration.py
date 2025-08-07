@@ -63,7 +63,7 @@ class TestPipelineIntegration:
                 patched_resources = {
                     # Keep existing resources that don't need path changes
                     "openrouter_client": defs.resources["openrouter_client"],
-                    "config": defs.resources["config"],
+                    "experiment_config": defs.resources["experiment_config"],
                     
                     # Override data root for testing
                     "data_root": test_data_root,
@@ -256,7 +256,7 @@ class TestPipelineIntegration:
                 resources = {
                     "data_root": test_data_root,
                     "csv_io_manager": CSVIOManager(base_path=Path(test_data_root) / "2_tasks"),
-                    "config": ExperimentConfig(k_max=2, description_level="paragraph")
+                    "experiment_config": ExperimentConfig(k_max=2, description_level="paragraph")
                 }
                 
                 result = materialize(
@@ -364,7 +364,7 @@ class TestPipelineIntegration:
                 resources = {
                     "data_root": test_data_root,
                     "csv_io_manager": CSVIOManager(base_path=Path(test_data_root) / "2_tasks"),
-                    "config": ExperimentConfig(k_max=2, description_level="paragraph")
+                    "experiment_config": ExperimentConfig(k_max=2, description_level="paragraph")
                 }
                 
                 result = materialize([

@@ -68,7 +68,7 @@ defs = Definitions(
     ],
     resources={
         "openrouter_client": LLMClientResource(),
-        "config": ExperimentConfig(),
+        "experiment_config": ExperimentConfig(),
         
         # Simple data root path - no complex configuration needed
         "data_root": "data",
