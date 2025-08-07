@@ -16,200 +16,205 @@ from dagster import materialize, DagsterInstance
 
 class TestPipelineIntegration:
     """Full pipeline integration test with temporary DAGSTER_HOME."""
-    
-    def test_full_pipeline_materialization_with_live_data(self):
-        """Test complete pipeline materialization using copied live data in temporary environment."""
-        # Create temporary directories for isolated test
+
+    def test_pipeline_e2e_live_data_limited_generations(self):
+        """Copy live data into a temp data root, limit active rows, then run limited generations.
+
+        - Copy from data/1_raw into a temporary data root
+        - Limit active rows: concepts (2), generation_templates (2), evaluation_templates (2), llm generation models (2)
+        - Materialize raw assets and task CSVs using temp data root
+        - Run generations for a small set of partitions (mocked client)
+        """
+        repo_root = Path(__file__).resolve().parents[1]
+        live_source = repo_root / "data" / "1_raw"
+        assert live_source.exists(), f"Live data not found: {live_source}"
+
         with tempfile.TemporaryDirectory() as temp_root:
-            temp_dagster_home = Path(temp_root) / "dagster_home"
-            temp_data_dir = Path(temp_root) / "data"
-            
-            # Set up directory structure
-            temp_dagster_home.mkdir()
-            temp_data_dir.mkdir()
-            (temp_data_dir / "1_raw").mkdir()
-            (temp_data_dir / "2_tasks").mkdir()
-            
-            # Copy live data to temporary location
-            live_data_path = Path("data/1_raw")
-            temp_raw_data = temp_data_dir / "1_raw"
-            
-            # Must fail if live data doesn't exist (per project guidelines)
-            assert live_data_path.exists(), f"Live data directory not found: {live_data_path}"
-            
-            # Copy all live data subdirectories
-            for item in live_data_path.iterdir():
+            temp_root = Path(temp_root)
+            temp_dagster_home = temp_root / "dagster_home"
+            temp_data_root = temp_root / "data"
+            (temp_data_root / "1_raw").mkdir(parents=True)
+            (temp_data_root / "2_tasks").mkdir(parents=True)
+            (temp_data_root / "3_generation" / "generation_prompts").mkdir(parents=True)
+            (temp_data_root / "3_generation" / "generation_responses").mkdir(parents=True)
+            temp_dagster_home.mkdir(parents=True)
+
+            # Copy live 1_raw into temp data
+            for item in live_source.iterdir():
+                dest = temp_data_root / "1_raw" / item.name
                 if item.is_dir():
-                    shutil.copytree(item, temp_raw_data / item.name)
+                    shutil.copytree(item, dest)
                 else:
-                    shutil.copy2(item, temp_raw_data / item.name)
-            
-            # Patch environment to use temporary paths
-            with patch.dict(os.environ, {
-                'DAGSTER_HOME': str(temp_dagster_home)
-            }):
-                # Create temporary Dagster instance
+                    shutil.copy2(item, dest)
+
+            # Limit active rows in key CSVs
+            concepts_csv = temp_data_root / "1_raw" / "concepts" / "concepts_metadata.csv"
+            gen_templates_csv = temp_data_root / "1_raw" / "generation_templates.csv"
+            eval_templates_csv = temp_data_root / "1_raw" / "evaluation_templates.csv"
+            models_csv = temp_data_root / "1_raw" / "llm_models.csv"
+
+            # Concepts: keep only first two active
+            cdf = pd.read_csv(concepts_csv)
+            if "active" in cdf.columns:
+                cdf["active"] = False
+                cdf.loc[cdf.index[:2], "active"] = True
+            pd.testing.assert_series_equal((cdf["active"] == True).reset_index(drop=True)[:2], pd.Series([True, True]), check_names=False)
+            cdf.to_csv(concepts_csv, index=False)
+
+            # Generation templates: keep only first two active
+            gtdf = pd.read_csv(gen_templates_csv)
+            if "active" in gtdf.columns:
+                gtdf["active"] = False
+                gtdf.loc[gtdf.index[:2], "active"] = True
+            gtdf.to_csv(gen_templates_csv, index=False)
+
+            # Evaluation templates: keep only first two active (even if not used here)
+            etdf = pd.read_csv(eval_templates_csv)
+            if "active" in etdf.columns:
+                etdf["active"] = False
+                etdf.loc[etdf.index[:2], "active"] = True
+            etdf.to_csv(eval_templates_csv, index=False)
+
+            # LLM models: keep only first two generation-capable models active
+            mdf = pd.read_csv(models_csv)
+            if "for_generation" in mdf.columns:
+                # reset and set first two rows to generation True
+                mdf["for_generation"] = False
+                # Preserve existing ordering; set first two rows to True
+                mdf.loc[mdf.index[:2], "for_generation"] = True
+            mdf.to_csv(models_csv, index=False)
+
+            with patch.dict(os.environ, {"DAGSTER_HOME": str(temp_dagster_home)}):
                 instance = DagsterInstance.ephemeral(tempdir=str(temp_dagster_home))
-                
-                # Import definitions - need to patch paths to use temp data
-                from daydreaming_dagster.definitions import defs
-                
-                # Create test-specific resources with temporary data root
-                from daydreaming_dagster.resources.io_managers import CSVIOManager, PartitionedTextIOManager
-                
-                test_data_root = str(temp_data_dir)
-                
-                # Override only the resources that need different paths for testing
-                patched_resources = {
-                    # Keep existing resources that don't need path changes
-                    "openrouter_client": defs.resources["openrouter_client"],
-                    "experiment_config": defs.resources["experiment_config"],
-                    
-                    # Override data root for testing
-                    "data_root": test_data_root,
-                    
-                    # Recreate simplified I/O managers with test data paths
-                    "csv_io_manager": CSVIOManager(base_path=Path(test_data_root) / "2_tasks"),
-                    "generation_prompt_io_manager": PartitionedTextIOManager(base_path=Path(test_data_root) / "3_generation" / "generation_prompts"),
-                    "generation_response_io_manager": PartitionedTextIOManager(base_path=Path(test_data_root) / "3_generation" / "generation_responses"),
-                    "evaluation_prompt_io_manager": PartitionedTextIOManager(base_path=Path(test_data_root) / "4_evaluation" / "evaluation_prompts"),
-                    "evaluation_response_io_manager": PartitionedTextIOManager(base_path=Path(test_data_root) / "4_evaluation" / "evaluation_responses"),
-                    "error_log_io_manager": CSVIOManager(base_path=Path(test_data_root) / "7_reporting"),
-                    "parsing_results_io_manager": CSVIOManager(base_path=Path(test_data_root) / "5_parsing"),
-                    "summary_results_io_manager": CSVIOManager(base_path=Path(test_data_root) / "6_summary")
-                }
-                
-                # Import the assets we want to test
+
                 from daydreaming_dagster.assets.raw_data import (
-                    concepts, llm_models, 
-                    generation_templates, evaluation_templates
+                    concepts, llm_models, generation_templates, evaluation_templates
                 )
                 from daydreaming_dagster.assets.core import (
-                    content_combinations, content_combinations_csv, 
-                    generation_tasks, evaluation_tasks
+                    content_combinations, content_combinations_csv, generation_tasks, evaluation_tasks
                 )
-                
-                # Materialize all assets in correct dependency order
-                all_assets = [
-                    # Raw data assets
-                    concepts, llm_models,
-                    generation_templates, evaluation_templates,
-                    # LLM task assets
-                    content_combinations, content_combinations_csv,
-                    generation_tasks, evaluation_tasks
-                ]
-                
+                from daydreaming_dagster.assets.llm_generation import (
+                    generation_prompt, generation_response
+                )
+                from daydreaming_dagster.resources.io_managers import (
+                    CSVIOManager, PartitionedTextIOManager
+                )
+                from daydreaming_dagster.resources.experiment_config import ExperimentConfig
+
+                resources = {
+                    "data_root": str(temp_data_root),
+                    "csv_io_manager": CSVIOManager(base_path=temp_data_root / "2_tasks"),
+                    "generation_prompt_io_manager": PartitionedTextIOManager(
+                        base_path=temp_data_root / "3_generation" / "generation_prompts"
+                    ),
+                    "generation_response_io_manager": PartitionedTextIOManager(
+                        base_path=temp_data_root / "3_generation" / "generation_responses"
+                    ),
+                    "experiment_config": ExperimentConfig(k_max=2, description_level="paragraph"),
+                }
+
+                # Materialize up to tasks once
                 result = materialize(
-                    all_assets,
-                    resources=patched_resources,
-                    instance=instance
+                    [
+                        concepts, llm_models,
+                        generation_templates, evaluation_templates,
+                        content_combinations, content_combinations_csv,
+                        generation_tasks, evaluation_tasks,
+                    ],
+                    resources=resources,
+                    instance=instance,
                 )
-                
-                assert result.success, "Full pipeline materialization should succeed"
-                
-                # Verify no empty files were created (our IO manager fix)
-                task_dir = temp_data_dir / "2_tasks"
+                assert result.success
+
+                # Verify no empty files and required files created under 2_tasks
+                task_dir = temp_data_root / "2_tasks"
                 empty_files = []
                 for file_path in task_dir.rglob("*"):
-                    if file_path.is_file() and file_path.stat().st_size <= 2:  # Empty or just whitespace
+                    if file_path.is_file() and file_path.stat().st_size <= 2:
                         empty_files.append(file_path)
-                
-                assert len(empty_files) == 0, f"Found empty files that should have been skipped: {empty_files}"
-                
-                # Verify expected files are created
+                assert len(empty_files) == 0, f"Empty files should not be created: {empty_files}"
+
                 expected_files = [
                     "generation_tasks.csv",
-                    "evaluation_tasks.csv", 
-                    "content_combinations_csv.csv"  # New normalized table
+                    "evaluation_tasks.csv",
+                    "content_combinations_csv.csv",
                 ]
-                
-                for expected_file in expected_files:
-                    file_path = task_dir / expected_file
-                    assert file_path.exists(), f"Expected file not found: {expected_file}"
-                    assert file_path.stat().st_size > 10, f"File appears to be empty: {expected_file}"
-                
-                # Test the new content_combinations_csv structure
+                for name in expected_files:
+                    p = task_dir / name
+                    assert p.exists(), f"Expected file not found: {name}"
+                    assert p.stat().st_size > 10, f"File appears empty: {name}"
+
+                # Check normalized content_combinations_csv structure and integrity
                 combinations_csv = pd.read_csv(task_dir / "content_combinations_csv.csv")
-                
-                # Verify normalized table structure
-                assert "combo_id" in combinations_csv.columns, "Should have combo_id column"
-                assert "concept_id" in combinations_csv.columns, "Should have concept_id column" 
-                assert len(combinations_csv.columns) == 2, "Should have exactly 2 columns (normalized)"
-                
-                # Verify data integrity
-                assert len(combinations_csv) > 0, "Should have combination rows"
-                
-                # Check that combo_ids follow expected format
+                assert "combo_id" in combinations_csv.columns
+                assert "concept_id" in combinations_csv.columns
+                assert len(combinations_csv.columns) == 2
+                assert len(combinations_csv) > 0
                 combo_ids = combinations_csv["combo_id"].unique()
-                assert all(cid.startswith("combo_") for cid in combo_ids), "All combo_ids should start with 'combo_'"
-                
-                # Verify concept_ids match active concepts from live data
-                active_concepts_df = pd.read_csv(temp_raw_data / "concepts" / "concepts_metadata.csv")
+                assert all(cid.startswith("combo_") for cid in combo_ids)
+
+                # Active concept IDs subset check
+                active_concepts_df = pd.read_csv(temp_data_root / "1_raw" / "concepts" / "concepts_metadata.csv")
                 expected_active_concept_ids = set(active_concepts_df[active_concepts_df["active"] == True]["concept_id"])
                 actual_concept_ids = set(combinations_csv["concept_id"].unique())
-                
-                assert actual_concept_ids.issubset(expected_active_concept_ids), \
-                    "All concept_ids in combinations should be from active concepts"
-                
-                # Test generation_tasks.csv structure
-                gen_tasks_csv = pd.read_csv(task_dir / "generation_tasks.csv")
-                assert "generation_task_id" in gen_tasks_csv.columns, "Should have generation_task_id column"
-                assert "combo_id" in gen_tasks_csv.columns, "Should have combo_id column"
-                assert "generation_template" in gen_tasks_csv.columns, "Should have generation_template column"
-                assert "generation_model" in gen_tasks_csv.columns, "Should have generation_model column"
-                
-                # Verify our new essay-inventive-synthesis template is included
-                templates_used = set(gen_tasks_csv["generation_template"].unique())
-                assert "essay-inventive-synthesis" in templates_used, \
-                    "New essay-inventive-synthesis template should be used in generation tasks"
-                
-                # Test template filtering: verify only active templates are used
-                # Load generation template metadata to check which templates should be active
-                gen_templates_metadata = pd.read_csv(temp_raw_data / "generation_templates.csv")
+                assert actual_concept_ids.issubset(expected_active_concept_ids)
+
+                # Generation tasks structure and counts vs active templates/models
+                gen_tasks_csv_path = task_dir / "generation_tasks.csv"
+                gen_tasks_csv = pd.read_csv(gen_tasks_csv_path)
+                assert "generation_task_id" in gen_tasks_csv.columns
+                assert "combo_id" in gen_tasks_csv.columns
+                assert "generation_template" in gen_tasks_csv.columns
+                assert "generation_model" in gen_tasks_csv.columns
+
+                gen_templates_metadata = pd.read_csv(temp_data_root / "1_raw" / "generation_templates.csv")
                 expected_active_templates = set(gen_templates_metadata[gen_templates_metadata["active"] == True]["template_id"].tolist())
-                
-                # Verify only active templates are used in generation tasks
-                assert templates_used == expected_active_templates, \
-                    f"Only active templates should be used. Expected: {expected_active_templates}, Got: {templates_used}"
-                
-                # Verify template filtering reduces task count as expected
-                all_templates_count = len(gen_templates_metadata)
-                active_templates_count = len(expected_active_templates)
+                templates_used = set(gen_tasks_csv["generation_template"].unique())
+                assert templates_used == expected_active_templates
+
                 combinations_count = len(combinations_csv["combo_id"].unique())
-                
-                # Load LLM models to calculate expected task count
-                llm_models_df = pd.read_csv(temp_raw_data / "llm_models.csv")
+                llm_models_df = pd.read_csv(temp_data_root / "1_raw" / "llm_models.csv")
                 generation_models_count = len(llm_models_df[llm_models_df["for_generation"] == True])
-                
-                expected_task_count = combinations_count * active_templates_count * generation_models_count
+                expected_task_count = combinations_count * len(expected_active_templates) * generation_models_count
                 actual_task_count = len(gen_tasks_csv)
-                
-                assert actual_task_count == expected_task_count, \
-                    f"Task count should match active templates. Expected: {expected_task_count} " \
-                    f"({combinations_count} combos × {active_templates_count} active templates × {generation_models_count} models), " \
-                    f"Got: {actual_task_count}"
-                
-                print(f"   Template filtering: {active_templates_count}/{all_templates_count} templates active")
-                
-                # Test evaluation_tasks.csv structure  
-                eval_tasks_csv = pd.read_csv(task_dir / "evaluation_tasks.csv")
-                assert "evaluation_task_id" in eval_tasks_csv.columns, "Should have evaluation_task_id column"
-                assert "generation_task_id" in eval_tasks_csv.columns, "Should have generation_task_id column"
-                
-                # Test metadata consistency
-                # Number of combinations should match across files
+                assert actual_task_count == expected_task_count
+
+                # Evaluation tasks basic structure and metadata consistency
+                eval_tasks_csv_path = task_dir / "evaluation_tasks.csv"
+                eval_tasks_csv = pd.read_csv(eval_tasks_csv_path)
+                assert "evaluation_task_id" in eval_tasks_csv.columns
+                assert "generation_task_id" in eval_tasks_csv.columns
+
                 unique_combos_in_combinations = len(combinations_csv["combo_id"].unique())
-                unique_combos_in_gen_tasks = len(gen_tasks_csv["combo_id"].unique()) 
-                
-                assert unique_combos_in_combinations == unique_combos_in_gen_tasks, \
-                    "Same combo_ids should appear in both content_combinations_csv and generation_tasks"
-                
-                print(f"✅ Integration test passed!")
-                print(f"   Generated {len(combinations_csv)} combination rows")
-                print(f"   Generated {len(gen_tasks_csv)} generation tasks") 
-                print(f"   Generated {len(eval_tasks_csv)} evaluation tasks")
-                print(f"   Used {len(templates_used)} templates including essay-inventive-synthesis")
-                print(f"   Active concepts: {len(actual_concept_ids)}")
+                unique_combos_in_gen_tasks = len(gen_tasks_csv["combo_id"].unique())
+                assert unique_combos_in_combinations == unique_combos_in_gen_tasks
+
+                gen_tasks_df = pd.read_csv(temp_data_root / "2_tasks" / "generation_tasks.csv")
+                # Select small set of partitions: up to 4
+                partitions = gen_tasks_df["generation_task_id"].head(4).tolist()
+                assert len(partitions) > 0
+
+                class _MockClient:
+                    def generate(self, prompt: str, model: str) -> str:
+                        return f"MOCK_RESPONSE for {model}: {prompt[:50]}"
+
+                gen_resources = {**resources, "openrouter_client": _MockClient()}
+
+                for pk in partitions:
+                    gen_res = materialize(
+                        [
+                            concepts, llm_models, generation_templates,
+                            content_combinations, generation_tasks,
+                            generation_prompt, generation_response,
+                        ],
+                        resources=gen_resources,
+                        instance=instance,
+                        partition_key=pk,
+                    )
+                    assert gen_res.success
+                    assert (temp_data_root / "3_generation" / "generation_prompts" / f"{pk}.txt").exists()
+                    assert (temp_data_root / "3_generation" / "generation_responses" / f"{pk}.txt").exists()
+
     
     def test_content_combinations_csv_normalized_structure(self):
         """Specific test for the normalized content_combinations_csv structure."""
