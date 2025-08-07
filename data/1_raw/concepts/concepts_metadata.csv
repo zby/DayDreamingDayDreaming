@@ -1,7 +1,12 @@
-concept_id,name
-dearth-ai-discoveries,Dearth of AI-driven Discoveries
-default-mode-network,Default Mode Network
-human-creativity-insight,Human Creativity and Insight
-combinatorial-search,Combinatorial Search
-generator-verifier-gap,Generator-Verifier Gap
-economic-innovation-models,Economic Innovation Models
+concept_id,name,active
+dearth-ai-discoveries,Dearth of AI-driven Discoveries,True
+default-mode-network,Default Mode Network,False
+human-creativity-insight,Human Creativity and Insight,False
+combinatorial-search,Combinatorial Search,False
+generator-verifier-gap,Generator-Verifier Gap,False
+economic-innovation-models,Economic Innovation Models,False
+experimental-concept,Experimental New Concept,False
+mind-wandering,Mind-Wandering,True
+combinatorial-creativity,Combinatorial Creativity,True
+adversarial-evaluation,Adversarial Evaluation,True
+economic-moat,Economic Moat,True

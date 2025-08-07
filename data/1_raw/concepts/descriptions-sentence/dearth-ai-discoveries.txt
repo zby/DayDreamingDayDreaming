@@ -1,1 +1,1 @@
-Current AI systems struggle to make truly groundbreaking, independent discoveries beyond their training data.
+Despite rapid AI progress, there remains a widely acknowledged shortage of major scientific breakthroughs generated autonomously by AI systems, with most advances involving automation rather than new foundational knowledge.

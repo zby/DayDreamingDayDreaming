@@ -1,0 +1,1 @@
+Adversarial evaluation is a competitive assessment method where one entity produces solutions while another critically tests them, continuously improving quality through structured challenge and refinement.
