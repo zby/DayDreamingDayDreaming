@@ -37,14 +37,13 @@ class PartitionedTextIOManager(IOManager):
 
 class CSVIOManager(IOManager):
     """
-    Enhanced CSV I/O Manager with source mapping and filtering capabilities.
+    Simple CSV I/O Manager for loading and saving DataFrames.
     Saves DataFrames as CSV files for easy inspection and debugging.
     Critical for understanding what combo_001, combo_002, etc. actually contain.
     """
     
-    def __init__(self, base_path, source_mappings: dict = None):
+    def __init__(self, base_path):
         self.base_path = Path(base_path)
-        self.source_mappings = source_mappings or {}
     
     def handle_output(self, context: OutputContext, obj):
         """Save DataFrame as CSV file"""
@@ -77,53 +76,9 @@ class CSVIOManager(IOManager):
                 raise ValueError(f"Unsupported object type for CSV saving: {type(obj)}")
     
     def load_input(self, context: InputContext):
-        """Load DataFrame - enhanced with source mapping support"""
+        """Load DataFrame from CSV file"""
         asset_name = context.asset_key.path[-1]
         
-        # Check if this asset has a source mapping (raw data)
-        if asset_name in self.source_mappings:
-            mapping = self.source_mappings[asset_name]
-            source_file_path = mapping["source_file"]
-            
-            source_file = Path(source_file_path)
-            
-            if not source_file.exists():
-                raise FileNotFoundError(f"Source file not found: {source_file}")
-            
-            df = pd.read_csv(source_file)
-            
-            # Apply filters if specified
-            if "filters" in mapping:
-                for filter_config in mapping["filters"]:
-                    column = filter_config["column"]
-                    value = filter_config["value"]
-                    operator = filter_config.get("operator", "==")
-                    
-                    if column not in df.columns:
-                        raise KeyError(f"Column '{column}' not found in DataFrame. Available columns: {list(df.columns)}")
-                    
-                    if operator == "==":
-                        # Handle boolean filtering with type safety
-                        if isinstance(value, bool):
-                            # CSV loading converts booleans to strings, so we need to handle both cases
-                            # Match only boolean True/False and their string representations, not integers
-                            if value is True:
-                                mask = df[column].map(lambda x: x is True or x == 'True')
-                            else:  # value is False
-                                mask = df[column].map(lambda x: x is False or x == 'False')
-                            df = df[mask]
-                        else:
-                            df = df[df[column] == value]
-                    elif operator == "!=":
-                        df = df[df[column] != value]
-                    elif operator == "isin":
-                        df = df[df[column].isin(value)]  # value should be a list
-                    else:
-                        raise ValueError(f"Unsupported filter operator: {operator}. Supported operators: ==, !=, isin")
-            
-            return df
-        
-        # Fall back to normal CSV loading for processed assets
         # Check if it's a tuple asset first
         combinations_file = self.base_path / f"{asset_name}_combinations.csv"
         relationships_file = self.base_path / f"{asset_name}_relationships.csv"

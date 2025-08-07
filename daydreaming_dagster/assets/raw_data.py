@@ -6,17 +6,34 @@ from typing import List
 from ..models import Concept
 from ..resources.experiment_config import ExperimentConfig
 
-@asset(group_name="raw_data", io_manager_key="enhanced_csv_io_manager")
+@asset(group_name="raw_data", required_resource_keys={"data_paths_config"})
 def concepts_metadata(context) -> pd.DataFrame:
-    """Load concepts metadata from CSV - now the source of truth."""
-    # Enhanced CSVIOManager handles loading from source via source_mappings
-    # Return empty placeholder - the real loading happens during input loading
-    return pd.DataFrame()  # Placeholder - I/O manager will handle source loading
+    """Load ALL concepts metadata from CSV - no filtering."""
+    data_paths = context.resources.data_paths_config
+    metadata_path = Path(data_paths.data_root) / "1_raw" / "concepts" / "concepts_metadata.csv"
+    
+    if not metadata_path.exists():
+        raise FileNotFoundError(f"Required concepts metadata CSV not found: {metadata_path}")
+    
+    df = pd.read_csv(metadata_path)
+    
+    context.add_output_metadata({
+        "total_concepts": MetadataValue.int(len(df)),
+        "active_concepts": MetadataValue.int(len(df[df["active"] == True]) if "active" in df.columns else 0),
+        "inactive_concepts": MetadataValue.int(len(df[df["active"] == False]) if "active" in df.columns else 0),
+        "source_file": MetadataValue.text(str(metadata_path))
+    })
+    
+    return df
 
 @asset(group_name="raw_data")
 def concepts(context, concepts_metadata: pd.DataFrame, config: ExperimentConfig) -> List[Concept]:
     """Create concept objects from metadata DataFrame."""
     total_available = len(concepts_metadata)
+    
+    # Filter for active concepts first
+    if "active" in concepts_metadata.columns:
+        concepts_metadata = concepts_metadata[concepts_metadata["active"] == True]
     
     # Apply concept filtering if configured
     if config.concept_ids_filter:
@@ -64,28 +81,102 @@ def concepts(context, concepts_metadata: pd.DataFrame, config: ExperimentConfig)
     
     return concepts
 
-@asset(group_name="raw_data", io_manager_key="enhanced_csv_io_manager")
-def generation_models(context) -> pd.DataFrame:
-    """Load generation models - filtering handled by I/O manager."""
-    # Enhanced CSVIOManager loads from data/1_raw/llm_models.csv 
-    # and filters for for_generation=True via source_mappings
-    return pd.DataFrame()  # Placeholder - I/O manager handles actual loading and filtering
+@asset(group_name="raw_data", required_resource_keys={"data_paths_config"})
+def llm_models(context) -> pd.DataFrame:
+    """Load ALL LLM models from CSV - no filtering."""
+    data_paths = context.resources.data_paths_config
+    models_path = Path(data_paths.data_root) / "1_raw" / "llm_models.csv"
+    
+    if not models_path.exists():
+        raise FileNotFoundError(f"Required LLM models CSV not found: {models_path}")
+    
+    df = pd.read_csv(models_path)
+    
+    context.add_output_metadata({
+        "total_models": MetadataValue.int(len(df)),
+        "generation_models": MetadataValue.int(len(df[df["for_generation"] == True])),
+        "evaluation_models": MetadataValue.int(len(df[df["for_evaluation"] == True])),
+        "source_file": MetadataValue.text(str(models_path))
+    })
+    
+    return df
 
-@asset(group_name="raw_data", io_manager_key="enhanced_csv_io_manager") 
-def evaluation_models(context) -> pd.DataFrame:
-    """Load evaluation models - filtering handled by I/O manager."""
-    # Enhanced CSVIOManager loads from data/1_raw/llm_models.csv
-    # and filters for for_evaluation=True via source_mappings
-    return pd.DataFrame()  # Placeholder - I/O manager handles actual loading and filtering
+@asset(group_name="raw_data", required_resource_keys={"data_paths_config"})
+def generation_templates_metadata(context) -> pd.DataFrame:
+    """Load ALL generation template metadata from CSV - no filtering."""
+    data_paths = context.resources.data_paths_config
+    metadata_path = Path(data_paths.data_root) / "1_raw" / "generation_templates.csv"
+    
+    if not metadata_path.exists():
+        raise FileNotFoundError(f"Required generation templates metadata CSV not found: {metadata_path}")
+    
+    df = pd.read_csv(metadata_path)
+    
+    context.add_output_metadata({
+        "total_templates": MetadataValue.int(len(df)),
+        "active_templates": MetadataValue.int(len(df[df["active"] == True]) if "active" in df.columns else 0),
+        "inactive_templates": MetadataValue.int(len(df[df["active"] == False]) if "active" in df.columns else 0),
+        "source_file": MetadataValue.text(str(metadata_path))
+    })
+    
+    return df
 
-@asset(group_name="raw_data", io_manager_key="generation_template_io_manager")
+@asset(group_name="raw_data", required_resource_keys={"data_paths_config"})
 def generation_templates(context) -> dict[str, str]:
-    """Load active generation templates - CSV metadata + file loading in one stage."""
-    # TemplateIOManager handles both CSV filtering and file loading
-    return {}  # Placeholder - I/O manager handles actual loading
+    """Load ALL generation templates from directory - no filtering."""
+    data_paths = context.resources.data_paths_config
+    templates_dir = Path(data_paths.data_root) / "1_raw" / "generation_templates"
+    
+    templates = {}
+    if templates_dir.exists():
+        for template_file in templates_dir.glob("*.txt"):
+            template_name = template_file.stem
+            templates[template_name] = template_file.read_text().strip()
+    
+    context.add_output_metadata({
+        "template_count": MetadataValue.int(len(templates)),
+        "templates_dir": MetadataValue.text(str(templates_dir)),
+        "template_names": MetadataValue.text(str(list(templates.keys())))
+    })
+    
+    return templates
 
-@asset(group_name="raw_data", io_manager_key="evaluation_template_io_manager")
+@asset(group_name="raw_data", required_resource_keys={"data_paths_config"})
+def evaluation_templates_metadata(context) -> pd.DataFrame:
+    """Load ALL evaluation template metadata from CSV - no filtering."""
+    data_paths = context.resources.data_paths_config
+    metadata_path = Path(data_paths.data_root) / "1_raw" / "evaluation_templates.csv"
+    
+    if not metadata_path.exists():
+        raise FileNotFoundError(f"Required evaluation templates metadata CSV not found: {metadata_path}")
+    
+    df = pd.read_csv(metadata_path)
+    
+    context.add_output_metadata({
+        "total_templates": MetadataValue.int(len(df)),
+        "active_templates": MetadataValue.int(len(df[df["active"] == True]) if "active" in df.columns else 0),
+        "inactive_templates": MetadataValue.int(len(df[df["active"] == False]) if "active" in df.columns else 0),
+        "source_file": MetadataValue.text(str(metadata_path))
+    })
+    
+    return df
+
+@asset(group_name="raw_data", required_resource_keys={"data_paths_config"})
 def evaluation_templates(context) -> dict[str, str]:
-    """Load active evaluation templates - CSV metadata + file loading in one stage."""
-    # TemplateIOManager handles both CSV filtering and file loading
-    return {}  # Placeholder - I/O manager handles actual loading
+    """Load ALL evaluation templates from directory - no filtering."""
+    data_paths = context.resources.data_paths_config
+    templates_dir = Path(data_paths.data_root) / "1_raw" / "evaluation_templates"
+    
+    templates = {}
+    if templates_dir.exists():
+        for template_file in templates_dir.glob("*.txt"):
+            template_name = template_file.stem
+            templates[template_name] = template_file.read_text().strip()
+    
+    context.add_output_metadata({
+        "template_count": MetadataValue.int(len(templates)),
+        "templates_dir": MetadataValue.text(str(templates_dir)),
+        "template_names": MetadataValue.text(str(list(templates.keys())))
+    })
+    
+    return templates

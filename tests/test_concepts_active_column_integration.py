@@ -30,67 +30,80 @@ class TestConceptsActiveColumnIntegration:
         assert len(active_concepts) > 0, "Should have at least one active concept"
         assert len(inactive_concepts) > 0, "Should have at least one inactive concept"
     
-    def test_enhanced_csv_io_manager_loads_active_concepts_only(self):
-        """Test that enhanced CSV I/O manager filters to active concepts only."""
+    def test_concepts_asset_filters_for_active_concepts_only(self):
+        """Test that concepts asset filters for active concepts only."""
+        # This test now verifies that filtering happens in the concepts asset itself
+        # rather than in the I/O manager, which aligns with our new architecture
+        
+        # Test data with mixed active/inactive concepts
+        test_metadata = pd.DataFrame([
+            {"concept_id": "active-1", "name": "Active 1", "active": True},
+            {"concept_id": "active-2", "name": "Active 2", "active": True},
+            {"concept_id": "inactive-1", "name": "Inactive 1", "active": False},
+        ])
+        
+        # Import the actual concepts asset function and test its filtering logic
+        from daydreaming_dagster.assets.raw_data import concepts
+        from daydreaming_dagster.resources.experiment_config import ExperimentConfig
+        from dagster import build_asset_context
+        
+        # Create a proper Dagster context for testing
+        config = ExperimentConfig(k_max=2, description_level="paragraph")
+        
+        # Create temporary directory structure for description files
         with tempfile.TemporaryDirectory() as temp_dir:
-            temp_csv = Path(temp_dir) / "test_concepts.csv"
+            desc_dir = Path(temp_dir) / "descriptions-paragraph"
+            desc_dir.mkdir(parents=True)
+            desc_dir.joinpath("active-1.txt").write_text("Active 1 description")
+            desc_dir.joinpath("active-2.txt").write_text("Active 2 description")
+            desc_dir.joinpath("inactive-1.txt").write_text("Inactive 1 description")
             
-            # Test data with mixed active/inactive concepts
-            test_data = pd.DataFrame([
-                {"concept_id": "active-1", "name": "Active 1", "active": True},
-                {"concept_id": "active-2", "name": "Active 2", "active": True},
-                {"concept_id": "inactive-1", "name": "Inactive 1", "active": False},
-            ])
-            test_data.to_csv(temp_csv, index=False)
-            
-            # Create I/O manager with active filtering
-            io_manager = CSVIOManager(
-                base_path=Path(temp_dir),
-                source_mappings={
-                    "concepts_metadata": {
-                        "source_file": str(temp_csv),
-                        "filters": [{"column": "active", "value": True}]
-                    }
-                }
-            )
-            
-            # Test filtering
-            mock_context = Mock()
-            mock_context.asset_key.path = ["concepts_metadata"]
-            
-            result = io_manager.load_input(mock_context)
-            
-            assert len(result) == 2, "Should return only active concepts"
-            assert all(result["active"] == True), "All returned concepts should be active"
-            
-            returned_ids = set(result["concept_id"].tolist())
-            expected_ids = {"active-1", "active-2"}
-            assert returned_ids == expected_ids, "Should return correct active concepts"
+            # Patch the data path to point to our test directory
+            from unittest.mock import patch
+            with patch('daydreaming_dagster.assets.raw_data.Path') as mock_path:
+                def path_side_effect(arg):
+                    if arg == "data/1_raw/concepts/descriptions-paragraph":
+                        return desc_dir
+                    return Path(arg)
+                mock_path.side_effect = path_side_effect
+                
+                # Create proper asset context
+                context = build_asset_context()
+                
+                # Call the concepts asset function directly
+                result_concepts = concepts(context, test_metadata, config)
+                
+                # Verify only active concepts are returned
+                assert len(result_concepts) == 2, "Should return only active concepts"
+                concept_ids = {concept.concept_id for concept in result_concepts}
+                expected_ids = {"active-1", "active-2"}
+                assert concept_ids == expected_ids, "Should return correct active concepts"
 
-    def test_dagster_definitions_have_active_filtering_configured(self):
-        """Test that Dagster definitions properly configure active filtering."""
-        enhanced_io_manager = defs.resources["enhanced_csv_io_manager"]
+    def test_dagster_definitions_use_simplified_architecture(self):
+        """Test that Dagster definitions use the new simplified architecture."""
+        # Verify we have the simplified CSV I/O manager instead of enhanced one
+        csv_io_manager = defs.resources["csv_io_manager"]
         
-        assert isinstance(enhanced_io_manager, CSVIOManager)
+        assert isinstance(csv_io_manager, CSVIOManager)
         
-        # Check source mappings configuration
-        source_mappings = enhanced_io_manager.source_mappings
-        concepts_mapping = source_mappings["concepts_metadata"]
+        # Verify we no longer have the enhanced_csv_io_manager  
+        assert "enhanced_csv_io_manager" not in defs.resources, "Should not have enhanced_csv_io_manager"
         
-        assert "filters" in concepts_mapping, "Should have filters configured"
+        # Verify we have the new merged assets
+        asset_names = {asset.key.to_user_string() for asset in defs.assets}
         
-        filters = concepts_mapping["filters"]
-        active_filter = next((f for f in filters if f.get("column") == "active"), None)
-        
-        assert active_filter is not None, "Should have active column filter"
-        assert active_filter.get("value") == True, "Should filter for active=True"
+        assert "llm_models" in asset_names, "Should have merged llm_models asset"
+        assert "generation_templates" in asset_names, "Should have generation_templates asset"
+        assert "evaluation_templates" in asset_names, "Should have evaluation_templates asset"
+        assert "generation_models" not in asset_names, "Should not have separate generation_models asset"
+        assert "evaluation_models" not in asset_names, "Should not have separate evaluation_models asset"
 
 
 class TestBackwardCompatibility:
     """Test that existing functionality still works."""
     
-    def test_existing_model_filtering_still_works(self):
-        """Test that existing generation/evaluation model filtering works."""
+    def test_model_data_structure_still_works(self):
+        """Test that model data structure is still compatible."""
         models_csv_path = Path("data/1_raw/llm_models.csv")
         assert models_csv_path.exists(), f"Required models CSV not found: {models_csv_path}"
         
@@ -103,15 +116,22 @@ class TestBackwardCompatibility:
         assert len(generation_models) > 0, "Should have generation models"
         assert len(evaluation_models) > 0, "Should have evaluation models"
         
-        # Verify definitions still configure model filtering correctly
-        enhanced_io_manager = defs.resources["enhanced_csv_io_manager"]
-        source_mappings = enhanced_io_manager.source_mappings
+        # Verify the llm_models asset loads all models and can be filtered by core assets
+        from daydreaming_dagster.assets.raw_data import llm_models
+        from daydreaming_dagster.resources.data_paths_config import DataPathsConfig
+        from dagster import build_asset_context
         
-        gen_filters = source_mappings["generation_models"]["filters"]
-        eval_filters = source_mappings["evaluation_models"]["filters"]
+        # Create proper asset context with resources
+        context = build_asset_context(resources={"data_paths_config": DataPathsConfig()})
         
-        gen_filter = next(f for f in gen_filters if f["column"] == "for_generation")
-        eval_filter = next(f for f in eval_filters if f["column"] == "for_evaluation")
+        # Load all models using the new asset
+        all_models = llm_models(context)
         
-        assert gen_filter["value"] == True
-        assert eval_filter["value"] == True
+        # Verify filtering still works (now done in core assets)
+        generation_filtered = all_models[all_models["for_generation"] == True]
+        evaluation_filtered = all_models[all_models["for_evaluation"] == True]
+        
+        assert len(generation_filtered) > 0, "Should be able to filter for generation models"
+        assert len(evaluation_filtered) > 0, "Should be able to filter for evaluation models"
+        assert len(all_models) >= len(generation_filtered), "All models should include generation models"
+        assert len(all_models) >= len(evaluation_filtered), "All models should include evaluation models"

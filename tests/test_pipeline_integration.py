@@ -56,7 +56,7 @@ class TestPipelineIntegration:
                 
                 # Create test-specific DataPathsConfig and override resources cleanly
                 from daydreaming_dagster.resources.data_paths_config import DataPathsConfig
-                from daydreaming_dagster.resources.io_managers import CSVIOManager, TemplateIOManager, PartitionedTextIOManager
+                from daydreaming_dagster.resources.io_managers import CSVIOManager, PartitionedTextIOManager
                 
                 test_data_paths = DataPathsConfig(data_root=str(temp_data_dir))
                 
@@ -69,33 +69,22 @@ class TestPipelineIntegration:
                     # Override data path config for testing
                     "data_paths_config": test_data_paths,
                     
-                    # Recreate I/O managers with test data paths
-                    "enhanced_csv_io_manager": CSVIOManager(
-                        base_path=test_data_paths.tasks_dir,
-                        source_mappings={
-                            "concepts_metadata": {
-                                "source_file": str(test_data_paths.concepts_metadata_csv),
-                                "filters": [{"column": "active", "value": True}]
-                            },
-                            "generation_models": {
-                                "source_file": str(test_data_paths.llm_models_csv),
-                                "filters": [{"column": "for_generation", "value": True}]
-                            },
-                            "evaluation_models": {
-                                "source_file": str(test_data_paths.llm_models_csv),
-                                "filters": [{"column": "for_evaluation", "value": True}]
-                            }
-                        }
-                    ),
+                    # Recreate simplified I/O managers with test data paths
                     "csv_io_manager": CSVIOManager(base_path=test_data_paths.tasks_dir),
-                    "generation_template_io_manager": TemplateIOManager(data_paths_config=test_data_paths),
-                    "evaluation_template_io_manager": TemplateIOManager(data_paths_config=test_data_paths)
+                    "generation_prompt_io_manager": PartitionedTextIOManager(base_path=test_data_paths.generation_prompts_dir),
+                    "generation_response_io_manager": PartitionedTextIOManager(base_path=test_data_paths.generation_responses_dir),
+                    "evaluation_prompt_io_manager": PartitionedTextIOManager(base_path=test_data_paths.evaluation_prompts_dir),
+                    "evaluation_response_io_manager": PartitionedTextIOManager(base_path=test_data_paths.evaluation_responses_dir),
+                    "error_log_io_manager": CSVIOManager(base_path=test_data_paths.reporting_dir),
+                    "parsing_results_io_manager": CSVIOManager(base_path=test_data_paths.parsing_results_dir),
+                    "summary_results_io_manager": CSVIOManager(base_path=test_data_paths.summary_results_dir)
                 }
                 
                 # Import the assets we want to test
                 from daydreaming_dagster.assets.raw_data import (
-                    concepts_metadata, concepts, generation_models, evaluation_models,
-                    generation_templates, evaluation_templates
+                    concepts_metadata, concepts, llm_models, 
+                    generation_templates, generation_templates_metadata,
+                    evaluation_templates, evaluation_templates_metadata
                 )
                 from daydreaming_dagster.assets.core import (
                     content_combinations, content_combinations_csv, 
@@ -105,8 +94,9 @@ class TestPipelineIntegration:
                 # Materialize all assets in correct dependency order
                 all_assets = [
                     # Raw data assets
-                    concepts_metadata, concepts, generation_models, evaluation_models,
-                    generation_templates, evaluation_templates,
+                    concepts_metadata, concepts, llm_models,
+                    generation_templates, generation_templates_metadata,
+                    evaluation_templates, evaluation_templates_metadata,
                     # LLM task assets
                     content_combinations, content_combinations_csv,
                     generation_tasks, evaluation_tasks
@@ -176,6 +166,34 @@ class TestPipelineIntegration:
                 assert "essay-inventive-synthesis" in templates_used, \
                     "New essay-inventive-synthesis template should be used in generation tasks"
                 
+                # Test template filtering: verify only active templates are used
+                # Load generation template metadata to check which templates should be active
+                gen_templates_metadata = pd.read_csv(temp_raw_data / "generation_templates.csv")
+                expected_active_templates = set(gen_templates_metadata[gen_templates_metadata["active"] == True]["template_id"].tolist())
+                
+                # Verify only active templates are used in generation tasks
+                assert templates_used == expected_active_templates, \
+                    f"Only active templates should be used. Expected: {expected_active_templates}, Got: {templates_used}"
+                
+                # Verify template filtering reduces task count as expected
+                all_templates_count = len(gen_templates_metadata)
+                active_templates_count = len(expected_active_templates)
+                combinations_count = len(combinations_csv["combo_id"].unique())
+                
+                # Load LLM models to calculate expected task count
+                llm_models_df = pd.read_csv(temp_raw_data / "llm_models.csv")
+                generation_models_count = len(llm_models_df[llm_models_df["for_generation"] == True])
+                
+                expected_task_count = combinations_count * active_templates_count * generation_models_count
+                actual_task_count = len(gen_tasks_csv)
+                
+                assert actual_task_count == expected_task_count, \
+                    f"Task count should match active templates. Expected: {expected_task_count} " \
+                    f"({combinations_count} combos × {active_templates_count} active templates × {generation_models_count} models), " \
+                    f"Got: {actual_task_count}"
+                
+                print(f"   Template filtering: {active_templates_count}/{all_templates_count} templates active")
+                
                 # Test evaluation_tasks.csv structure  
                 eval_tasks_csv = pd.read_csv(task_dir / "evaluation_tasks.csv")
                 assert "evaluation_task_id" in eval_tasks_csv.columns, "Should have evaluation_task_id column"
@@ -241,15 +259,6 @@ class TestPipelineIntegration:
                 
                 resources = {
                     "data_paths_config": test_data_paths,
-                    "enhanced_csv_io_manager": CSVIOManager(
-                        base_path=test_data_paths.tasks_dir,
-                        source_mappings={
-                            "concepts_metadata": {
-                                "source_file": str(test_data_paths.concepts_metadata_csv),
-                                "filters": [{"column": "active", "value": True}]
-                            }
-                        }
-                    ),
                     "csv_io_manager": CSVIOManager(base_path=test_data_paths.tasks_dir),
                     "config": ExperimentConfig(k_max=2, description_level="paragraph")
                 }
@@ -288,3 +297,114 @@ class TestPipelineIntegration:
                     "combo_ids should follow format combo_XXX"
                 
                 print("✅ Normalized content_combinations_csv test passed!")
+
+    def test_template_filtering_respects_active_column(self):
+        """Specific test for template filtering based on active column in metadata CSV."""
+        with tempfile.TemporaryDirectory() as temp_root:
+            temp_dagster_home = Path(temp_root) / "dagster_home"
+            temp_data_dir = Path(temp_root) / "data"
+            
+            temp_dagster_home.mkdir()
+            temp_data_dir.mkdir()
+            (temp_data_dir / "1_raw").mkdir()
+            (temp_data_dir / "2_tasks").mkdir()
+            
+            # Create test data with explicit template filtering scenario
+            raw_data = temp_data_dir / "1_raw"
+            
+            # Create minimal concepts data
+            concepts_dir = raw_data / "concepts"
+            concepts_dir.mkdir()
+            
+            test_concepts = pd.DataFrame([
+                {"concept_id": "test-concept-1", "name": "Test Concept 1", "active": True},
+                {"concept_id": "test-concept-2", "name": "Test Concept 2", "active": True},
+            ])
+            test_concepts.to_csv(concepts_dir / "concepts_metadata.csv", index=False)
+            
+            desc_para_dir = concepts_dir / "descriptions-paragraph"
+            desc_para_dir.mkdir()
+            desc_para_dir.joinpath("test-concept-1.txt").write_text("Test concept 1 description")
+            desc_para_dir.joinpath("test-concept-2.txt").write_text("Test concept 2 description")
+            
+            # Create LLM models data (1 generation model for simplicity)
+            test_models = pd.DataFrame([
+                {"id": "test_gen_model", "model": "test/model", "provider": "test", "display_name": "Test Model", "for_generation": True, "for_evaluation": False, "specialization": "test"}
+            ])
+            test_models.to_csv(raw_data / "llm_models.csv", index=False)
+            
+            # Create generation templates metadata with mixed active/inactive
+            test_gen_templates_metadata = pd.DataFrame([
+                {"template_id": "active-template-1", "template_name": "Active Template 1", "description": "Test active template 1", "active": True},
+                {"template_id": "active-template-2", "template_name": "Active Template 2", "description": "Test active template 2", "active": True},
+                {"template_id": "inactive-template-1", "template_name": "Inactive Template 1", "description": "Test inactive template", "active": False},
+                {"template_id": "inactive-template-2", "template_name": "Inactive Template 2", "description": "Test inactive template", "active": False},
+            ])
+            test_gen_templates_metadata.to_csv(raw_data / "generation_templates.csv", index=False)
+            
+            # Create actual template files (all of them, including inactive ones)
+            gen_templates_dir = raw_data / "generation_templates"
+            gen_templates_dir.mkdir()
+            gen_templates_dir.joinpath("active-template-1.txt").write_text("Active template 1 content")
+            gen_templates_dir.joinpath("active-template-2.txt").write_text("Active template 2 content")  
+            gen_templates_dir.joinpath("inactive-template-1.txt").write_text("Inactive template 1 content")
+            gen_templates_dir.joinpath("inactive-template-2.txt").write_text("Inactive template 2 content")
+            
+            with patch.dict(os.environ, {'DAGSTER_HOME': str(temp_dagster_home)}):
+                instance = DagsterInstance.ephemeral(tempdir=str(temp_dagster_home))
+                
+                from daydreaming_dagster.assets.raw_data import (
+                    concepts_metadata, concepts, llm_models, 
+                    generation_templates, generation_templates_metadata
+                )
+                from daydreaming_dagster.assets.core import (
+                    content_combinations, generation_tasks
+                )
+                from daydreaming_dagster.resources.io_managers import CSVIOManager
+                from daydreaming_dagster.resources.experiment_config import ExperimentConfig
+                from daydreaming_dagster.resources.data_paths_config import DataPathsConfig
+                
+                test_data_paths = DataPathsConfig(data_root=str(temp_data_dir))
+                
+                resources = {
+                    "data_paths_config": test_data_paths,
+                    "csv_io_manager": CSVIOManager(base_path=test_data_paths.tasks_dir),
+                    "config": ExperimentConfig(k_max=2, description_level="paragraph")
+                }
+                
+                result = materialize([
+                    concepts_metadata, concepts, llm_models,
+                    generation_templates, generation_templates_metadata,
+                    content_combinations, generation_tasks
+                ], resources=resources, instance=instance)
+                
+                assert result.success, "Template filtering test materialization should succeed"
+                
+                # Load results and verify filtering
+                gen_tasks_file = temp_data_dir / "2_tasks" / "generation_tasks.csv"
+                assert gen_tasks_file.exists(), "generation_tasks.csv should be created"
+                
+                gen_tasks_df = pd.read_csv(gen_tasks_file)
+                
+                # Check that only active templates are used
+                templates_used = set(gen_tasks_df["generation_template"].unique())
+                expected_active_templates = {"active-template-1", "active-template-2"}
+                
+                assert templates_used == expected_active_templates, \
+                    f"Only active templates should be used. Expected: {expected_active_templates}, Got: {templates_used}"
+                
+                # Verify expected task count:
+                # 1 concept combination (k_max=2, we have 2 concepts) × 2 active templates × 1 model = 2 tasks
+                expected_task_count = 1 * 2 * 1  
+                actual_task_count = len(gen_tasks_df)
+                
+                assert actual_task_count == expected_task_count, \
+                    f"Expected {expected_task_count} tasks (1 combo × 2 active templates × 1 model), got {actual_task_count}"
+                
+                # Verify inactive templates are not used
+                assert "inactive-template-1" not in templates_used, "Inactive templates should not be used"
+                assert "inactive-template-2" not in templates_used, "Inactive templates should not be used"
+                
+                print(f"✅ Template filtering test passed!")
+                print(f"   Used {len(templates_used)} active templates out of {len(test_gen_templates_metadata)} total")
+                print(f"   Generated {actual_task_count} tasks as expected")

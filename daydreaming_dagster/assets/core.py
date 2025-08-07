@@ -89,14 +89,29 @@ def content_combinations_csv(
 def generation_tasks(
     context,
     content_combinations: List[ContentCombination],
-    generation_models: pd.DataFrame,
+    llm_models: pd.DataFrame,
     generation_templates: dict,
+    generation_templates_metadata: pd.DataFrame,
 ) -> pd.DataFrame:
     """Create generation tasks and save as CSV for understanding task IDs."""
+    # Filter for generation models
+    generation_models = llm_models[llm_models["for_generation"] == True]
+    
+    # Filter for active templates based on metadata
+    active_template_metadata = generation_templates_metadata[generation_templates_metadata["active"] == True]
+    active_template_ids = set(active_template_metadata["template_id"].tolist())
+    
+    # Filter generation_templates dict to only include active templates
+    active_generation_templates = {
+        template_id: template_content 
+        for template_id, template_content in generation_templates.items()
+        if template_id in active_template_ids
+    }
+    
     tasks_df = create_generation_tasks_from_content_combinations(
         content_combinations, 
         generation_models, 
-        generation_templates
+        active_generation_templates
     )
     
     # Clear existing partitions and register new ones for LLM processing
@@ -139,18 +154,33 @@ def generation_tasks(
 def evaluation_tasks(
     context,
     generation_tasks: pd.DataFrame,
-    evaluation_models: pd.DataFrame,
+    llm_models: pd.DataFrame,
     evaluation_templates: dict,
+    evaluation_templates_metadata: pd.DataFrame,
 ) -> pd.DataFrame:
     """Create evaluation tasks and save as CSV for understanding task IDs."""
     # COMMENTED OUT: Multiple runs feature for future use
     # config = context.resources.config
     # num_evaluation_runs = getattr(config, 'num_evaluation_runs', 3)  # Default to 3 runs
     
+    # Filter for evaluation models
+    evaluation_models = llm_models[llm_models["for_evaluation"] == True]
+    
+    # Filter for active templates based on metadata
+    active_template_metadata = evaluation_templates_metadata[evaluation_templates_metadata["active"] == True]
+    active_template_ids = set(active_template_metadata["template_id"].tolist())
+    
+    # Filter evaluation_templates dict to only include active templates
+    active_evaluation_templates = {
+        template_id: template_content 
+        for template_id, template_content in evaluation_templates.items()
+        if template_id in active_template_ids
+    }
+    
     tasks_df = create_evaluation_tasks_from_generation_tasks(
         generation_tasks,
         evaluation_models, 
-        evaluation_templates
+        active_evaluation_templates
         # num_evaluation_runs=num_evaluation_runs  # COMMENTED OUT
     )
     

@@ -21,10 +21,11 @@ from daydreaming_dagster.assets.results_summary import (
 from daydreaming_dagster.assets.raw_data import (
     concepts,
     concepts_metadata,
-    generation_models,
-    evaluation_models,
+    llm_models,
     generation_templates,
-    evaluation_templates
+    generation_templates_metadata,
+    evaluation_templates,
+    evaluation_templates_metadata
 )
 from daydreaming_dagster.assets.core import (
     content_combinations,
@@ -37,21 +38,19 @@ from daydreaming_dagster.resources.experiment_config import ExperimentConfig
 from daydreaming_dagster.resources.data_paths_config import DataPathsConfig
 from daydreaming_dagster.resources.io_managers import (
     PartitionedTextIOManager,
-    CSVIOManager,
-    TemplateIOManager
+    CSVIOManager
 )
 
 defs = Definitions(
     assets=[
-        # Raw data assets (now use enhanced I/O managers)
-        concepts_metadata,  # Now source of truth, loads from CSV
-        concepts,           # Now depends on concepts_metadata
-        generation_models,
-        evaluation_models,
-        
-        # Template assets (single-stage loading)
-        generation_templates,
-        evaluation_templates,
+        # Raw data assets (now load all data, no filtering)
+        concepts_metadata,              # Loads ALL concepts metadata
+        concepts,                       # Filters for active concepts
+        llm_models,                     # Loads ALL models
+        generation_templates,           # Loads ALL generation templates
+        generation_templates_metadata,  # Loads ALL generation template metadata
+        evaluation_templates,           # Loads ALL evaluation templates
+        evaluation_templates_metadata,  # Loads ALL evaluation template metadata
         
         # Core processing assets
         content_combinations,
@@ -76,41 +75,19 @@ defs = Definitions(
     resources={
         "openrouter_client": LLMClientResource(),
         "config": ExperimentConfig(),
-        "data_paths_config": DataPathsConfig(),
         
-        # Enhanced CSV I/O manager with source mappings - now uses DataPathsConfig
-        "enhanced_csv_io_manager": CSVIOManager(
-            base_path=DataPathsConfig().tasks_dir,
-            source_mappings={
-                # Raw data assets that load from absolute paths
-                "concepts_metadata": {
-                    "source_file": str(DataPathsConfig().concepts_metadata_csv),
-                    "filters": [{"column": "active", "value": True}]
-                },
-                "generation_models": {
-                    "source_file": str(DataPathsConfig().llm_models_csv),
-                    "filters": [{"column": "for_generation", "value": True}]
-                },
-                "evaluation_models": {
-                    "source_file": str(DataPathsConfig().llm_models_csv),
-                    "filters": [{"column": "for_evaluation", "value": True}]
-                },
-            }
-        ),
+        # Create single shared DataPathsConfig instance
+        "data_paths_config": (data_paths := DataPathsConfig()),
         
-        # Template I/O managers - now uses DataPathsConfig
-        "generation_template_io_manager": TemplateIOManager(data_paths_config=DataPathsConfig()),
-        "evaluation_template_io_manager": TemplateIOManager(data_paths_config=DataPathsConfig()),
-        
-        # Other I/O managers - now uses explicit paths
-        "csv_io_manager": CSVIOManager(base_path=DataPathsConfig().tasks_dir),
-        "generation_prompt_io_manager": PartitionedTextIOManager(base_path=DataPathsConfig().generation_prompts_dir),
-        "generation_response_io_manager": PartitionedTextIOManager(base_path=DataPathsConfig().generation_responses_dir),
-        "evaluation_prompt_io_manager": PartitionedTextIOManager(base_path=DataPathsConfig().evaluation_prompts_dir),
-        "evaluation_response_io_manager": PartitionedTextIOManager(base_path=DataPathsConfig().evaluation_responses_dir),
-        "error_log_io_manager": CSVIOManager(base_path=DataPathsConfig().reporting_dir),
-        "parsing_results_io_manager": CSVIOManager(base_path=DataPathsConfig().parsing_results_dir),
-        "summary_results_io_manager": CSVIOManager(base_path=DataPathsConfig().summary_results_dir)
+        # Simplified I/O managers - no complex source mappings or filtering
+        "csv_io_manager": CSVIOManager(base_path=data_paths.tasks_dir),
+        "generation_prompt_io_manager": PartitionedTextIOManager(base_path=data_paths.generation_prompts_dir),
+        "generation_response_io_manager": PartitionedTextIOManager(base_path=data_paths.generation_responses_dir),
+        "evaluation_prompt_io_manager": PartitionedTextIOManager(base_path=data_paths.evaluation_prompts_dir),
+        "evaluation_response_io_manager": PartitionedTextIOManager(base_path=data_paths.evaluation_responses_dir),
+        "error_log_io_manager": CSVIOManager(base_path=data_paths.reporting_dir),
+        "parsing_results_io_manager": CSVIOManager(base_path=data_paths.parsing_results_dir),
+        "summary_results_io_manager": CSVIOManager(base_path=data_paths.summary_results_dir)
     },
     executor=multiprocess_executor.configured({"max_concurrent": 10})
     # Note: Pool concurrency limits are set via CLI: dagster instance concurrency set llm_api 1
