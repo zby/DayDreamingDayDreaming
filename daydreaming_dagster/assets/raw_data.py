@@ -6,11 +6,11 @@ from typing import List
 from ..models import Concept
 from ..resources.experiment_config import ExperimentConfig
 
-@asset(group_name="raw_data", required_resource_keys={"data_paths_config"})
+@asset(group_name="raw_data", required_resource_keys={"data_root"})
 def concepts_metadata(context) -> pd.DataFrame:
     """Load ALL concepts metadata from CSV - no filtering."""
-    data_paths = context.resources.data_paths_config
-    metadata_path = Path(data_paths.data_root) / "1_raw" / "concepts" / "concepts_metadata.csv"
+    data_root = context.resources.data_root
+    metadata_path = Path(data_root) / "1_raw" / "concepts" / "concepts_metadata.csv"
     
     if not metadata_path.exists():
         raise FileNotFoundError(f"Required concepts metadata CSV not found: {metadata_path}")
@@ -81,11 +81,11 @@ def concepts(context, concepts_metadata: pd.DataFrame, config: ExperimentConfig)
     
     return concepts
 
-@asset(group_name="raw_data", required_resource_keys={"data_paths_config"})
+@asset(group_name="raw_data", required_resource_keys={"data_root"})
 def llm_models(context) -> pd.DataFrame:
     """Load ALL LLM models from CSV - no filtering."""
-    data_paths = context.resources.data_paths_config
-    models_path = Path(data_paths.data_root) / "1_raw" / "llm_models.csv"
+    data_root = context.resources.data_root
+    models_path = Path(data_root) / "1_raw" / "llm_models.csv"
     
     if not models_path.exists():
         raise FileNotFoundError(f"Required LLM models CSV not found: {models_path}")
@@ -101,11 +101,11 @@ def llm_models(context) -> pd.DataFrame:
     
     return df
 
-@asset(group_name="raw_data", required_resource_keys={"data_paths_config"})
+@asset(group_name="raw_data", required_resource_keys={"data_root"})
 def generation_templates_metadata(context) -> pd.DataFrame:
     """Load ALL generation template metadata from CSV - no filtering."""
-    data_paths = context.resources.data_paths_config
-    metadata_path = Path(data_paths.data_root) / "1_raw" / "generation_templates.csv"
+    data_root = context.resources.data_root
+    metadata_path = Path(data_root) / "1_raw" / "generation_templates.csv"
     
     if not metadata_path.exists():
         raise FileNotFoundError(f"Required generation templates metadata CSV not found: {metadata_path}")
@@ -121,11 +121,11 @@ def generation_templates_metadata(context) -> pd.DataFrame:
     
     return df
 
-@asset(group_name="raw_data", required_resource_keys={"data_paths_config"})
+@asset(group_name="raw_data", required_resource_keys={"data_root"})
 def generation_templates(context) -> dict[str, str]:
     """Load ALL generation templates from directory - no filtering."""
-    data_paths = context.resources.data_paths_config
-    templates_dir = Path(data_paths.data_root) / "1_raw" / "generation_templates"
+    data_root = context.resources.data_root
+    templates_dir = Path(data_root) / "1_raw" / "generation_templates"
     
     templates = {}
     if templates_dir.exists():
@@ -141,11 +141,11 @@ def generation_templates(context) -> dict[str, str]:
     
     return templates
 
-@asset(group_name="raw_data", required_resource_keys={"data_paths_config"})
+@asset(group_name="raw_data", required_resource_keys={"data_root"})
 def evaluation_templates_metadata(context) -> pd.DataFrame:
     """Load ALL evaluation template metadata from CSV - no filtering."""
-    data_paths = context.resources.data_paths_config
-    metadata_path = Path(data_paths.data_root) / "1_raw" / "evaluation_templates.csv"
+    data_root = context.resources.data_root
+    metadata_path = Path(data_root) / "1_raw" / "evaluation_templates.csv"
     
     if not metadata_path.exists():
         raise FileNotFoundError(f"Required evaluation templates metadata CSV not found: {metadata_path}")
@@ -161,11 +161,11 @@ def evaluation_templates_metadata(context) -> pd.DataFrame:
     
     return df
 
-@asset(group_name="raw_data", required_resource_keys={"data_paths_config"})
+@asset(group_name="raw_data", required_resource_keys={"data_root"})
 def evaluation_templates(context) -> dict[str, str]:
     """Load ALL evaluation templates from directory - no filtering."""
-    data_paths = context.resources.data_paths_config
-    templates_dir = Path(data_paths.data_root) / "1_raw" / "evaluation_templates"
+    data_root = context.resources.data_root
+    templates_dir = Path(data_root) / "1_raw" / "evaluation_templates"
     
     templates = {}
     if templates_dir.exists():

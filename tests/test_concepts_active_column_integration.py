@@ -7,7 +7,6 @@ from unittest.mock import Mock
 
 from daydreaming_dagster.definitions import defs
 from daydreaming_dagster.resources.io_managers import CSVIOManager
-from daydreaming_dagster.resources.data_paths_config import DataPathsConfig
 
 
 class TestConceptsActiveColumnIntegration:
@@ -118,11 +117,10 @@ class TestBackwardCompatibility:
         
         # Verify the llm_models asset loads all models and can be filtered by core assets
         from daydreaming_dagster.assets.raw_data import llm_models
-        from daydreaming_dagster.resources.data_paths_config import DataPathsConfig
         from dagster import build_asset_context
         
         # Create proper asset context with resources
-        context = build_asset_context(resources={"data_paths_config": DataPathsConfig()})
+        context = build_asset_context(resources={"data_root": "data"})
         
         # Load all models using the new asset
         all_models = llm_models(context)

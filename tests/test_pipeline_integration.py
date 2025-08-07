@@ -54,11 +54,10 @@ class TestPipelineIntegration:
                 # Import definitions - need to patch paths to use temp data
                 from daydreaming_dagster.definitions import defs
                 
-                # Create test-specific DataPathsConfig and override resources cleanly
-                from daydreaming_dagster.resources.data_paths_config import DataPathsConfig
+                # Create test-specific resources with temporary data root
                 from daydreaming_dagster.resources.io_managers import CSVIOManager, PartitionedTextIOManager
                 
-                test_data_paths = DataPathsConfig(data_root=str(temp_data_dir))
+                test_data_root = str(temp_data_dir)
                 
                 # Override only the resources that need different paths for testing
                 patched_resources = {
@@ -66,18 +65,18 @@ class TestPipelineIntegration:
                     "openrouter_client": defs.resources["openrouter_client"],
                     "config": defs.resources["config"],
                     
-                    # Override data path config for testing
-                    "data_paths_config": test_data_paths,
+                    # Override data root for testing
+                    "data_root": test_data_root,
                     
                     # Recreate simplified I/O managers with test data paths
-                    "csv_io_manager": CSVIOManager(base_path=test_data_paths.tasks_dir),
-                    "generation_prompt_io_manager": PartitionedTextIOManager(base_path=test_data_paths.generation_prompts_dir),
-                    "generation_response_io_manager": PartitionedTextIOManager(base_path=test_data_paths.generation_responses_dir),
-                    "evaluation_prompt_io_manager": PartitionedTextIOManager(base_path=test_data_paths.evaluation_prompts_dir),
-                    "evaluation_response_io_manager": PartitionedTextIOManager(base_path=test_data_paths.evaluation_responses_dir),
-                    "error_log_io_manager": CSVIOManager(base_path=test_data_paths.reporting_dir),
-                    "parsing_results_io_manager": CSVIOManager(base_path=test_data_paths.parsing_results_dir),
-                    "summary_results_io_manager": CSVIOManager(base_path=test_data_paths.summary_results_dir)
+                    "csv_io_manager": CSVIOManager(base_path=Path(test_data_root) / "2_tasks"),
+                    "generation_prompt_io_manager": PartitionedTextIOManager(base_path=Path(test_data_root) / "3_generation" / "generation_prompts"),
+                    "generation_response_io_manager": PartitionedTextIOManager(base_path=Path(test_data_root) / "3_generation" / "generation_responses"),
+                    "evaluation_prompt_io_manager": PartitionedTextIOManager(base_path=Path(test_data_root) / "4_evaluation" / "evaluation_prompts"),
+                    "evaluation_response_io_manager": PartitionedTextIOManager(base_path=Path(test_data_root) / "4_evaluation" / "evaluation_responses"),
+                    "error_log_io_manager": CSVIOManager(base_path=Path(test_data_root) / "7_reporting"),
+                    "parsing_results_io_manager": CSVIOManager(base_path=Path(test_data_root) / "5_parsing"),
+                    "summary_results_io_manager": CSVIOManager(base_path=Path(test_data_root) / "6_summary")
                 }
                 
                 # Import the assets we want to test
@@ -253,13 +252,12 @@ class TestPipelineIntegration:
                 from daydreaming_dagster.assets.core import content_combinations, content_combinations_csv
                 from daydreaming_dagster.resources.io_managers import CSVIOManager
                 from daydreaming_dagster.resources.experiment_config import ExperimentConfig
-                from daydreaming_dagster.resources.data_paths_config import DataPathsConfig
                 
-                test_data_paths = DataPathsConfig(data_root=str(temp_data_dir))
+                test_data_root = str(temp_data_dir)
                 
                 resources = {
-                    "data_paths_config": test_data_paths,
-                    "csv_io_manager": CSVIOManager(base_path=test_data_paths.tasks_dir),
+                    "data_root": test_data_root,
+                    "csv_io_manager": CSVIOManager(base_path=Path(test_data_root) / "2_tasks"),
                     "config": ExperimentConfig(k_max=2, description_level="paragraph")
                 }
                 
@@ -362,13 +360,12 @@ class TestPipelineIntegration:
                 )
                 from daydreaming_dagster.resources.io_managers import CSVIOManager
                 from daydreaming_dagster.resources.experiment_config import ExperimentConfig
-                from daydreaming_dagster.resources.data_paths_config import DataPathsConfig
                 
-                test_data_paths = DataPathsConfig(data_root=str(temp_data_dir))
+                test_data_root = str(temp_data_dir)
                 
                 resources = {
-                    "data_paths_config": test_data_paths,
-                    "csv_io_manager": CSVIOManager(base_path=test_data_paths.tasks_dir),
+                    "data_root": test_data_root,
+                    "csv_io_manager": CSVIOManager(base_path=Path(test_data_root) / "2_tasks"),
                     "config": ExperimentConfig(k_max=2, description_level="paragraph")
                 }
                 

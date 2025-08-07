@@ -35,11 +35,11 @@ from daydreaming_dagster.assets.core import (
 )
 from daydreaming_dagster.resources.llm_client import LLMClientResource
 from daydreaming_dagster.resources.experiment_config import ExperimentConfig
-from daydreaming_dagster.resources.data_paths_config import DataPathsConfig
 from daydreaming_dagster.resources.io_managers import (
     PartitionedTextIOManager,
     CSVIOManager
 )
+from pathlib import Path
 
 defs = Definitions(
     assets=[
@@ -76,18 +76,18 @@ defs = Definitions(
         "openrouter_client": LLMClientResource(),
         "config": ExperimentConfig(),
         
-        # Create single shared DataPathsConfig instance
-        "data_paths_config": (data_paths := DataPathsConfig()),
+        # Simple data root path - no complex configuration needed
+        "data_root": "data",
         
         # Simplified I/O managers - no complex source mappings or filtering
-        "csv_io_manager": CSVIOManager(base_path=data_paths.tasks_dir),
-        "generation_prompt_io_manager": PartitionedTextIOManager(base_path=data_paths.generation_prompts_dir),
-        "generation_response_io_manager": PartitionedTextIOManager(base_path=data_paths.generation_responses_dir),
-        "evaluation_prompt_io_manager": PartitionedTextIOManager(base_path=data_paths.evaluation_prompts_dir),
-        "evaluation_response_io_manager": PartitionedTextIOManager(base_path=data_paths.evaluation_responses_dir),
-        "error_log_io_manager": CSVIOManager(base_path=data_paths.reporting_dir),
-        "parsing_results_io_manager": CSVIOManager(base_path=data_paths.parsing_results_dir),
-        "summary_results_io_manager": CSVIOManager(base_path=data_paths.summary_results_dir)
+        "csv_io_manager": CSVIOManager(base_path=Path("data") / "2_tasks"),
+        "generation_prompt_io_manager": PartitionedTextIOManager(base_path=Path("data") / "3_generation" / "generation_prompts"),
+        "generation_response_io_manager": PartitionedTextIOManager(base_path=Path("data") / "3_generation" / "generation_responses"),
+        "evaluation_prompt_io_manager": PartitionedTextIOManager(base_path=Path("data") / "4_evaluation" / "evaluation_prompts"),
+        "evaluation_response_io_manager": PartitionedTextIOManager(base_path=Path("data") / "4_evaluation" / "evaluation_responses"),
+        "error_log_io_manager": CSVIOManager(base_path=Path("data") / "7_reporting"),
+        "parsing_results_io_manager": CSVIOManager(base_path=Path("data") / "5_parsing"),
+        "summary_results_io_manager": CSVIOManager(base_path=Path("data") / "6_summary")
     },
     executor=multiprocess_executor.configured({"max_concurrent": 10})
     # Note: Pool concurrency limits are set via CLI: dagster instance concurrency set llm_api 1
