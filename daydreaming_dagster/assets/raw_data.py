@@ -4,13 +4,11 @@ from pathlib import Path
 from typing import List
 
 from ..models import Concept
-from ..resources.experiment_config import ExperimentConfig
 
-@asset(group_name="raw_data", required_resource_keys={"data_root", "config"})
+@asset(group_name="raw_data", required_resource_keys={"data_root"})
 def concepts(context) -> List[Concept]:
-    """Load ALL concepts from CSV with description files, then apply filtering."""
+    """Load ALL concepts from CSV with description files, applying active filtering."""
     data_root = context.resources.data_root
-    config = context.resources.config
     metadata_path = Path(data_root) / "1_raw" / "concepts" / "concepts_metadata.csv"
     
     if not metadata_path.exists():
@@ -24,11 +22,6 @@ def concepts(context) -> List[Concept]:
     if "active" in concepts_df.columns:
         concepts_df = concepts_df[concepts_df["active"] == True]
     
-    # Apply concept filtering if configured
-    if config.concept_ids_filter:
-        concepts_df = concepts_df[
-            concepts_df["concept_id"].isin(config.concept_ids_filter)
-        ]
     
     # Load all description levels
     description_levels = ["sentence", "paragraph", "article"]
@@ -64,9 +57,6 @@ def concepts(context) -> List[Concept]:
         "concept_count": MetadataValue.int(len(concepts)),
         "total_available": MetadataValue.int(total_available),
         "filtered_out": MetadataValue.int(filtered_out),
-        "description_level": MetadataValue.text(config.description_level),
-        "has_filter": MetadataValue.bool(config.concept_ids_filter is not None),
-        "filter_applied": MetadataValue.text(str(config.concept_ids_filter) if config.concept_ids_filter else "None")
     })
     
     return concepts

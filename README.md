@@ -125,7 +125,6 @@ Configure in `daydreaming_dagster/resources/experiment_config.py`:
 
 - `k_max`: Maximum concept combination size
 - `description_level`: Description level ("sentence", "paragraph", "article")
-- `concept_ids_filter`: Optional list of concept IDs to load (None = all)
 - `template_names_filter`: Optional list of template names to load (None = all)
 - Model selection in `data/1_raw/generation_models.csv` and `data/1_raw/evaluation_models.csv`
 
@@ -134,14 +133,13 @@ Configure in `daydreaming_dagster/resources/experiment_config.py`:
 For faster development and testing, use selective loading:
 
 ```python
-# Example: Load only 3 concepts and 2 templates for faster testing
+# Example: Load only selective templates for faster testing
 config = ExperimentConfig(
     k_max=2,
-    concept_ids_filter=["dearth-ai-discoveries", "default-mode-network", "human-creativity-insight"],
     template_names_filter=["00_systematic_analytical", "02_problem_solving"]
 )
 
-# Result: 3 combinations × 2 templates × 2 models = 12 tasks (vs 150+ for full dataset)
+# Concepts are filtered by the 'active' column in concepts_metadata.csv
 ```
 
 ## Data Structure

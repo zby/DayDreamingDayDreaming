@@ -93,7 +93,7 @@ This project follows strict TDD practices:
 
 **Dependency Injection**: Dependencies are passed as constructor parameters rather than created internally for better testability and modularity.
 
-**Selective Loading**: The pipeline supports filtering concepts and templates for faster development and focused experiments using `concept_ids_filter` and `template_names_filter` parameters.
+**Selective Loading**: The pipeline supports filtering templates for faster development using `template_names_filter` parameter. Concepts are filtered using the `active` column in `concepts_metadata.csv`.
 
 **Jinja2 Templates**: Prompt templates are stored as text files using Jinja2 syntax. Templates receive a `concepts` list with `name`, `concept_id`, and `content` keys.
 

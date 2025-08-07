@@ -36,11 +36,7 @@ class TestConceptsActiveColumnIntegration:
         
         # Import the actual concepts asset function and test its filtering logic
         from daydreaming_dagster.assets.raw_data import concepts
-        from daydreaming_dagster.resources.experiment_config import ExperimentConfig
         from dagster import build_asset_context
-        
-        # Create a proper Dagster context for testing
-        config = ExperimentConfig(k_max=2, description_level="paragraph")
         
         # Create temporary directory structure for test data
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -63,8 +59,8 @@ class TestConceptsActiveColumnIntegration:
             desc_dir.joinpath("active-2.txt").write_text("Active 2 description")
             desc_dir.joinpath("inactive-1.txt").write_text("Inactive 1 description")
             
-            # Create proper asset context with test data root and config
-            context = build_asset_context(resources={"data_root": str(temp_dir), "config": config})
+            # Create proper asset context with test data root only (config no longer needed)
+            context = build_asset_context(resources={"data_root": str(temp_dir)})
             
             # Call the concepts asset function directly
             result_concepts = concepts(context)

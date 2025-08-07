@@ -86,11 +86,13 @@ Assets are organized into logical groups for easy selection and understanding:
 **Implementation Details**:
 ```python
 @asset(group_name="raw_data")
-def concepts(experiment_config: ExperimentConfig) -> List[Dict]:
-    # Load concepts with optional filtering
-    if experiment_config.concept_ids_filter:
-        return filtered_concepts
-    return all_concepts
+def concepts(context) -> List[Concept]:
+    # Load concepts with active filtering
+    data_root = context.resources.data_root
+    concepts_df = load_concepts_csv(data_root)
+    if "active" in concepts_df.columns:
+        concepts_df = concepts_df[concepts_df["active"] == True]
+    return build_concept_objects(concepts_df)
 ```
 
 ### 2. Core Processing (`core.py`)
@@ -187,7 +189,6 @@ def llm_client_resource(context) -> LLMClientResource:
 **Configuration Options**:
 - `k_max`: Maximum concept combination size
 - `description_level`: Concept description detail level
-- `concept_ids_filter`: Optional concept filtering for focused experiments
 - `template_names_filter`: Optional template filtering
 
 **Selective Loading Benefits**:
