@@ -8,7 +8,7 @@ class PartitionedTextIOManager(IOManager):
     Preserves your existing file structure and debugging capabilities.
     """
     
-    def __init__(self, base_path: str):
+    def __init__(self, base_path):
         self.base_path = Path(base_path)
     
     def handle_output(self, context: OutputContext, obj: str):
@@ -42,9 +42,8 @@ class CSVIOManager(IOManager):
     Critical for understanding what combo_001, combo_002, etc. actually contain.
     """
     
-    def __init__(self, base_path: str, source_mappings: dict = None):
+    def __init__(self, base_path, source_mappings: dict = None):
         self.base_path = Path(base_path)
-        # Maps asset names to their source files and filters
         self.source_mappings = source_mappings or {}
     
     def handle_output(self, context: OutputContext, obj):
@@ -84,7 +83,9 @@ class CSVIOManager(IOManager):
         # Check if this asset has a source mapping (raw data)
         if asset_name in self.source_mappings:
             mapping = self.source_mappings[asset_name]
-            source_file = Path(mapping["source_file"])
+            source_file_path = mapping["source_file"]
+            
+            source_file = Path(source_file_path)
             
             if not source_file.exists():
                 raise FileNotFoundError(f"Source file not found: {source_file}")
@@ -153,10 +154,9 @@ class TemplateIOManager(IOManager):
     Handles both CSV metadata filtering and template file loading in one operation.
     """
     
-    def __init__(self, templates_dir: str, metadata_csv: str, output_path: str = "data/2_tasks"):
-        self.templates_dir = Path(templates_dir)
-        self.metadata_csv = Path(metadata_csv)
-        self.output_path = Path(output_path)
+    def __init__(self, data_paths_config):
+        self.output_path = data_paths_config.tasks_dir
+        self.data_paths_config = data_paths_config
     
     def handle_output(self, context: OutputContext, obj):
         """Save templates as JSON for easy inspection and debugging."""
@@ -182,18 +182,30 @@ class TemplateIOManager(IOManager):
         """Load templates based on CSV metadata - all in one stage."""
         templates = {}
         
+        # Determine paths based on asset name
+        asset_name = context.asset_key.path[-1]
+        if asset_name == "generation_templates":
+            templates_dir = self.data_paths_config.generation_templates_dir
+            metadata_csv = self.data_paths_config.generation_templates_csv
+        elif asset_name == "evaluation_templates":
+            templates_dir = self.data_paths_config.evaluation_templates_dir
+            metadata_csv = self.data_paths_config.evaluation_templates_csv
+        else:
+            context.log.error(f"Unknown template asset name: {asset_name}")
+            return templates
+        
         # Load and filter metadata
-        if not self.metadata_csv.exists():
-            context.log.warning(f"Template metadata CSV not found: {self.metadata_csv}")
+        if not metadata_csv.exists():
+            context.log.warning(f"Template metadata CSV not found: {metadata_csv}")
             return templates
             
-        metadata_df = pd.read_csv(self.metadata_csv)
+        metadata_df = pd.read_csv(metadata_csv)
         active_templates = metadata_df[metadata_df["active"] == True]
         
         # Load only active template files
         for _, row in active_templates.iterrows():
             template_id = row["template_id"]
-            template_file = self.templates_dir / f"{template_id}.txt"
+            template_file = templates_dir / f"{template_id}.txt"
             
             if template_file.exists():
                 templates[template_id] = template_file.read_text().strip()
@@ -201,5 +213,5 @@ class TemplateIOManager(IOManager):
             else:
                 context.log.warning(f"Template file not found: {template_file}")
         
-        context.log.info(f"Loaded {len(templates)} active templates from {self.templates_dir}")
+        context.log.info(f"Loaded {len(templates)} active templates from {templates_dir}")
         return templates

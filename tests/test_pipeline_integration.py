@@ -54,49 +54,43 @@ class TestPipelineIntegration:
                 # Import definitions - need to patch paths to use temp data
                 from daydreaming_dagster.definitions import defs
                 
-                # Patch the definitions to use temporary data paths
-                patched_resources = {}
-                for key, resource in defs.resources.items():
-                    if hasattr(resource, 'base_path') and 'data/' in str(resource.base_path):
-                        # Update base_path to use temp directory
-                        if key == "enhanced_csv_io_manager":
-                            from daydreaming_dagster.resources.io_managers import CSVIOManager
-                            patched_resources[key] = CSVIOManager(
-                                base_path=str(temp_data_dir / "2_tasks"),
-                                source_mappings={
-                                    "concepts_metadata": {
-                                        "source_file": str(temp_raw_data / "concepts" / "concepts_metadata.csv"),
-                                        "filters": [{"column": "active", "value": True}]
-                                    },
-                                    "generation_models": {
-                                        "source_file": str(temp_raw_data / "llm_models.csv"),
-                                        "filters": [{"column": "for_generation", "value": True}]
-                                    },
-                                    "evaluation_models": {
-                                        "source_file": str(temp_raw_data / "llm_models.csv"), 
-                                        "filters": [{"column": "for_evaluation", "value": True}]
-                                    }
-                                }
-                            )
-                        elif key == "csv_io_manager":
-                            from daydreaming_dagster.resources.io_managers import CSVIOManager
-                            patched_resources[key] = CSVIOManager(str(temp_data_dir / "2_tasks"))
-                        elif key == "generation_template_io_manager":
-                            from daydreaming_dagster.resources.io_managers import TemplateIOManager
-                            patched_resources[key] = TemplateIOManager(
-                                templates_dir=str(temp_raw_data / "generation_templates"),
-                                metadata_csv=str(temp_raw_data / "generation_templates.csv"),
-                                output_path=str(temp_data_dir / "2_tasks")
-                            )
-                        elif key == "evaluation_template_io_manager":
-                            from daydreaming_dagster.resources.io_managers import TemplateIOManager
-                            patched_resources[key] = TemplateIOManager(
-                                templates_dir=str(temp_raw_data / "evaluation_templates"),
-                                metadata_csv=str(temp_raw_data / "evaluation_templates.csv"),
-                                output_path=str(temp_data_dir / "2_tasks")
-                            )
-                    else:
-                        patched_resources[key] = resource
+                # Create test-specific DataPathsConfig and override resources cleanly
+                from daydreaming_dagster.resources.data_paths_config import DataPathsConfig
+                from daydreaming_dagster.resources.io_managers import CSVIOManager, TemplateIOManager, PartitionedTextIOManager
+                
+                test_data_paths = DataPathsConfig(data_root=str(temp_data_dir))
+                
+                # Override only the resources that need different paths for testing
+                patched_resources = {
+                    # Keep existing resources that don't need path changes
+                    "openrouter_client": defs.resources["openrouter_client"],
+                    "config": defs.resources["config"],
+                    
+                    # Override data path config for testing
+                    "data_paths_config": test_data_paths,
+                    
+                    # Recreate I/O managers with test data paths
+                    "enhanced_csv_io_manager": CSVIOManager(
+                        base_path=test_data_paths.tasks_dir,
+                        source_mappings={
+                            "concepts_metadata": {
+                                "source_file": str(test_data_paths.concepts_metadata_csv),
+                                "filters": [{"column": "active", "value": True}]
+                            },
+                            "generation_models": {
+                                "source_file": str(test_data_paths.llm_models_csv),
+                                "filters": [{"column": "for_generation", "value": True}]
+                            },
+                            "evaluation_models": {
+                                "source_file": str(test_data_paths.llm_models_csv),
+                                "filters": [{"column": "for_evaluation", "value": True}]
+                            }
+                        }
+                    ),
+                    "csv_io_manager": CSVIOManager(base_path=test_data_paths.tasks_dir),
+                    "generation_template_io_manager": TemplateIOManager(data_paths_config=test_data_paths),
+                    "evaluation_template_io_manager": TemplateIOManager(data_paths_config=test_data_paths)
+                }
                 
                 # Import the assets we want to test
                 from daydreaming_dagster.assets.raw_data import (
@@ -241,18 +235,22 @@ class TestPipelineIntegration:
                 from daydreaming_dagster.assets.core import content_combinations, content_combinations_csv
                 from daydreaming_dagster.resources.io_managers import CSVIOManager
                 from daydreaming_dagster.resources.experiment_config import ExperimentConfig
+                from daydreaming_dagster.resources.data_paths_config import DataPathsConfig
+                
+                test_data_paths = DataPathsConfig(data_root=str(temp_data_dir))
                 
                 resources = {
+                    "data_paths_config": test_data_paths,
                     "enhanced_csv_io_manager": CSVIOManager(
-                        base_path=str(temp_data_dir / "2_tasks"),
+                        base_path=test_data_paths.tasks_dir,
                         source_mappings={
                             "concepts_metadata": {
-                                "source_file": str(concepts_dir / "concepts_metadata.csv"),
+                                "source_file": str(test_data_paths.concepts_metadata_csv),
                                 "filters": [{"column": "active", "value": True}]
                             }
                         }
                     ),
-                    "csv_io_manager": CSVIOManager(str(temp_data_dir / "2_tasks")),
+                    "csv_io_manager": CSVIOManager(base_path=test_data_paths.tasks_dir),
                     "config": ExperimentConfig(k_max=2, description_level="paragraph")
                 }
                 
