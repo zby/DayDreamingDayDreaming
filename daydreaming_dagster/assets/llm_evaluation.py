@@ -7,7 +7,6 @@ from ..utils.nodes_standalone import generate_evaluation_prompts
     partitions_def=evaluation_tasks_partitions,
     group_name="llm_evaluation",
     io_manager_key="evaluation_prompt_io_manager",
-    deps=["evaluation_tasks", "generation_response"],  # Declare dependency for UI/run order; still load via IO manager
     required_resource_keys={"generation_response_io_manager"},
     pool="llm_api"  # Pool-based concurrency control
 )
