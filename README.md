@@ -66,6 +66,9 @@ uv run dagster asset materialize --select "parsed_scores,final_results" -f daydr
 **Asset Group Breakdown**:
 - `group:raw_data`: concepts, models, templates, and their metadata (loads from `data/1_raw/`)
 - `group:llm_tasks`: content_combinations, generation_tasks, evaluation_tasks (creates `data/2_tasks/`)
+- `group:llm_generation`: generation_prompt, generation_response (creates `data/3_generation/`)
+- `group:llm_evaluation`: evaluation_prompt, evaluation_response (creates `data/4_evaluation/`)
+- `group:results_processing`: parsed_scores, analysis, and final_results (creates `data/5_parsing/`, `data/6_summary/`)
 
 **Why the specific asset dependencies matter**: 
 - `generation_templates` depends on `generation_templates_metadata` 

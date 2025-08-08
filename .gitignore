@@ -201,3 +201,15 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Dagster runtime artifacts
+dagster_home/
+*.db
+
+# Generated data outputs (optional - include if outputs shouldn't be tracked)
+data/2_tasks/
+data/3_generation/
+data/4_evaluation/
+data/5_parsing/
+data/6_summary/
+data/7_reporting/
