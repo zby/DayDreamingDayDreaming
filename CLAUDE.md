@@ -107,12 +107,62 @@ This project follows strict TDD practices:
 - Multiple score formats (standard numeric and three-digit averages)
 - Automatic strategy selection based on evaluation template
 
+**Evaluation Asset Architecture**: The evaluation assets use an intentional "Manual IO with Foreign Keys" pattern:
+- `evaluation_prompt` uses foreign key relationships to load `generation_response` data from different partitions
+- Uses MockLoadContext pattern to bypass normal Dagster input/output for complex partition relationships  
+- Documented in `docs/evaluation_asset_architecture.md` with comprehensive error handling and troubleshooting
+- Alternative approaches (multi-dimensional partitions) are documented in `plans/` for future consideration
+
 ## Development Guidelines
 
 - Code should fail early rather than using defensive programming
 - Focus on simplicity and clarity
 - Commit formatting changes separately from functional changes
 - Only run `black` when there are no uncommitted changes
+
+### When to Use Manual IO with Foreign Keys
+
+Use the MockLoadContext pattern (like in `evaluation_prompt`) when:
+- ✅ Assets have foreign key relationships in their task tables
+- ✅ Partition schemes don't align between dependent assets
+- ✅ You need flexible, conditional data loading based on database relationships
+- ✅ Simple 1:1 partition mapping won't work
+
+Avoid this pattern when:
+- ❌ You have simple 1:1 partition relationships (use normal Dagster inputs)
+- ❌ Dagster's built-in partition mapping can handle your use case
+- ❌ The dependency needs to be visible in Dagster UI (consider multi-dimensional partitions)
+
+### Pattern Template for Manual IO Loading
+
+```python
+# 1. Extract foreign key from task data
+fk_id = task_row["foreign_key_column"]
+
+# 2. Validate the foreign key
+if not fk_id or fk_id.strip() == "":
+    raise Failure("Invalid foreign key...")
+
+# 3. Create mock context for cross-partition loading  
+class MockLoadContext:
+    def __init__(self, partition_key):
+        self.partition_key = partition_key
+
+mock_context = MockLoadContext(fk_id)
+
+# 4. Load data with comprehensive error handling
+try:
+    data = io_manager.load_input(mock_context)
+    context.log.info(f"Loaded {len(data)} chars from FK {fk_id}")
+except FileNotFoundError as e:
+    # Add rich metadata and resolution steps
+    raise Failure(f"Missing data for FK {fk_id}", metadata={...}) from e
+
+# 5. Add output metadata showing FK relationship
+context.add_output_metadata({
+    "fk_relationship": MetadataValue.text(f"current:{task_id} -> foreign:{fk_id}")
+})
+```
 
 ## File Management Notes
 

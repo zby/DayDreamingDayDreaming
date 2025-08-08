@@ -13,8 +13,50 @@ from ..utils.nodes_standalone import generate_evaluation_prompts
 )
 def evaluation_prompt(context, evaluation_tasks, evaluation_templates) -> str:
     """
-    Generate one evaluation prompt per partition and save as individual file.
-    Each prompt is cached as a separate file for debugging.
+    Generate one evaluation prompt per partition using FK-based data loading.
+    
+    This asset demonstrates the "Manual IO with Foreign Keys" pattern documented
+    in docs/evaluation_asset_architecture.md. Key aspects:
+    
+    1. FK Relationship: Uses generation_task_id from evaluation_tasks to load
+       the corresponding generation_response from a different partition
+    
+    2. MockLoadContext Pattern: Creates a temporary context to interface with
+       the IO manager for cross-partition data loading
+    
+    3. Intentional Manual IO: Bypasses normal Dagster input/output pattern
+       to handle complex partition relationships with foreign keys
+    
+    Data Flow:
+    evaluation_task (partition: eval_001) 
+    -> reads generation_task_id FK 
+    -> loads generation_response (partition: gen_123) via IO manager
+    -> combines with evaluation template 
+    -> generates evaluation prompt
+    
+    Args:
+        context: Dagster asset context (provides partition_key and resources)
+        evaluation_tasks: DataFrame with evaluation task definitions including FKs
+        evaluation_templates: DataFrame with evaluation template content
+        
+    Returns:
+        str: Generated evaluation prompt text for this partition
+        
+    Raises:
+        Failure: If evaluation_task_id not found in DataFrame
+        Failure: If referenced generation_task_id is invalid/empty  
+        Failure: If generation_response file not found (FK broken)
+        
+    Resources Required:
+        - generation_response_io_manager: To load upstream generation responses
+        
+    Dependencies:
+        - evaluation_tasks: Must be materialized (provides FK relationships)
+        - generation_response: Must be materialized for referenced partitions
+        
+    See Also:
+        - docs/evaluation_asset_architecture.md: Detailed architecture explanation
+        - plans/pass_generation_response_via_pipeline_fk.md: Alternative approaches
     """
     task_id = context.partition_key
     
@@ -39,29 +81,71 @@ def evaluation_prompt(context, evaluation_tasks, evaluation_templates) -> str:
     task_row = matching_tasks.iloc[0]
     generation_task_id = task_row["generation_task_id"]
     
+    # Log the foreign key relationship for debugging
+    context.log.info(f"Loading generation response for FK relationship: {task_id} -> {generation_task_id}")
+    
     # Load the generation response from the correct partition using I/O manager
-    # Get the generation response I/O manager from resources to respect test vs production paths
+    # This uses the MockLoadContext pattern to load data from a different partition
+    # See docs/evaluation_asset_architecture.md for detailed explanation
     gen_response_io_manager = context.resources.generation_response_io_manager
     
-    # Create a mock context for the generation partition
+    # Validate that the referenced generation_task_id looks valid
+    if not generation_task_id or generation_task_id.strip() == "":
+        raise Failure(
+            description=f"Invalid generation_task_id referenced by evaluation task '{task_id}'",
+            metadata={
+                "evaluation_task_id": MetadataValue.text(task_id),
+                "generation_task_id": MetadataValue.text(str(generation_task_id)),
+                "resolution_1": MetadataValue.text("Check evaluation_tasks CSV for data corruption"),
+                "resolution_2": MetadataValue.text("Re-materialize evaluation_tasks asset"),
+                "fk_validation_failed": MetadataValue.text("generation_task_id is empty or invalid")
+            }
+        )
+    
+    # Create a mock context for the generation partition (documented pattern)
+    # This allows us to load data from a different partition than the current asset's partition
+    # The IO manager only needs the partition_key attribute to locate the correct file
     class MockLoadContext:
+        """Minimal context object for cross-partition IO manager calls.
+        
+        This pattern is documented in docs/evaluation_asset_architecture.md as an
+        intentional way to load data from foreign key referenced partitions.
+        """
         def __init__(self, partition_key):
             self.partition_key = partition_key
     
     mock_context = MockLoadContext(generation_task_id)
+    
+    # Check if the file exists before attempting to load (better error context)
+    expected_path = gen_response_io_manager.base_path / f"{generation_task_id}.txt"
+    
     try:
         generation_response = gen_response_io_manager.load_input(mock_context)
+        context.log.info(f"Successfully loaded generation response: {len(generation_response)} characters from {generation_task_id}")
     except FileNotFoundError as e:
+        # Enhanced error with more debugging context
+        available_files = list(gen_response_io_manager.base_path.glob("*.txt")) if gen_response_io_manager.base_path.exists() else []
+        available_partitions = [f.stem for f in available_files[:10]]  # Show first 10
+        
         context.log.error(f"Generation response not found for partition {generation_task_id}")
+        context.log.error(f"Expected path: {expected_path}")
+        context.log.error(f"Base directory exists: {gen_response_io_manager.base_path.exists()}")
+        context.log.error(f"Available partitions (first 10): {available_partitions}")
+        
         raise Failure(
-            description=f"Missing generation response required for evaluation task '{task_id}'",
+            description=f"Missing generation response required for evaluation task '{task_id}' (FK: {generation_task_id})",
             metadata={
                 "evaluation_task_id": MetadataValue.text(task_id),
                 "generation_task_id": MetadataValue.text(generation_task_id),
-                "expected_file_path": MetadataValue.path(f"{gen_response_io_manager.base_path}/{generation_task_id}.txt"),
+                "expected_file_path": MetadataValue.path(str(expected_path)),
+                "base_directory_exists": MetadataValue.text(str(gen_response_io_manager.base_path.exists())),
+                "available_partitions_sample": MetadataValue.text(str(available_partitions)),
+                "total_available_files": MetadataValue.int(len(available_files)),
+                "fk_relationship": MetadataValue.text(f"evaluation_task '{task_id}' references generation_task '{generation_task_id}'"),
                 "resolution_1": MetadataValue.text(f"Check if generation_response was materialized for partition: {generation_task_id}"),
                 "resolution_2": MetadataValue.text(f"Run: dagster asset materialize --select generation_response --partition {generation_task_id}"),
                 "resolution_3": MetadataValue.text("Or materialize all generation responses: dagster asset materialize --select generation_response"),
+                "resolution_4": MetadataValue.text("Verify generation_tasks asset was materialized before evaluation_tasks"),
                 "original_error": MetadataValue.text(str(e))
             }
         ) from e
@@ -79,6 +163,19 @@ def evaluation_prompt(context, evaluation_tasks, evaluation_templates) -> str:
     
     eval_prompt = eval_prompts_dict[task_id]
     context.log.info(f"Generated evaluation prompt for task {task_id}, using generation response from {generation_task_id}")
+    
+    # Add output metadata for debugging and monitoring
+    context.add_output_metadata({
+        "evaluation_task_id": MetadataValue.text(task_id),
+        "generation_task_id_used": MetadataValue.text(generation_task_id),
+        "generation_response_length": MetadataValue.int(len(generation_response)),
+        "evaluation_prompt_length": MetadataValue.int(len(eval_prompt)),
+        "fk_relationship": MetadataValue.text(f"eval:{task_id} -> gen:{generation_task_id}"),
+        "io_manager_base_path": MetadataValue.path(str(gen_response_io_manager.base_path)),
+        "template_used": MetadataValue.text(task_row["evaluation_template"]),
+        "model_planned": MetadataValue.text(task_row["evaluation_model_name"])
+    })
+    
     return eval_prompt
 
 
