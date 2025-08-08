@@ -8,6 +8,7 @@ from ..utils.nodes_standalone import (
 )
 from ..models import Concept, ContentCombination
 from .partitions import generation_tasks_partitions, evaluation_tasks_partitions
+from .utilities import ComboIDManager
 
 @asset(
     group_name="llm_tasks",
@@ -24,20 +25,23 @@ def content_combinations(
     context.log.info(f"Generating content combinations with k_max={k_max}")
     
     # Generate all k-max combinations and create ContentCombination objects
-    content_combos = []
-    combo_id = 1
-    
+    content_combos: List[ContentCombination] = []
+    description_level = experiment_config.description_level
+    manager = ComboIDManager()
+
     for combo in combinations(concepts, k_max):
-        combo_id_str = f"combo_{combo_id:03d}"
-        
-        # Create ContentCombination with resolved content and explicit combo_id
+        concept_ids = [c.concept_id for c in combo]
+        stable_id = manager.get_or_create_combo_id(
+            concept_ids, description_level, k_max
+        )
+
+        # Create ContentCombination with resolved content and stable combo_id
         content_combo = ContentCombination.from_concepts(
-            list(combo), 
-            experiment_config.description_level,
-            combo_id=combo_id_str
+            list(combo),
+            description_level,
+            combo_id=stable_id,
         )
         content_combos.append(content_combo)
-        combo_id += 1
     
     context.log.info(f"Generated {len(content_combos)} content combinations")
     
@@ -46,8 +50,8 @@ def content_combinations(
         "combination_count": MetadataValue.int(len(content_combos)),
         "k_max_used": MetadataValue.int(k_max),
         "source_concepts": MetadataValue.int(len(concepts)),
-        "description_level": MetadataValue.text(experiment_config.description_level),
-        "combo_ids_range": MetadataValue.text(f"combo_001 to combo_{len(content_combos):03d}")
+        "description_level": MetadataValue.text(description_level),
+        "stable_id_format": MetadataValue.text("combo_v1_<12-hex>"),
     })
     
     return content_combos

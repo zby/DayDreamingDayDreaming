@@ -57,7 +57,11 @@ uv run dagster asset materialize --select "concepts,concepts_metadata,generation
 
 # Step 2: Generate LLM responses for specific partitions
 # Now you can run individual partitions or use the UI to run all
-uv run dagster asset materialize --select "generation_prompt,generation_response" --partition "combo_001_systematic-analytical-v2_deepseek_r1_f" -f daydreaming_dagster/definitions.py
+# Tip: get a partition key from the first column of generation_tasks.csv
+# Example:
+# PART=$(cut -d',' -f1 data/2_tasks/generation_tasks.csv | sed -n '2p')
+# uv run dagster asset materialize --select "generation_prompt,generation_response" --partition "$PART" -f daydreaming_dagster/definitions.py
+uv run dagster asset materialize --select "generation_prompt,generation_response" --partition "<a_generation_task_id_from_csv>" -f daydreaming_dagster/definitions.py
 
 # Step 3: Process results (after sufficient generation/evaluation data)
 uv run dagster asset materialize --select "parsed_scores,final_results" -f daydreaming_dagster/definitions.py
@@ -76,7 +80,7 @@ uv run dagster asset materialize --select "parsed_scores,final_results" -f daydr
 - These metadata assets load CSV files that specify which templates are active
 - Using asset groups or dependency resolution (`+`) automatically includes these dependencies
 
-**Dynamic Partitioning**: Partitions are automatically created from the task CSV files when LLM assets are materialized.
+**Dynamic Partitioning**: Partitions are automatically created from the task CSV files when LLM assets are materialized. Partition keys are based on `generation_task_id`, which includes a stable `combo_id` prefix.
 
 ### Running All LLM Partitions
 
@@ -155,6 +159,7 @@ config = ExperimentConfig(
 ### Output Data
 - **Tasks**: `data/2_tasks/` (generated combinations and tasks)
 - **Results**: `data/5_parsing/` (processed results)
+- **Global Mapping**: `data/combo_mappings.csv` (append-only mapping of stable combo IDs to their concept components)
 
 ## Key Features
 
@@ -195,9 +200,9 @@ config = ExperimentConfig(
 
 3. **Partition Not Found Error**:
    ```
-   DagsterUnknownPartitionError: Could not find a partition with key `combo_001_...`
+  DagsterUnknownPartitionError: Could not find a partition with key `combo_v1_<hex>_...` (or legacy `combo_001_...`)
    ```
-   **Solution**: Make sure task CSV files exist by running step 1 first.
+  **Solution**: Make sure task CSV files exist by running step 1 first. Use `cut -d',' -f1 data/2_tasks/generation_tasks.csv | sed -n '2p'` to retrieve a valid partition key.
 
 4. **Partitioned Asset Group Error**:
    ```
@@ -224,6 +229,14 @@ For detailed architecture and implementation information, see:
 - [Architecture Overview](docs/architecture.md) - Detailed system design and components
 - [LLM Concurrency Guide](docs/llm_concurrency_guide.md) - LLM API optimization patterns
 - [CLAUDE.md](CLAUDE.md) - Development guidelines and project instructions
+
+## Stable Combo IDs
+
+The pipeline uses stable, versioned combo IDs for concept combinations:
+
+- Format: `combo_v1_<12-hex>` (e.g., `combo_v1_1f3a9c2d7b2c`)
+- Mapping: `data/combo_mappings.csv` stores an append-only mapping with columns `combo_id, version, concept_id, description_level, k_max, created_at`
+- Backward compatibility: Older assets/tests that reference `combo_XXX` continue to work; both formats are accepted in tests/examples where applicable.
 
 
 ## Contributing

@@ -8,7 +8,6 @@ from ..utils.nodes_standalone import generate_evaluation_prompts
     group_name="llm_evaluation",
     io_manager_key="evaluation_prompt_io_manager",
     required_resource_keys={"generation_response_io_manager"},
-    pool="llm_api"  # Pool-based concurrency control
 )
 def evaluation_prompt(context, evaluation_tasks, evaluation_templates) -> str:
     """

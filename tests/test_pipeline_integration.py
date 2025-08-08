@@ -7,6 +7,7 @@ import pytest
 import pandas as pd
 from pathlib import Path
 import tempfile
+import re
 import shutil
 import os
 from unittest.mock import patch
@@ -308,10 +309,14 @@ class TestPipelineIntegration:
                 expected_active_ids = {"test-concept-1", "test-concept-2"}
                 assert concept_ids == expected_active_ids, "Should only include active concepts"
                 
-                # Test combo_id format
+                # Test combo_id format (accept both legacy sequential and new stable formats)
                 combo_ids = df["combo_id"].unique()
-                assert all(cid.startswith("combo_") and len(cid) == 9 for cid in combo_ids), \
-                    "combo_ids should follow format combo_XXX"
+                legacy_pattern = re.compile(r"^combo_\d{3}$")
+                stable_pattern = re.compile(r"^combo_v\d+_[0-9a-f]{12}$")
+                assert all(
+                    legacy_pattern.match(cid) or stable_pattern.match(cid)
+                    for cid in combo_ids
+                ), "combo_ids should match 'combo_XXX' (legacy) or 'combo_vN_<12-hex>' (stable)"
                 
                 print("✅ Normalized content_combinations_csv test passed!")
 

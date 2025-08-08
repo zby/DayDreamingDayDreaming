@@ -243,11 +243,12 @@ The pipeline uses Dagster's dynamic partitioning to create fine-grained, recover
 
 ### Partition Key Structure
 
-**Generation Tasks**: `combo_{id}_{template}_{model}`
-- Example: `combo_001_02_problem_solving_deepseek`
+**Generation Tasks**: `{combo_id}_{template}_{model}`
+- Stable combo IDs follow `combo_v1_<12-hex>` (e.g., `combo_v1_1f3a9c2d7b2c_02_problem_solving_deepseek`).
+- Legacy format `combo_XXX_...` remains supported in older artifacts/tests.
 
 **Evaluation Tasks**: `{generation_task}_{eval_template}_{eval_model}/{eval_model_version}`
-- Example: `combo_001_02_problem_solving_deepseek_creativity_metrics_deepseek/deepseek-r1:free`
+- Example with stable ID: `combo_v1_1f3a9c2d7b2c_02_problem_solving_deepseek_creativity_metrics_deepseek/deepseek-r1:free`
 
 ## Storage Architecture
 
@@ -279,6 +280,7 @@ data/
 │   └── parsed_scores.csv       # Extracted scores with metadata
 ├── 06_summary/                 # Final aggregated results
 │   └── final_results.csv       # Final aggregated results
+├── combo_mappings.csv          # Global append-only mapping of stable combo IDs to concepts
 └── 07_reporting/               # Error logs and reporting
 ```
 
