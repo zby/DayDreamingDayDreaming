@@ -16,7 +16,8 @@ from daydreaming_dagster.assets.results_analysis import (
 )
 from daydreaming_dagster.assets.results_summary import (
     final_results,
-    perfect_score_paths
+    perfect_score_paths,
+    generation_scores_pivot
 )
 from daydreaming_dagster.assets.raw_data import (
     concepts,
@@ -63,6 +64,7 @@ defs = Definitions(
         parsed_scores,
         evaluator_agreement_analysis,
         comprehensive_variance_analysis,
+        generation_scores_pivot,
         final_results,
         perfect_score_paths
     ],
