@@ -78,7 +78,7 @@ def content_combinations_csv(
         "unique_concepts": MetadataValue.int(df["concept_id"].nunique()),
         "sample_rows": MetadataValue.text(str(df.head(5).to_dict("records")))
     })
-    
+
     return df
 
 @asset(

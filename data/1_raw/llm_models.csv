@@ -7,7 +7,7 @@ deepseek_chat_v3_f,deepseek/deepseek-chat-v3-0324:free,deepseek,"DeepSeek Chat v
 gemini_25_pro_f,google/gemini-2.5-pro-exp-03-25:free,google,"Gemini 2.5 Pro (Free)",false,false,general
 gemini_20_flash_thinking_f,google/gemini-2.0-flash-thinking-exp:free,google,"Gemini 2.0 Flash Thinking (Free)",false,false,reasoning
 gemini_20_flash_f,google/gemini-2.0-flash-exp:free,google,"Gemini 2.0 Flash (Free)",false,false,general
-gemma_3_27b_f,google/gemma-3-27b-it:free,google,"Gemma 3 27B IT (Free)",true,false,instruction_following
+gemma_3_27b_f,google/gemma-3-27b-it:free,google,"Gemma 3 27B IT (Free)",false,false,instruction_following
 llama_4_maverick_f,meta-llama/llama-4-maverick:free,meta,"Llama 4 Maverick (Free)",false,false,general
 llama_4_scout_f,meta-llama/llama-4-scout:free,meta,"Llama 4 Scout (Free)",false,false,general
 llama_33_70b_f,meta-llama/llama-3.3-70b-instruct:free,meta,"Llama 3.3 70B Instruct (Free)",false,false,instruction_following
@@ -17,3 +17,4 @@ qwq_32b_f,qwen/qwq-32b:free,qwen,"QwQ 32B (Free)",false,true,reasoning
 devstral_small_f,mistralai/devstral-small:free,mistral,"Devstral Small (Free)",false,false,coding
 mistral_small_31_f,mistralai/mistral-small-3.1-24b-instruct:free,mistral,"Mistral Small 3.1 24B (Free)",false,false,instruction_following
 mistral_7b_f,mistralai/mistral-7b-instruct:free,mistral,"Mistral 7B Instruct (Free)",false,false,instruction_following
+gemini_2.5_flash,google/gemini-2.5-flash,google,"Gemini 2.5 Flash",true,false,reasoning
