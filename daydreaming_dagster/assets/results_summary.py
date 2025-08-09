@@ -344,12 +344,13 @@ def evaluation_model_template_pivot(context, parsed_scores: pd.DataFrame) -> pd.
     coverage_stats = {}
     
     for col in eval_columns:
-        non_null_count = pivot_df[col].count()
+        non_null_count = int(pivot_df[col].count())  # Convert to Python int
         coverage_pct = (non_null_count / total_generations * 100) if total_generations > 0 else 0
+        mean_score = pivot_df[col].mean()
         coverage_stats[col] = {
             'evaluations': non_null_count,
-            'coverage_pct': round(coverage_pct, 1),
-            'mean_score': round(pivot_df[col].mean(), 2) if non_null_count > 0 else None
+            'coverage_pct': round(float(coverage_pct), 1),  # Convert to Python float
+            'mean_score': round(float(mean_score), 2) if non_null_count > 0 and not pd.isna(mean_score) else None
         }
     
     context.log.info(f"Created pivot table with {total_generations} generation responses")
