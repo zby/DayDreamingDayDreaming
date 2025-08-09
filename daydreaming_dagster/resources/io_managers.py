@@ -6,10 +6,14 @@ class PartitionedTextIOManager(IOManager):
     """
     Saves each partition as a separate text file.
     Preserves your existing file structure and debugging capabilities.
+
+    overwrite: when False (default), refuse to overwrite an existing file. This acts as a
+    guard against accidental loss of prior generations.
     """
-    
-    def __init__(self, base_path):
+
+    def __init__(self, base_path, overwrite: bool = False):
         self.base_path = Path(base_path)
+        self.overwrite = overwrite
     
     def handle_output(self, context: OutputContext, obj: str):
         """Save partition response as individual file"""
@@ -19,7 +23,15 @@ class PartitionedTextIOManager(IOManager):
         # Ensure directory exists
         file_path.parent.mkdir(parents=True, exist_ok=True)
         
-        # Save response immediately (like your current system)
+        # Guard against accidental overwrite unless explicitly enabled
+        if file_path.exists() and not self.overwrite:
+            raise FileExistsError(
+                f"Refusing to overwrite existing file: {file_path}. "
+                "Delete the file to re-materialize, change the partition key, "
+                "or configure the IO manager with overwrite=True."
+            )
+
+        # Save response
         file_path.write_text(obj)
         context.log.info(f"Saved response to {file_path}")
     

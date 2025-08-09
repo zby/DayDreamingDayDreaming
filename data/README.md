@@ -127,3 +127,55 @@ data/
 - The pipeline creates directories automatically as needed
 - Use Dagster UI to monitor data generation progress
 - Large datasets in generation/evaluation folders can be safely deleted and regenerated
+
+## Data Retention and Overwrite Behavior
+
+This project intentionally separates tracked, reproducible definitions from untracked, regenerable artifacts.
+
+- **Tracked (retained across materializations)**:
+  - `1_raw/` and `2_tasks/` CSVs are overwritten in-place by their assets to reflect the latest selection logic, but are version-controlled in git. You can revert if needed.
+  - `data/combo_mappings.csv` is append-only and is never cleared automatically. It preserves stable `combo_id` mappings for cross-experiment reproducibility.
+
+- **Untracked (safe to delete and regenerate)**:
+  - `3_generation/` prompts and responses
+  - `4_evaluation/` prompts and responses
+  - `5_parsing/` parsed results
+  - `6_summary/` analysis outputs
+  - `7_reporting/` error logs
+
+### What gets deleted or reset when you (re)materialize
+
+- Dynamic partitions for `generation_tasks` and `evaluation_tasks` are cleared and recreated on every materialization of those assets. This affects Dagster's notion of which partitions exist, not your files.
+- CSV outputs in `2_tasks/` are rewritten by their producing assets.
+- Files under `3_generation/` and `4_evaluation/` are not deleted by the pipeline. Existing files remain on disk unless you remove them manually.
+
+### Overwrite guards for LLM artifacts
+
+- Prompts (`3_generation/generation_prompts`, `4_evaluation/evaluation_prompts`) are configured to allow overwrite so they reflect the current template code.
+- Responses (`3_generation/generation_responses`, `4_evaluation/evaluation_responses`) are protected against overwrite by default. If a response file already exists for a partition key, the run will fail with a clear error instead of silently overwriting. To regenerate, either:
+  - delete the specific file(s), or
+  - change the partition key (e.g., different template/model), or
+  - intentionally configure the IO manager with `overwrite=True` (not recommended for responses).
+
+### Stable partition keys and filenames
+
+- Filenames are derived from partition keys. Generation partitions follow `{combo_id}_{template_id}_{model_id}` and evaluation partitions append evaluation identifiers. With stable combo IDs (`combo_v1_<12-hex>`), filenames are deterministic and do not collide across runs unless the same task is intentionally repeated.
+
+### Full reset (keeping raw data)
+
+To start fresh while retaining experiment definitions, you can remove generated artifacts:
+
+```bash
+rm -rf data/2_tasks/*.csv
+rm -rf data/3_generation/*
+rm -rf data/4_evaluation/*
+rm -rf data/5_parsing/*
+rm -rf data/6_summary/*
+rm -rf data/7_reporting/*
+```
+
+Recreate tasks and downstream data by materializing:
+
+```bash
+uv run dagster asset materialize --select "group:raw_data,group:llm_tasks" -f daydreaming_dagster/definitions.py
+```

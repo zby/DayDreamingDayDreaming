@@ -292,6 +292,13 @@ data/
 4. **Cacheable**: File-based storage enables Dagster caching
 5. **Portable**: Standard formats for external tool integration
 
+### Overwrite and Retention Policy
+
+- Task CSVs in `data/2_tasks/` are rewritten by their assets on materialization.
+- Dynamic partitions for tasks are cleared and recreated when `generation_tasks`/`evaluation_tasks` run.
+- Prompts are allowed to overwrite to reflect current templates.
+- Responses are write-once by default; existing response files will not be overwritten. Delete files to regenerate or change the partition key.
+
 ## Performance and Scalability
 
 ### Concurrency Architecture

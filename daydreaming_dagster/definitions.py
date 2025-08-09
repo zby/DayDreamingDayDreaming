@@ -79,10 +79,13 @@ defs = Definitions(
         
         # Simplified I/O managers - no complex source mappings or filtering
         "csv_io_manager": CSVIOManager(base_path=Path("data") / "2_tasks"),
-        "generation_prompt_io_manager": PartitionedTextIOManager(base_path=Path("data") / "3_generation" / "generation_prompts"),
-        "generation_response_io_manager": PartitionedTextIOManager(base_path=Path("data") / "3_generation" / "generation_responses"),
-        "evaluation_prompt_io_manager": PartitionedTextIOManager(base_path=Path("data") / "4_evaluation" / "evaluation_prompts"),
-        "evaluation_response_io_manager": PartitionedTextIOManager(base_path=Path("data") / "4_evaluation" / "evaluation_responses"),
+        # Prompts can safely overwrite to reflect latest template code
+        "generation_prompt_io_manager": PartitionedTextIOManager(base_path=Path("data") / "3_generation" / "generation_prompts", overwrite=True),
+        # Responses must never overwrite by default to preserve prior generations
+        "generation_response_io_manager": PartitionedTextIOManager(base_path=Path("data") / "3_generation" / "generation_responses", overwrite=False),
+        "evaluation_prompt_io_manager": PartitionedTextIOManager(base_path=Path("data") / "4_evaluation" / "evaluation_prompts", overwrite=True),
+        # Evaluations are outputs; keep overwrite disabled for safety
+        "evaluation_response_io_manager": PartitionedTextIOManager(base_path=Path("data") / "4_evaluation" / "evaluation_responses", overwrite=False),
         "error_log_io_manager": CSVIOManager(base_path=Path("data") / "7_reporting"),
         "parsing_results_io_manager": CSVIOManager(base_path=Path("data") / "5_parsing"),
         "summary_results_io_manager": CSVIOManager(base_path=Path("data") / "6_summary")
