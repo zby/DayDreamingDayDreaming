@@ -11,6 +11,8 @@ research-discovery-v2,Research Discovery,Academic research orientation,false
 application-implementation-v2,Application Implementation,Practical real-world implementation focus,false
 gwern_original,Gwern Original,Gwern Original,false
 essay-inventive-synthesis,Essay Inventive Synthesis,Interdisciplinary synthesis and conceptual invention with concrete proposals,false
-creative-synthesis-v3,Creative Synthesis V3,Two-phase exploration then synthesis approach,true
-essay-inventive-synthesis-v3,Essay Inventive Synthesis V3,Two-phase exploration then inventive proposal approach,true
-research-discovery-v3,Research Discovery V3,Two-phase exploration then research analysis approach,true
+creative-synthesis-v3,Creative Synthesis V3,Two-phase exploration then synthesis approach,false
+essay-inventive-synthesis-v3,Essay Inventive Synthesis V3,Two-phase exploration then inventive proposal approach,false
+research-discovery-v3,Research Discovery V3,Two-phase exploration then research analysis approach,false
+creative-synthesis-v4,Creative Synthesis V4,Less empty metaphores,false
+creative-synthesis-v5,Creative Synthesis V5,Less empty metaphores,true
