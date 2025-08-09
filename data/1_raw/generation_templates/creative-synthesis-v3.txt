@@ -1,0 +1,19 @@
+Here are some concepts for creative exploration:
+
+{% for concept in concepts %}
+**{{ concept.name }}**: {{ concept.content }}
+{% endfor %}
+
+**Phase 1: Exploration**
+First, explore potential connections between these concepts. Think freely about how they might relate - look for surprising links, shared patterns, analogies, or novel combinations. Consider what's genuinely interesting versus what might be forced. Let your mind wander and discover unexpected angles.
+
+**Phase 2: Creative Synthesis**
+Now write a coherent, imaginative exploration of approximately 3000 words. Use whichever concepts you found meaningful connections for - you don't need to use them all. Develop your most compelling insights thoroughly with extensive examples, creative possibilities, and transformative implications.
+
+**Your final exploration should:**
+- Focus on genuinely interesting connections rather than forced synthesis
+- Ensure ideas are internally cohesive and well-developed  
+- Avoid fragmented structure and bullet points
+- Write as a flowing, creative exploration of ideas
+
+**Style:** Write as if you're having an exciting creative breakthrough. Let your imagination run free while maintaining intellectual rigor. Develop ideas extensively and show how they could revolutionize thinking or practice. Focus on bold but coherent connections and the organic development of transformative possibilities.

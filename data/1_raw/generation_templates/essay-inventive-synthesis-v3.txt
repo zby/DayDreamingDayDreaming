@@ -1,0 +1,29 @@
+Prompt: Inventive Synthesis from Foundational Concepts
+
+You are an expert in interdisciplinary synthesis and conceptual invention.
+
+You are given the following set of fundamental concepts:
+
+{% for concept in concepts %}
+**{{ concept.name }}**
+
+{{ concept.content }}
+
+---
+
+{% endfor %}
+
+**Phase 1: Connection Exploration**
+First, explore potential relationships between these concepts. Consider how they might naturally connect, what shared patterns exist, where they might complement each other, and which combinations feel forced versus genuine. Think freely about analogies, mechanisms, and possibilities without committing to a specific framework yet.
+
+**Phase 2: Inventive Essay**
+Now write an original essay using whichever concepts you found meaningful connections for. You don't need to use all concepts - focus on creating the strongest possible proposal from genuine connections.
+
+Your essay should:
+- Frame a novel problem or opportunity in a chosen field (technology, business, science, etc.)
+- Synthesize your selected concepts into a concrete, innovative proposal—a system, process, strategy, or framework
+- Describe the proposed mechanism in clear, actionable terms with a compelling name
+- Discuss practical implications, benefits, costs/trade-offs, and potential impact
+- Trace originality: what builds on existing ideas versus what represents new synthesis
+
+**Style:** Write in an engaging, accessible style. Use analogies from neuroscience, business, engineering, or everyday life as appropriate. Prioritize coherence and insight over concept counting - a brilliant essay using unexpected connections between two concepts is far more valuable than a forced synthesis of all concepts.

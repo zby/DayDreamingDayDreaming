@@ -1,0 +1,19 @@
+Examine these concepts:
+
+{% for concept in concepts %}
+**{{ concept.name }}**: {{ concept.content }}
+{% endfor %}
+
+**Phase 1: Research Exploration**
+First, investigate potential connections between these concepts from a research perspective. Consider how they might relate theoretically, what shared mechanisms might exist, where they could illuminate each other, and which connections seem natural versus forced. Think about methodological approaches, empirical possibilities, and theoretical frameworks without committing to specific research directions yet.
+
+**Phase 2: Discovery-Oriented Analysis**
+Now write a research-oriented exploration of approximately 3000 words. Focus on whichever concepts yielded the most promising research insights - you don't need to use all concepts if they don't contribute meaningfully to your discoveries.
+
+**Your exploration should:**
+- Identify significant research insights or discoveries that emerge from genuine connections
+- Develop insights thoroughly with research implications, methodological approaches, and empirical possibilities
+- Ensure ideas are internally cohesive and well-grounded
+- Write as a flowing, investigative exploration rather than fragmented analysis
+
+**Style:** Write as if you're making groundbreaking discoveries in your field. Emphasize the excitement of new knowledge and potential for advancing understanding. Develop ideas extensively and show how they could open new research directions. Focus on scholarly depth and organic development of transformative insights based on coherent conceptual relationships rather than forced synthesis.

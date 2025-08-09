@@ -1,0 +1,27 @@
+RESPONSE TO EVALUATE:
+{{ response }}
+
+--- EVALUATION INSTRUCTIONS ---
+
+Evaluate this response for style and coherence quality, focusing on how well the writing flows and integrates concepts.
+
+Assess the response for:
+
+**Coherence & Integration:**
+- **Natural concept integration**: Are concepts woven together naturally or forced artificially?
+- **Logical flow**: Does the argument develop logically from start to finish?
+- **Internal consistency**: Are ideas consistent throughout without contradictions?
+
+**Writing Quality:**
+- **Clarity**: Is the writing clear and easy to follow?
+- **Engagement**: Is it compelling and well-structured?
+- **Depth vs. verbosity**: Does it develop ideas meaningfully or just use many words?
+
+**Conceptual Honesty:**
+- **Genuine connections**: Does it focus on real relationships between concepts?
+- **Avoids forced synthesis**: Does it resist artificial concept cramming?
+- **Acknowledges limitations**: Does it handle conceptual tensions appropriately?
+
+Your evaluation must end with a line containing the final score and there should be no more content.
+That last line should have the exact format given below - with X being a placeholder for a digit:
+SCORE: X
