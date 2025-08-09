@@ -8,7 +8,7 @@ from ..utils.nodes_standalone import (
 )
 from ..models import Concept, ContentCombination
 from .partitions import generation_tasks_partitions, evaluation_tasks_partitions
-from .utilities import ComboIDManager
+from ..utils.combo_ids import ComboIDManager
 
 @asset(
     group_name="llm_tasks",
