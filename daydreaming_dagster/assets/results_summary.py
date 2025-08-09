@@ -292,3 +292,77 @@ def perfect_score_paths(context, parsed_scores: pd.DataFrame) -> pd.DataFrame:
     })
     
     return result_df
+
+
+@asset(
+    group_name="results_processing", 
+    io_manager_key="summary_results_io_manager"
+)
+def evaluation_model_template_pivot(context, parsed_scores: pd.DataFrame) -> pd.DataFrame:
+    """
+    Create pivot table with (evaluation_model, evaluation_template) combinations as columns.
+    
+    Rows: Each generation response (combo_id, generation_template, generation_model)
+    Columns: Each (evaluation_model, evaluation_template) combination  
+    Values: Score for that generation evaluated by that (model, template) combination
+    
+    This table enables easy comparison of how different evaluation approaches
+    score the same generation responses.
+    """
+    if parsed_scores is None or parsed_scores.empty:
+        context.log.warning("No parsed_scores provided; returning empty pivot")
+        return pd.DataFrame()
+    
+    # Filter to valid scored rows
+    valid_scores = parsed_scores[
+        parsed_scores['error'].isna() & parsed_scores['score'].notna()
+    ].copy()
+    
+    if valid_scores.empty:
+        context.log.warning("No valid scores found; returning empty pivot")
+        return pd.DataFrame()
+    
+    # Create combined column name for (evaluation_model, evaluation_template)
+    valid_scores['eval_model_template'] = (
+        valid_scores['evaluation_model'] + '_' + valid_scores['evaluation_template']
+    )
+    
+    # Create pivot table
+    pivot_df = valid_scores.pivot_table(
+        index=['combo_id', 'generation_template', 'generation_model'],
+        columns='eval_model_template',
+        values='score',
+        aggfunc='mean'  # In case there are duplicates, take mean
+    ).reset_index()
+    
+    # Fill NaN values with None for cleaner display
+    pivot_df = pivot_df.fillna(np.nan)
+    
+    # Get column statistics
+    eval_columns = [col for col in pivot_df.columns if col not in ['combo_id', 'generation_template', 'generation_model']]
+    total_generations = len(pivot_df)
+    coverage_stats = {}
+    
+    for col in eval_columns:
+        non_null_count = pivot_df[col].count()
+        coverage_pct = (non_null_count / total_generations * 100) if total_generations > 0 else 0
+        coverage_stats[col] = {
+            'evaluations': non_null_count,
+            'coverage_pct': round(coverage_pct, 1),
+            'mean_score': round(pivot_df[col].mean(), 2) if non_null_count > 0 else None
+        }
+    
+    context.log.info(f"Created pivot table with {total_generations} generation responses")
+    context.log.info(f"Evaluation combinations: {len(eval_columns)}")
+    
+    # Add metadata
+    context.add_output_metadata({
+        "total_generation_responses": MetadataValue.int(total_generations),
+        "evaluation_combinations": MetadataValue.int(len(eval_columns)),
+        "unique_combos": MetadataValue.int(pivot_df['combo_id'].nunique()),
+        "unique_generation_templates": MetadataValue.int(pivot_df['generation_template'].nunique()), 
+        "unique_generation_models": MetadataValue.int(pivot_df['generation_model'].nunique()),
+        "evaluation_coverage": MetadataValue.json(coverage_stats)
+    })
+    
+    return pivot_df
