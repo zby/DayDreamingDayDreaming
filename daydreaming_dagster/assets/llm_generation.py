@@ -10,7 +10,7 @@ from .partitions import generation_tasks_partitions
     group_name="llm_generation",
     io_manager_key="generation_prompt_io_manager",
     deps=["generation_tasks"],  # Ensure partitions are created first
-    pool="llm_api"  # Pool-based concurrency control
+    tags={"dagster/concurrency_key": "llm_api"}
 )
 def generation_prompt(
     context, 
@@ -98,7 +98,7 @@ def generation_prompt(
     io_manager_key="generation_response_io_manager",
     required_resource_keys={"openrouter_client"},
     deps=["generation_tasks"],  # Remove generation_models dependency
-    pool="llm_api"  # Pool-based concurrency control
+    tags={"dagster/concurrency_key": "llm_api"}
 )
 def generation_response(context, generation_prompt, generation_tasks) -> str:
     """
@@ -121,4 +121,52 @@ def generation_response(context, generation_prompt, generation_tasks) -> str:
     response = llm_client.generate(prompt, model=model_name)
     
     context.log.info(f"Generated LLM response for task {task_id} using model {model_name}")
+    return response
+
+
+# Split-pool variants to allow separate global concurrency for free vs paid
+
+@asset(
+    partitions_def=generation_tasks_partitions,
+    group_name="llm_generation",
+    io_manager_key="generation_response_io_manager",
+    required_resource_keys={"openrouter_client"},
+    deps=["generation_tasks"],
+    tags={"dagster/concurrency_key": "llm_api_free"}
+)
+def generation_response_free(context, generation_prompt, generation_tasks) -> str:
+    """Generate LLM responses for partitions targeting free-tier models (use with free pool)."""
+    task_id = context.partition_key
+    task_row = generation_tasks[generation_tasks["generation_task_id"] == task_id].iloc[0]
+    model_name = task_row["generation_model_name"]
+    if ":free" not in (model_name or ""):
+        # Mark as failed so a subsequent paid run with "failed/missing" can pick it up
+        raise Failure(f"[FREE] Partition {task_id} uses paid model {model_name}; run generation_response_paid instead.")
+    prompt = generation_prompt
+    llm_client = context.resources.openrouter_client
+    response = llm_client.generate(prompt, model=model_name)
+    context.log.info(f"[FREE] Generated LLM response for task {task_id} using model {model_name}")
+    return response
+
+
+@asset(
+    partitions_def=generation_tasks_partitions,
+    group_name="llm_generation",
+    io_manager_key="generation_response_io_manager",
+    required_resource_keys={"openrouter_client"},
+    deps=["generation_tasks"],
+    tags={"dagster/concurrency_key": "llm_api_paid"}
+)
+def generation_response_paid(context, generation_prompt, generation_tasks) -> str:
+    """Generate LLM responses for partitions targeting paid models (use with paid pool)."""
+    task_id = context.partition_key
+    task_row = generation_tasks[generation_tasks["generation_task_id"] == task_id].iloc[0]
+    model_name = task_row["generation_model_name"]
+    if ":free" in (model_name or ""):
+        # Mark as failed so a subsequent free run with "failed/missing" can pick it up
+        raise Failure(f"[PAID] Partition {task_id} uses free model {model_name}; run generation_response_free instead.")
+    prompt = generation_prompt
+    llm_client = context.resources.openrouter_client
+    response = llm_client.generate(prompt, model=model_name)
+    context.log.info(f"[PAID] Generated LLM response for task {task_id} using model {model_name}")
     return response

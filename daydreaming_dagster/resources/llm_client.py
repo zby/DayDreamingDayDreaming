@@ -24,10 +24,20 @@ class LLMClientResource(ConfigurableResource):
     base_url: str = "https://openrouter.ai/api/v1"
     max_retries: int = 5
     default_max_tokens: int = 8192
-    # Rate limiting: VERY CONSERVATIVE for free tier APIs (some models allow only 1 call per minute)
+    # Legacy single-tier rate limits (kept for backward compatibility if tier is unknown)
     rate_limit_calls: int = 1
-    rate_limit_period: int = 60  # 1 call per minute
-    mandatory_delay: float = 65.0  # Mandatory delay between calls (65 seconds to be extra safe)
+    rate_limit_period: int = 60
+    mandatory_delay: float = 65.0
+
+    # Tier-aware rate limits (separate for free vs paid)
+    # Defaults are conservative. Override via Dagster resource config if needed.
+    free_rate_limit_calls: int = 1
+    free_rate_limit_period: int = 60
+    free_mandatory_delay: float = 65.0
+
+    paid_rate_limit_calls: int = 5
+    paid_rate_limit_period: int = 1
+    paid_mandatory_delay: float = 0.0
     def _ensure_initialized(self):
         """Lazy initialization of OpenAI client."""
         if not hasattr(self, '_client'):
@@ -66,12 +76,21 @@ class LLMClientResource(ConfigurableResource):
         return self._make_api_call(prompt, model, temperature, effective_max_tokens)
 
     def _make_api_call(self, prompt: str, model: str, temperature: float, max_tokens: int) -> str:
-        """Make the actual API call with rate limiting and retry logic using tenacity and ratelimit."""
-        
-        # Create dynamic decorators based on instance configuration
+        """Make the actual API call with rate limiting and retry logic using tenacity and ratelimit.
+
+        Note: We construct decorators per-tier so that free vs paid have distinct policies.
+        The strict enforcement is done via mandatory delay inside _raw_api_call with tier-specific
+        last-call tracking; the decorator-level limiter serves as an extra guardrail.
+        """
+
+        is_free = self._is_free_model(model)
+        calls = self.free_rate_limit_calls if is_free else self.paid_rate_limit_calls
+        period = self.free_rate_limit_period if is_free else self.paid_rate_limit_period
+
+        # Create dynamic decorators based on model tier
         def create_decorated_call():
             @sleep_and_retry
-            @limits(calls=self.rate_limit_calls, period=self.rate_limit_period)
+            @limits(calls=calls, period=period)
             @retry(
                 wait=wait_exponential(multiplier=2, min=2, max=60),
                 stop=stop_after_attempt(self.max_retries),
@@ -83,22 +102,29 @@ class LLMClientResource(ConfigurableResource):
             )
             def decorated_api_call():
                 return self._raw_api_call(prompt, model, temperature, max_tokens)
-            
+
             return decorated_api_call
-        
-        # Create and call the decorated function
+
         decorated_call = create_decorated_call()
         return decorated_call()
 
     def _raw_api_call(self, prompt: str, model: str, temperature: float, max_tokens: int) -> str:
-        """Raw API call with mandatory delay for ultra-conservative rate limiting."""
-        
-        # Enforce mandatory delay between calls (ultra-conservative for free tier)
-        if hasattr(self, '_last_call_time'):
-            time_since_last = time.time() - self._last_call_time
-            if time_since_last < self.mandatory_delay:
-                delay_needed = self.mandatory_delay - time_since_last
-                logger.info(f"Mandatory delay: waiting {delay_needed:.1f}s before API call (free tier protection)")
+        """Raw API call with tier-aware mandatory delay and error-classified retries."""
+
+        is_free = self._is_free_model(model)
+        mandatory_delay = self.free_mandatory_delay if is_free else self.paid_mandatory_delay
+
+        # Enforce tier-specific mandatory delay between calls
+        last_attr = '_last_call_time_free' if is_free else '_last_call_time_paid'
+        last_call_time = getattr(self, last_attr, None)
+        if last_call_time is not None and mandatory_delay > 0:
+            time_since_last = time.time() - last_call_time
+            if time_since_last < mandatory_delay:
+                delay_needed = mandatory_delay - time_since_last
+                tier_label = 'free' if is_free else 'paid'
+                logger.info(
+                    f"Mandatory delay ({tier_label}): waiting {delay_needed:.1f}s before API call"
+                )
                 time.sleep(delay_needed)
         
         try:
@@ -110,8 +136,8 @@ class LLMClientResource(ConfigurableResource):
                 max_tokens=max_tokens,
             )
             
-            # Record the time of this successful call
-            self._last_call_time = time.time()
+            # Record the time of this successful call per tier
+            setattr(self, last_attr, time.time())
 
             response_text = response.choices[0].message.content
             if response_text is None:
@@ -121,8 +147,8 @@ class LLMClientResource(ConfigurableResource):
             return response_text.strip()
 
         except Exception as e:
-            # Record the time even for failed calls to maintain delay
-            self._last_call_time = time.time()
+            # Record the time even for failed calls to maintain delay per tier
+            setattr(self, last_attr, time.time())
             
             # Log the error for debugging
             logger.debug(f"API call error: {e}")
@@ -171,3 +197,13 @@ class LLMClientResource(ConfigurableResource):
         ]
 
         return any(pattern in error_msg for pattern in retryable_patterns)
+
+    def _is_free_model(self, model: str) -> bool:
+        """Heuristically determine if the model is a free-tier model.
+
+        Convention: OpenRouter free tier models include the suffix ":free".
+        """
+        try:
+            return ":free" in (model or "")
+        except Exception:
+            return False

@@ -1,13 +1,18 @@
 from dagster import asset, Failure, MetadataValue
-from .partitions import evaluation_tasks_partitions
+from .partitions import (
+    evaluation_tasks_partitions,
+    evaluation_tasks_free_partitions,
+    evaluation_tasks_paid_partitions,
+)
 from ..utils.nodes_standalone import generate_evaluation_prompts
 
 
 @asset(
-    partitions_def=evaluation_tasks_partitions,
+    partitions_def=evaluation_tasks_free_partitions,
     group_name="llm_evaluation",
     io_manager_key="evaluation_prompt_io_manager",
     required_resource_keys={"generation_response_io_manager"},
+    tags={"dagster/concurrency_key": "llm_api"}
 )
 def evaluation_prompt(context, evaluation_tasks, evaluation_templates) -> str:
     """
@@ -178,12 +183,25 @@ def evaluation_prompt(context, evaluation_tasks, evaluation_templates) -> str:
 
 
 @asset(
-    partitions_def=evaluation_tasks_partitions,
+    partitions_def=evaluation_tasks_paid_partitions,
+    group_name="llm_evaluation",
+    io_manager_key="evaluation_prompt_io_manager",
+    required_resource_keys={"generation_response_io_manager"},
+    tags={"dagster/concurrency_key": "llm_api"}
+)
+def evaluation_prompt_paid(context, evaluation_tasks, evaluation_templates) -> str:
+    """Paid-tier counterpart to `evaluation_prompt` for partition binding."""
+    # Reuse logic by delegating to evaluation_prompt with the same inputs
+    return evaluation_prompt(context, evaluation_tasks, evaluation_templates)
+
+
+@asset(
+    partitions_def=evaluation_tasks_free_partitions,
     group_name="llm_evaluation",
     io_manager_key="evaluation_response_io_manager",
     required_resource_keys={"openrouter_client"},
     deps=["generation_tasks"],  # Remove evaluation_models dependency
-    pool="llm_api"  # Pool-based concurrency control
+    tags={"dagster/concurrency_key": "llm_api"}
 )
 def evaluation_response(context, evaluation_prompt, evaluation_tasks) -> str:
     """Generate one evaluation response per partition."""
@@ -219,4 +237,56 @@ def evaluation_response(context, evaluation_prompt, evaluation_tasks) -> str:
     response = llm_client.generate(eval_prompt, model=model_name)
     
     context.log.info(f"Generated evaluation response for task {task_id} using model {model_name}")
+    return response
+
+
+@asset(
+    partitions_def=evaluation_tasks_paid_partitions,
+    group_name="llm_evaluation",
+    io_manager_key="evaluation_response_io_manager",
+    required_resource_keys={"openrouter_client"},
+    deps=["generation_tasks"],
+    tags={"dagster/concurrency_key": "llm_api_paid"}
+)
+def evaluation_response_paid(context, evaluation_prompt, evaluation_tasks) -> str:
+    """Generate evaluation responses for partitions targeting paid models (use with paid pool)."""
+    task_id = context.partition_key
+    matching_tasks = evaluation_tasks[evaluation_tasks["evaluation_task_id"] == task_id]
+    if len(matching_tasks) == 0:
+        raise Failure(f"Evaluation task '{task_id}' not found")
+    task_row = matching_tasks.iloc[0]
+    model_name = task_row["evaluation_model_name"]
+    if ":free" in (model_name or ""):
+        context.log.info(f"[PAID] Skipping evaluation {task_id} because model is free: {model_name}")
+        return "SKIPPED_FREE_MODEL"
+    eval_prompt = evaluation_prompt
+    llm_client = context.resources.openrouter_client
+    response = llm_client.generate(eval_prompt, model=model_name)
+    context.log.info(f"[PAID] Generated evaluation response for task {task_id} using model {model_name}")
+    return response
+
+
+@asset(
+    partitions_def=evaluation_tasks_free_partitions,
+    group_name="llm_evaluation",
+    io_manager_key="evaluation_response_io_manager",
+    required_resource_keys={"openrouter_client"},
+    deps=["generation_tasks"],
+    tags={"dagster/concurrency_key": "llm_api_free"}
+)
+def evaluation_response_free(context, evaluation_prompt, evaluation_tasks) -> str:
+    """Generate evaluation responses for partitions targeting free models (use with free pool)."""
+    task_id = context.partition_key
+    matching_tasks = evaluation_tasks[evaluation_tasks["evaluation_task_id"] == task_id]
+    if len(matching_tasks) == 0:
+        raise Failure(f"Evaluation task '{task_id}' not found")
+    task_row = matching_tasks.iloc[0]
+    model_name = task_row["evaluation_model_name"]
+    if ":free" not in (model_name or ""):
+        context.log.info(f"[FREE] Skipping evaluation {task_id} because model is paid: {model_name}")
+        return "SKIPPED_NON_FREE"
+    eval_prompt = evaluation_prompt
+    llm_client = context.resources.openrouter_client
+    response = llm_client.generate(eval_prompt, model=model_name)
+    context.log.info(f"[FREE] Generated evaluation response for task {task_id} using model {model_name}")
     return response

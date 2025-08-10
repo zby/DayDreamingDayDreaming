@@ -310,6 +310,10 @@ The pipeline is designed for efficient concurrent processing:
 3. **Resource Pooling**: Shared LLM client resource across partitions
 4. **Rate Limiting**: Configurable throttling to respect API limits
 
+#### Tier-Aware LLM Concurrency and Rate Limits
+
+Details moved to a dedicated guide: see `docs/tiered_llm_concurrency.md`.
+
 ### Scalability Features
 
 1. **Selective Loading**: Scale down for development/testing

@@ -7,7 +7,12 @@ from ..utils.nodes_standalone import (
     create_evaluation_tasks_from_generation_tasks,
 )
 from ..models import Concept, ContentCombination
-from .partitions import generation_tasks_partitions, evaluation_tasks_partitions
+from .partitions import (
+    generation_tasks_partitions,
+    evaluation_tasks_partitions,
+    evaluation_tasks_free_partitions,
+    evaluation_tasks_paid_partitions,
+)
 from ..utils.combo_ids import ComboIDManager
 
 @asset(
@@ -180,8 +185,10 @@ def evaluation_tasks(
         # num_evaluation_runs=num_evaluation_runs  # COMMENTED OUT
     )
     
-    # Clear existing partitions and register new ones for LLM processing
+    # Clear existing partitions and register new ones for LLM processing (overall and per tier)
     existing_partitions = context.instance.get_dynamic_partitions(evaluation_tasks_partitions.name)
+    existing_free = context.instance.get_dynamic_partitions(evaluation_tasks_free_partitions.name)
+    existing_paid = context.instance.get_dynamic_partitions(evaluation_tasks_paid_partitions.name)
     partitions_removed = len(existing_partitions) if existing_partitions else 0
     
     if existing_partitions:
@@ -191,12 +198,40 @@ def evaluation_tasks(
                 evaluation_tasks_partitions.name, 
                 partition
             )
+    if existing_free:
+        context.log.info(f"Removing {len(existing_free)} existing evaluation FREE partitions")
+        for partition in existing_free:
+            context.instance.delete_dynamic_partition(
+                evaluation_tasks_free_partitions.name,
+                partition,
+            )
+    if existing_paid:
+        context.log.info(f"Removing {len(existing_paid)} existing evaluation PAID partitions")
+        for partition in existing_paid:
+            context.instance.delete_dynamic_partition(
+                evaluation_tasks_paid_partitions.name,
+                partition,
+            )
     
     new_partitions = tasks_df["evaluation_task_id"].tolist()
     context.instance.add_dynamic_partitions(
         evaluation_tasks_partitions.name,
         new_partitions
     )
+
+    # Register per-tier splits for UI filtering
+    free_keys = tasks_df.loc[tasks_df["evaluation_model_name"].astype(str).str.contains(":free"), "evaluation_task_id"].tolist()
+    paid_keys = tasks_df.loc[~tasks_df["evaluation_model_name"].astype(str).str.contains(":free"), "evaluation_task_id"].tolist()
+    if free_keys:
+        context.instance.add_dynamic_partitions(
+            evaluation_tasks_free_partitions.name,
+            free_keys,
+        )
+    if paid_keys:
+        context.instance.add_dynamic_partitions(
+            evaluation_tasks_paid_partitions.name,
+            paid_keys,
+        )
     
     context.log.info(f"Created {len(tasks_df)} evaluation task partitions")
     
@@ -204,6 +239,8 @@ def evaluation_tasks(
     context.add_output_metadata({
         "task_count": MetadataValue.int(len(tasks_df)),
         "partitions_created": MetadataValue.int(len(new_partitions)),
+        "partitions_created_free": MetadataValue.int(len(free_keys)),
+        "partitions_created_paid": MetadataValue.int(len(paid_keys)),
         "partitions_removed": MetadataValue.int(partitions_removed),
         "unique_generation_tasks": MetadataValue.int(tasks_df["generation_task_id"].nunique()),
         "unique_eval_templates": MetadataValue.int(tasks_df["evaluation_template"].nunique()),

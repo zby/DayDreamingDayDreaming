@@ -1,11 +1,15 @@
-from dagster import Definitions, multiprocess_executor
+from dagster import Definitions, multiprocess_executor, define_asset_job, AssetSelection
 from daydreaming_dagster.assets.llm_generation import (
     generation_prompt,
-    generation_response
+    generation_response,
+    generation_response_free,
+    generation_response_paid,
 )
 from daydreaming_dagster.assets.llm_evaluation import (
     evaluation_prompt,
-    evaluation_response
+    evaluation_response,
+    evaluation_response_paid,
+    evaluation_response_free,
 )
 from daydreaming_dagster.assets.results_processing import (
     parsed_scores
@@ -58,8 +62,12 @@ defs = Definitions(
         # LLM prompt and response assets
         generation_prompt,
         generation_response,
+        generation_response_free,
+        generation_response_paid,
         evaluation_prompt,
         evaluation_response,
+        evaluation_response_paid,
+        evaluation_response_free,
         
         # Results processing assets
         parsed_scores,
@@ -69,6 +77,29 @@ defs = Definitions(
         evaluation_model_template_pivot,
         final_results,
         perfect_score_paths
+    ],
+    jobs=[
+        # Preconfigured jobs with default run tags for concurrency limits
+        define_asset_job(
+            name="generation_free",
+            selection=AssetSelection.keys("generation_prompt", "generation_response_free"),
+            tags={"dagster/concurrency_key": "llm_api_free"},
+        ),
+        define_asset_job(
+            name="generation_paid",
+            selection=AssetSelection.keys("generation_prompt", "generation_response_paid"),
+            tags={"dagster/concurrency_key": "llm_api_paid"},
+        ),
+        define_asset_job(
+            name="evaluation_free",
+            selection=AssetSelection.keys("evaluation_prompt", "evaluation_response_free"),
+            tags={"dagster/concurrency_key": "llm_api_free"},
+        ),
+        define_asset_job(
+            name="evaluation_paid",
+            selection=AssetSelection.keys("evaluation_prompt_paid", "evaluation_response_paid"),
+            tags={"dagster/concurrency_key": "llm_api_paid"},
+        ),
     ],
     resources={
         "openrouter_client": LLMClientResource(),
