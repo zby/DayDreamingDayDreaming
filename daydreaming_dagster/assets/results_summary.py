@@ -7,64 +7,68 @@ import numpy as np
     group_name="results_processing",
     io_manager_key="summary_results_io_manager"
 )
-def generation_scores_pivot(context, parsed_scores: pd.DataFrame) -> pd.DataFrame:
+def generation_scores_pivot(context, parsed_scores: pd.DataFrame, evaluation_templates: pd.DataFrame) -> pd.DataFrame:
     """
-    Pivot average evaluation scores per generation.
+    Pivot individual evaluation scores per generation.
 
     Rows: combo_id, generation_template, generation_model
-    Columns: o3-prior-art-eval, gemini-prior-art-eval, daydreaming-verification-v2
-    Values: mean score (averaged across evaluation models) per evaluation_template
+    Columns: Each unique (evaluation_template, evaluation_model) combination
+    Values: Individual score for that specific evaluator combination (no averaging)
     """
+    # Get active evaluation template names
+    if evaluation_templates is None or evaluation_templates.empty:
+        context.log.warning("No evaluation_templates provided; returning empty pivot")
+        return pd.DataFrame()
+    
+    active_templates = evaluation_templates[evaluation_templates['active'] == True]['template_id'].tolist()
+    
+    if not active_templates:
+        context.log.warning("No active evaluation templates found; returning empty pivot")
+        return pd.DataFrame()
+    
     # Filter to valid scored rows
     if parsed_scores is None or parsed_scores.empty:
-        empty_cols = [
-            'combo_id', 'generation_template', 'generation_model',
-            'o3-prior-art-eval', 'gemini-prior-art-eval', 'daydreaming-verification-v2'
-        ]
         context.log.warning("No parsed_scores provided; returning empty pivot")
-        return pd.DataFrame(columns=empty_cols)
+        return pd.DataFrame()
 
     valid_scores = parsed_scores[
         parsed_scores['error'].isna() & parsed_scores['score'].notna()
     ].copy()
 
-    target_templates = [
-        'o3-prior-art-eval',
-        'gemini-prior-art-eval',
-        'daydreaming-verification-v2',
-    ]
-
     if valid_scores.empty:
-        empty_cols = [
-            'combo_id', 'generation_template', 'generation_model',
-            'o3-prior-art-eval', 'gemini-prior-art-eval', 'daydreaming-verification-v2'
-        ]
         context.log.warning("No valid scores found; returning empty pivot")
-        return pd.DataFrame(columns=empty_cols)
+        return pd.DataFrame()
 
-    # Build pivot: average score for each generation across each evaluation template
+    # Create combined column name for (evaluation_template, evaluation_model)
+    valid_scores['eval_template_model'] = (
+        valid_scores['evaluation_template'] + '_' + valid_scores['evaluation_model']
+    )
+
+    # Build pivot: individual score for each generation across each (template, model) combination
     pivot_df = valid_scores.pivot_table(
         index=['combo_id', 'generation_template', 'generation_model'],
-        columns='evaluation_template',
+        columns='eval_template_model',
         values='score',
-        aggfunc='mean'
+        aggfunc='first'  # Take first score if duplicates exist (shouldn't happen with proper data)
     ).round(2)
 
-    # Flatten and ensure desired columns exist
+    # Flatten and reset index
     pivot_df = pivot_df.reset_index()
-    for tmpl in target_templates:
-        if tmpl not in pivot_df.columns:
-            pivot_df[tmpl] = np.nan
 
-    # Order columns as requested
-    ordered_cols = ['combo_id', 'generation_template', 'generation_model'] + target_templates
+    # Get all evaluation columns (excluding the index columns)
+    eval_columns = [col for col in pivot_df.columns if col not in ['combo_id', 'generation_template', 'generation_model']]
+    
+    # Order columns: index columns first, then evaluation columns
+    ordered_cols = ['combo_id', 'generation_template', 'generation_model'] + eval_columns
     pivot_df = pivot_df[ordered_cols]
 
     # Metadata
     context.add_output_metadata({
         "rows": MetadataValue.int(len(pivot_df)),
         "unique_generations": MetadataValue.int(pivot_df[['combo_id', 'generation_template', 'generation_model']].drop_duplicates().shape[0]),
-        "included_eval_templates": MetadataValue.text(", ".join([c for c in target_templates if c in pivot_df.columns]))
+        "evaluation_combinations": MetadataValue.int(len(eval_columns)),
+        "total_active_templates": MetadataValue.int(len(active_templates)),
+        "evaluation_columns": MetadataValue.text(", ".join(eval_columns))
     })
 
     return pivot_df
