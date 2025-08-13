@@ -1,0 +1,144 @@
+Title: Inventive Synthesis from Foundational Concepts  
+Role: You are an expert in interdisciplinary synthesis, conceptual invention, and feasibility design.
+
+Inputs:  
+{% for concept in concepts %}
+**{{ concept.name }}**  
+{{ concept.content }}  
+---
+{% endfor %}
+
+Output format:  
+1. <thinking> … </thinking>  # Structured design notes for internal logic — no step-by-step monologue  
+2. <essay> … </essay>        # Human-readable, coherent narrative  
+3. <endnotes> … </endnotes>  # Tables, metrics, references, source attributions
+
+---
+
+<thinking>
+
+## 1A. Concept Roles & Selection
+Classify each input concept as:
+- **Global** — frames whole system (goal, constraint, context, evaluation criterion)  
+- **Local: Primary** — standalone mechanism or subsystem that can be linked directly  
+- **Local: Nested** — component within a primary mechanism  
+
+Format:
+- Name:
+- Role:
+- One-line paraphrase (own words)
+- If Local: key operators, constraints, metrics
+
+---
+
+## 1B. Structure-Preserving Links (Local ↔ Local)
+For each link:
+- Concept A → Concept B
+- **Link type** (choose one):  
+  1. Structure-Preserving Analogy  
+  2. Mechanism Composition  
+  3. Constraint / Objective Import  
+  4. Property Transfer / Feature Grafting
+  5. Domain Reframing / Problem Translation
+- State mapping:
+- Operator mapping:
+- Objective/feedback mapping:
+- Constraint mapping:
+- Metric mapping:
+- Invariants preserved (choose: Composition, Monotonicity(+metric), Constraint Conservation, Symmetry, Fixed Point)
+- Predictions implied (≥2):
+- Decision: pass / drop
+
+---
+
+## 1C. Mechanism Sketch
+- Inputs:
+- Procedure (step-by-step or pseudocode, ≤15 lines):
+- Objectives & selection criteria:
+- Outcomes expected (goal → metric → levers → test mapping):
+
+---
+
+## 1D. Feasibility Mechanisms
+Mechanisms ensuring the invention can survive in the real world (economic, strategic, operational).  
+For each:
+- Name:
+- Resource needed:
+- Protection strategy:
+- Economic rationale:
+- Metrics (e.g., time-to-parity, cost-to-replicate, market advantage duration):
+- Risks:
+- Predictions:
+
+---
+
+## 1E. Scope Map
+Global scope concepts:
+- [list]
+
+Subsystem scopes (Primary Local Concepts):
+- <Name>
+   - Nested Local Concepts:
+      - [list]
+   - Feasibility Mechanisms attached:
+      - [list]
+
+---
+
+## 1F. Prior-Art Delta
+For each nearest-neighbor approach:
+- Name:
+- Delta (mechanical difference, not just domain difference):
+
+---
+
+## Gate Criteria (Fail-Fast Check)
+Score each 0–2: Specificity, Mechanism clarity, Refutability, Prior-art delta, Feasibility, Ethics/Policy.  
+<8/12 → revise; <6/12 → output non-coherence note.
+
+---
+
+## Lints (Auto-Checks)
+- No outcome-as-operator names: <ok|flag>
+- Link type assigned for every link: <ok|flag>
+- Neologism guard: if coined term used, must appear in <endnotes> “Metaphor→Mechanism” table
+- Specificity floor: mention ≥3 of {dataset, objective/loss, evaluation metric, baseline, ablation}
+</thinking>
+
+---
+
+<essay>
+Write a 2,000–3,000 word narrative that:
+- Frames the problem/opportunity (use Global Concepts)
+- Shows how Local Concepts connect via the Structure-Preserving Links
+- Explains the mechanism(s) in plain language (push technical detail to <endnotes>)
+- Discusses feasibility (from Feasibility Mechanisms)
+- Covers implications, trade-offs, risks
+- Distinguishes between what builds on prior work vs. what is new
+Avoid bullet lists here; use clear paragraphs with strong transitions.
+</essay>
+
+---
+
+<endnotes>
+
+1) **Metaphor → Mechanism Table** (only if coined terms used)  
+| Term | Plain definition | Mechanism (state → operator → objective) | Metric(s)/Test(s) |
+
+2) **Outcome Targets Summary**  
+| Goal | Metric (definition) | Baseline → Target | Levers (operators) | Test plan |
+
+3) **Metrics Defined**  
+- Novelty: <definition + computation>  
+- Diversity: <definition + computation>
+
+4) **Predictions & Tests** (with multiple-testing control, ablations, datasets, sample sizes)
+
+5) **Feasibility Mechanisms** (detailed table if multiple)
+
+6) **Prior Art & Deltas** (2–5 items)
+
+7) **Back-of-the-Envelope Estimates** (assumptions, magnitudes, ranges)
+
+8) **Sources** (label numeric claims without sources as “hypothetical”)
+</endnotes>
