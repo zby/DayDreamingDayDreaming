@@ -288,3 +288,4 @@ def parsed_scores(context, evaluation_tasks: pd.DataFrame, generation_tasks: pd.
     )
     
     return result_df
+

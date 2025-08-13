@@ -1,4 +1,5 @@
 from dagster import asset, Failure, MetadataValue
+from pathlib import Path
 from .partitions import evaluation_tasks_partitions
 from ..utils.nodes_standalone import generate_evaluation_prompts
 
@@ -7,9 +8,9 @@ from ..utils.nodes_standalone import generate_evaluation_prompts
     partitions_def=evaluation_tasks_partitions,
     group_name="llm_evaluation",
     io_manager_key="evaluation_prompt_io_manager",
-    required_resource_keys={"generation_response_io_manager"},
+    required_resource_keys={"parsing_results_io_manager"},
 )
-def evaluation_prompt(context, evaluation_tasks, evaluation_templates) -> str:
+def evaluation_prompt(context, evaluation_tasks, evaluation_templates, parsed_generation_responses) -> str:
     """
     Generate one evaluation prompt per partition using FK-based data loading.
     
@@ -82,10 +83,10 @@ def evaluation_prompt(context, evaluation_tasks, evaluation_templates) -> str:
     # Log the foreign key relationship for debugging
     context.log.info(f"Loading generation response for FK relationship: {task_id} -> {generation_task_id}")
     
-    # Load the generation response from the correct partition using I/O manager
+    # Load the parsed generation response from the correct partition using I/O manager
     # This uses the MockLoadContext pattern to load data from a different partition
     # See docs/evaluation_asset_architecture.md for detailed explanation
-    gen_response_io_manager = context.resources.generation_response_io_manager
+    parsing_io_manager = context.resources.parsing_results_io_manager
     
     # Validate that the referenced generation_task_id looks valid
     if not generation_task_id or generation_task_id.strip() == "":
@@ -115,34 +116,52 @@ def evaluation_prompt(context, evaluation_tasks, evaluation_templates) -> str:
     mock_context = MockLoadContext(generation_task_id)
     
     # Check if the file exists before attempting to load (better error context)
-    expected_path = gen_response_io_manager.base_path / f"{generation_task_id}.txt"
+    expected_path = parsing_io_manager.base_path / f"{generation_task_id}.csv"
     
     try:
-        generation_response = gen_response_io_manager.load_input(mock_context)
-        context.log.info(f"Successfully loaded generation response: {len(generation_response)} characters from {generation_task_id}")
+        # Load the parsed generation response from the parsing results
+        parsed_response = parsing_io_manager.load_input(mock_context)
+        
+        # Extract essay content from the parsed response
+        if isinstance(parsed_response, dict) and 'essay_content' in parsed_response:
+            essay_content = parsed_response['essay_content']
+        elif isinstance(parsed_response, str):
+            # If it's a string, assume it's the essay content directly
+            essay_content = parsed_response
+        else:
+            # Fallback: try to load the original generation response
+            gen_response_file = Path("data/3_generation/generation_responses") / f"{generation_task_id}.txt"
+            if gen_response_file.exists():
+                context.log.warning(f"Using fallback generation response for {generation_task_id}")
+                essay_content = gen_response_file.read_text()
+            else:
+                raise FileNotFoundError(f"Neither parsed nor original generation response found for: {generation_task_id}")
+        
+        context.log.info(f"Successfully loaded essay content: {len(essay_content)} characters from {generation_task_id}")
+        
     except FileNotFoundError as e:
         # Enhanced error with more debugging context
-        available_files = list(gen_response_io_manager.base_path.glob("*.txt")) if gen_response_io_manager.base_path.exists() else []
+        available_files = list(parsing_io_manager.base_path.glob("*.csv")) if parsing_io_manager.base_path.exists() else []
         available_partitions = [f.stem for f in available_files[:10]]  # Show first 10
         
-        context.log.error(f"Generation response not found for partition {generation_task_id}")
+        context.log.error(f"Parsed generation response not found for partition {generation_task_id}")
         context.log.error(f"Expected path: {expected_path}")
-        context.log.error(f"Base directory exists: {gen_response_io_manager.base_path.exists()}")
+        context.log.error(f"Base directory exists: {parsing_io_manager.base_path.exists()}")
         context.log.error(f"Available partitions (first 10): {available_partitions}")
         
         raise Failure(
-            description=f"Missing generation response required for evaluation task '{task_id}' (FK: {generation_task_id})",
+            description=f"Missing parsed generation response required for evaluation task '{task_id}' (FK: {generation_task_id})",
             metadata={
                 "evaluation_task_id": MetadataValue.text(task_id),
                 "generation_task_id": MetadataValue.text(generation_task_id),
                 "expected_file_path": MetadataValue.path(str(expected_path)),
-                "base_directory_exists": MetadataValue.text(str(gen_response_io_manager.base_path.exists())),
+                "base_directory_exists": MetadataValue.text(str(parsing_io_manager.base_path.exists())),
                 "available_partitions_sample": MetadataValue.text(str(available_partitions)),
                 "total_available_files": MetadataValue.int(len(available_files)),
                 "fk_relationship": MetadataValue.text(f"evaluation_task '{task_id}' references generation_task '{generation_task_id}'"),
-                "resolution_1": MetadataValue.text(f"Check if generation_response was materialized for partition: {generation_task_id}"),
-                "resolution_2": MetadataValue.text(f"Run: dagster asset materialize --select generation_response --partition {generation_task_id}"),
-                "resolution_3": MetadataValue.text("Or materialize all generation responses: dagster asset materialize --select generation_response"),
+                "resolution_1": MetadataValue.text(f"Check if parsed_generation_responses was materialized for partition: {generation_task_id}"),
+                "resolution_2": MetadataValue.text(f"Run: dagster asset materialize --select parsed_generation_responses --partition {generation_task_id}"),
+                "resolution_3": MetadataValue.text("Or materialize all parsing results: dagster asset materialize --select parsed_generation_responses"),
                 "resolution_4": MetadataValue.text("Verify generation_tasks asset was materialized before evaluation_tasks"),
                 "original_error": MetadataValue.text(str(e))
             }
@@ -152,7 +171,7 @@ def evaluation_prompt(context, evaluation_tasks, evaluation_templates) -> str:
     evaluation_templates_dict = evaluation_templates.set_index('template_id')['content'].to_dict()
     
     # Generate evaluation prompt using existing logic
-    response_dict = {generation_task_id: generation_response}
+    response_dict = {generation_task_id: essay_content}
     eval_prompts_dict = generate_evaluation_prompts(
         response_dict,
         evaluation_tasks.iloc[[task_row.name]],  # Single task
@@ -160,16 +179,16 @@ def evaluation_prompt(context, evaluation_tasks, evaluation_templates) -> str:
     )
     
     eval_prompt = eval_prompts_dict[task_id]
-    context.log.info(f"Generated evaluation prompt for task {task_id}, using generation response from {generation_task_id}")
+    context.log.info(f"Generated evaluation prompt for task {task_id}, using essay content from {generation_task_id}")
     
     # Add output metadata for debugging and monitoring
     context.add_output_metadata({
         "evaluation_task_id": MetadataValue.text(task_id),
         "generation_task_id_used": MetadataValue.text(generation_task_id),
-        "generation_response_length": MetadataValue.int(len(generation_response)),
+        "essay_content_length": MetadataValue.int(len(essay_content)),
         "evaluation_prompt_length": MetadataValue.int(len(eval_prompt)),
         "fk_relationship": MetadataValue.text(f"eval:{task_id} -> gen:{generation_task_id}"),
-        "io_manager_base_path": MetadataValue.path(str(gen_response_io_manager.base_path)),
+        "io_manager_base_path": MetadataValue.path(str(parsing_io_manager.base_path)),
         "template_used": MetadataValue.text(task_row["evaluation_template"]),
         "model_planned": MetadataValue.text(task_row["evaluation_model_name"])
     })

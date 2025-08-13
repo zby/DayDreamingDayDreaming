@@ -1,7 +1,8 @@
 from dagster import Definitions, multiprocess_executor
 from daydreaming_dagster.assets.llm_generation import (
     generation_prompt,
-    generation_response
+    generation_response,
+    parsed_generation_responses
 )
 from daydreaming_dagster.assets.llm_evaluation import (
     evaluation_prompt,
@@ -58,6 +59,7 @@ defs = Definitions(
         # LLM prompt and response assets
         generation_prompt,
         generation_response,
+        parsed_generation_responses,
         evaluation_prompt,
         evaluation_response,
         
@@ -83,11 +85,14 @@ defs = Definitions(
         "generation_prompt_io_manager": PartitionedTextIOManager(base_path=Path("data") / "3_generation" / "generation_prompts", overwrite=True),
         # Responses must never overwrite by default to preserve prior generations
         "generation_response_io_manager": PartitionedTextIOManager(base_path=Path("data") / "3_generation" / "generation_responses", overwrite=False),
+        # Parsed generation responses go into generation directory as structured data
+        "parsed_generation_io_manager": PartitionedTextIOManager(base_path=Path("data") / "3_generation" / "parsed_generation_responses", overwrite=True),
         "evaluation_prompt_io_manager": PartitionedTextIOManager(base_path=Path("data") / "4_evaluation" / "evaluation_prompts", overwrite=True),
         # Evaluations are outputs; keep overwrite disabled for safety
         "evaluation_response_io_manager": PartitionedTextIOManager(base_path=Path("data") / "4_evaluation" / "evaluation_responses", overwrite=False),
         "error_log_io_manager": CSVIOManager(base_path=Path("data") / "7_reporting"),
         "parsing_results_io_manager": CSVIOManager(base_path=Path("data") / "5_parsing"),
+        "parsed_generation_io_manager": PartitionedTextIOManager(base_path=Path("data") / "3_generation" / "parsed_generation_responses", overwrite=True),
         "summary_results_io_manager": CSVIOManager(base_path=Path("data") / "6_summary")
     },
     executor=multiprocess_executor.configured({"max_concurrent": 10})
