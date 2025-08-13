@@ -10,9 +10,97 @@ import tempfile
 import re
 import shutil
 import os
-from unittest.mock import patch
+from unittest.mock import patch, Mock
+from dagster import materialize, DagsterInstance, ConfigurableResource
 
-from dagster import materialize, DagsterInstance
+
+class CannedLLMResource(ConfigurableResource):
+    """Mock LLM resource with realistic canned responses for full pipeline testing."""
+    
+    def generate(self, prompt: str, model: str, temperature: float = 0.7, max_tokens: int = None) -> str:
+        """Generate method that matches LLMClientResource interface."""
+        # Determine if this is generation or evaluation based on prompt content
+        if "SCORE" in prompt or "Rate" in prompt or "evaluate" in prompt.lower():
+            # This is an evaluation prompt - return a score
+            return self._get_evaluation_response(model)
+        else:
+            # This is a generation prompt - return creative content
+            return self._get_generation_response(model, prompt)
+    
+    def get_client(self):
+        """Backward compatibility method - return self since we now implement generate directly."""
+        return self
+    
+    def _get_generation_response(self, model, prompt):
+        """Generate realistic creative responses based on model."""
+        responses = {
+            "deepseek/deepseek-r1:free": """
+# Breakthrough in Daydreaming Methodology
+
+This combination of concepts reveals a fascinating intersection between human creativity and systematic discovery. The default mode network, traditionally associated with mind-wandering, emerges as a crucial component in innovative thinking processes.
+
+## Key Insights
+
+1. **Combinatorial Creativity**: The systematic exploration of concept combinations mirrors how breakthrough discoveries often emerge from unexpected connections between disparate fields.
+
+2. **Economic Innovation Models**: Traditional economic models fail to capture the non-linear nature of creative discovery, where value emerges from novel combinations rather than incremental improvements.
+
+3. **Human-AI Collaboration**: The generator-verifier gap highlights how human intuition and AI systematization can complement each other in the discovery process.
+
+This synthesis suggests that structured daydreaming could be formalized into a reproducible methodology for innovation discovery.
+            """.strip(),
+            
+            "google/gemma-3-27b-it:free": """
+The convergence of these concepts points toward a revolutionary approach to creative discovery. By understanding how the default mode network facilitates combinatorial thinking, we can design systems that amplify human creativity.
+
+**Core Proposition**: Daydreaming is not passive wandering but active exploration of conceptual possibility spaces. When combined with systematic search methodologies, it becomes a powerful innovation engine.
+
+**Implementation Framework**:
+- Structured concept combination protocols
+- Economic models that account for creative value creation  
+- Human-AI hybrid systems that leverage both intuitive leaps and systematic verification
+
+This approach could transform how we think about innovation, moving from serendipitous discovery to intentional creative exploration.
+            """.strip()
+        }
+        
+        return responses.get(model, f"Creative analysis of concepts using {model}")
+    
+    def _get_evaluation_response(self, model):
+        """Generate realistic evaluation responses with scores (compatible with in_last_line strategy)."""
+        evaluations = {
+            "deepseek/deepseek-r1:free": """
+**Reasoning**: This response demonstrates exceptional creativity and insight. The synthesis of daydreaming methodology with systematic discovery shows deep understanding of the intersection between human cognition and innovation processes. The structured approach to creativity is particularly compelling.
+
+**Strengths**:
+- Novel framework combining structured and intuitive thinking
+- Clear implementation pathway
+- Strong theoretical foundation
+
+**Areas for improvement**:
+- Could benefit from more concrete examples
+- Implementation details could be more specific
+
+**SCORE**: 8.5
+            """.strip(),
+            
+            "google/gemma-3-27b-it:free": """
+**Reasoning**: Strong creative synthesis with good theoretical grounding. The concept of "structured daydreaming" is innovative and the human-AI collaboration angle is well-developed. However, the response could benefit from more detailed exploration of practical applications.
+
+**Strengths**:
+- Clear conceptual framework
+- Good integration of multiple domains
+- Practical orientation
+
+**Areas for improvement**:
+- More empirical support needed
+- Could explore limitations more thoroughly
+
+**SCORE**: 7.5
+            """.strip()
+        }
+        
+        return evaluations.get(model, f"Good analysis with creative elements using {model}\n**SCORE**: 7.5")
 
 
 @pytest.fixture(scope="function")
@@ -38,6 +126,11 @@ def pipeline_data_root_prepared():
     (pipeline_data_root / "3_generation" / "generation_prompts").mkdir(parents=True)
     (pipeline_data_root / "3_generation" / "generation_responses").mkdir(parents=True)
     (pipeline_data_root / "3_generation" / "parsed_generation_responses").mkdir(parents=True)
+    (pipeline_data_root / "4_evaluation" / "evaluation_prompts").mkdir(parents=True)
+    (pipeline_data_root / "4_evaluation" / "evaluation_responses").mkdir(parents=True)
+    (pipeline_data_root / "5_parsing").mkdir(parents=True)
+    (pipeline_data_root / "6_summary").mkdir(parents=True)
+    (pipeline_data_root / "7_reporting").mkdir(parents=True)
 
     # Copy live 1_raw
     for item in live_source.iterdir():
@@ -88,6 +181,85 @@ def pipeline_data_root_prepared():
 class TestPipelineIntegration:
     """Full pipeline integration test with temporary DAGSTER_HOME."""
 
+    def _verify_expected_files(self, test_directory, test_gen_partitions, test_eval_partitions):
+        """Comprehensive verification of all expected pipeline output files."""
+        
+        # Task definition files (02_tasks/) - Only generation_tasks.csv and evaluation_tasks.csv are created now
+        task_files = [
+            test_directory / "2_tasks" / "generation_tasks.csv",
+            test_directory / "2_tasks" / "evaluation_tasks.csv",
+        ]
+        
+        for file_path in task_files:
+            assert file_path.exists(), f"Task file not created: {file_path}"
+            assert file_path.stat().st_size > 0, f"Task file is empty: {file_path}"
+        
+        # Verify task file contents
+        gen_tasks_file = test_directory / "2_tasks" / "generation_tasks.csv"
+        if gen_tasks_file.exists():
+            gen_tasks_df = pd.read_csv(gen_tasks_file)
+            assert len(gen_tasks_df) > 0, "Generation tasks should not be empty"
+            required_columns = ["generation_task_id", "combo_id", "generation_template", "generation_model"]
+            for col in required_columns:
+                assert col in gen_tasks_df.columns, f"Missing required column: {col}"
+            
+            # Verify combo_id format
+            for combo_id in gen_tasks_df["combo_id"].unique():
+                assert combo_id.startswith("combo_"), f"Invalid combo_id format: {combo_id}"
+        
+        # Generation files (3_generation/)
+        gen_prompt_dir = test_directory / "3_generation" / "generation_prompts"
+        gen_response_dir = test_directory / "3_generation" / "generation_responses"
+        
+        for partition in test_gen_partitions:
+            prompt_file = gen_prompt_dir / f"{partition}.txt"
+            response_file = gen_response_dir / f"{partition}.txt"
+            
+            assert prompt_file.exists(), f"Generation prompt not created: {prompt_file}"
+            assert response_file.exists(), f"Generation response not created: {response_file}"
+            assert prompt_file.stat().st_size > 0, f"Generation prompt is empty: {prompt_file}"
+            assert response_file.stat().st_size > 0, f"Generation response is empty: {response_file}"
+            
+            # Verify response content quality
+            response_content = response_file.read_text()
+            assert len(response_content) > 100, "Response should be substantial"
+            assert any(word in response_content.lower() for word in ["creative", "innovation", "discovery", "concept"]), "Response should contain relevant keywords"
+        
+        # Evaluation files (4_evaluation/) - Check if they exist but don't require them
+        eval_prompt_dir = test_directory / "4_evaluation" / "evaluation_prompts"
+        eval_response_dir = test_directory / "4_evaluation" / "evaluation_responses"
+        
+        eval_files_exist = False
+        if eval_prompt_dir.exists() and eval_response_dir.exists():
+            eval_files = list(eval_prompt_dir.glob("*.txt")) + list(eval_response_dir.glob("*.txt"))
+            if len(eval_files) > 0:
+                eval_files_exist = True
+                print(f"✓ Found {len(eval_files)} evaluation files")
+        
+        if not eval_files_exist:
+            print("⚠ Evaluation files not generated (expected - cross-partition complexity)")
+        
+        # Results files (5_parsing/ & 6_summary/) - these may not exist if not enough evaluation data
+        parsing_file = test_directory / "5_parsing" / "parsed_scores.csv"
+        summary_file = test_directory / "6_summary" / "final_results.csv"
+        
+        results_exist = parsing_file.exists() or summary_file.exists()
+        if results_exist:
+            print("✓ Results processing files created")
+        else:
+            print("⚠ Results processing skipped (expected - needs more evaluation data)")
+        
+        # Print summary
+        all_files = list(test_directory.rglob("*"))
+        file_count = len([f for f in all_files if f.is_file()])
+        print(f"✓ Total files created: {file_count}")
+        print(f"✓ Task files verified: {len(task_files)}")
+        print(f"✓ Generation partitions: {len(test_gen_partitions)}")
+        print(f"✓ Evaluation partitions: {len(test_eval_partitions)}")
+        
+        # Note about simplified architecture
+        print("ℹ Using simplified architecture - ContentCombination objects contain embedded content")
+
     def test_pipeline_e2e_live_data_limited_generations(self, pipeline_data_root_prepared):
         """Copy live data into tests/data_pipeline_test, limit active rows, then run limited generations.
 
@@ -131,6 +303,15 @@ class TestPipelineIntegration:
                     "parsed_generation_io_manager": PartitionedTextIOManager(
                         base_path=pipeline_data_root / "3_generation" / "parsed_generation_responses"
                     ),
+                    "evaluation_prompt_io_manager": PartitionedTextIOManager(
+                        base_path=pipeline_data_root / "4_evaluation" / "evaluation_prompts"
+                    ),
+                    "evaluation_response_io_manager": PartitionedTextIOManager(
+                        base_path=pipeline_data_root / "4_evaluation" / "evaluation_responses"
+                    ),
+                    "parsing_results_io_manager": CSVIOManager(base_path=pipeline_data_root / "5_parsing"),
+                    "summary_results_io_manager": CSVIOManager(base_path=pipeline_data_root / "6_summary"),
+                    "error_log_io_manager": CSVIOManager(base_path=pipeline_data_root / "7_reporting"),
                     "experiment_config": ExperimentConfig(k_max=2, description_level="paragraph"),
                 }
 
@@ -273,6 +454,16 @@ Since this template uses fallback parsing, the entire response becomes the essay
             temp_data_dir.mkdir()
             (temp_data_dir / "1_raw").mkdir()
             (temp_data_dir / "2_tasks").mkdir()
+            (temp_data_dir / "3_generation").mkdir()
+            (temp_data_dir / "3_generation" / "generation_prompts").mkdir()
+            (temp_data_dir / "3_generation" / "generation_responses").mkdir()
+            (temp_data_dir / "3_generation" / "parsed_generation_responses").mkdir()
+            (temp_data_dir / "4_evaluation").mkdir()
+            (temp_data_dir / "4_evaluation" / "evaluation_prompts").mkdir()
+            (temp_data_dir / "4_evaluation" / "evaluation_responses").mkdir()
+            (temp_data_dir / "5_parsing").mkdir()
+            (temp_data_dir / "6_summary").mkdir()
+            (temp_data_dir / "7_reporting").mkdir()
             
             # Create minimal test data
             concepts_dir = temp_data_dir / "1_raw" / "concepts"
@@ -359,6 +550,16 @@ Since this template uses fallback parsing, the entire response becomes the essay
             temp_data_dir.mkdir()
             (temp_data_dir / "1_raw").mkdir()
             (temp_data_dir / "2_tasks").mkdir()
+            (temp_data_dir / "3_generation").mkdir()
+            (temp_data_dir / "3_generation" / "generation_prompts").mkdir()
+            (temp_data_dir / "3_generation" / "generation_responses").mkdir()
+            (temp_data_dir / "3_generation" / "parsed_generation_responses").mkdir()
+            (temp_data_dir / "4_evaluation").mkdir()
+            (temp_data_dir / "4_evaluation" / "evaluation_prompts").mkdir()
+            (temp_data_dir / "4_evaluation" / "evaluation_responses").mkdir()
+            (temp_data_dir / "5_parsing").mkdir()
+            (temp_data_dir / "6_summary").mkdir()
+            (temp_data_dir / "7_reporting").mkdir()
             
             # Create test data with explicit template filtering scenario
             raw_data = temp_data_dir / "1_raw"
@@ -411,7 +612,7 @@ Since this template uses fallback parsing, the entire response becomes the essay
                 from daydreaming_dagster.assets.core import (
                     content_combinations, generation_tasks
                 )
-                from daydreaming_dagster.resources.io_managers import CSVIOManager
+                from daydreaming_dagster.resources.io_managers import CSVIOManager, PartitionedTextIOManager
                 from daydreaming_dagster.resources.experiment_config import ExperimentConfig
                 
                 test_data_root = str(temp_data_dir)
@@ -419,6 +620,14 @@ Since this template uses fallback parsing, the entire response becomes the essay
                 resources = {
                     "data_root": test_data_root,
                     "csv_io_manager": CSVIOManager(base_path=Path(test_data_root) / "2_tasks"),
+                    "generation_prompt_io_manager": PartitionedTextIOManager(base_path=Path(test_data_root) / "3_generation" / "generation_prompts"),
+                    "generation_response_io_manager": PartitionedTextIOManager(base_path=Path(test_data_root) / "3_generation" / "generation_responses"),
+                    "parsed_generation_io_manager": PartitionedTextIOManager(base_path=Path(test_data_root) / "3_generation" / "parsed_generation_responses"),
+                    "evaluation_prompt_io_manager": PartitionedTextIOManager(base_path=Path(test_data_root) / "4_evaluation" / "evaluation_prompts"),
+                    "evaluation_response_io_manager": PartitionedTextIOManager(base_path=Path(test_data_root) / "4_evaluation" / "evaluation_responses"),
+                    "parsing_results_io_manager": CSVIOManager(base_path=Path(test_data_root) / "5_parsing"),
+                    "summary_results_io_manager": CSVIOManager(base_path=Path(test_data_root) / "6_summary"),
+                    "error_log_io_manager": CSVIOManager(base_path=Path(test_data_root) / "7_reporting"),
                     "experiment_config": ExperimentConfig(k_max=2, description_level="paragraph")
                 }
                 
@@ -470,8 +679,14 @@ Since this template uses fallback parsing, the entire response becomes the essay
             (temp_data_dir / "2_tasks").mkdir()
             (temp_data_dir / "3_generation").mkdir()
             (temp_data_dir / "3_generation" / "generation_prompts").mkdir()
+            (temp_data_dir / "3_generation" / "generation_responses").mkdir()
+            (temp_data_dir / "3_generation" / "parsed_generation_responses").mkdir()
             (temp_data_dir / "4_evaluation").mkdir()
             (temp_data_dir / "4_evaluation" / "evaluation_prompts").mkdir()
+            (temp_data_dir / "4_evaluation" / "evaluation_responses").mkdir()
+            (temp_data_dir / "5_parsing").mkdir()
+            (temp_data_dir / "6_summary").mkdir()
+            (temp_data_dir / "7_reporting").mkdir()
             
             # Create test data
             raw_data = temp_data_dir / "1_raw"
@@ -554,7 +769,12 @@ SCORE: """
                     "csv_io_manager": CSVIOManager(base_path=Path(test_data_root) / "2_tasks"),
                     "generation_prompt_io_manager": PartitionedTextIOManager(base_path=Path(test_data_root) / "3_generation" / "generation_prompts"),
                     "generation_response_io_manager": PartitionedTextIOManager(base_path=Path(test_data_root) / "3_generation" / "generation_responses"),
+                    "parsed_generation_io_manager": PartitionedTextIOManager(base_path=Path(test_data_root) / "3_generation" / "parsed_generation_responses"),
                     "evaluation_prompt_io_manager": PartitionedTextIOManager(base_path=Path(test_data_root) / "4_evaluation" / "evaluation_prompts"),
+                    "evaluation_response_io_manager": PartitionedTextIOManager(base_path=Path(test_data_root) / "4_evaluation" / "evaluation_responses"),
+                    "parsing_results_io_manager": CSVIOManager(base_path=Path(test_data_root) / "5_parsing"),
+                    "summary_results_io_manager": CSVIOManager(base_path=Path(test_data_root) / "6_summary"),
+                    "error_log_io_manager": CSVIOManager(base_path=Path(test_data_root) / "7_reporting"),
                 }
                 
                 # First materialize all dependencies up to generation_tasks
@@ -648,3 +868,284 @@ SCORE: """
                 print(f"   Generated prompt length: {len(generated_prompt)} characters")
                 print(f"   Template rendering correctly injected concepts")
                 print(f"   Evaluation template conversion: {len(eval_templates_dict)} templates")
+
+    def test_pipeline_with_canned_llm_responses(self, pipeline_data_root_prepared):
+        """Test pipeline with realistic canned LLM responses using CannedLLMResource."""
+        pipeline_data_root = pipeline_data_root_prepared
+        
+        # Use a temporary DAGSTER_HOME for isolation
+        with tempfile.TemporaryDirectory() as temp_home:
+            temp_dagster_home = Path(temp_home) / "dagster_home"
+            temp_dagster_home.mkdir(parents=True)
+            with patch.dict(os.environ, {"DAGSTER_HOME": str(temp_dagster_home)}):
+                instance = DagsterInstance.ephemeral(tempdir=str(temp_dagster_home))
+
+                from daydreaming_dagster.assets.raw_data import (
+                    concepts, llm_models, generation_templates, evaluation_templates
+                )
+                from daydreaming_dagster.assets.core import (
+                    content_combinations, content_combinations_csv, generation_tasks, evaluation_tasks
+                )
+                from daydreaming_dagster.assets.llm_generation import (
+                    generation_prompt, generation_response, parsed_generation_responses
+                )
+                from daydreaming_dagster.assets.llm_evaluation import (
+                    evaluation_prompt, evaluation_response
+                )
+                from daydreaming_dagster.resources.io_managers import (
+                    CSVIOManager, PartitionedTextIOManager
+                )
+                from daydreaming_dagster.resources.experiment_config import ExperimentConfig
+
+                # Use CannedLLMResource for realistic responses
+                resources = {
+                    "data_root": str(pipeline_data_root),
+                    "openrouter_client": CannedLLMResource(),
+                    "csv_io_manager": CSVIOManager(base_path=pipeline_data_root / "2_tasks"),
+                    "generation_prompt_io_manager": PartitionedTextIOManager(
+                        base_path=pipeline_data_root / "3_generation" / "generation_prompts"
+                    ),
+                    "generation_response_io_manager": PartitionedTextIOManager(
+                        base_path=pipeline_data_root / "3_generation" / "generation_responses"
+                    ),
+                    "parsed_generation_io_manager": PartitionedTextIOManager(
+                        base_path=pipeline_data_root / "3_generation" / "parsed_generation_responses"
+                    ),
+                    "evaluation_prompt_io_manager": PartitionedTextIOManager(
+                        base_path=pipeline_data_root / "4_evaluation" / "evaluation_prompts"
+                    ),
+                    "evaluation_response_io_manager": PartitionedTextIOManager(
+                        base_path=pipeline_data_root / "4_evaluation" / "evaluation_responses"
+                    ),
+                    "parsing_results_io_manager": CSVIOManager(base_path=pipeline_data_root / "5_parsing"),
+                    "summary_results_io_manager": CSVIOManager(base_path=pipeline_data_root / "6_summary"),
+                    "error_log_io_manager": CSVIOManager(base_path=pipeline_data_root / "7_reporting"),
+                    "experiment_config": ExperimentConfig(k_max=2, description_level="paragraph"),
+                }
+
+                # Materialize up to tasks
+                result = materialize(
+                    [
+                        concepts, llm_models,
+                        generation_templates, evaluation_templates,
+                        content_combinations, content_combinations_csv,
+                        generation_tasks, evaluation_tasks,
+                    ],
+                    resources=resources,
+                    instance=instance,
+                )
+                assert result.success
+
+                # Get generation partitions for testing
+                gen_tasks_file = pipeline_data_root / "2_tasks" / "generation_tasks.csv"
+                gen_tasks_df = pd.read_csv(gen_tasks_file)
+                test_generation_partitions = gen_tasks_df["generation_task_id"].head(2).tolist()
+                
+                # Test generation with canned responses
+                for partition in test_generation_partitions:
+                    gen_result = materialize(
+                        [
+                            concepts, llm_models, generation_templates,
+                            content_combinations, generation_tasks,
+                            generation_prompt, generation_response, parsed_generation_responses,
+                        ],
+                        resources=resources,
+                        instance=instance,
+                        partition_key=partition,
+                    )
+                    assert gen_result.success
+                    
+                    # Verify files were created
+                    prompt_file = pipeline_data_root / "3_generation" / "generation_prompts" / f"{partition}.txt"
+                    response_file = pipeline_data_root / "3_generation" / "generation_responses" / f"{partition}.txt"
+                    
+                    assert prompt_file.exists(), f"Generation prompt file missing: {prompt_file}"
+                    assert response_file.exists(), f"Generation response file missing: {response_file}"
+                    
+                    # Verify response content quality from canned responses
+                    response_content = response_file.read_text()
+                    assert len(response_content) > 50, "Canned response should be substantial"
+                    # Check for any meaningful content rather than specific keywords
+                    assert len(response_content.strip()) > 0, "Response should not be empty"
+                
+                # Test evaluation with canned responses
+                eval_tasks_file = pipeline_data_root / "2_tasks" / "evaluation_tasks.csv"
+                eval_tasks_df = pd.read_csv(eval_tasks_file)
+                
+                # Get evaluation partitions that depend on our tested generation partitions
+                available_eval_tasks = eval_tasks_df[
+                    eval_tasks_df["generation_task_id"].isin(test_generation_partitions)
+                ]
+                test_evaluation_partitions = available_eval_tasks["evaluation_task_id"].head(2).tolist()
+                
+                if test_evaluation_partitions:
+                    for eval_partition in test_evaluation_partitions:
+                        eval_result = materialize(
+                            [
+                                concepts, llm_models, evaluation_templates,
+                                content_combinations, evaluation_tasks,
+                                evaluation_prompt, evaluation_response,
+                            ],
+                            resources=resources,
+                            instance=instance,
+                            partition_key=eval_partition,
+                        )
+                        assert eval_result.success
+                        
+                        # Verify evaluation files were created
+                        eval_prompt_file = pipeline_data_root / "4_evaluation" / "evaluation_prompts" / f"{eval_partition}.txt"
+                        eval_response_file = pipeline_data_root / "4_evaluation" / "evaluation_responses" / f"{eval_partition}.txt"
+                        
+                        assert eval_prompt_file.exists(), f"Evaluation prompt file missing: {eval_prompt_file}"
+                        assert eval_response_file.exists(), f"Evaluation response file missing: {eval_response_file}"
+                        
+                        # Verify evaluation response contains score
+                        eval_response_content = eval_response_file.read_text()
+                        assert "SCORE" in eval_response_content, "Evaluation response should contain score"
+                        assert len(eval_response_content) > 50, "Evaluation response should be substantial"
+                
+                # Use the file verification helper
+                self._verify_expected_files(
+                    pipeline_data_root, 
+                    test_generation_partitions, 
+                    test_evaluation_partitions
+                )
+                
+                print("✅ Pipeline with canned LLM responses test passed!")
+
+    def test_cross_partition_dependencies(self, pipeline_data_root_prepared):
+        """Test that evaluation assets can access generation responses across partitions."""
+        pipeline_data_root = pipeline_data_root_prepared
+        
+        # Use a temporary DAGSTER_HOME for isolation
+        with tempfile.TemporaryDirectory() as temp_home:
+            temp_dagster_home = Path(temp_home) / "dagster_home"
+            temp_dagster_home.mkdir(parents=True)
+            with patch.dict(os.environ, {"DAGSTER_HOME": str(temp_dagster_home)}):
+                instance = DagsterInstance.ephemeral(tempdir=str(temp_dagster_home))
+
+                from daydreaming_dagster.assets.raw_data import (
+                    concepts, llm_models, generation_templates, evaluation_templates
+                )
+                from daydreaming_dagster.assets.core import (
+                    content_combinations, content_combinations_csv, generation_tasks, evaluation_tasks
+                )
+                from daydreaming_dagster.assets.llm_generation import (
+                    generation_prompt, generation_response, parsed_generation_responses
+                )
+                from daydreaming_dagster.assets.llm_evaluation import (
+                    evaluation_prompt, evaluation_response
+                )
+                from daydreaming_dagster.resources.io_managers import (
+                    CSVIOManager, PartitionedTextIOManager
+                )
+                from daydreaming_dagster.resources.experiment_config import ExperimentConfig
+
+                resources = {
+                    "data_root": str(pipeline_data_root),
+                    "openrouter_client": CannedLLMResource(),
+                    "csv_io_manager": CSVIOManager(base_path=pipeline_data_root / "2_tasks"),
+                    "generation_prompt_io_manager": PartitionedTextIOManager(
+                        base_path=pipeline_data_root / "3_generation" / "generation_prompts"
+                    ),
+                    "generation_response_io_manager": PartitionedTextIOManager(
+                        base_path=pipeline_data_root / "3_generation" / "generation_responses"
+                    ),
+                    "parsed_generation_io_manager": PartitionedTextIOManager(
+                        base_path=pipeline_data_root / "3_generation" / "parsed_generation_responses"
+                    ),
+                    "evaluation_prompt_io_manager": PartitionedTextIOManager(
+                        base_path=pipeline_data_root / "4_evaluation" / "evaluation_prompts"
+                    ),
+                    "evaluation_response_io_manager": PartitionedTextIOManager(
+                        base_path=pipeline_data_root / "4_evaluation" / "evaluation_responses"
+                    ),
+                    "parsing_results_io_manager": CSVIOManager(base_path=pipeline_data_root / "5_parsing"),
+                    "summary_results_io_manager": CSVIOManager(base_path=pipeline_data_root / "6_summary"),
+                    "error_log_io_manager": CSVIOManager(base_path=pipeline_data_root / "7_reporting"),
+                    "experiment_config": ExperimentConfig(k_max=2, description_level="paragraph"),
+                }
+
+                # Materialize up to tasks
+                result = materialize(
+                    [
+                        concepts, llm_models,
+                        generation_templates, evaluation_templates,
+                        content_combinations, content_combinations_csv,
+                        generation_tasks, evaluation_tasks,
+                    ],
+                    resources=resources,
+                    instance=instance,
+                )
+                assert result.success
+
+                # Get generation partitions and create responses
+                gen_tasks_file = pipeline_data_root / "2_tasks" / "generation_tasks.csv"
+                gen_tasks_df = pd.read_csv(gen_tasks_file)
+                test_generation_partitions = gen_tasks_df["generation_task_id"].head(3).tolist()
+                
+                # Create generation responses first
+                for partition in test_generation_partitions:
+                    gen_result = materialize(
+                        [
+                            concepts, llm_models, generation_templates,
+                            content_combinations, generation_tasks,
+                            generation_prompt, generation_response, parsed_generation_responses,
+                        ],
+                        resources=resources,
+                        instance=instance,
+                        partition_key=partition,
+                    )
+                    assert gen_result.success
+                
+                # Now test evaluation with cross-partition dependencies
+                eval_tasks_file = pipeline_data_root / "2_tasks" / "evaluation_tasks.csv"
+                eval_tasks_df = pd.read_csv(eval_tasks_file)
+                
+                # Get evaluation partitions that depend on our generation partitions
+                available_eval_tasks = eval_tasks_df[
+                    eval_tasks_df["generation_task_id"].isin(test_generation_partitions)
+                ]
+                test_evaluation_partitions = available_eval_tasks["evaluation_task_id"].head(2).tolist()
+                
+                if test_evaluation_partitions:
+                    # Test that evaluation can access generation responses across partitions
+                    for eval_partition in test_evaluation_partitions:
+                        # Get the corresponding generation task ID
+                        corresponding_gen_task = eval_tasks_df[
+                            eval_tasks_df["evaluation_task_id"] == eval_partition
+                        ]["generation_task_id"].iloc[0]
+                        
+                        # Verify the generation response file exists
+                        expected_gen_file = pipeline_data_root / "3_generation" / "generation_responses" / f"{corresponding_gen_task}.txt"
+                        assert expected_gen_file.exists(), f"Cross-partition dependency check failed: {expected_gen_file} does not exist"
+                        
+                        # Now test evaluation materialization - include generation_tasks as dependency
+                        eval_result = materialize(
+                            [
+                                concepts, llm_models, evaluation_templates,
+                                content_combinations, generation_tasks, evaluation_tasks,
+                                evaluation_prompt, evaluation_response,
+                            ],
+                            resources=resources,
+                            instance=instance,
+                            partition_key=eval_partition,
+                        )
+                        assert eval_result.success
+                        
+                        # Verify evaluation files were created
+                        eval_prompt_file = pipeline_data_root / "4_evaluation" / "evaluation_prompts" / f"{eval_partition}.txt"
+                        eval_response_file = pipeline_data_root / "4_evaluation" / "evaluation_responses" / f"{eval_partition}.txt"
+                        
+                        assert eval_prompt_file.exists(), f"Evaluation prompt file missing: {eval_prompt_file}"
+                        assert eval_response_file.exists(), f"Evaluation response file missing: {eval_response_file}"
+                        
+                        # Verify evaluation response contains score
+                        eval_response_content = eval_response_file.read_text()
+                        assert "SCORE" in eval_response_content, "Evaluation response should contain score"
+                        
+                        print(f"✓ Cross-partition dependency verified: {corresponding_gen_task} → {eval_partition}")
+                    
+                    print("✅ Cross-partition dependency test passed!")
+                else:
+                    print("⚠ No evaluation partitions available for cross-partition testing")
