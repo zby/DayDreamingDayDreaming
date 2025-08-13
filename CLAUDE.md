@@ -110,7 +110,7 @@ This project follows strict TDD practices:
 **Evaluation Asset Architecture**: The evaluation assets use an intentional "Manual IO with Foreign Keys" pattern:
 - `evaluation_prompt` uses foreign key relationships to load `generation_response` data from different partitions
 - Uses MockLoadContext pattern to bypass normal Dagster input/output for complex partition relationships  
-- Documented in `docs/evaluation_asset_architecture.md` with comprehensive error handling and troubleshooting
+- Documented in `docs/architecture/architecture.md` with comprehensive error handling and troubleshooting
 - Alternative approaches (multi-dimensional partitions) are documented in `plans/` for future consideration
 
 ## Development Guidelines

@@ -111,6 +111,17 @@ def concepts(context) -> List[Concept]:
 - **Task Hierarchies**: Structured task dependencies (generation → evaluation)
 - **CSV Output**: Human-readable task definitions for debugging
 
+**Search Strategy**: The experiment currently uses a **focused search strategy** that tests only k_max-sized concept combinations (e.g., if k_max=4, only 4-concept combinations are tested). This approach is based on the insight that richer contextual combinations are more likely to elicit the complex DayDreaming concept from LLMs.
+
+**Strategy Benefits**:
+- **Higher success probability**: More concepts provide richer semantic context
+- **More efficient**: Avoids testing smaller, less informative combinations  
+- **Focused discovery**: Concentrates computational resources on the most promising combinations
+
+**Example**: With 6 concepts and k_max=4:
+- **Current strategy**: Tests C(6,4) = 15 combinations
+- **Alternative strategies**: Could test C(6,1) + C(6,2) + C(6,3) + C(6,4) = 6+15+20+15 = 56 combinations
+
 ### 3. Partition Management (`partitions.py`)
 
 **Assets**: `task_definitions`
@@ -348,6 +359,52 @@ The pipeline is designed for efficient concurrent processing:
 2. **Structured Logging**: Detailed logs for debugging
 3. **Asset Lineage**: Visual dependency tracking
 4. **Performance Metrics**: Execution time and resource usage tracking
+
+## Evaluation Asset Architecture
+
+### Partition Relationship Challenge
+
+The `evaluation_prompt` asset needs to consume content from the `generation_response` asset, but they use different partition schemes:
+
+- `generation_response`: Partitioned by `generation_task_id`
+- `evaluation_prompt`: Partitioned by `evaluation_task_id` 
+
+The relationship between them is established through a foreign key (`generation_task_id`) stored in the evaluation tasks table.
+
+### Solution: Manual IO with Foreign Keys
+
+Rather than using complex multi-dimensional partitions, we use a simpler approach:
+
+1. **Foreign Key Lookup**: `evaluation_prompt` reads its partition's row from `evaluation_tasks` to get the associated `generation_task_id`
+2. **Manual IO Loading**: Uses the IO manager directly to load the `generation_response` content by `generation_task_id`
+3. **MockLoadContext Pattern**: Creates a temporary context object to interface with the IO manager
+
+### Implementation Pattern
+
+```python
+class MockLoadContext:
+    def __init__(self, partition_key):
+        self.partition_key = partition_key
+
+mock_context = MockLoadContext(generation_task_id)
+generation_response = gen_response_io_manager.load_input(mock_context)
+```
+
+This pattern allows us to load data from a different partition key than the current asset's partition.
+
+### Why This Approach?
+
+**Advantages:**
+- **Simplicity**: Single-dimension partitions are easier to understand and debug
+- **Explicit Data Flow**: The FK relationship is visible in the evaluation tasks table
+- **Flexible**: Easy to change partition mapping logic without touching partition definitions
+- **Testable**: Can easily mock IO managers for testing
+- **Performance**: Only loads the specific generation response needed
+
+**Trade-offs:**
+- **Manual IO**: Requires explicit IO manager usage instead of Dagster inputs
+- **No UI Dependency Edge**: Dagster UI doesn't show the data dependency automatically
+- **Error Handling**: Need custom error handling for missing upstream data
 
 ## Migration Benefits from Kedro
 
