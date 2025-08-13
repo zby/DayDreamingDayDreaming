@@ -4,9 +4,9 @@ default-mode-network,Default Mode Network,True
 human-creativity-insight,Human Creativity and Insight,False
 combinatorial-search,Combinatorial Search,False
 generator-verifier-gap,Generator-Verifier Gap,True
-economic-innovation-models,Economic Innovation Models,False
+economic-innovation-models,Economic Innovation Models,True
 experimental-concept,Experimental New Concept,False
 mind-wandering,Mind-Wandering,False
 combinatorial-creativity,Combinatorial Creativity,False
-adversarial-evaluation,Adversarial Evaluation,True
+adversarial-evaluation,Adversarial Evaluation,False
 economic-moat,Economic Moat,True

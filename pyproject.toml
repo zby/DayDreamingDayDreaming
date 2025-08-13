@@ -72,18 +72,15 @@ extend-exclude = '''
 '''
 
 [tool.ruff]
-line-length = 88
-show-fixes = true
-select = [
-    "F",   # Pyflakes
-    "W",   # pycodestyle
-    "E",   # pycodestyle
-    "I",   # isort
-    "UP",  # pyupgrade
-    "PL",  # Pylint
-    "T201", # Print Statement
+# Disable all rules temporarily to prevent editor freezing
+select = []
+ignore = [
+    "E501",  # Line too long
+    "F401",  # Unused imports
+    "F841",  # Unused variables
+    "W291",  # Trailing whitespace
+    "W292",  # No newline at end of file
 ]
-ignore = ["E501"]  # Black takes care of line-too-long
 
 [tool.ruff.format]
 docstring-code-format = true
