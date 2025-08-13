@@ -9,6 +9,7 @@ from ..utils.nodes_standalone import generate_evaluation_prompts
     group_name="llm_evaluation",
     io_manager_key="evaluation_prompt_io_manager",
     required_resource_keys={"parsing_results_io_manager"},
+    deps=["evaluation_tasks", "evaluation_templates", "parsed_generation_responses"],
 )
 def evaluation_prompt(context, evaluation_tasks, evaluation_templates, parsed_generation_responses) -> str:
     """
@@ -201,7 +202,7 @@ def evaluation_prompt(context, evaluation_tasks, evaluation_templates, parsed_ge
     group_name="llm_evaluation",
     io_manager_key="evaluation_response_io_manager",
     required_resource_keys={"openrouter_client"},
-    deps=["generation_tasks"],  # Remove evaluation_models dependency
+    deps=["evaluation_prompt", "evaluation_tasks"],
     pool="llm_api"  # Pool-based concurrency control
 )
 def evaluation_response(context, evaluation_prompt, evaluation_tasks) -> str:
