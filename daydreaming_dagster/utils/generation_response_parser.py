@@ -16,27 +16,25 @@ def get_parsing_strategy(template_id: str, model_name: str) -> ParseStrategy:
     Returns:
         The recommended parsing strategy for this template/model combination
     """
-    # Newer templates that use structured XML tags
-    xml_tag_templates = [
-        "creative-synthesis-v4",
-        "creative-synthesis-v5", 
-        "essay-inventive-synthesis-v3"
-    ]
-    
-    # Templates with clear section headers
+    # Legacy templates with section headers (pre-XML era)
     section_header_templates = [
         "creative-synthesis-v3",
         "research-discovery-v3"
     ]
     
+    # Legacy templates that need fallback parsing (very old templates)
+    fallback_templates = [
+        # Add any very old templates here that don't have structured output
+    ]
+    
     # Determine strategy based on template
-    if template_id in xml_tag_templates:
-        return "xml_tags"
-    elif template_id in section_header_templates:
+    if template_id in section_header_templates:
         return "section_headers"
-    else:
-        # Fallback for older templates
+    elif template_id in fallback_templates:
         return "fallback"
+    else:
+        # Default for modern templates: assume XML tags structure
+        return "xml_tags"
 
 
 def parse_generation_response(response_text: str, strategy: ParseStrategy = "xml_tags") -> Dict[str, Any]:

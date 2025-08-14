@@ -38,10 +38,21 @@ def _parse_in_last_line_format(response_text: str) -> dict:
     2. Standard numeric format (e.g., "8.5" -> 8.5)
     
     Searches the last 3 non-empty lines for a score pattern.
+    Prioritizes exact "SCORE: X" format over intermediate calculations.
     """
     last_lines = _extract_last_non_empty_lines(response_text, max_lines=3)
     
-    # Try to parse score from each line, starting from the last
+    # First, try to find exact "SCORE: X" pattern for single-digit scores (highest priority)
+    for line in last_lines:
+        cleaned_line = _clean_formatting(line)
+        # Look for lines that start with just "SCORE:" followed by a single digit (not "Final Score:" etc.)
+        if re.match(r'^\s*SCORE:\s*[0-9](\.[0-9]+)?\s*$', cleaned_line, re.IGNORECASE):
+            score = _try_parse_exact_score_format(cleaned_line)
+            if score is not None:
+                _validate_score_range(score)
+                return {"score": score, "error": None}
+    
+    # If no exact "SCORE:" found, try other patterns
     for line in last_lines:
         cleaned_line = _clean_formatting(line)
         score = _try_parse_three_digit_score(cleaned_line) or _try_parse_standard_score(cleaned_line)
@@ -90,6 +101,13 @@ def _try_parse_three_digit_score(text: str) -> float | None:
     # Calculate average of the three digits
     digits = [float(char) for char in normalized_score]
     return sum(digits) / 3
+
+
+def _try_parse_exact_score_format(text: str) -> float | None:
+    """Try to parse exact 'SCORE: X' format."""
+    pattern = r'SCORE:\s*(-?\d+(?:\.\d+)?)'
+    match = re.search(pattern, text, re.IGNORECASE)
+    return float(match.group(1)) if match else None
 
 
 def _try_parse_standard_score(text: str) -> float | None:
