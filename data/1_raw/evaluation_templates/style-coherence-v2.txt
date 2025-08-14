@@ -1,0 +1,109 @@
+RESPONSE TO EVALUATE:
+{{ response }}
+
+--- EVALUATION INSTRUCTIONS ---
+
+Evaluate this response for style and coherence quality, focusing on how well the writing flows and integrates concepts. Use the scoring rubric below to ensure consistent evaluation.
+
+## EVALUATION CRITERIA
+
+### **Coherence & Integration (40% of score)**
+
+**Natural Concept Integration (15 points):**
+- **Excellent (13-15)**: Concepts are woven together with clear, logical connections that feel inevitable rather than forced. Each concept serves a specific purpose in the overall framework.
+- **Good (10-12)**: Concepts are reasonably well-connected, though some connections may feel somewhat artificial or stretched.
+- **Fair (7-9)**: Concepts are connected but the integration feels forced or artificial in places.
+- **Poor (4-6)**: Concepts are poorly integrated, with weak or unclear connections between them.
+- **Very Poor (1-3)**: Concepts appear to be randomly combined without meaningful integration.
+
+**Logical Flow (15 points):**
+- **Excellent (13-15)**: Argument progresses logically from start to finish with each section building naturally on the previous one. Clear cause-and-effect relationships.
+- **Good (10-12)**: Argument flows reasonably well with minor gaps or jumps in logic.
+- **Fair (7-9)**: Argument has some logical gaps or sections that don't clearly connect.
+- **Poor (4-6)**: Argument lacks clear logical progression with significant gaps.
+- **Very Poor (1-3)**: Argument is disjointed with no clear logical structure.
+
+**Internal Consistency (10 points):**
+- **Excellent (9-10)**: Ideas are perfectly consistent throughout with no contradictions.
+- **Good (7-8)**: Ideas are generally consistent with minor inconsistencies.
+- **Fair (5-6)**: Some inconsistencies or contradictions that don't severely undermine the argument.
+- **Poor (3-4)**: Multiple inconsistencies that significantly weaken the argument.
+- **Very Poor (1-2)**: Major contradictions that make the argument incoherent.
+
+### **Writing Quality (35% of score)**
+
+**Clarity (15 points):**
+- **Excellent (13-15)**: Writing is crystal clear despite complexity. Technical concepts are explained accessibly.
+- **Good (10-12)**: Writing is generally clear with occasional unclear passages.
+- **Fair (7-9)**: Writing is somewhat unclear in places, requiring effort to follow.
+- **Poor (4-6)**: Writing is often unclear and difficult to follow.
+- **Very Poor (1-3)**: Writing is consistently unclear and confusing.
+
+**Engagement & Structure (10 points):**
+- **Excellent (9-10)**: Highly engaging with compelling structure that guides the reader effectively.
+- **Good (7-8)**: Engaging with good structure that generally guides the reader well.
+- **Fair (5-6)**: Somewhat engaging with adequate structure.
+- **Poor (3-4)**: Not very engaging with poor structure.
+- **Very Poor (1-2)**: Unengaging with very poor structure.
+
+**Depth vs. Verbosity (10 points):**
+- **Excellent (9-10)**: Achieves remarkable depth without wasting words. Every sentence serves a purpose.
+- **Good (7-8)**: Good depth with minimal unnecessary content.
+- **Fair (5-6)**: Adequate depth but some content could be condensed.
+- **Poor (3-4)**: Lacks depth or is overly verbose.
+- **Very Poor (1-2)**: Very shallow or extremely verbose.
+
+### **Conceptual Honesty (25% of score)**
+
+**Genuine Connections (10 points):**
+- **Excellent (9-10)**: Connections between concepts are substantive and well-justified, not superficial.
+- **Good (7-8)**: Connections are generally genuine with some that could be stronger.
+- **Fair (5-6)**: Some connections feel manufactured or forced.
+- **Poor (3-4)**: Many connections feel artificial or poorly justified.
+- **Very Poor (1-2)**: Most connections appear to be forced or artificial.
+
+**Avoids Forced Synthesis (10 points):**
+- **Excellent (9-10)**: Resists artificial concept cramming. Each concept serves a clear purpose.
+- **Good (7-8)**: Generally avoids forced synthesis with minor issues.
+- **Fair (5-6)**: Some evidence of forced synthesis or concept cramming.
+- **Poor (3-4)**: Clear evidence of forced synthesis in multiple places.
+- **Very Poor (1-2)**: Extensive forced synthesis throughout.
+
+**Acknowledges Limitations (5 points):**
+- **Excellent (5)**: Thoughtfully addresses limitations, tensions, and challenges.
+- **Good (4)**: Acknowledges most limitations and challenges.
+- **Fair (3)**: Acknowledges some limitations but misses important ones.
+- **Poor (2)**: Minimally acknowledges limitations.
+- **Very Poor (1)**: Fails to acknowledge limitations or challenges.
+
+## SCORING GUIDELINES
+
+**For Interdisciplinary Work:**
+- **Concept Integration**: When evaluating interdisciplinary work, consider whether the connections between different domains are substantively justified or merely superficial analogies.
+- **Metaphorical Reasoning**: Distinguish between meaningful metaphors that illuminate concepts and forced analogies that don't add value.
+- **Domain Bridging**: Evaluate whether the work successfully bridges different domains with genuine insights or just lists concepts from different fields.
+
+**Common Pitfalls to Avoid:**
+- **Buzzword Bingo**: Don't reward responses that just mention concepts without meaningful integration.
+- **Superficial Connections**: Look for substantive relationships, not just thematic grouping.
+- **Forced Analogies**: Distinguish between helpful metaphors and strained comparisons.
+
+## CALIBRATION EXAMPLES
+
+**Example of Good Integration (Score: 8-9):**
+"By combining the Default Mode Network's background processing with economic innovation models, the system creates a structured approach to creativity that mimics human insight while optimizing for efficiency."
+
+**Example of Poor Integration (Score: 3-4):**
+"The system uses DMN, economic models, and AI architecture to create innovation." (Just lists concepts without explaining how they work together)
+
+## FINAL SCORE CALCULATION
+
+1. Calculate weighted scores for each section
+2. Sum the weighted scores
+3. Round to the nearest whole number
+4. Ensure the final score reflects the detailed evaluation above
+
+Your evaluation must end with a line containing the final score and there should be no more content.
+That last line should have the exact format given below - with X being a placeholder for a digit:
+
+SCORE: X

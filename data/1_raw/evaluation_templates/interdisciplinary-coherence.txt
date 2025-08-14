@@ -1,0 +1,116 @@
+RESPONSE TO EVALUATE:
+{{ response }}
+
+--- EVALUATION INSTRUCTIONS ---
+
+Evaluate this response for interdisciplinary coherence and integration quality. This template is specifically designed for work that combines concepts from multiple domains or fields.
+
+## EVALUATION CRITERIA
+
+### **Domain Integration Quality (50% of score)**
+
+**Conceptual Bridge Building (25 points):**
+- **Excellent (23-25)**: Creates genuine, functional bridges between domains with clear mechanisms for how concepts interact. Each domain contributes essential functionality to the overall system.
+- **Good (20-22)**: Successfully connects domains with mostly clear mechanisms, though some connections could be stronger.
+- **Fair (16-19)**: Connects domains but some connections feel tenuous or unclear in their functional relationship.
+- **Poor (12-15)**: Poorly connects domains with weak or unclear mechanisms for interaction.
+- **Very Poor (8-11)**: Fails to meaningfully connect domains or creates artificial connections.
+
+**Metaphorical Reasoning (15 points):**
+- **Excellent (14-15)**: Uses metaphors and analogies that genuinely illuminate concepts and create new understanding. Metaphors are functional, not decorative.
+- **Good (12-13)**: Uses helpful metaphors that generally clarify concepts, with minor instances of strained analogies.
+- **Fair (10-11)**: Some metaphors are helpful, others feel forced or don't add value.
+- **Poor (8-9)**: Many metaphors feel forced or don't contribute to understanding.
+- **Very Poor (6-7)**: Metaphors are consistently forced and unhelpful.
+
+**Avoids Concept Cramming (10 points):**
+- **Excellent (9-10)**: Each concept serves a specific, necessary purpose in the overall framework. No unnecessary concepts included.
+- **Good (8)**: Most concepts serve clear purposes, with minimal unnecessary inclusion.
+- **Fair (6-7)**: Some concepts feel included without clear justification.
+- **Poor (4-5)**: Multiple concepts appear to be included without clear purpose.
+- **Very Poor (2-3)**: Extensive inclusion of concepts without clear justification.
+
+### **Logical Architecture (30% of score)**
+
+**Systematic Integration (15 points):**
+- **Excellent (14-15)**: Concepts are integrated into a systematic, coherent architecture where each component has a clear role and relationship to others.
+- **Good (12-13)**: Generally systematic integration with minor gaps or unclear relationships.
+- **Fair (10-11)**: Some systematic integration but with significant gaps or unclear component relationships.
+- **Poor (8-9)**: Poor systematic integration with many unclear relationships.
+- **Very Poor (6-7)**: Lacks systematic integration entirely.
+
+**Operational Clarity (15 points):**
+- **Excellent (14-15)**: Clear operational mechanisms for how the integrated concepts work together in practice.
+- **Good (12-13)**: Generally clear operational mechanisms with minor areas of uncertainty.
+- **Fair (10-11)**: Some operational clarity but significant areas of uncertainty.
+- **Poor (8-9)**: Poor operational clarity with many unclear mechanisms.
+- **Very Poor (6-7)**: Lacks operational clarity entirely.
+
+### **Intellectual Honesty (20% of score)**
+
+**Acknowledges Tensions (10 points):**
+- **Excellent (9-10)**: Thoughtfully addresses the inherent tensions and challenges of combining different domains.
+- **Good (8)**: Acknowledges most tensions and challenges.
+- **Fair (6-7)**: Acknowledges some tensions but misses important ones.
+- **Poor (4-5)**: Minimally acknowledges tensions.
+- **Very Poor (2-3)**: Fails to acknowledge tensions or challenges.
+
+**Realistic Assessment (10 points):**
+- **Excellent (9-10)**: Provides realistic assessment of feasibility, limitations, and potential challenges.
+- **Good (8)**: Generally realistic assessment with minor overstatements.
+- **Fair (6-7)**: Some realistic assessment but with significant overstatements or understatements.
+- **Poor (4-5)**: Poor realistic assessment with many overstatements or understatements.
+- **Very Poor (2-3)**: Lacks realistic assessment entirely.
+
+## SCORING GUIDELINES
+
+**Key Questions for Evaluation:**
+
+1. **Does each domain contribute essential functionality?** Or are some domains just mentioned for appearance?
+2. **Are the connections between domains functional or decorative?** Do they create new capabilities or just sound impressive?
+3. **Is the integration systematic?** Or does it feel like concepts were thrown together?
+4. **Are metaphors illuminating or confusing?** Do they help understand the system or obscure it?
+5. **Is the work honest about challenges?** Or does it oversell the integration?
+
+**Red Flags:**
+- **Buzzword salad**: Just mentioning concepts from different domains without integration
+- **Forced analogies**: Metaphors that don't actually help understand the system
+- **Unrealistic claims**: Promising capabilities that the integration doesn't actually provide
+- **Missing mechanisms**: Describing integration without explaining how it works
+
+**Green Flags:**
+- **Functional bridges**: Clear mechanisms for how domains interact
+- **Illuminating metaphors**: Analogies that genuinely clarify concepts
+- **Systematic design**: Logical architecture where each component has a clear role
+- **Honest assessment**: Realistic discussion of challenges and limitations
+
+## CALIBRATION EXAMPLES
+
+**Example of Excellent Integration (Score: 8-9):**
+"The system uses the Default Mode Network's background processing pattern (neuroscience) to structure AI idle cycles (computing), guided by economic innovation models (economics) to optimize combinatorial search. Each domain contributes essential functionality: neuroscience provides the operational pattern, computing provides the implementation mechanism, and economics provides the optimization strategy."
+
+**Example of Poor Integration (Score: 2-3):**
+"The system combines DMN, AI computing, and economic models to create innovation." (Just lists domains without explaining how they work together)
+
+## FINAL SCORE CALCULATION
+
+1. Calculate the raw score out of 100 total points:
+   - Domain Integration Quality: 50 points
+   - Logical Architecture: 30 points  
+   - Intellectual Honesty: 20 points
+
+2. Convert to 0-9 scale by dividing by 11.11 (100/9) and rounding to nearest whole number:
+   - 90-100 points → Score 9
+   - 80-89 points → Score 8
+   - 70-79 points → Score 7
+   - 60-69 points → Score 6
+   - 50-59 points → Score 5
+   - 40-49 points → Score 4
+   - 30-39 points → Score 3
+   - 20-29 points → Score 2
+   - 0-19 points → Score 1
+
+Your evaluation must end with a line containing the final score and there should be no more content.
+That last line should have the exact format given below - with X being a placeholder for a digit:
+
+SCORE: X

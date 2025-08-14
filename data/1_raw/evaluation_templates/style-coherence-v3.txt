@@ -1,0 +1,137 @@
+RESPONSE TO EVALUATE:
+{{ response }}
+
+--- EVALUATION INSTRUCTIONS ---
+
+Evaluate this response for style and coherence quality, focusing on interdisciplinary synthesis and conceptual integration. Use the structured evaluation framework below to ensure consistent, high-quality assessment.
+
+## EVALUATION FRAMEWORK
+
+### **1. Structure-Preserving Link Quality (40% of score)**
+
+**Link Type Classification (15 points):**
+Evaluate whether the response demonstrates proper understanding of how concepts connect:
+
+- **Structure-Preserving Analogy (13-15)**: Concepts are connected through meaningful analogies that preserve functional relationships across domains. The analogy illuminates how one domain's mechanisms can be applied to another.
+- **Mechanism Composition (10-12)**: Concepts are combined into functional systems where each contributes essential capabilities. Clear operational relationships between components.
+- **Constraint/Objective Import (8-9)**: Concepts are connected through shared constraints or objectives, though the operational mechanisms may be less clear.
+- **Property Transfer (6-7)**: Some properties are transferred between concepts, but the integration is superficial.
+- **Domain Reframing (4-5)**: Concepts are reframed in different domains without clear functional integration.
+- **Poor Integration (1-3)**: Concepts are mentioned together without meaningful connection.
+
+**Invariant Preservation (15 points):**
+Assess whether the integration preserves important structural properties:
+
+- **Composition (5 points)**: The integrated system maintains the compositional properties of its components.
+- **Monotonicity (5 points)**: Improvements in components lead to improvements in the integrated system.
+- **Constraint Conservation (5 points)**: The integration respects the constraints of individual concepts.
+
+**Operational Mapping (10 points):**
+Evaluate the clarity of how concepts work together:
+
+- **State Mapping**: Clear mapping between the states of different concepts.
+- **Operator Mapping**: Clear mapping between the operations of different concepts.
+- **Objective/Feedback Mapping**: Clear mapping between goals and feedback mechanisms.
+
+### **2. Conceptual Architecture (35% of score)**
+
+**Mechanism Clarity (20 points):**
+- **Excellent (18-20)**: Clear, specific mechanisms with concrete operational details. Pseudocode or step-by-step procedures provided.
+- **Good (15-17)**: Generally clear mechanisms with some operational details.
+- **Fair (12-14)**: Some mechanism clarity but significant gaps in operational details.
+- **Poor (9-11)**: Poor mechanism clarity with many unclear operational aspects.
+- **Very Poor (6-8)**: Lacks mechanism clarity entirely.
+
+**Systematic Integration (15 points):**
+- **Excellent (13-15)**: Concepts integrated into a systematic, coherent architecture with clear component relationships.
+- **Good (10-12)**: Generally systematic integration with minor gaps.
+- **Fair (7-9)**: Some systematic integration but significant gaps.
+- **Poor (4-6)**: Poor systematic integration with many unclear relationships.
+- **Very Poor (1-3)**: Lacks systematic integration entirely.
+
+### **3. Intellectual Rigor (25% of score)**
+
+**Specificity & Testability (15 points):**
+- **Excellent (13-15)**: Highly specific claims with clear metrics, baselines, and test plans. Multiple predictions with controlled testing.
+- **Good (10-12)**: Generally specific with some metrics and test plans.
+- **Fair (7-9)**: Some specificity but significant gaps in metrics or testing.
+- **Poor (4-6)**: Poor specificity with minimal metrics or testing.
+- **Very Poor (1-3)**: Lacks specificity entirely.
+
+**Prior Art Understanding (10 points):**
+- **Excellent (9-10)**: Clear understanding of existing work with specific deltas and mechanical differences identified.
+- **Good (7-8)**: Good understanding of existing work with some deltas identified.
+- **Fair (5-6)**: Some understanding of existing work but gaps in delta identification.
+- **Poor (3-4)**: Poor understanding of existing work.
+- **Very Poor (1-2)**: Lacks understanding of existing work.
+
+## QUALITY CHECKS (Lints)
+
+**Auto-Checks (Pass/Fail - must pass all):**
+- **No outcome-as-operator names**: Components are named for their function, not their goal
+- **Link type assigned**: Every concept connection has a clear link type
+- **Neologism guard**: If coined terms are used, they appear in a metaphor→mechanism table
+- **Specificity floor**: Response mentions ≥3 of {dataset, objective/loss, evaluation metric, baseline, ablation}
+- **Metaphor density**: (# metaphoric nouns)/(# operators + # metrics) ≤ 1.0
+
+**Red Flags (Score deductions):**
+- **Buzzword salad**: Just mentioning concepts without integration (-2 points)
+- **Forced analogies**: Metaphors that don't illuminate mechanisms (-2 points)
+- **Unrealistic claims**: Promising capabilities without clear mechanisms (-3 points)
+- **Missing mechanisms**: Describing integration without explaining how it works (-3 points)
+- **Goal confusion**: Naming components after outcomes rather than functions (-1 point)
+
+## SCORING GUIDELINES
+
+**For Interdisciplinary Work:**
+1. **Start with Link Quality**: Evaluate how concepts are connected
+2. **Assess Architecture**: Check if the integration creates a coherent system
+3. **Verify Rigor**: Ensure claims are specific and testable
+4. **Apply Quality Checks**: Run through the lint checks
+5. **Calculate Final Score**: Apply deductions for red flags
+
+**Key Questions:**
+- Does each concept contribute essential functionality to the integrated system?
+- Are the connections between concepts functional or decorative?
+- Is the integration systematic with clear component relationships?
+- Are the mechanisms clear and operational?
+- Are claims specific and testable?
+- Does the work honestly assess limitations and challenges?
+
+## CALIBRATION EXAMPLES
+
+**Example of Excellent Integration (Score: 8-9):**
+"The system uses the Default Mode Network's background processing pattern (neuroscience) to structure AI idle cycles (computing), guided by economic innovation models (economics) to optimize combinatorial search. Each domain contributes essential functionality: neuroscience provides the operational pattern, computing provides the implementation mechanism, and economics provides the optimization strategy. The integration preserves compositional properties while creating new capabilities through systematic combination."
+
+**Example of Poor Integration (Score: 2-3):**
+"The system combines DMN, AI computing, and economic models to create innovation. This creates a powerful new approach that leverages multiple domains for enhanced creativity." (Just lists concepts without explaining mechanisms or operational details)
+
+## FINAL SCORE CALCULATION
+
+1. Calculate the raw score out of 100 total points:
+   - Structure-Preserving Link Quality: 40 points
+   - Conceptual Architecture: 35 points  
+   - Intellectual Rigor: 25 points
+
+2. Apply quality check deductions (subtract from raw score):
+   - Buzzword salad: -2 points
+   - Forced analogies: -2 points
+   - Unrealistic claims: -3 points
+   - Missing mechanisms: -3 points
+   - Goal confusion: -1 point
+
+3. Convert to 0-9 scale by dividing by 11.11 (100/9) and rounding to nearest whole number:
+   - 90-100 points → Score 9
+   - 80-89 points → Score 8
+   - 70-79 points → Score 7
+   - 60-69 points → Score 6
+   - 50-59 points → Score 5
+   - 40-49 points → Score 4
+   - 30-39 points → Score 3
+   - 20-29 points → Score 2
+   - 0-19 points → Score 1
+
+Your evaluation must end with a line containing the final score and there should be no more content.
+That last line should have the exact format given below - with X being a placeholder for a digit:
+
+SCORE: X
