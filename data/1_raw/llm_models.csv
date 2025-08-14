@@ -13,7 +13,7 @@ llama_4_scout_f,meta-llama/llama-4-scout:free,meta,"Llama 4 Scout (Free)",false,
 llama_33_70b_f,meta-llama/llama-3.3-70b-instruct:free,meta,"Llama 3.3 70B Instruct (Free)",false,false,instruction_following
 llama_33_8b_f,meta-llama/llama-3.3-8b-instruct:free,meta,"Llama 3.3 8B Instruct (Free)",false,false,instruction_following
 nemotron_253b_f,nvidia/llama-3.1-nemotron-ultra-253b-v1:free,nvidia,"Nemotron 253B Ultra (Free)",false,false,general
-qwq_32b_f,qwen/qwq-32b:free,qwen,"QwQ 32B (Free)",false,true,reasoning
+qwq_32b_f,qwen/qwq-32b:free,qwen,"QwQ 32B (Free)",false,false,reasoning
 devstral_small_f,mistralai/devstral-small:free,mistral,"Devstral Small (Free)",false,false,coding
 mistral_small_31_f,mistralai/mistral-small-3.1-24b-instruct:free,mistral,"Mistral Small 3.1 24B (Free)",false,false,instruction_following
 mistral_7b_f,mistralai/mistral-7b-instruct:free,mistral,"Mistral 7B Instruct (Free)",false,false,instruction_following

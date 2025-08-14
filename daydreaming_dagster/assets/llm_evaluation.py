@@ -8,10 +8,10 @@ from ..utils.nodes_standalone import generate_evaluation_prompts
     partitions_def=evaluation_tasks_partitions,
     group_name="llm_evaluation",
     io_manager_key="evaluation_prompt_io_manager",
-    required_resource_keys={"parsing_results_io_manager"},
-    deps=["evaluation_tasks", "evaluation_templates", "parsed_generation_responses"],
+    required_resource_keys={"parsed_generation_io_manager"},
+    deps=["evaluation_tasks", "evaluation_templates"],
 )
-def evaluation_prompt(context, evaluation_tasks, evaluation_templates, parsed_generation_responses) -> str:
+def evaluation_prompt(context, evaluation_tasks, evaluation_templates) -> str:
     """
     Generate one evaluation prompt per partition using FK-based data loading.
     
@@ -87,7 +87,7 @@ def evaluation_prompt(context, evaluation_tasks, evaluation_templates, parsed_ge
     # Load the parsed generation response from the correct partition using I/O manager
     # This uses the MockLoadContext pattern to load data from a different partition
     # See docs/evaluation_asset_architecture.md for detailed explanation
-    parsing_io_manager = context.resources.parsing_results_io_manager
+    parsing_io_manager = context.resources.parsed_generation_io_manager
     
     # Validate that the referenced generation_task_id looks valid
     if not generation_task_id or generation_task_id.strip() == "":
@@ -117,32 +117,21 @@ def evaluation_prompt(context, evaluation_tasks, evaluation_templates, parsed_ge
     mock_context = MockLoadContext(generation_task_id)
     
     # Check if the file exists before attempting to load (better error context)
-    expected_path = parsing_io_manager.base_path / f"{generation_task_id}.csv"
+    expected_path = parsing_io_manager.base_path / f"{generation_task_id}.txt"
     
     try:
         # Load the parsed generation response from the parsing results
-        parsed_response = parsing_io_manager.load_input(mock_context)
+        # The parsed_generation_responses asset returns the essay content as a string
+        essay_content = parsing_io_manager.load_input(mock_context)
         
-        # Extract essay content from the parsed response
-        if isinstance(parsed_response, dict) and 'essay_content' in parsed_response:
-            essay_content = parsed_response['essay_content']
-        elif isinstance(parsed_response, str):
-            # If it's a string, assume it's the essay content directly
-            essay_content = parsed_response
-        else:
-            # Fallback: try to load the original generation response
-            gen_response_file = Path("data/3_generation/generation_responses") / f"{generation_task_id}.txt"
-            if gen_response_file.exists():
-                context.log.warning(f"Using fallback generation response for {generation_task_id}")
-                essay_content = gen_response_file.read_text()
-            else:
-                raise FileNotFoundError(f"Neither parsed nor original generation response found for: {generation_task_id}")
+        if not essay_content:
+            raise ValueError(f"Empty essay content loaded for {generation_task_id}")
         
         context.log.info(f"Successfully loaded essay content: {len(essay_content)} characters from {generation_task_id}")
         
     except FileNotFoundError as e:
         # Enhanced error with more debugging context
-        available_files = list(parsing_io_manager.base_path.glob("*.csv")) if parsing_io_manager.base_path.exists() else []
+        available_files = list(parsing_io_manager.base_path.glob("*.txt")) if parsing_io_manager.base_path.exists() else []
         available_partitions = [f.stem for f in available_files[:10]]  # Show first 10
         
         context.log.error(f"Parsed generation response not found for partition {generation_task_id}")
@@ -203,7 +192,6 @@ def evaluation_prompt(context, evaluation_tasks, evaluation_templates, parsed_ge
     io_manager_key="evaluation_response_io_manager",
     required_resource_keys={"openrouter_client"},
     deps=["evaluation_prompt", "evaluation_tasks"],
-    pool="llm_api"  # Pool-based concurrency control
 )
 def evaluation_response(context, evaluation_prompt, evaluation_tasks) -> str:
     """Generate one evaluation response per partition."""

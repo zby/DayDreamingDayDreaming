@@ -11,7 +11,6 @@ from ..utils.generation_response_parser import parse_generation_response, get_pa
     group_name="llm_generation",
     io_manager_key="generation_prompt_io_manager",
     deps=["generation_tasks"],  # Ensure partitions are created first
-    pool="llm_api"  # Pool-based concurrency control
 )
 def generation_prompt(
     context, 
@@ -99,7 +98,6 @@ def generation_prompt(
     io_manager_key="generation_response_io_manager",
     required_resource_keys={"openrouter_client"},
     deps=["generation_tasks"],  # Remove generation_models dependency
-    pool="llm_api"  # Pool-based concurrency control
 )
 def generation_response(context, generation_prompt, generation_tasks) -> str:
     """
