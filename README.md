@@ -101,6 +101,23 @@ cut -d',' -f1 data/2_tasks/generation_tasks.csv | tail -n +2 | while read partit
 done
 ```
 
+### Automatic Results Tracking **NEW**
+
+The pipeline now includes automatic cross-experiment tracking:
+
+- **Auto-materializing assets**: New responses are automatically tracked in comprehensive CSV tables
+- **Cross-experiment analysis**: Compare results across different experiments and template versions
+- **Bulk migration tools**: Scripts to populate tracking tables from existing data
+
+**Initial setup** (populate tables from existing data):
+```bash
+# Build comprehensive tracking tables from existing responses
+./scripts/rebuild_generation_results.sh
+python scripts/build_evaluation_results_table.py
+```
+
+**Ongoing automatic tracking**: No manual intervention needed - new responses are automatically added to tracking tables when generated.
+
 ## Development
 
 ### Testing

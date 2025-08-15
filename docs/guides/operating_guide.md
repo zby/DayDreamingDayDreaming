@@ -93,6 +93,21 @@ Optionally stash selection files for traceability:
      --select "group:llm_evaluation"
    ```
 
+4. **Process results and run analysis:**
+   ```bash
+   uv run dagster asset materialize -f daydreaming_dagster/definitions.py \
+     --select "group:results_processing,group:results_summary"
+   ```
+
+### Auto-Materializing Results Tracking
+
+**NEW**: The pipeline now includes auto-materializing assets that automatically track results:
+
+- **`generation_results_append`**: Automatically appends a row to `generation_results.csv` when any `generation_response` completes
+- **`evaluation_results_append`**: Automatically appends a row to `evaluation_results.csv` when any `evaluation_response` completes
+
+These assets run automatically without manual intervention and maintain comprehensive cross-experiment tracking tables.
+
 ### Free vs Paid LLM Runs (Separate Pools)
 
 To observe free-tier queuing vs paid parallelism, configure pools in `dagster_home/dagster.yaml`:
@@ -134,8 +149,26 @@ uv run dagster asset materialize -f daydreaming_dagster/definitions.py \
   - `data/4_evaluation/` - Evaluation prompts and responses
   - `data/5_parsing/` - Parsed evaluation scores
   - `data/6_summary/` - Final aggregated results
+  - `data/7_cross_experiment/` - Cross-experiment tracking tables (NEW)
 
 - If you used a run tag, the tag appears in Dagster's run metadata for filtering
+
+### Bulk Results Table Generation
+
+For initial setup or when you need to rebuild the cross-experiment tracking tables from existing data:
+
+```bash
+# Generate generation_results.csv from all existing generation responses
+./scripts/rebuild_generation_results.sh
+
+# Generate evaluation_results.csv from all existing evaluation responses  
+python scripts/build_evaluation_results_table.py
+```
+
+These scripts scan existing response files and rebuild the comprehensive tracking tables. Useful for:
+- Initial migration to the new tracking system
+- Recovery after table corruption
+- Rebuilding tables when adding new columns
 
 ### Optional Reporting
 

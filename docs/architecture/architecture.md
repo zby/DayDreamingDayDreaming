@@ -48,11 +48,17 @@ daydreaming_dagster/
 │   ├── raw_data.py            # Raw data loading assets (supports selective loading)
 │   ├── core.py                # Core processing assets (combinations, tasks)
 │   ├── partitions.py          # Partition management assets
-│   └── llm_prompts_responses.py # LLM interaction assets
+│   ├── llm_generation.py      # LLM generation assets
+│   ├── llm_evaluation.py      # LLM evaluation assets
+│   ├── results_processing.py  # Score parsing and analysis
+│   ├── results_summary.py     # Final aggregated results
+│   ├── results_analysis.py    # Statistical analysis assets
+│   └── cross_experiment.py    # Cross-experiment tracking (NEW)
 ├── resources/                  # Dagster resources
 │   ├── llm_client.py          # LLM API client resource
 │   ├── experiment_config.py   # Experiment configuration resource (with filtering)
-│   └── io_managers.py         # Custom I/O managers for different file types
+│   ├── io_managers.py         # Custom I/O managers for different file types
+│   └── cross_experiment_io_manager.py # Cross-experiment I/O manager (NEW)
 ├── definitions.py             # Single Dagster definitions file
 └── __init__.py                # Package initialization
 ```
@@ -63,11 +69,15 @@ Assets are organized into logical groups for easy selection and understanding:
 
 | Group | Assets | Purpose |
 |-------|--------|---------|
-| **`raw_data`** | concepts, concepts_metadata, generation_models, evaluation_models, generation_templates, evaluation_templates | Load external data files |
-| **`llm_tasks`** | content_combinations, generation_tasks, evaluation_tasks, task_definitions | Generate LLM task definitions |
-| **`llm_generation`** | generation_prompt, generation_response | LLM prompt/response generation (partitioned) |
+| **`raw_data`** | concepts, llm_models, generation_templates, evaluation_templates | Load external data files |
+| **`llm_tasks`** | content_combinations, content_combinations_csv, generation_tasks, evaluation_tasks | Generate LLM task definitions |
+| **`llm_generation`** | generation_prompt, generation_response, parsed_generation_responses | LLM prompt/response generation (partitioned) |
 | **`llm_evaluation`** | evaluation_prompt, evaluation_response | LLM evaluation (partitioned) |
-| **`results_processing`** | parsed_scores, final_results | Parse and aggregate results |
+| **`results_processing`** | parsed_scores | Parse evaluation scores |
+| **`results_summary`** | final_results, perfect_score_paths, generation_scores_pivot, evaluation_model_template_pivot | Final aggregated results |
+| **`results_analysis`** | evaluator_agreement_analysis, comprehensive_variance_analysis | Statistical analysis |
+| **`cross_experiment`** | filtered_evaluation_results, template_version_comparison_pivot | Cross-experiment analysis |
+| **`cross_experiment_tracking`** | generation_results_append, evaluation_results_append | Auto-materializing result tracking (NEW) |
 
 ## Data Flow Architecture
 
@@ -170,6 +180,47 @@ def concepts(context) -> List[Concept]:
 - **Format support**: Handles markdown (`**SCORE: 7**`), plain text, and various separators
 - **Score formats**: Standard numeric (8.5) and three-digit averages (456 → 5.0)
 - **Error handling**: Continues processing when individual files fail to parse
+
+### 6. Cross-Experiment Tracking (`cross_experiment.py`) **NEW**
+
+**Assets**: `generation_results_append`, `evaluation_results_append`, `filtered_evaluation_results`, `template_version_comparison_pivot`
+
+**Purpose**: Automatic tracking and cross-experiment analysis of all LLM responses
+
+**Auto-Materializing Tracking**:
+- **`generation_results_append`**: Automatically appends rows to `generation_results.csv` when any `generation_response` completes
+- **`evaluation_results_append`**: Automatically appends rows to `evaluation_results.csv` when any `evaluation_response` completes
+- **Thread-safe CSV operations**: Uses file locking to handle concurrent updates
+- **Immediate execution**: Uses `AutoMaterializePolicy.eager()` for instant updates
+
+**Tracking Tables**:
+- **Generation Results**: Comprehensive metadata for all generation responses
+  - Columns: `generation_task_id`, `combo_id`, `generation_template`, `generation_model`, `generation_status`, `generation_timestamp`, `response_file`, `response_size_bytes`
+- **Evaluation Results**: Complete evaluation metadata with generation context
+  - Columns: `evaluation_task_id`, `generation_task_id`, `combo_id`, `generation_template`, `generation_model`, `evaluation_template`, `evaluation_model`, `evaluation_status`, `evaluation_timestamp`, `eval_response_file`, `eval_response_size_bytes`
+
+**Cross-Experiment Analysis**:
+- **Template comparison**: Compare different template versions across experiments
+- **Model performance**: Track model behavior across different concept combinations
+- **Filtering capabilities**: Configurable filters for focused analysis
+
+**Implementation Details**:
+```python
+@asset(
+    partitions_def=generation_tasks_partitions,
+    deps=["generation_response"],
+    auto_materialize_policy=AutoMaterializePolicy.eager(),
+    group_name="cross_experiment_tracking"
+)
+def generation_results_append(context, generation_tasks):
+    # Automatically appends when generation_response completes
+    append_to_results_csv("data/7_cross_experiment/generation_results.csv", new_row)
+```
+
+**Bulk Table Generation**:
+- **Scripts**: `scripts/build_generation_results_table.py`, `scripts/build_evaluation_results_table.py`
+- **Purpose**: Initial migration and table rebuilding from existing response files
+- **Thread-safe utility**: `append_to_results_csv()` function with file locking
 
 ## Resource Architecture
 

@@ -33,12 +33,19 @@ from daydreaming_dagster.assets.core import (
     generation_tasks,
     evaluation_tasks
 )
+from daydreaming_dagster.assets.cross_experiment import (
+    filtered_evaluation_results,
+    template_version_comparison_pivot,
+    generation_results_append,
+    evaluation_results_append
+)
 from daydreaming_dagster.resources.llm_client import LLMClientResource
 from daydreaming_dagster.resources.experiment_config import ExperimentConfig
 from daydreaming_dagster.resources.io_managers import (
     PartitionedTextIOManager,
     CSVIOManager
 )
+from daydreaming_dagster.resources.cross_experiment_io_manager import CrossExperimentIOManager
 from pathlib import Path
 
 
@@ -70,7 +77,15 @@ defs = Definitions(
         generation_scores_pivot,
         evaluation_model_template_pivot,
         final_results,
-        perfect_score_paths
+        perfect_score_paths,
+        
+        # Cross-experiment analysis assets
+        filtered_evaluation_results,
+        template_version_comparison_pivot,
+        
+        # Auto-materializing results tracking assets
+        generation_results_append,
+        evaluation_results_append
     ],
     resources={
         "openrouter_client": LLMClientResource(),
@@ -93,7 +108,8 @@ defs = Definitions(
         "error_log_io_manager": CSVIOManager(base_path=Path("data") / "7_reporting"),
         "parsing_results_io_manager": CSVIOManager(base_path=Path("data") / "5_parsing"),
         "parsed_generation_io_manager": PartitionedTextIOManager(base_path=Path("data") / "3_generation" / "parsed_generation_responses", overwrite=True),
-        "summary_results_io_manager": CSVIOManager(base_path=Path("data") / "6_summary")
+        "summary_results_io_manager": CSVIOManager(base_path=Path("data") / "6_summary"),
+        "cross_experiment_io_manager": CrossExperimentIOManager()
     },
     executor=multiprocess_executor.configured({"max_concurrent": 10})
     # Note: Pool concurrency is configured via dagster_home/dagster.yaml
