@@ -3,28 +3,6 @@ from pathlib import Path
 import pandas as pd
 
 from ..utils.evaluation_processing import parse_evaluation_files, enrich_evaluation_data, calculate_evaluation_metadata, add_evaluation_file_paths
-from ..utils.eval_response_parser import parse_llm_response
-
-
-def _parse_evaluation_response(response_text: str, task_row) -> dict:
-    """Parse an evaluation response using the appropriate strategy.
-    
-    Args:
-        response_text: Raw response text from the file
-        task_row: Row from evaluation_tasks DataFrame containing metadata
-        
-    Returns:
-        Dictionary with score and error fields
-    """
-    evaluation_template = task_row['evaluation_template']
-    
-    # Determine parsing strategy based on template
-    strategy = 'complex' if evaluation_template in [
-        'creativity-metrics', 'daydreaming-verification', 
-        'iterative-loops', 'scientific-rigor'
-    ] else 'in_last_line'
-    
-    return parse_llm_response(response_text, strategy)
 
 
 @asset(
@@ -46,7 +24,8 @@ def parsed_scores(context, evaluation_tasks: pd.DataFrame, generation_tasks: pd.
     
     # Get base path and parse responses using evaluation processing utility
     base_path = Path(context.resources.evaluation_response_io_manager.base_path)
-    parsed_df = parse_evaluation_files(evaluation_tasks, base_path, _parse_evaluation_response, context)
+    # Use default parsing from utils - no custom parse function needed
+    parsed_df = parse_evaluation_files(evaluation_tasks, base_path, context=context)
     
     # Enrich with metadata using evaluation processing utility
     enriched_df = enrich_evaluation_data(parsed_df, evaluation_tasks, generation_tasks)
