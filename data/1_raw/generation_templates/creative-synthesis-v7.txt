@@ -1,0 +1,136 @@
+Title: Inventive Synthesis from Foundational Concepts
+Role: You are an expert in interdisciplinary synthesis, conceptual invention, and feasibility design.
+
+Inputs:
+{% for concept in concepts %}
+**{{ concept.name }}**
+{{ concept.content }}
+---
+{% endfor %}
+
+Output format:
+1. <thinking> … </thinking>
+2. <essay> … </essay>
+
+---
+
+<thinking>
+
+## Mechanism Primer (read-once guidance; do not include in essay)
+A **Mechanism** is a falsifiable process mapping initial states → outcomes via operators under constraints.
+- **Discovery mode:** hypothesized causal/explanatory model → testable predictions.
+- **Invention mode:** design/algorithm/protocol → measurable performance.
+Minimum bar (both): name state variables; list operators/updates; objectives/metrics; constraints/assumptions; ≥1 lever; ≥1 baseline; ≥1 test (dataset/experiment).
+
+---
+
+## Structure-Preserving Links (Spine)
+
+For each candidate link, write one self-contained block:
+
+### Link: Concept A → Concept B
+- **Link type** (choose one):  
+  1) Structure-Preserving Analogy  2) Mechanism Composition  3) Constraint / Objective Import  
+  4) Property Transfer / Feature Grafting  5) Domain Reframing / Problem Translation
+
+#### Cross-Domain Mappings (required)
+- **State mapping:** …
+- **Operator mapping:** …
+- **Objective / feedback mapping:** …
+- **Constraint mapping:** …
+- **Metric mapping:** …
+- **Invariant preserved:** (Composition | Monotonicity(+metric) | Constraint Conservation | Symmetry | Fixed Point)
+- *(Optional)* **Mapping quality:** Coverage / Consistency / Lossiness (brief)
+
+#### Mechanism (with Feasibility)
+- **Mode:** Discovery | Invention
+- **Subtype (tags):** pick 0–3 from  
+  Metric/Instrument · Evaluation/Protocol · Data/Experiment · Refutation/Bound · Theory/Normal-Form ·  
+  Taxonomy/Design-Space · Mechanism-Design/Policy · Safety/Security · Adoption/Moat · Interface/HIL ·  
+  Meta-Optimization · Standard/Spec
+- **Subtype checks:** (e.g., Metric → reliability & baseline; Protocol → reproducibility & stress suite)
+- **Name:** …
+- **Inputs:** (data/prior/knowledge graph/signals; constraints/assumptions)
+- **State & operators:** (state variables; operators/transforms; update rule/dynamics)
+- **Procedure (≤15 steps or pseudocode):**
+  1. …
+  …
+- **Objectives & selection criteria:**
+  - *Discovery:* null/alt, effect size(s), thresholds
+  - *Invention:* primary metric(s), targets, acceptance criteria
+- **Metrics & evaluation plan:**
+  - **Metrics:** definitions + computation (e.g., novelty@k, AUROC, ROIC, time-to-parity)
+  - **Baselines:** ≥1
+  - **Ablations:** levers to vary; expected signatures
+  - **Datasets / Experiments:**
+    - *Discovery:* datasets, sample size/power, multiple-testing control, prereg
+    - *Invention:* benchmark suites, load profiles, safety/reliability checks
+- **Levers & constraints:** tunables (e.g., temperature, walk bias, budget); hard constraints (cost, latency, ethics)
+- **Assumptions:** explicit premises that must hold
+- **Switches (counterfactuals):** toggle → expected signature if true
+- **Evidence ledger:**
+  - **Evidence so far:** [item | strength: weak/moderate/strong | replicated? yes/no]
+  - **Planned evidence:** [next test | decision rule (“advance/drop if …”)]
+- **Mapping robustness:** Lossiness […]; Directionality (A→B invertible?); Failure signatures (what metric breaks, how)
+- **Feasibility & ops (local to this mechanism):**
+  - **Resources:** compute, talent, data, instruments, partners
+  - **Protection strategy:** IP/trade-secret, data network effects, moving-target defense
+  - **Economic rationale:** ROI driver, moat width, cost-to-replicate
+  - **Ops metrics:** time-to-parity, cost curve, market-advantage duration
+  - **Human roles (if any):** reviewers/approvers; thresholds they control
+  - **IP/Policy constraints:** route (patent/trade secret/defensive pub); compliance/dual-use/export flags
+  - **Risks & mitigations:** technical, validation bottlenecks, safety/ethics, policy
+  - **Predictions (testable):** ≥2 concrete; time-bound if possible
+- **Prior-art delta (local):** nearest neighbor(s) → *mechanical* difference (new mapping/operator/feedback)
+
+#### Gate Criteria (0–2 each; brief justification)
+- Specificity: _
+- Mechanism clarity: _
+- Refutability: _
+- Prior-art delta: _
+- Feasibility: _
+- Ethics/Policy: _
+**Gate weights (optional):** {spec:1, mech:1, refute:1, prior:1, feas:1, ethics:1}  
+**Weighted total:** X/12 — **Decision:** Pass / Drop
+
+---
+
+*(Optional for chains)* **Composition check (A→B→C):**
+- **Deps:** consumes from L_k; outputs to L_j
+- **Composed invariant:** [holds / breaks at L_*]
+- **Chokepoints:** [link or variable]; mitigation
+
+---
+
+## Link Selection Summary (essay backbone)
+- **All Pass links (ranked):** score + one-line rationale each
+- **Coverage note:** ensure selected set spans ≥2 subtypes or concept roles (avoid redundancy)
+- **Selected links (2–4):** e.g., L1 … (11/12); L3 … (10/12) — these define the essay sections
+- **Gate weights used (if non-default):** {…}
+- **Dropped but interesting (max 3):** link → reason → revisit-if condition
+
+## Lints (Auto-Checks)
+- No outcome-as-operator names: <ok|flag>
+- Every link has type + mappings: <ok|flag>
+- Neologism guard: any coined term defined + mechanism mapping (state → operator → objective)
+- Specificity floor: mention ≥2 of {dataset, objective/loss, evaluation metric, baseline, ablation}
+- Repro anchors present: data/code version | compute budget | safety check
+- Citations in essay: Markdown links [text](url); unsourced numerics marked (hypothetical)
+
+</thinking>
+
+---
+
+<essay>
+Write a 2,000–3,000 word narrative that:
+
+- Frames the problem/opportunity.
+- Follows the **selected links** as the backbone (1 major section per link, in ranked order).
+- Explains how the mappings yield mechanisms (plain language) and how mechanisms compose across links.
+- Integrates specifics: targets; metric definitions/computations; baselines → targets; levers; concise test plans
+  (datasets, ablations, sample sizes, multiple-testing control).
+- Discusses feasibility (economic/strategic/operational) **tied to the mechanisms used** (resources, protection, ROI, risks).
+- States explicit **mechanical** deltas vs nearest prior art (what changed in mapping/operator/feedback).
+- Uses Markdown links for sources; label unsourced numerics as (hypothetical).
+Prefer paragraphs; use brief tables only when they aid clarity.
+</essay>
