@@ -39,6 +39,23 @@ These are the endnotes.
         assert "essay" in result["parsing_notes"]["sections_found"]
         assert "thinking" in result["parsing_notes"]["sections_found"]
         assert "endnotes" in result["parsing_notes"]["sections_found"]
+
+    def test_xml_tags_with_attributes(self):
+        """Essay and other tags may include attributes and should still be parsed."""
+        response = """
+<thinking mode="compact">
+Notes.
+</thinking>
+
+<essay format="markdown" version="v2">
+This is the essay with attributes on the tag.
+</essay>
+"""
+
+        result = parse_generation_response(response, "xml_tags")
+        assert result["essay"] == "This is the essay with attributes on the tag."
+        assert result["thinking"] == "Notes."
+        assert result["endnotes"] is None
     
     def test_xml_tags_format_missing_sections(self):
         """Test parsing when some sections are missing."""

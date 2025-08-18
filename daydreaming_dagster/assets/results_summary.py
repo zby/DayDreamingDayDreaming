@@ -58,8 +58,22 @@ def generation_scores_pivot(context, parsed_scores: pd.DataFrame, evaluation_tem
     # Get all evaluation columns (excluding the index columns)
     eval_columns = [col for col in pivot_df.columns if col not in ['combo_id', 'generation_template', 'generation_model']]
     
+    # Add aggregate column with all scores summed across evaluators
+    # NaNs are ignored in the sum; round for readability
+    if eval_columns:
+        pivot_df['sum_scores'] = pivot_df[eval_columns].sum(axis=1, skipna=True).round(2)
+    else:
+        pivot_df['sum_scores'] = 0.0
+
+    # Add path to the generation response file
+    # Format: data/3_generation/generation_responses/{combo_id}_{generation_template}_{generation_model}.txt
+    pivot_df['generation_response_path'] = pivot_df.apply(
+        lambda row: f"data/3_generation/generation_responses/{row['combo_id']}_{row['generation_template']}_{row['generation_model']}.txt",
+        axis=1
+    )
+    
     # Order columns: index columns first, then evaluation columns
-    ordered_cols = ['combo_id', 'generation_template', 'generation_model'] + eval_columns
+    ordered_cols = ['combo_id', 'generation_template', 'generation_model'] + eval_columns + ['sum_scores', 'generation_response_path']
     pivot_df = pivot_df[ordered_cols]
 
     # Metadata

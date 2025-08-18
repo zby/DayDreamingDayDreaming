@@ -75,11 +75,11 @@ def parse_generation_response(response_text: str, strategy: ParseStrategy = "xml
 def _parse_xml_tags_format(response_text: str) -> Dict[str, Any]:
     """Parse responses using XML-like tags like <essay>, <thinking>, <endnotes>."""
     
-    # Check if this looks like XML format (has some XML-like tags)
-    has_xml_tags = bool(re.search(r'<\w+>.*?</\w+>', response_text, re.DOTALL))
+    # Check if this looks like XML format (has some XML-like tags, possibly with attributes)
+    has_xml_tags = bool(re.search(r'<\w+(\s+[^>]*)?>.*?</\w+>', response_text, re.DOTALL))
     
     # Extract essay section (required)
-    essay_match = re.search(r'<essay>(.*?)</essay>', response_text, re.DOTALL | re.IGNORECASE)
+    essay_match = re.search(r'<essay\b[^>]*>(.*?)</essay>', response_text, re.DOTALL | re.IGNORECASE)
     if not essay_match:
         # If it has XML tags but no essay tags, that's an error
         if has_xml_tags:
@@ -91,13 +91,13 @@ def _parse_xml_tags_format(response_text: str) -> Dict[str, Any]:
     
     # Extract thinking section (optional)
     thinking_content = None
-    thinking_match = re.search(r'<thinking>(.*?)</thinking>', response_text, re.DOTALL | re.IGNORECASE)
+    thinking_match = re.search(r'<thinking\b[^>]*>(.*?)</thinking>', response_text, re.DOTALL | re.IGNORECASE)
     if thinking_match:
         thinking_content = thinking_match.group(1).strip()
     
     # Extract endnotes section (optional)
     endnotes_content = None
-    endnotes_match = re.search(r'<endnotes>(.*?)</endnotes>', response_text, re.DOTALL | re.IGNORECASE)
+    endnotes_match = re.search(r'<endnotes\b[^>]*>(.*?)</endnotes>', response_text, re.DOTALL | re.IGNORECASE)
     if endnotes_match:
         endnotes_content = endnotes_match.group(1).strip()
     

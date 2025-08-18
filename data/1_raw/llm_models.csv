@@ -18,8 +18,8 @@ devstral_small_f,mistralai/devstral-small:free,mistral,"Devstral Small (Free)",f
 mistral_small_31_f,mistralai/mistral-small-3.1-24b-instruct:free,mistral,"Mistral Small 3.1 24B (Free)",false,false,instruction_following
 mistral_7b_f,mistralai/mistral-7b-instruct:free,mistral,"Mistral 7B Instruct (Free)",false,false,instruction_following
 gemini_2.5_flash,google/gemini-2.5-flash,google,"Gemini 2.5 Flash",true,false,reasoning
-sonnet-4,anthropic/claude-sonnet-4,anthropic,"Sonnet 4",false,true,reasoning
+sonnet-4,anthropic/claude-sonnet-4,anthropic,"Sonnet 4",true,true,reasoning
 deepseek_r1_p,deepseek/deepseek-r1,deepseek,"DeepSeek R1",true,false,reasoning
 gemini_25_pro,google/gemini-2.5-pro,google,"Gemini 2.5 Pro",true,true,general
-llama_31_405b,meta-llama/llama-3.1-405b-instruct,meta,"Llama 3.1 405B Instruct",true,false,instruction_following
+llama_31_405b,meta-llama/llama-3.1-405b-instruct,meta,"Llama 3.1 405B Instruct",false,false,instruction_following
 qwen3-235b-a22b,qwen/qwen3-235b-a22b,qwen,"Qwen: Qwen3 235B A22B",true,false,instruction_following
