@@ -194,13 +194,13 @@ def pipeline_data_root_prepared():
     pd.testing.assert_series_equal((cdf["active"] == True).reset_index(drop=True)[:2], pd.Series([True, True]), check_names=False)
     cdf.to_csv(concepts_csv, index=False)
 
-    # Generation templates: use only creative-synthesis-v8 (two-phase structure)
+    # Generation templates: use only creative-synthesis-v10 (two-phase structure)
     gtdf = pd.read_csv(gen_templates_csv)
     if "active" in gtdf.columns:
         gtdf["active"] = False
         
-        # Activate only creative-synthesis-v8 to test two-phase generation
-        target_template = "creative-synthesis-v8"
+        # Activate only creative-synthesis-v10 to test two-phase generation
+        target_template = "creative-synthesis-v10"
         template_mask = gtdf["template_id"] == target_template
         
         if template_mask.any():

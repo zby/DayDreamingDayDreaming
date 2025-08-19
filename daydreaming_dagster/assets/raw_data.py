@@ -107,6 +107,11 @@ def generation_templates(context) -> pd.DataFrame:
     for _, row in templates_df.iterrows():
         template_id = row["template_id"]
         
+        # Skip inactive templates - only load content for active ones
+        if row.get("active", True) not in [True, "true", "True", 1, "1"]:
+            content_list.append("")  # Add empty content to maintain DataFrame alignment
+            continue
+        
         # Check for two-phase structure first (preferred)
         links_file = templates_dir / "links" / f"{template_id}.txt"
         essay_file = templates_dir / "essay" / f"{template_id}.txt"

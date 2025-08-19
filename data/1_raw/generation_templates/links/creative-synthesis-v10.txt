@@ -1,0 +1,100 @@
+# Concept Link Generation (Markdown-only)
+
+**Role:** You are an expert in interdisciplinary synthesis and mechanism design. Produce *valuable, non-redundant* links between concepts.
+You can also treat already generated links as concepts if you encounter a very good opportunity.
+
+---
+
+## Inputs (concept list)
+{% for concept in concepts %}
+**{{ concept.name }}**
+{{ concept.content }}
+---
+
+{% endfor %}
+
+
+---
+
+## Global Constraints
+- Generate up to **N=8** candidate links.  
+- Cover ≥ **3** different link types and ≥ **3** different concept roles.  
+- Prefer diversity; avoid duplicate or near-duplicate pairs.  
+- Keep each link block ≤ **250 words** (excluding header).  
+
+---
+
+## For each link, output exactly one block:
+
+### Link loop.index: C*A* → C*B*
+- **Link type (pick one):**  
+  1) Structure-Preserving Analogy  
+  2) Mechanism Composition  
+  3) Constraint→Objective Import  
+  4) Property Transfer / Feature Grafting  
+  5) Domain Reframing / Problem Translation
+- **Roles:** C*A* (role=…) → C*B* (role=…)  
+- **One-sentence Delta:** *What becomes possible only with A→B that neither alone enables?*
+
+#### Cross-Domain Mappings *(tight; max 6 lines)*
+- **State mapping (symbols + units):** …  
+- **Operator mapping:** …  
+- **Objective/feedback mapping:** …  
+- **Constraint mapping:** …  
+- **Metric mapping (definition + computation window):** …  
+- **Invariant preserved:** Composition | Monotonicity(+metric) | Constraint Conservation | Symmetry | Fixed Point  
+  *(Optional)* **Mapping quality:** Coverage / Consistency / Lossiness  
+
+#### Mechanism (with Feasibility)
+- **Mode:** Discovery | Invention  
+- **Subtype tags (0–3):** Metric/Instrument · Evaluation/Protocol · Data/Experiment · Refutation/Bound · Theory/Normal-Form · Taxonomy/Design-Space · Mechanism-Design/Policy · Safety/Security · Adoption/Moat · Interface/HIL · Meta-Optimization · Standard/Spec  
+- **Name (short):** …  
+- **Inputs:** (data/prior/signals; constraints/assumptions)  
+- **State & operators:** (state vars; transforms; update rule)  
+- **Procedure (≤10 steps or pseudocode):** …  
+- **Objectives & selection criteria:**  
+  - *Discovery:* null/alt, effect sizes, thresholds  
+  - *Invention:* primary metric(s), targets, acceptance criteria  
+- **Evaluation plan:**  
+  - Metrics (symbol+unit)  
+  - **Baselines (≥1)**  
+  - **Ablations** (levers + expected signatures)  
+  - Datasets/experiments (sample sizes/power; multiple-testing control if needed)  
+- **Levers & hard constraints:** (e.g., temperature, budget; latency, safety/ethics)  
+- **Assumptions (explicit):** …  
+- **Switches (counterfactual toggles):** toggle → predicted signature  
+- **Evidence ledger:** evidence-so-far [item | strength | replicated?]; next test + decision rule  
+- **Feasibility & ops:** resources; ops metrics (time-to-parity, cost curve); protection (IP/trade-secret/data network); risks & mitigations; **2+ time-bound predictions**  
+- **Prior-art delta (mechanical):** nearest neighbor(s) → what changed (mapping/operator/feedback)  
+- **Invert check:** Is B→A meaningful? If no, why asymmetry matters.  
+
+#### Validity & Score *(merged checks; 0–2 each with justification)*
+- **Specificity:** 0 vague | 1 named vars/datasets | 2 vars **and** datasets **and** thresholds → _…_  
+- **Mechanism clarity:** 0 hand-wave | 1 steps w/o operators | 2 steps + operators + update rule → _…_  
+- **Refutability:** 0 none | 1 qualitative sign | 2 metric+threshold+feasible test (≤2 weeks) → _…_  
+- **Prior-art delta:** 0 none | 1 reframing | 2 mechanical novelty → _…_  
+- **Feasibility:** 0 fantasy | 1 pilot feasible | 2 pilot **and** scale path named → _…_  
+- **Ethics/Policy:** 0 ignored | 1 risks listed | 2 risks + mitigation & compliance route → _…_  
+
+**Style/quality checks (pass/fail):**  
+- Units present for ≥1 metric; all mapping lines filled  
+- No banned weasel words (“synergy,” “unlock,” “leverage”) unless quantified  
+- Analogy names an **invariant**; mechanism includes **at least one ablation**  
+- Scope conditions stated (time scale/domain/regime limits)  
+
+**Total:** X/12 — **Decision:** **Pass** / **Drop** — *(one-line rationale)*  
+**Anti-link (counter & falsifier):** strongest objection **and** the observation/threshold that would kill the link.  
+
+#### Link Summary
+- Name (short)
+- Summary (≤1 paragraph): Concise restatement of the link’s core idea, written as if it were a new concept node for future rounds.
+
+---
+
+## Link Selection Summary (essay backbone)
+- **All Pass links (ranked):** score + one-line Delta each  
+- **Coverage note:** confirm ≥2 link types and ≥3 roles; no redundancy  
+- **Selected links (2–4):** e.g., L1 (11/12), L3 (10/12) — these become sections  
+- **Dropped but interesting (≤3):** link → reason → revisit-if condition  
+
+---

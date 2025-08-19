@@ -8,7 +8,7 @@ class TestTemplateLoader:
     
     def test_load_links_template_success(self):
         """Test successfully loading a links phase template."""
-        template_content = load_generation_template("creative-synthesis-v8", "links")
+        template_content = load_generation_template("creative-synthesis-v10", "links")
         
         assert isinstance(template_content, str)
         assert len(template_content) > 0
@@ -17,7 +17,7 @@ class TestTemplateLoader:
         
     def test_load_essay_template_success(self):
         """Test successfully loading an essay phase template."""
-        template_content = load_generation_template("creative-synthesis-v8", "essay")
+        template_content = load_generation_template("creative-synthesis-v10", "essay")
         
         assert isinstance(template_content, str)
         assert len(template_content) > 0
@@ -42,7 +42,7 @@ class TestTemplateLoader:
         
     def test_load_existing_template_wrong_phase(self):
         """Test error when template exists for one phase but not another."""
-        # creative-synthesis-v8 should exist for both phases
+        # creative-synthesis-v10 should exist for both phases
         # But let's test with a template that might only exist in the root
         with pytest.raises(FileNotFoundError) as exc_info:
             load_generation_template("nonexistent-phase-template", "links")
@@ -51,7 +51,7 @@ class TestTemplateLoader:
     
     def test_template_content_encoding(self):
         """Test that templates are loaded with proper UTF-8 encoding."""
-        template_content = load_generation_template("creative-synthesis-v8", "links")
+        template_content = load_generation_template("creative-synthesis-v10", "links")
         
         # Should not raise UnicodeDecodeError
         assert isinstance(template_content, str)
