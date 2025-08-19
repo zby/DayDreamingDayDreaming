@@ -4,7 +4,21 @@ This is a Dagster-based data pipeline that tests whether pre-June 2025 LLMs can 
 
 ## Project Overview
 
-The system tests k_max-sized concept combinations to elicit the Day-Dreaming idea from offline LLMs using automated LLM-based evaluation.
+The system tests k_max-sized concept combinations to elicit the Day-Dreaming idea from offline LLMs using automated LLM-based evaluation. The pipeline features a **two-phase generation architecture** that separates creative brainstorming from structured essay composition for improved quality and consistency.
+
+### Two-Phase Generation System 🚀
+
+The pipeline uses an innovative two-phase approach to LLM generation:
+
+**Phase 1 - Links Generation**: LLMs brainstorm conceptual connections and combinations between input concepts, producing 6-12 specific bullet points describing how concepts could be integrated.
+
+**Phase 2 - Essay Generation**: Using the links from Phase 1 as inspiration, LLMs compose comprehensive essays (1500-3000 words) that develop the most promising conceptual combinations into detailed analyses.
+
+**Key Benefits**:
+- **Higher Quality**: Separates creative ideation from structured writing
+- **Robust Validation**: Phase 2 fails if Phase 1 produces insufficient links (< 3)
+- **Better Essays**: Phase 2 has rich context from Phase 1 brainstorming
+- **Backward Compatible**: Existing evaluation and analysis assets work unchanged
 
 ## Quick Start
 
@@ -55,13 +69,18 @@ uv run dagster asset materialize --select "concepts,concepts_metadata,generation
 
 # Dynamic partitions are automatically created when needed
 
-# Step 2: Generate LLM responses for specific partitions
+# Step 2: Generate LLM responses using two-phase generation
 # Now you can run individual partitions or use the UI to run all
 # Tip: get a partition key from the first column of generation_tasks.csv
 # Example:
 # PART=$(cut -d',' -f1 data/2_tasks/generation_tasks.csv | sed -n '2p')
-# uv run dagster asset materialize --select "generation_prompt,generation_response" --partition "$PART" -f daydreaming_dagster/definitions.py
-uv run dagster asset materialize --select "generation_prompt,generation_response" --partition "<a_generation_task_id_from_csv>" -f daydreaming_dagster/definitions.py
+# uv run dagster asset materialize --select "group:two_phase_generation" --partition "$PART" -f daydreaming_dagster/definitions.py
+
+# Two-phase generation (recommended):
+uv run dagster asset materialize --select "links_prompt,links_response,essay_prompt,essay_response,canonical_generation_response,parsed_generation_responses" --partition "<a_generation_task_id_from_csv>" -f daydreaming_dagster/definitions.py
+
+# Legacy single-phase generation (still supported):
+# uv run dagster asset materialize --select "generation_prompt,generation_response,parsed_generation_responses" --partition "<a_generation_task_id_from_csv>" -f daydreaming_dagster/definitions.py
 
 # Step 3: Process results (after sufficient generation/evaluation data)
 uv run dagster asset materialize --select "parsed_scores,final_results" -f daydreaming_dagster/definitions.py
@@ -70,7 +89,8 @@ uv run dagster asset materialize --select "parsed_scores,final_results" -f daydr
 **Asset Group Breakdown**:
 - `group:raw_data`: concepts, models, templates, and their metadata (loads from `data/1_raw/`)
 - `group:llm_tasks`: content_combinations, generation_tasks, evaluation_tasks (creates `data/2_tasks/`)
-- `group:llm_generation`: generation_prompt, generation_response (creates `data/3_generation/`)
+- `group:two_phase_generation`: links_prompt, links_response, essay_prompt, essay_response, canonical_generation_response (creates `data/3_generation/links_*`, `data/3_generation/essay_*`)
+- `group:llm_generation`: (legacy) generation_prompt, generation_response, parsed_generation_responses (creates `data/3_generation/`)
 - `group:llm_evaluation`: evaluation_prompt, evaluation_response (creates `data/4_evaluation/`)
 - `group:results_processing`: parsed_scores, analysis, and final_results (creates `data/5_parsing/`, `data/6_summary/`)
 
@@ -94,11 +114,17 @@ uv run dagster dev -f daydreaming_dagster/definitions.py
 
 **Alternative**: CLI loop (sequential, slower)
 ```bash
-# Get all partition names and run them one by one
+# Get all partition names and run them one by one (two-phase generation)
 cut -d',' -f1 data/2_tasks/generation_tasks.csv | tail -n +2 | while read partition; do
   echo "Running partition: $partition"
-  uv run dagster asset materialize --select "generation_prompt,generation_response" --partition "$partition" -f daydreaming_dagster/definitions.py
+  uv run dagster asset materialize --select "links_prompt,links_response,essay_prompt,essay_response,canonical_generation_response,parsed_generation_responses" --partition "$partition" -f daydreaming_dagster/definitions.py
 done
+
+# Legacy single-phase generation (if needed):
+# cut -d',' -f1 data/2_tasks/generation_tasks.csv | tail -n +2 | while read partition; do
+#   echo "Running partition: $partition"
+#   uv run dagster asset materialize --select "generation_prompt,generation_response,parsed_generation_responses" --partition "$partition" -f daydreaming_dagster/definitions.py
+# done
 ```
 
 ### Automatic Results Tracking **NEW**
@@ -170,22 +196,57 @@ config = ExperimentConfig(
 
 ### Input Data
 - **Concepts**: `data/1_raw/concepts/day_dreaming_concepts.json`
-- **Templates**: `data/1_raw/generation_templates/` (Jinja2 templates)
+- **Templates**: `data/1_raw/generation_templates/` (Jinja2 templates with two-phase structure)
 - **Models**: `data/1_raw/*_models.csv` (available LLM models)
+
+#### Template Structure (Two-Phase)
+
+Templates are organized in a two-phase structure:
+
+```
+data/1_raw/generation_templates/
+├── links/                    # Phase 1: Concept link generation
+│   ├── creative-synthesis-v7.txt
+│   ├── systematic-analytical.txt
+│   └── ...
+└── essay/                    # Phase 2: Essay composition
+    ├── creative-synthesis-v7.txt
+    ├── systematic-analytical.txt
+    └── ...
+```
+
+**Phase 1 Templates** (`links/`): 
+- Focus on brainstorming conceptual connections
+- Output: 6-12 bullet points describing concept combinations
+- Template variables: `concepts` (list with name, content)
+
+**Phase 2 Templates** (`essay/`):
+- Focus on structured essay composition
+- Input: `links_block` (raw output from Phase 1)
+- Output: 1500-3000 word essays developing the best combinations
+- Built-in validation: Phase 2 fails if Phase 1 produces < 3 usable links
 
 ### Output Data
 - **Tasks**: `data/2_tasks/` (generated combinations and tasks)
+- **Two-Phase Generation**: `data/3_generation/` (links and essays)
+  - `links_prompts/`, `links_responses/` (Phase 1 outputs)
+  - `essay_prompts/`, `essay_responses/` (Phase 2 outputs)
+  - `parsed_generation_responses/` (canonical interface for downstream processing)
+- **Legacy Generation**: `data/3_generation/` (single-phase outputs, still supported)
+  - `generation_prompts/`, `generation_responses/`
 - **Results**: `data/5_parsing/` (processed results)
 - **Global Mapping**: `data/combo_mappings.csv` (append-only mapping of stable combo IDs to their concept components)
 
 ## Key Features
 
+- **🚀 Two-Phase Generation**: Innovative separated brainstorming and essay composition with quality validation
 - **Partitioned Processing**: Efficient processing of large task sets with automatic recovery
-- **Template System**: Flexible Jinja2-based prompt generation
+- **Template System**: Flexible Jinja2-based prompt generation with phase-aware loading
 - **Multi-Model Support**: Test across different LLM providers
 - **Selective Loading**: Optional filtering for faster development and testing
 - **Robust Parser**: Automatic detection and parsing of various LLM evaluation response formats
 - **Scalable Processing**: Memory-efficient sequential processing handles large datasets
+- **Backward Compatibility**: Legacy single-phase generation still supported
 - **Isolated Testing**: Complete test environment separation from production data
 
 ## Troubleshooting

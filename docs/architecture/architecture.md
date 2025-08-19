@@ -17,24 +17,34 @@ The DayDreaming pipeline is built on **Dagster**, a modern data orchestration pl
 ## Architecture Diagram
 
 ```
-┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
-│   Raw Data      │    │  Task Generation │    │ LLM Processing  │
-│   (01_raw/)     │───▶│   (02_tasks/)    │───▶│ (03_generation/ │
-│                 │    │                  │    │  04_evaluation/)│
-│ • Concepts      │    │ • Combinations   │    │                 │
-│ • Templates     │    │ • Generation     │    │ • Partitioned   │
-│ • Models        │    │   Tasks          │    │   by Task ID    │
-└─────────────────┘    │ • Evaluation     │    │ • Cached        │
-                       │   Tasks          │    │   Responses     │
-                       └─────────────────┘    └─────────────────┘
-                                                       │
-                              ┌─────────────────┐     │
-                              │ Results         │◀────┘
-                              │ (05_parsing/    │
-                              │  06_summary/)   │
-                              │                 │
-                              │ • Parsed Scores │
-                              │ • Final Results │
+┌─────────────────┐    ┌─────────────────┐    ┌─────────────────────────────────┐
+│   Raw Data      │    │  Task Generation │    │      Two-Phase LLM Generation   │
+│   (01_raw/)     │───▶│   (02_tasks/)    │───▶│      (03_generation/)           │
+│                 │    │                  │    │                                 │
+│ • Concepts      │    │ • Combinations   │    │ Phase 1: Links Generation       │
+│ • Templates     │    │ • Generation     │    │ ┌─────────────────────────────┐ │
+│   - links/      │    │   Tasks          │    │ │ links_prompt → links_response│ │
+│   - essay/      │    │ • Evaluation     │    │ │ (6-12 concept connections)  │ │
+│ • Models        │    │   Tasks          │    │ └─────────────┬───────────────┘ │
+└─────────────────┘    └─────────────────┘    │               │                 │
+                                              │ Phase 2: Essay Generation      │
+                              ┌───────────────┤ ┌─────────────▼───────────────┐ │
+                              │ Evaluation    │ │ essay_prompt → essay_response│ │
+                              │ (04_eval/)    │ │ (using links as inspiration) │ │
+                              │               │ └─────────────┬───────────────┘ │
+                              │ • Partitioned │ │             │                 │
+                              │   by Task ID  │ │ canonical_generation_response │
+                              │ • Cached      │ └─────────────┬───────────────┘ │
+                              │   Responses   │               │                 │
+                              └───────────────┘               │                 │
+                                       │                      │                 │
+                              ┌─────────────────┐            │                 │
+                              │ Results         │◀───────────┼─────────────────┘
+                              │ (05_parsing/    │            │
+                              │  06_summary/)   │            │
+                              │                 │            │
+                              │ • Parsed Scores │            │
+                              │ • Final Results │◀───────────┘
                               └─────────────────┘
 ```
 
@@ -48,17 +58,23 @@ daydreaming_dagster/
 │   ├── raw_data.py            # Raw data loading assets (supports selective loading)
 │   ├── core.py                # Core processing assets (combinations, tasks)
 │   ├── partitions.py          # Partition management assets
-│   ├── llm_generation.py      # LLM generation assets
+│   ├── two_phase_generation.py # Two-phase LLM generation assets (NEW)
+│   ├── llm_generation.py      # Legacy single-phase LLM generation assets
+│   ├── parsed_generation.py   # Canonical interface for generation responses (NEW)
 │   ├── llm_evaluation.py      # LLM evaluation assets
 │   ├── results_processing.py  # Score parsing and analysis
 │   ├── results_summary.py     # Final aggregated results
 │   ├── results_analysis.py    # Statistical analysis assets
-│   └── cross_experiment.py    # Cross-experiment tracking (NEW)
+│   └── cross_experiment.py    # Cross-experiment tracking
+├── utils/                      # Utility modules
+│   ├── template_loader.py     # Phase-aware template loading (NEW)
+│   ├── eval_response_parser.py # Evaluation response parsing
+│   └── generation_response_parser.py # Generation response parsing
 ├── resources/                  # Dagster resources
 │   ├── llm_client.py          # LLM API client resource
 │   ├── experiment_config.py   # Experiment configuration resource (with filtering)
 │   ├── io_managers.py         # Custom I/O managers for different file types
-│   └── cross_experiment_io_manager.py # Cross-experiment I/O manager (NEW)
+│   └── cross_experiment_io_manager.py # Cross-experiment I/O manager
 ├── definitions.py             # Single Dagster definitions file
 └── __init__.py                # Package initialization
 ```
@@ -71,13 +87,14 @@ Assets are organized into logical groups for easy selection and understanding:
 |-------|--------|---------|
 | **`raw_data`** | concepts, llm_models, generation_templates, evaluation_templates | Load external data files |
 | **`llm_tasks`** | content_combinations, content_combinations_csv, generation_tasks, evaluation_tasks | Generate LLM task definitions |
-| **`llm_generation`** | generation_prompt, generation_response, parsed_generation_responses | LLM prompt/response generation (partitioned) |
+| **`two_phase_generation`** 🚀 | links_prompt, links_response, essay_prompt, essay_response, canonical_generation_response | Two-phase LLM generation (partitioned) |
+| **`llm_generation`** | generation_prompt, generation_response, parsed_generation_responses | Legacy single-phase LLM generation (partitioned) |
 | **`llm_evaluation`** | evaluation_prompt, evaluation_response | LLM evaluation (partitioned) |
 | **`results_processing`** | parsed_scores | Parse evaluation scores |
 | **`results_summary`** | final_results, perfect_score_paths, generation_scores_pivot, evaluation_model_template_pivot | Final aggregated results |
 | **`results_analysis`** | evaluator_agreement_analysis, comprehensive_variance_analysis | Statistical analysis |
 | **`cross_experiment`** | filtered_evaluation_results, template_version_comparison_pivot | Cross-experiment analysis |
-| **`cross_experiment_tracking`** | generation_results_append, evaluation_results_append | Auto-materializing result tracking (NEW) |
+| **`cross_experiment_tracking`** | generation_results_append, evaluation_results_append | Auto-materializing result tracking |
 
 ## Data Flow Architecture
 
@@ -145,11 +162,57 @@ def concepts(context) -> List[Concept]:
 - Each LLM task becomes an independent partition for caching and recovery
 - Partitions must be registered before partitioned assets can be materialized
 
-### 4. LLM Processing (`llm_prompts_responses.py`)
+### 4. Two-Phase LLM Generation (`two_phase_generation.py`) 🚀 **NEW**
 
-**Assets**: `generation_prompt`, `generation_response`, `evaluation_prompt`, `evaluation_response`
+**Assets**: `links_prompt`, `links_response`, `essay_prompt`, `essay_response`, `canonical_generation_response`
 
-**Purpose**: Execute LLM API calls with partitioned processing
+**Purpose**: Execute LLM generation using a two-phase approach for improved quality and consistency
+
+**Architecture Pattern**: Uses "Manual IO with Foreign Keys" pattern for cross-phase data loading
+
+**Phase 1 - Links Generation**:
+```python
+# links_prompt: Generate brainstorming prompts using links/ templates
+# links_response: Generate 6-12 conceptual connection bullet points
+```
+
+**Phase 2 - Essay Generation**:
+```python
+# essay_prompt: Create essay prompts with links_response as inspiration
+# essay_response: Generate 1500-3000 word essays based on selected links
+# canonical_generation_response: Standardized interface for downstream consumption
+```
+
+**Key Features**:
+- **Separated Concerns**: Creative brainstorming vs. structured composition
+- **Quality Validation**: Phase 2 fails if Phase 1 produces < 3 usable links
+- **Cross-Phase Loading**: Essay prompts access links responses using MockLoadContext pattern
+- **Rich Error Handling**: Comprehensive metadata and resolution steps
+- **Backward Compatibility**: `parsed_generation_responses` provides passthrough interface
+
+**Template Structure**:
+```
+data/1_raw/generation_templates/
+├── links/                    # Phase 1 templates
+│   ├── creative-synthesis-v7.txt
+│   └── systematic-analytical.txt
+└── essay/                    # Phase 2 templates
+    ├── creative-synthesis-v7.txt
+    └── systematic-analytical.txt
+```
+
+**Data Flow**:
+1. `links_prompt` loads `links/template.txt` and renders with concepts
+2. `links_response` generates conceptual connections (6-12 bullets)
+3. `essay_prompt` loads links response + `essay/template.txt`, validates links (≥3)
+4. `essay_response` generates comprehensive essay using links as inspiration
+5. `canonical_generation_response` provides standardized output format
+
+### 5. Legacy LLM Processing (`llm_generation.py`)
+
+**Assets**: `generation_prompt`, `generation_response`, `parsed_generation_responses`
+
+**Purpose**: Single-phase LLM generation (maintained for backward compatibility)
 
 **Partitioning Strategy**:
 - **Generation**: Partitioned by `{combo_id}_{template}_{model}`
@@ -161,7 +224,7 @@ def concepts(context) -> List[Concept]:
 - **API Error Handling**: Structured error logging and recovery
 - **Rate Limiting**: Built-in throttling for API calls
 
-### 5. Results Processing (`results_processing.py`)
+### 6. Results Processing (`results_processing.py`)
 
 **Assets**: `parsed_scores`, `final_results`
 
@@ -181,7 +244,7 @@ def concepts(context) -> List[Concept]:
 - **Score formats**: Standard numeric (8.5) and three-digit averages (456 → 5.0)
 - **Error handling**: Continues processing when individual files fail to parse
 
-### 6. Cross-Experiment Tracking (`cross_experiment.py`) **NEW**
+### 7. Cross-Experiment Tracking (`cross_experiment.py`)
 
 **Assets**: `generation_results_append`, `evaluation_results_append`, `filtered_evaluation_results`, `template_version_comparison_pivot`
 

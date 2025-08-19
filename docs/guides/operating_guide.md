@@ -37,6 +37,56 @@ This comprehensive guide covers everything you need to know to set up, run, and 
    uv run dagster dev -f daydreaming_dagster/definitions.py
    ```
 
+### Two-Phase Generation System 🚀
+
+The pipeline uses an innovative two-phase generation approach for improved quality:
+
+**Phase 1 - Links Generation**: LLMs brainstorm 6-12 conceptual connections between input concepts.
+
+**Phase 2 - Essay Generation**: LLMs compose comprehensive essays (1500-3000 words) using the links as inspiration.
+
+#### Template Structure
+
+Templates are organized by phase:
+```
+data/1_raw/generation_templates/
+├── links/                    # Phase 1: Brainstorming templates
+│   ├── creative-synthesis-v7.txt
+│   └── systematic-analytical.txt
+└── essay/                    # Phase 2: Essay composition templates
+    ├── creative-synthesis-v7.txt
+    └── systematic-analytical.txt
+```
+
+#### Running Two-Phase Generation
+
+**Recommended** - Use the new two-phase assets:
+```bash
+# Generate a single partition (replace TASK_ID)
+uv run dagster asset materialize --select "links_prompt,links_response,essay_prompt,essay_response" --partition "TASK_ID" -f daydreaming_dagster/definitions.py
+
+# The parsed_generation_responses will auto-materialize when essay_response completes 
+# (if Dagster daemon is running)
+
+# Or manually ensure the full chain:
+uv run dagster asset materialize --select "links_prompt,links_response,essay_prompt,essay_response,parsed_generation_responses" --partition "TASK_ID" -f daydreaming_dagster/definitions.py
+
+# Or use asset group (if supported)
+uv run dagster asset materialize --select "group:two_phase_generation" --partition "TASK_ID" -f daydreaming_dagster/definitions.py
+```
+
+**Legacy** - Single-phase generation (still supported):
+```bash
+uv run dagster asset materialize --select "generation_prompt,generation_response,parsed_generation_responses" --partition "TASK_ID" -f daydreaming_dagster/definitions.py
+```
+
+#### Quality Validation
+
+The two-phase system includes automatic quality validation:
+- Phase 2 **fails hard** if Phase 1 produces fewer than 3 usable links
+- Rich error messages with resolution steps
+- Individual phase caching allows efficient recovery
+
 ### Experiment Configuration (No-Code Workflow)
 
 The system uses CSV-based configuration for easy experiment setup without code changes.
@@ -99,14 +149,27 @@ Optionally stash selection files for traceability:
      --select "group:results_processing,group:results_summary"
    ```
 
-### Auto-Materializing Results Tracking
+### Auto-Materializing Assets
 
-**NEW**: The pipeline now includes auto-materializing assets that automatically track results:
+The pipeline includes several auto-materializing assets that provide automatic data processing:
 
-- **`generation_results_append`**: Automatically appends a row to `generation_results.csv` when any `generation_response` completes
+#### Results Tracking (Cross-Experiment)
+- **`generation_results_append`**: Automatically appends a row to `generation_results.csv` when any generation completes (works with both two-phase and legacy generation)
 - **`evaluation_results_append`**: Automatically appends a row to `evaluation_results.csv` when any `evaluation_response` completes
 
-These assets run automatically without manual intervention and maintain comprehensive cross-experiment tracking tables.
+#### Backward Compatibility (Two-Phase Generation)
+- **`parsed_generation_responses`**: Automatically materializes when `essay_response` completes, ensuring evaluation assets can access the essay content in the expected format
+
+These assets use Dagster's eager auto-materialization policy to run automatically without manual intervention. The auto-materialization ensures that:
+- Two-phase generation results are immediately available to evaluation assets
+- Cross-experiment tracking tables are always up-to-date
+- Backward compatibility is maintained seamlessly
+
+**Note**: Auto-materialization requires the Dagster daemon to be running. In development, you can manually trigger the chain:
+```bash
+# Manually materialize the auto-materializing chain
+uv run dagster asset materialize --select "parsed_generation_responses" --partition "TASK_ID"
+```
 
 ### Free vs Paid LLM Runs (Separate Pools)
 
@@ -146,6 +209,9 @@ uv run dagster asset materialize -f daydreaming_dagster/definitions.py \
 
 - Generated/evaluated files follow the existing `data/` folder conventions:
   - `data/3_generation/` - Generation prompts and responses
+    - **Two-Phase**: `links_prompts/`, `links_responses/`, `essay_prompts/`, `essay_responses/`
+    - **Legacy**: `generation_prompts/`, `generation_responses/`
+    - **Canonical Interface**: `parsed_generation_responses/` (works with both)
   - `data/4_evaluation/` - Evaluation prompts and responses
   - `data/5_parsing/` - Parsed evaluation scores
   - `data/6_summary/` - Final aggregated results

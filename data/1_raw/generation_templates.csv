@@ -17,4 +17,6 @@ research-discovery-v3,Research Discovery V3,Two-phase exploration then research 
 creative-synthesis-v4,Creative Synthesis V4,Less empty metaphores,false
 creative-synthesis-v5,Creative Synthesis V5,Less empty metaphores,false
 creative-synthesis-v6,Creative Synthesis V6,Less empty metaphores,false
-creative-synthesis-v7,Creative Synthesis V7,Better structure,true
+creative-synthesis-v7,Creative Synthesis V7,Better structure,false
+creative-synthesis-v8,Creative Synthesis V8,Two phase generation,false
+creative-synthesis-v9,Creative Synthesis V9,Improved links generation,true

@@ -83,7 +83,11 @@ def llm_models(context) -> pd.DataFrame:
 
 @asset(group_name="raw_data", required_resource_keys={"data_root"})
 def generation_templates(context) -> pd.DataFrame:
-    """Load generation templates CSV with template file content."""
+    """Load generation templates CSV with template file content.
+    
+    Supports both two-phase structure (links/ and essay/ subdirectories) 
+    and legacy single-file structure for backward compatibility.
+    """
     data_root = context.resources.data_root
     metadata_path = Path(data_root) / "1_raw" / "generation_templates.csv"
     templates_dir = Path(data_root) / "1_raw" / "generation_templates"
@@ -94,23 +98,55 @@ def generation_templates(context) -> pd.DataFrame:
     # Load CSV metadata
     templates_df = pd.read_csv(metadata_path)
     
-    # Add content column by reading template files in explicit loop
+    # Add content column by reading template files
+    # Support both two-phase structure (preferred) and legacy single-file structure
     content_list = []
+    two_phase_count = 0
+    legacy_count = 0
+    
     for _, row in templates_df.iterrows():
         template_id = row["template_id"]
-        template_file = templates_dir / f"{template_id}.txt"
         
-        if not template_file.exists():
-            raise Failure(f"Required template file not found: {template_file}")
+        # Check for two-phase structure first (preferred)
+        links_file = templates_dir / "links" / f"{template_id}.txt"
+        essay_file = templates_dir / "essay" / f"{template_id}.txt"
         
-        content = template_file.read_text().strip()
-        content_list.append(content)
-        context.log.info(f"Loaded template content for {template_id}")
+        if links_file.exists() and essay_file.exists():
+            # Two-phase structure: combine both phases with delimiter
+            links_content = links_file.read_text().strip()
+            essay_content = essay_file.read_text().strip()
+            content = f"=== PHASE 1: LINKS ===\n{links_content}\n\n=== PHASE 2: ESSAY ===\n{essay_content}"
+            content_list.append(content)
+            two_phase_count += 1
+            context.log.info(f"Loaded two-phase template content for {template_id}")
+        else:
+            # Fall back to legacy single-file structure
+            template_file = templates_dir / f"{template_id}.txt"
+            if template_file.exists():
+                content = template_file.read_text().strip()
+                content_list.append(content)
+                legacy_count += 1
+                context.log.info(f"Loaded legacy template content for {template_id}")
+            else:
+                raise Failure(
+                    f"Template '{template_id}' not found in either format. Expected either:\n"
+                    f"  Two-phase: {links_file} AND {essay_file}\n"
+                    f"  Legacy: {template_file}",
+                    metadata={
+                        "template_id": MetadataValue.text(template_id),
+                        "links_file_exists": MetadataValue.bool(links_file.exists()),
+                        "essay_file_exists": MetadataValue.bool(essay_file.exists()),
+                        "legacy_file_exists": MetadataValue.bool(template_file.exists()),
+                        "templates_dir": MetadataValue.text(str(templates_dir))
+                    }
+                )
     
     templates_df['content'] = content_list
     
     context.add_output_metadata({
         "total_templates": MetadataValue.int(len(templates_df)),
+        "two_phase_templates": MetadataValue.int(two_phase_count),
+        "legacy_templates": MetadataValue.int(legacy_count),
         "active_templates": MetadataValue.int(len(templates_df[templates_df["active"] == True])),
         "inactive_templates": MetadataValue.int(len(templates_df[templates_df["active"] == False])),
         "source_csv": MetadataValue.text(str(metadata_path)),

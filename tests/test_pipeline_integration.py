@@ -144,6 +144,11 @@ def pipeline_data_root_prepared():
     (pipeline_data_root / "3_generation" / "generation_prompts").mkdir(parents=True)
     (pipeline_data_root / "3_generation" / "generation_responses").mkdir(parents=True)
     (pipeline_data_root / "3_generation" / "parsed_generation_responses").mkdir(parents=True)
+    # Two-phase generation directories
+    (pipeline_data_root / "3_generation" / "links_prompts").mkdir(parents=True)
+    (pipeline_data_root / "3_generation" / "links_responses").mkdir(parents=True)
+    (pipeline_data_root / "3_generation" / "essay_prompts").mkdir(parents=True)
+    (pipeline_data_root / "3_generation" / "essay_responses").mkdir(parents=True)
     (pipeline_data_root / "4_evaluation" / "evaluation_prompts").mkdir(parents=True)
     (pipeline_data_root / "4_evaluation" / "evaluation_responses").mkdir(parents=True)
     (pipeline_data_root / "5_parsing").mkdir(parents=True)
@@ -189,26 +194,27 @@ def pipeline_data_root_prepared():
     pd.testing.assert_series_equal((cdf["active"] == True).reset_index(drop=True)[:2], pd.Series([True, True]), check_names=False)
     cdf.to_csv(concepts_csv, index=False)
 
-    # Generation templates: keep only first two active and ensure template files exist
+    # Generation templates: use only creative-synthesis-v8 (two-phase structure)
     gtdf = pd.read_csv(gen_templates_csv)
     if "active" in gtdf.columns:
         gtdf["active"] = False
         
-        # Check which templates actually have files and activate the first 2 valid ones
-        valid_templates = []
-        for _, row in gtdf.iterrows():
-            template_id = row["template_id"]
-            template_file = pipeline_data_root / "1_raw" / "generation_templates" / f"{template_id}.txt"
-            if template_file.exists():
-                valid_templates.append(row.name)
-                if len(valid_templates) >= 2:
-                    break
+        # Activate only creative-synthesis-v8 to test two-phase generation
+        target_template = "creative-synthesis-v8"
+        template_mask = gtdf["template_id"] == target_template
         
-        if len(valid_templates) >= 2:
-            gtdf.loc[valid_templates, "active"] = True
-            print(f"✓ Activated {len(valid_templates)} valid generation templates")
+        if template_mask.any():
+            # Verify two-phase structure exists
+            links_file = pipeline_data_root / "1_raw" / "generation_templates" / "links" / f"{target_template}.txt"
+            essay_file = pipeline_data_root / "1_raw" / "generation_templates" / "essay" / f"{target_template}.txt"
+            
+            if links_file.exists() and essay_file.exists():
+                gtdf.loc[template_mask, "active"] = True
+                print(f"✓ Activated {target_template} template with two-phase structure")
+            else:
+                raise RuntimeError(f"Two-phase template files missing for {target_template}: {links_file} or {essay_file}")
         else:
-            print(f"⚠ Warning: Only {len(valid_templates)} valid generation templates found")
+            raise RuntimeError(f"Template {target_template} not found in generation_templates.csv")
     
     gtdf.to_csv(gen_templates_csv, index=False)
 
@@ -258,23 +264,38 @@ class TestPipelineIntegration:
             for combo_id in gen_tasks_df["combo_id"].unique():
                 assert combo_id.startswith("combo_"), f"Invalid combo_id format: {combo_id}"
         
-        # Generation files (3_generation/)
-        gen_prompt_dir = test_directory / "3_generation" / "generation_prompts"
-        gen_response_dir = test_directory / "3_generation" / "generation_responses"
+        # Two-phase generation files (3_generation/)
+        links_prompt_dir = test_directory / "3_generation" / "links_prompts"
+        links_response_dir = test_directory / "3_generation" / "links_responses"
+        essay_prompt_dir = test_directory / "3_generation" / "essay_prompts"
+        essay_response_dir = test_directory / "3_generation" / "essay_responses"
+        parsed_response_dir = test_directory / "3_generation" / "parsed_generation_responses"
         
         for partition in test_gen_partitions:
-            prompt_file = gen_prompt_dir / f"{partition}.txt"
-            response_file = gen_response_dir / f"{partition}.txt"
+            # Verify all two-phase files exist
+            links_prompt_file = links_prompt_dir / f"{partition}.txt"
+            links_response_file = links_response_dir / f"{partition}.txt"
+            essay_prompt_file = essay_prompt_dir / f"{partition}.txt"
+            essay_response_file = essay_response_dir / f"{partition}.txt"
+            parsed_response_file = parsed_response_dir / f"{partition}.txt"
             
-            assert prompt_file.exists(), f"Generation prompt not created: {prompt_file}"
-            assert response_file.exists(), f"Generation response not created: {response_file}"
-            assert prompt_file.stat().st_size > 0, f"Generation prompt is empty: {prompt_file}"
-            assert response_file.stat().st_size > 0, f"Generation response is empty: {response_file}"
+            assert links_prompt_file.exists(), f"Links prompt not created: {links_prompt_file}"
+            assert links_response_file.exists(), f"Links response not created: {links_response_file}"
+            assert essay_prompt_file.exists(), f"Essay prompt not created: {essay_prompt_file}"
+            assert essay_response_file.exists(), f"Essay response not created: {essay_response_file}"
+            assert parsed_response_file.exists(), f"Parsed response not created: {parsed_response_file}"
             
-            # Verify response content quality
-            response_content = response_file.read_text()
-            assert len(response_content) > 100, "Response should be substantial"
-            assert any(word in response_content.lower() for word in ["creative", "innovation", "discovery", "concept"]), "Response should contain relevant keywords"
+            # Verify file sizes
+            assert links_prompt_file.stat().st_size > 0, f"Links prompt is empty: {links_prompt_file}"
+            assert links_response_file.stat().st_size > 0, f"Links response is empty: {links_response_file}"
+            assert essay_prompt_file.stat().st_size > 0, f"Essay prompt is empty: {essay_prompt_file}"
+            assert essay_response_file.stat().st_size > 0, f"Essay response is empty: {essay_response_file}"
+            assert parsed_response_file.stat().st_size > 0, f"Parsed response is empty: {parsed_response_file}"
+            
+            # Verify content quality
+            essay_content = essay_response_file.read_text()
+            assert len(essay_content) > 100, "Essay response should be substantial"
+            assert any(word in essay_content.lower() for word in ["creative", "innovation", "discovery", "concept"]), "Essay response should contain relevant keywords"
         
         # Evaluation files (4_evaluation/) - Check if they exist but don't require them
         eval_prompt_dir = test_directory / "4_evaluation" / "evaluation_prompts"
@@ -337,7 +358,13 @@ class TestPipelineIntegration:
                     content_combinations, content_combinations_csv, generation_tasks, evaluation_tasks
                 )
                 from daydreaming_dagster.assets.llm_generation import (
-                    generation_prompt, generation_response, parsed_generation_responses
+                    generation_prompt, generation_response
+                )
+                from daydreaming_dagster.assets.parsed_generation import (
+                    parsed_generation_responses
+                )
+                from daydreaming_dagster.assets.two_phase_generation import (
+                    links_prompt, links_response, essay_prompt, essay_response
                 )
                 from daydreaming_dagster.assets.llm_evaluation import (
                     evaluation_prompt, evaluation_response
@@ -361,6 +388,23 @@ class TestPipelineIntegration:
                     ),
                     "parsed_generation_io_manager": PartitionedTextIOManager(
                         base_path=pipeline_data_root / "3_generation" / "parsed_generation_responses",
+                        overwrite=True
+                    ),
+                    # Two-phase generation I/O managers
+                    "links_prompt_io_manager": PartitionedTextIOManager(
+                        base_path=pipeline_data_root / "3_generation" / "links_prompts",
+                        overwrite=True
+                    ),
+                    "links_response_io_manager": PartitionedTextIOManager(
+                        base_path=pipeline_data_root / "3_generation" / "links_responses",
+                        overwrite=True
+                    ),
+                    "essay_prompt_io_manager": PartitionedTextIOManager(
+                        base_path=pipeline_data_root / "3_generation" / "essay_prompts",
+                        overwrite=True
+                    ),
+                    "essay_response_io_manager": PartitionedTextIOManager(
+                        base_path=pipeline_data_root / "3_generation" / "essay_responses",
                         overwrite=True
                     ),
                     "evaluation_prompt_io_manager": PartitionedTextIOManager(
@@ -470,50 +514,67 @@ class TestPipelineIntegration:
                 for pk in partitions:
                     print(f"   Processing partition: {pk}")
                     
-                    # Materialize generation prompt (with dependencies)
-                    prompt_res = materialize(
-                        [concepts, llm_models, generation_templates, content_combinations, generation_tasks, generation_prompt],
+                    # Materialize two-phase generation pipeline
+                    # Phase 1: Links generation
+                    links_res = materialize(
+                        [concepts, llm_models, generation_templates, content_combinations, generation_tasks, 
+                         links_prompt, links_response],
                         resources=resources,
                         instance=instance,
                         partition_key=pk,
                     )
-                    assert prompt_res.success
+                    assert links_res.success
                     
-                    # Materialize generation response (with dependencies)
-                    response_res = materialize(
-                        [concepts, llm_models, generation_templates, content_combinations, generation_tasks, generation_prompt, generation_response],
+                    # Phase 2: Essay generation
+                    essay_res = materialize(
+                        [concepts, llm_models, generation_templates, content_combinations, generation_tasks,
+                         links_prompt, links_response, essay_prompt, essay_response],
                         resources=resources,
                         instance=instance,
                         partition_key=pk,
                     )
-                    assert response_res.success
+                    assert essay_res.success
+                    
+                    # Canonical generation response
+                    canonical_res = materialize(
+                        [concepts, llm_models, generation_templates, content_combinations, generation_tasks,
+                         links_prompt, links_response, essay_prompt, essay_response],
+                        resources=resources,
+                        instance=instance,
+                        partition_key=pk,
+                    )
+                    assert canonical_res.success
                     
                     # Materialize parsed generation responses (with dependencies)
                     parsed_res = materialize(
-                        [concepts, llm_models, generation_templates, content_combinations, generation_tasks, generation_prompt, generation_response, parsed_generation_responses],
+                        [concepts, llm_models, generation_templates, content_combinations, generation_tasks,
+                         links_prompt, links_response, essay_prompt, essay_response,
+                         parsed_generation_responses],
                         resources=resources,
                         instance=instance,
                         partition_key=pk,
                     )
                     assert parsed_res.success
                     
-                    # Verify files were created
-                    assert (pipeline_data_root / "3_generation" / "generation_prompts" / f"{pk}.txt").exists()
-                    assert (pipeline_data_root / "3_generation" / "generation_responses" / f"{pk}.txt").exists()
+                    # Verify two-phase generation files were created
+                    assert (pipeline_data_root / "3_generation" / "links_prompts" / f"{pk}.txt").exists()
+                    assert (pipeline_data_root / "3_generation" / "links_responses" / f"{pk}.txt").exists()
+                    assert (pipeline_data_root / "3_generation" / "essay_prompts" / f"{pk}.txt").exists()
+                    assert (pipeline_data_root / "3_generation" / "essay_responses" / f"{pk}.txt").exists()
                     assert (pipeline_data_root / "3_generation" / "parsed_generation_responses" / f"{pk}.txt").exists()
 
                 print(f"✅ Content generation completed for {len(partitions)} partitions")
 
-                # Verify parsing worked correctly - with fallback strategy, entire response becomes essay
+                # Verify two-phase generation worked correctly
                 first_partition = partitions[0]
-                raw_response_path = pipeline_data_root / "3_generation" / "generation_responses" / f"{first_partition}.txt"
+                essay_response_path = pipeline_data_root / "3_generation" / "essay_responses" / f"{first_partition}.txt"
                 parsed_response_path = pipeline_data_root / "3_generation" / "parsed_generation_responses" / f"{first_partition}.txt"
                 
-                raw_content = raw_response_path.read_text()
+                essay_content = essay_response_path.read_text()
                 parsed_content = parsed_response_path.read_text()
                 
-                # With fallback strategy, parsed content should be the same as raw (entire response is essay)
-                assert raw_content == parsed_content, "With fallback strategy, parsed content should equal raw content"
+                # With two-phase generation, parsed content should be the same as essay response
+                assert essay_content == parsed_content, "Parsed content should equal essay response in two-phase generation"
                 
                 # Verify content contains expected elements from canned responses
                 assert "Breakthrough in Daydreaming Methodology" in parsed_content or "Systematic Analysis of Creative Discovery" in parsed_content, "Parsed content should contain expected canned response content"
@@ -776,3 +837,6 @@ class TestPipelineIntegration:
                 print(f"✅ Template filtering test passed!")
                 print(f"   Used {len(templates_used)} active templates out of {len(test_gen_templates_metadata)} total")
                 print(f"   Generated {actual_task_count} tasks as expected")
+
+    # Note: Error scenarios (like insufficient links) are covered by comprehensive unit tests
+    # in daydreaming_dagster/assets/test_two_phase_generation.py, specifically TestLinksValidation class

@@ -1,8 +1,16 @@
 from dagster import Definitions, multiprocess_executor
 from daydreaming_dagster.assets.llm_generation import (
     generation_prompt,
-    generation_response,
+    generation_response
+)
+from daydreaming_dagster.assets.parsed_generation import (
     parsed_generation_responses
+)
+from daydreaming_dagster.assets.two_phase_generation import (
+    links_prompt,
+    links_response,
+    essay_prompt,
+    essay_response
 )
 from daydreaming_dagster.assets.llm_evaluation import (
     evaluation_prompt,
@@ -67,6 +75,13 @@ defs = Definitions(
         generation_prompt,
         generation_response,
         parsed_generation_responses,
+        
+        # Two-phase generation assets
+        links_prompt,
+        links_response,
+        essay_prompt,
+        essay_response,
+        
         evaluation_prompt,
         evaluation_response,
         
@@ -102,6 +117,12 @@ defs = Definitions(
         "generation_response_io_manager": PartitionedTextIOManager(base_path=Path("data") / "3_generation" / "generation_responses", overwrite=False),
         # Parsed generation responses go into generation directory as structured data
         "parsed_generation_io_manager": PartitionedTextIOManager(base_path=Path("data") / "3_generation" / "parsed_generation_responses", overwrite=True),
+        
+        # Two-phase generation I/O managers
+        "links_prompt_io_manager": PartitionedTextIOManager(base_path=Path("data") / "3_generation" / "links_prompts", overwrite=True),
+        "links_response_io_manager": PartitionedTextIOManager(base_path=Path("data") / "3_generation" / "links_responses", overwrite=False),
+        "essay_prompt_io_manager": PartitionedTextIOManager(base_path=Path("data") / "3_generation" / "essay_prompts", overwrite=True),
+        "essay_response_io_manager": PartitionedTextIOManager(base_path=Path("data") / "3_generation" / "essay_responses", overwrite=False),
         "evaluation_prompt_io_manager": PartitionedTextIOManager(base_path=Path("data") / "4_evaluation" / "evaluation_prompts", overwrite=True),
         # Evaluations are outputs; keep overwrite disabled for safety
         "evaluation_response_io_manager": PartitionedTextIOManager(base_path=Path("data") / "4_evaluation" / "evaluation_responses", overwrite=False),

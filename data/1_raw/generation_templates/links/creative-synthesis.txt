@@ -1,0 +1,16 @@
+Here are some concepts for creative exploration:
+
+{% for concept in concepts %}
+**{{ concept.name }}**: {{ concept.content }}
+{% endfor %}
+
+Your task is to let your imagination flow and consider unexpected ways these concepts might combine.
+
+Generate 6-10 innovative conceptual links that show how these concepts could be combined in novel ways. For each link, write a brief bullet point describing:
+- Which concepts are being combined
+- The novel mechanism or unexpected connection you've identified
+- What emergent properties or behaviors might arise from this combination
+
+Focus on truly creative, non-obvious connections that could lead to innovative systems.
+
+Output format: Plain text bullet points, one per line.
