@@ -324,6 +324,13 @@ The pipeline uses stable, versioned combo IDs for concept combinations:
 3. Add type hints where appropriate
 4. Update tests for new functionality
 
+### Style and Commit Policy
+- Run style checks locally: `uv run black .` and `uv run ruff check`.
+- Style-only changes must be in separate commits. Do not mix formatting/lint fixes with functional changes. Commit sequence: logic first, then a follow-up commit like `style: format with Black`.
+
+### CI & Style Checks (Reminder)
+- If CI is enabled for this repo, it may run Black/Ruff checks. If a style failure occurs, push a separate, style-only commit to fix formatting rather than amending functional commits.
+
 ## License
 
 [Add your license information here]
