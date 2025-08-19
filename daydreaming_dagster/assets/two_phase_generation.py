@@ -95,6 +95,7 @@ def links_prompt(
 def links_response(context, links_prompt, generation_tasks) -> str:
     """
     Generate Phase 1 LLM responses for concept links.
+    Validates that the response contains at least 3 lines of content.
     """
     task_id = context.partition_key
     
@@ -108,7 +109,28 @@ def links_response(context, links_prompt, generation_tasks) -> str:
     llm_client = context.resources.openrouter_client
     response = llm_client.generate(links_prompt, model=model_name)
     
-    context.log.info(f"Generated links response for task {task_id} using model {model_name}")
+    # Validate response quality - fail immediately if insufficient
+    response_lines = [line.strip() for line in response.split('\n') if line.strip()]
+    if len(response_lines) < 3:
+        raise Failure(
+            description=f"Links response insufficient for task {task_id}",
+            metadata={
+                "task_id": MetadataValue.text(task_id),
+                "model_name": MetadataValue.text(model_name),
+                "response_line_count": MetadataValue.int(len(response_lines)),
+                "minimum_required": MetadataValue.int(3),
+                "response_content_preview": MetadataValue.text(response[:200] + "..." if len(response) > 200 else response),
+                "resolution_1": MetadataValue.text("Check prompt quality or model parameters"),
+                "resolution_2": MetadataValue.text("Consider retrying with different model or prompt"),
+            }
+        )
+    
+    context.log.info(f"Generated links response for task {task_id} using model {model_name} ({len(response_lines)} lines)")
+    context.add_output_metadata({
+        "response_line_count": MetadataValue.int(len(response_lines)),
+        "model_used": MetadataValue.text(model_name),
+    })
+    
     return response
 
 
@@ -126,7 +148,7 @@ def essay_prompt(
 ) -> str:
     """
     Generate Phase 2 prompts for essay generation based on Phase 1 links.
-    Hard fails if links are missing or insufficient.
+    Links are guaranteed to be valid by the links_response asset.
     """
     task_id = context.partition_key
     
@@ -143,21 +165,8 @@ def essay_prompt(
     
     # Use links_response directly from asset dependency
     links_content = links_response
-    context.log.info(f"Loaded {len(links_content)} chars from links response for task {task_id}")
-    
-    # Validate links content - fail hard if insufficient
     links_lines = [line.strip() for line in links_content.split('\n') if line.strip()]
-    if len(links_lines) < 3:
-        raise Failure(
-            description=f"Insufficient links generated for task {task_id}",
-            metadata={
-                "task_id": MetadataValue.text(task_id),
-                "links_line_count": MetadataValue.int(len(links_lines)),
-                "minimum_required": MetadataValue.int(3),
-                "links_content_preview": MetadataValue.text(links_content[:200] + "..." if len(links_content) > 200 else links_content),
-                "resolution": MetadataValue.text("Re-run links_response or check prompt quality"),
-            }
-        )
+    context.log.info(f"Using {len(links_lines)} validated links from links_response for task {task_id}")
     
     # Load the essay phase template
     try:
