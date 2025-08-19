@@ -3,6 +3,8 @@
 import pytest
 import pandas as pd
 import numpy as np
+from unittest.mock import patch
+from .results_summary import is_two_phase_template, get_generation_response_path
 
 
 class TestPivotSummaryLogic:
@@ -240,3 +242,42 @@ class TestMetadataCalculation:
         # Test top template calculation
         top_template = max(template_counts.keys(), key=template_counts.get)
         assert top_template == 'template1'
+
+
+class TestPathGeneration:
+    """Test path generation for different template types."""
+    
+    def test_two_phase_template_detection(self):
+        """Test detection of two-phase templates."""
+        with patch('pathlib.Path.exists') as mock_exists:
+            # Mock that creative-synthesis-v8 has links subdirectory
+            mock_exists.return_value = True
+            assert is_two_phase_template("creative-synthesis-v8") == True
+            
+            # Verify correct path was checked
+            mock_exists.assert_called_once()
+    
+    def test_regular_template_detection(self):
+        """Test detection of regular templates."""
+        with patch('pathlib.Path.exists') as mock_exists:
+            # Mock that creative-synthesis-v2 does not have links subdirectory
+            mock_exists.return_value = False
+            assert is_two_phase_template("creative-synthesis-v2") == False
+    
+    def test_two_phase_template_path_generation(self):
+        """Test path generation for two-phase templates."""
+        with patch('daydreaming_dagster.assets.results_summary.is_two_phase_template') as mock_is_two_phase:
+            mock_is_two_phase.return_value = True
+            
+            path = get_generation_response_path("combo_123", "creative-synthesis-v8", "qwen-model")
+            expected = "data/3_generation/essay_responses/combo_123_creative-synthesis-v8_qwen-model.txt"
+            assert path == expected
+    
+    def test_regular_template_path_generation(self):
+        """Test path generation for regular templates.""" 
+        with patch('daydreaming_dagster.assets.results_summary.is_two_phase_template') as mock_is_two_phase:
+            mock_is_two_phase.return_value = False
+            
+            path = get_generation_response_path("combo_456", "creative-synthesis-v2", "gpt-model")
+            expected = "data/3_generation/generation_responses/combo_456_creative-synthesis-v2_gpt-model.txt"
+            assert path == expected

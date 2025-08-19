@@ -1,6 +1,23 @@
 from dagster import asset, MetadataValue
 import pandas as pd
 import numpy as np
+from pathlib import Path
+
+
+def is_two_phase_template(template_name: str) -> bool:
+    """Check if a template is a two-phase template by looking for links/ subdirectory."""
+    links_path = Path("data") / "1_raw" / "generation_templates" / "links" / f"{template_name}.txt"
+    return links_path.exists()
+
+
+def get_generation_response_path(combo_id: str, template_name: str, model_name: str) -> str:
+    """Get the correct path for generation response based on template type."""
+    if is_two_phase_template(template_name):
+        # Two-phase templates use essay_responses
+        return f"data/3_generation/essay_responses/{combo_id}_{template_name}_{model_name}.txt"
+    else:
+        # Regular templates use generation_responses
+        return f"data/3_generation/generation_responses/{combo_id}_{template_name}_{model_name}.txt"
 
 
 @asset(
@@ -66,9 +83,9 @@ def generation_scores_pivot(context, parsed_scores: pd.DataFrame, evaluation_tem
         pivot_df['sum_scores'] = 0.0
 
     # Add path to the generation response file
-    # Format: data/3_generation/generation_responses/{combo_id}_{generation_template}_{generation_model}.txt
+    # Uses appropriate directory based on template type (essay_responses for two-phase, generation_responses for regular)
     pivot_df['generation_response_path'] = pivot_df.apply(
-        lambda row: f"data/3_generation/generation_responses/{row['combo_id']}_{row['generation_template']}_{row['generation_model']}.txt",
+        lambda row: get_generation_response_path(row['combo_id'], row['generation_template'], row['generation_model']),
         axis=1
     )
     
@@ -269,9 +286,8 @@ def perfect_score_paths(context, parsed_scores: pd.DataFrame) -> pd.DataFrame:
     paths_data = []
     
     for _, row in perfect_scores.iterrows():
-        # Reconstruct generation response path - flat file structure
-        # Format: data/3_generation/generation_responses/combo_X_template_model.txt
-        generation_path = f"data/3_generation/generation_responses/{row['combo_id']}_{row['generation_template']}_{row['generation_model']}.txt"
+        # Reconstruct generation response path - uses appropriate directory based on template type
+        generation_path = get_generation_response_path(row['combo_id'], row['generation_template'], row['generation_model'])
         
         # Reconstruct evaluation response path - flat file structure
         # Format: data/4_evaluation/evaluation_responses/combo_X_template_model_eval_template_eval_model.txt
