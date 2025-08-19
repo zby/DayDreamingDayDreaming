@@ -124,8 +124,14 @@ class LLMClientResource(ConfigurableResource):
             # Record the time even for failed calls to maintain delay
             self._last_call_time = time.time()
             
-            # Log the error for debugging
-            logger.debug(f"API call error: {e}")
+            # Enhanced error logging for JSON decode errors
+            if "JSONDecodeError" in str(type(e).__name__) or "json" in str(e).lower():
+                logger.error(f"JSON parsing failed - API may have returned HTML error page or malformed response: {e}")
+                # Log more context for JSON errors
+                if hasattr(e, 'response') and hasattr(e.response, 'text'):
+                    logger.error(f"Raw response content: {e.response.text[:1000]}...")
+            else:
+                logger.debug(f"API call error: {e}")
             
             # Only retry if it's a retryable error
             if not self._is_retryable_error(e):
@@ -161,13 +167,15 @@ class LLMClientResource(ConfigurableResource):
         error_msg = str(error).lower()
         retryable_patterns = [
             "please retry",
-            "rate limit",
+            "rate limit", 
             "timeout",
             "connection error",
             "network error",
             "server error",
             "service unavailable",
             "too many requests",
+            "json",  # JSON decode errors often indicate API returning HTML error pages
+            "expecting value",  # Common JSON decode error message
         ]
 
         return any(pattern in error_msg for pattern in retryable_patterns)
