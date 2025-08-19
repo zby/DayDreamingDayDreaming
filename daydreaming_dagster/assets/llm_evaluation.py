@@ -6,9 +6,9 @@ from ..utils.nodes_standalone import generate_evaluation_prompts
 
 @asset(
     partitions_def=evaluation_tasks_partitions,
-    group_name="llm_evaluation",
+    group_name="evaluation",
     io_manager_key="evaluation_prompt_io_manager",
-    required_resource_keys={"parsed_generation_io_manager"},
+    required_resource_keys={"essay_response_io_manager"},
     deps=["evaluation_tasks", "evaluation_templates"],
 )
 def evaluation_prompt(context, evaluation_tasks, evaluation_templates) -> str:
@@ -18,8 +18,8 @@ def evaluation_prompt(context, evaluation_tasks, evaluation_templates) -> str:
     This asset demonstrates the "Manual IO with Foreign Keys" pattern documented
     in docs/evaluation_asset_architecture.md. Key aspects:
     
-    1. FK Relationship: Uses generation_task_id from evaluation_tasks to load
-       the corresponding generation_response from a different partition
+    1. FK Relationship: Uses essay_task_id from evaluation_tasks to load
+       the corresponding essay_response from a different partition
     
     2. MockLoadContext Pattern: Creates a temporary context to interface with
        the IO manager for cross-partition data loading
@@ -29,8 +29,8 @@ def evaluation_prompt(context, evaluation_tasks, evaluation_templates) -> str:
     
     Data Flow:
     evaluation_task (partition: eval_001) 
-    -> reads generation_task_id FK 
-    -> loads generation_response (partition: gen_123) via IO manager
+    -> reads essay_task_id FK 
+    -> loads essay_response (partition: essay_123) via IO manager
     -> combines with evaluation template 
     -> generates evaluation prompt
     
@@ -44,15 +44,15 @@ def evaluation_prompt(context, evaluation_tasks, evaluation_templates) -> str:
         
     Raises:
         Failure: If evaluation_task_id not found in DataFrame
-        Failure: If referenced generation_task_id is invalid/empty  
-        Failure: If generation_response file not found (FK broken)
+        Failure: If referenced essay_task_id is invalid/empty
+        Failure: If essay_response file not found (FK broken)
         
     Resources Required:
-        - generation_response_io_manager: To load upstream generation responses
+        - essay_response_io_manager: To load upstream essay responses
         
     Dependencies:
         - evaluation_tasks: Must be materialized (provides FK relationships)
-        - generation_response: Must be materialized for referenced partitions
+        - essay_response: Must be materialized for referenced partitions
         
     See Also:
         - docs/evaluation_asset_architecture.md: Detailed architecture explanation
@@ -79,26 +79,25 @@ def evaluation_prompt(context, evaluation_tasks, evaluation_templates) -> str:
         )
     
     task_row = matching_tasks.iloc[0]
-    generation_task_id = task_row["generation_task_id"]
+    essay_task_id = task_row["essay_task_id"]
     
     # Log the foreign key relationship for debugging
-    context.log.info(f"Loading generation response for FK relationship: {task_id} -> {generation_task_id}")
+    context.log.info(f"Loading essay response for FK relationship: {task_id} -> {essay_task_id}")
     
-    # Load the parsed generation response from the correct partition using I/O manager
+    # Load the essay response from the correct partition using I/O manager
     # This uses the MockLoadContext pattern to load data from a different partition
-    # See docs/evaluation_asset_architecture.md for detailed explanation
-    parsing_io_manager = context.resources.parsed_generation_io_manager
+    essay_io_manager = context.resources.essay_response_io_manager
     
-    # Validate that the referenced generation_task_id looks valid
-    if not generation_task_id or generation_task_id.strip() == "":
+    # Validate that the referenced essay_task_id looks valid
+    if not essay_task_id or essay_task_id.strip() == "":
         raise Failure(
-            description=f"Invalid generation_task_id referenced by evaluation task '{task_id}'",
+            description=f"Invalid essay_task_id referenced by evaluation task '{task_id}'",
             metadata={
                 "evaluation_task_id": MetadataValue.text(task_id),
-                "generation_task_id": MetadataValue.text(str(generation_task_id)),
+                "essay_task_id": MetadataValue.text(str(essay_task_id)),
                 "resolution_1": MetadataValue.text("Check evaluation_tasks CSV for data corruption"),
                 "resolution_2": MetadataValue.text("Re-materialize evaluation_tasks asset"),
-                "fk_validation_failed": MetadataValue.text("generation_task_id is empty or invalid")
+                "fk_validation_failed": MetadataValue.text("essay_task_id is empty or invalid")
             }
         )
     
@@ -114,45 +113,44 @@ def evaluation_prompt(context, evaluation_tasks, evaluation_templates) -> str:
         def __init__(self, partition_key):
             self.partition_key = partition_key
     
-    mock_context = MockLoadContext(generation_task_id)
+    mock_context = MockLoadContext(essay_task_id)
     
     # Check if the file exists before attempting to load (better error context)
-    expected_path = parsing_io_manager.base_path / f"{generation_task_id}.txt"
+    expected_path = essay_io_manager.base_path / f"{essay_task_id}.txt"
     
     try:
-        # Load the parsed generation response from the parsing results
-        # The parsed_generation_responses asset returns the essay content as a string
-        essay_content = parsing_io_manager.load_input(mock_context)
+        # Load the essay content directly from the essay responses
+        essay_content = essay_io_manager.load_input(mock_context)
         
         if not essay_content:
-            raise ValueError(f"Empty essay content loaded for {generation_task_id}")
+            raise ValueError(f"Empty essay content loaded for {essay_task_id}")
         
-        context.log.info(f"Successfully loaded essay content: {len(essay_content)} characters from {generation_task_id}")
+        context.log.info(f"Successfully loaded essay content: {len(essay_content)} characters from {essay_task_id}")
         
     except FileNotFoundError as e:
         # Enhanced error with more debugging context
-        available_files = list(parsing_io_manager.base_path.glob("*.txt")) if parsing_io_manager.base_path.exists() else []
+        available_files = list(essay_io_manager.base_path.glob("*.txt")) if essay_io_manager.base_path.exists() else []
         available_partitions = [f.stem for f in available_files[:10]]  # Show first 10
         
-        context.log.error(f"Parsed generation response not found for partition {generation_task_id}")
+        context.log.error(f"Essay response not found for partition {essay_task_id}")
         context.log.error(f"Expected path: {expected_path}")
-        context.log.error(f"Base directory exists: {parsing_io_manager.base_path.exists()}")
+        context.log.error(f"Base directory exists: {essay_io_manager.base_path.exists()}")
         context.log.error(f"Available partitions (first 10): {available_partitions}")
         
         raise Failure(
-            description=f"Missing parsed generation response required for evaluation task '{task_id}' (FK: {generation_task_id})",
+            description=f"Missing essay response required for evaluation task '{task_id}' (FK: {essay_task_id})",
             metadata={
                 "evaluation_task_id": MetadataValue.text(task_id),
-                "generation_task_id": MetadataValue.text(generation_task_id),
+                "essay_task_id": MetadataValue.text(essay_task_id),
                 "expected_file_path": MetadataValue.path(str(expected_path)),
-                "base_directory_exists": MetadataValue.text(str(parsing_io_manager.base_path.exists())),
+                "base_directory_exists": MetadataValue.text(str(essay_io_manager.base_path.exists())),
                 "available_partitions_sample": MetadataValue.text(str(available_partitions)),
                 "total_available_files": MetadataValue.int(len(available_files)),
-                "fk_relationship": MetadataValue.text(f"evaluation_task '{task_id}' references generation_task '{generation_task_id}'"),
-                "resolution_1": MetadataValue.text(f"Check if parsed_generation_responses was materialized for partition: {generation_task_id}"),
-                "resolution_2": MetadataValue.text(f"Run: dagster asset materialize --select parsed_generation_responses --partition {generation_task_id}"),
-                "resolution_3": MetadataValue.text("Or materialize all parsing results: dagster asset materialize --select parsed_generation_responses"),
-                "resolution_4": MetadataValue.text("Verify generation_tasks asset was materialized before evaluation_tasks"),
+                "fk_relationship": MetadataValue.text(f"evaluation_task '{task_id}' references essay_task '{essay_task_id}'"),
+                "resolution_1": MetadataValue.text(f"Check if essay_response was materialized for partition: {essay_task_id}"),
+                "resolution_2": MetadataValue.text(f"Run: dagster asset materialize --select essay_response --partition {essay_task_id}"),
+                "resolution_3": MetadataValue.text("Or materialize all essay responses: dagster asset materialize --select essay_response"),
+                "resolution_4": MetadataValue.text("Verify essay_generation_tasks asset was materialized before evaluation_tasks"),
                 "original_error": MetadataValue.text(str(e))
             }
         ) from e
@@ -161,7 +159,7 @@ def evaluation_prompt(context, evaluation_tasks, evaluation_templates) -> str:
     evaluation_templates_dict = evaluation_templates.set_index('template_id')['content'].to_dict()
     
     # Generate evaluation prompt using existing logic
-    response_dict = {generation_task_id: essay_content}
+    response_dict = {essay_task_id: essay_content}
     eval_prompts_dict = generate_evaluation_prompts(
         response_dict,
         evaluation_tasks.iloc[[task_row.name]],  # Single task
@@ -169,16 +167,16 @@ def evaluation_prompt(context, evaluation_tasks, evaluation_templates) -> str:
     )
     
     eval_prompt = eval_prompts_dict[task_id]
-    context.log.info(f"Generated evaluation prompt for task {task_id}, using essay content from {generation_task_id}")
+    context.log.info(f"Generated evaluation prompt for task {task_id}, using essay content from {essay_task_id}")
     
     # Add output metadata for debugging and monitoring
     context.add_output_metadata({
         "evaluation_task_id": MetadataValue.text(task_id),
-        "generation_task_id_used": MetadataValue.text(generation_task_id),
+        "essay_task_id_used": MetadataValue.text(essay_task_id),
         "essay_content_length": MetadataValue.int(len(essay_content)),
         "evaluation_prompt_length": MetadataValue.int(len(eval_prompt)),
         "fk_relationship": MetadataValue.text(f"eval:{task_id} -> gen:{generation_task_id}"),
-        "io_manager_base_path": MetadataValue.path(str(parsing_io_manager.base_path)),
+        "io_manager_base_path": MetadataValue.path(str(essay_io_manager.base_path)),
         "template_used": MetadataValue.text(task_row["evaluation_template"]),
         "model_planned": MetadataValue.text(task_row["evaluation_model_name"])
     })
@@ -188,7 +186,7 @@ def evaluation_prompt(context, evaluation_tasks, evaluation_templates) -> str:
 
 @asset(
     partitions_def=evaluation_tasks_partitions,
-    group_name="llm_evaluation",
+    group_name="evaluation",
     io_manager_key="evaluation_response_io_manager",
     required_resource_keys={"openrouter_client"},
     deps=["evaluation_prompt", "evaluation_tasks"],

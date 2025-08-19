@@ -21,7 +21,7 @@ def get_generation_response_path(combo_id: str, template_name: str, model_name: 
 
 
 @asset(
-    group_name="results_processing",
+    group_name="results_summary",
     io_manager_key="summary_results_io_manager"
 )
 def generation_scores_pivot(context, parsed_scores: pd.DataFrame, evaluation_templates: pd.DataFrame) -> pd.DataFrame:
@@ -105,7 +105,7 @@ def generation_scores_pivot(context, parsed_scores: pd.DataFrame, evaluation_tem
     return pivot_df
 
 @asset(
-    group_name="results_processing", 
+    group_name="results_summary", 
     io_manager_key="summary_results_io_manager"
 )
 def final_results(context, parsed_scores: pd.DataFrame) -> pd.DataFrame:
@@ -260,7 +260,7 @@ def final_results(context, parsed_scores: pd.DataFrame) -> pd.DataFrame:
 
 
 @asset(
-    group_name="results_processing",
+    group_name="results_summary",
     io_manager_key="summary_results_io_manager"
 )
 def perfect_score_paths(context, parsed_scores: pd.DataFrame) -> pd.DataFrame:
@@ -329,7 +329,7 @@ def perfect_score_paths(context, parsed_scores: pd.DataFrame) -> pd.DataFrame:
 
 
 @asset(
-    group_name="results_processing", 
+    group_name="results_summary", 
     io_manager_key="summary_results_io_manager"
 )
 def evaluation_model_template_pivot(context, parsed_scores: pd.DataFrame) -> pd.DataFrame:

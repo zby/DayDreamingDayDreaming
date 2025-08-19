@@ -85,11 +85,11 @@ Assets are organized into logical groups for easy selection and understanding:
 
 | Group | Assets | Purpose |
 |-------|--------|---------|
-| **`raw_data`** | concepts, llm_models, generation_templates, evaluation_templates | Load external data files |
-| **`llm_tasks`** | content_combinations, content_combinations_csv, generation_tasks, evaluation_tasks | Generate LLM task definitions |
-| **`two_phase_generation`** 🚀 | links_prompt, links_response, essay_prompt, essay_response, canonical_generation_response | Two-phase LLM generation (partitioned) |
-| **`llm_generation`** | generation_prompt, generation_response, parsed_generation_responses | Legacy single-phase LLM generation (partitioned) |
-| **`llm_evaluation`** | evaluation_prompt, evaluation_response | LLM evaluation (partitioned) |
+| **`raw_data`** | concepts, llm_models, link_templates, essay_templates, evaluation_templates | Load external data files |
+| **`task_definitions`** | content_combinations, content_combinations_csv, link_generation_tasks, essay_generation_tasks, evaluation_tasks | Generate LLM task definitions (split by phase) |
+| **`generation_links`** 🚀 | links_prompt, links_response | Phase 1: link generation (partitioned by link_task_id) |
+| **`generation_essays`** 🚀 | essay_prompt, essay_response | Phase 2: essay generation (partitioned by essay_task_id) |
+| **`evaluation`** | evaluation_prompt, evaluation_response | LLM evaluation (partitioned by evaluation_task_id) |
 | **`results_processing`** | parsed_scores | Parse evaluation scores |
 | **`results_summary`** | final_results, perfect_score_paths, generation_scores_pivot, evaluation_model_template_pivot | Final aggregated results |
 | **`results_analysis`** | evaluator_agreement_analysis, comprehensive_variance_analysis | Statistical analysis |
@@ -100,7 +100,7 @@ Assets are organized into logical groups for easy selection and understanding:
 
 ### 1. Raw Data Loading (`raw_data.py`)
 
-**Assets**: `concepts`, `concepts_metadata`, `generation_models`, `evaluation_models`, `generation_templates`, `evaluation_templates`
+**Assets**: `concepts`, `concepts_metadata`, `generation_models`, `evaluation_models`, `link_templates`, `essay_templates`, `evaluation_templates`
 
 **Purpose**: Load and validate external data files from `data/01_raw/`
 
@@ -246,21 +246,24 @@ data/1_raw/generation_templates/
 
 ### 7. Cross-Experiment Tracking (`cross_experiment.py`)
 
-**Assets**: `generation_results_append`, `evaluation_results_append`, `filtered_evaluation_results`, `template_version_comparison_pivot`
+**Assets**: `link_generation_results_append`, `essay_generation_results_append`, `evaluation_results_append`, `filtered_evaluation_results`, `template_version_comparison_pivot`
 
 **Purpose**: Automatic tracking and cross-experiment analysis of all LLM responses
 
 **Auto-Materializing Tracking**:
-- **`generation_results_append`**: Automatically appends rows to `generation_results.csv` when any `generation_response` completes
+- **`link_generation_results_append`**: Automatically appends rows to `link_generation_results.csv` when any `links_response` completes
+- **`essay_generation_results_append`**: Automatically appends rows to `essay_generation_results.csv` when any `essay_response` completes
 - **`evaluation_results_append`**: Automatically appends rows to `evaluation_results.csv` when any `evaluation_response` completes
 - **Thread-safe CSV operations**: Uses file locking to handle concurrent updates
 - **Immediate execution**: Uses `AutoMaterializePolicy.eager()` for instant updates
 
 **Tracking Tables**:
-- **Generation Results**: Comprehensive metadata for all generation responses
-  - Columns: `generation_task_id`, `combo_id`, `generation_template`, `generation_model`, `generation_status`, `generation_timestamp`, `response_file`, `response_size_bytes`
-- **Evaluation Results**: Complete evaluation metadata with generation context
-  - Columns: `evaluation_task_id`, `generation_task_id`, `combo_id`, `generation_template`, `generation_model`, `evaluation_template`, `evaluation_model`, `evaluation_status`, `evaluation_timestamp`, `eval_response_file`, `eval_response_size_bytes`
+- **Link Generation Results**: Metadata for link generation
+  - Columns: `link_task_id`, `combo_id`, `link_template_id`, `generation_model`, `generation_status`, `generation_timestamp`, `response_file`, `response_size_bytes`
+- **Essay Generation Results**: Metadata for essay generation
+  - Columns: `essay_task_id`, `combo_id`, `essay_template_id`, `generation_model`, `generation_status`, `generation_timestamp`, `response_file`, `response_size_bytes`
+- **Evaluation Results**: Complete evaluation metadata with essay context
+  - Columns: `evaluation_task_id`, `essay_task_id`, `combo_id`, `link_template`, `essay_template`, `generation_model`, `evaluation_template`, `evaluation_model`, `evaluation_status`, `evaluation_timestamp`, `eval_response_file`, `eval_response_size_bytes`
 
 **Cross-Experiment Analysis**:
 - **Template comparison**: Compare different template versions across experiments
@@ -270,14 +273,14 @@ data/1_raw/generation_templates/
 **Implementation Details**:
 ```python
 @asset(
-    partitions_def=generation_tasks_partitions,
-    deps=["generation_response"],
+    partitions_def=link_tasks_partitions,
+    deps=["links_response"],
     auto_materialize_policy=AutoMaterializePolicy.eager(),
     group_name="cross_experiment_tracking"
 )
-def generation_results_append(context, generation_tasks):
-    # Automatically appends when generation_response completes
-    append_to_results_csv("data/7_cross_experiment/generation_results.csv", new_row)
+def link_generation_results_append(context, link_generation_tasks):
+    # Automatically appends when links_response completes
+    append_to_results_csv("data/7_cross_experiment/link_generation_results.csv", new_row)
 ```
 
 **Bulk Table Generation**:
@@ -385,8 +388,12 @@ data/
 │   ├── concepts/
 │   │   ├── day_dreaming_concepts.json
 │   │   └── descriptions/       # Concept descriptions by level
-│   ├── generation_templates/   # Jinja2 prompt templates
+│   ├── generation_templates/   # Jinja2 prompt template files
+│   │   ├── links/              # Phase 1 template files
+│   │   └── essay/              # Phase 2 template files
 │   ├── evaluation_templates/   # Evaluation prompt templates
+│   ├── link_templates.csv      # Link-phase template metadata and active selection
+│   ├── essay_templates.csv     # Essay-phase template metadata and active selection
 │   ├── generation_models.csv   # Available models with active selection
 │   └── evaluation_models.csv   # Available evaluation models
 ├── 02_tasks/                   # Generated task definitions

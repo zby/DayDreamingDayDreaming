@@ -72,7 +72,7 @@ uv run dagster asset materialize --select "links_prompt,links_response,essay_pro
 uv run dagster asset materialize --select "links_prompt,links_response,essay_prompt,essay_response,parsed_generation_responses" --partition "TASK_ID" -f daydreaming_dagster/definitions.py
 
 # Or use asset group (if supported)
-uv run dagster asset materialize --select "group:two_phase_generation" --partition "TASK_ID" -f daydreaming_dagster/definitions.py
+uv run dagster asset materialize --select "group:generation_links,group:generation_essays" --partition "TASK_ID" -f daydreaming_dagster/definitions.py
 ```
 
 **Legacy** - Single-phase generation (still supported):
@@ -103,12 +103,17 @@ This drives the first pipeline step to regenerate `content_combinations` using o
 
 #### 2. Restrict Generation Templates
 
-Edit `data/1_raw/generation_templates.csv` and ensure only desired templates are active:
-- `creative-synthesis-v2`: true
-- `essay-inventive-synthesis`: true
-- All others: false
+Edit the template CSV files to control which templates are active:
 
-This limits generation to specific prompt styles.
+**Link Templates** (`data/1_raw/link_templates.csv`):
+- Set desired link-phase templates to `active: true`
+- Currently only `creative-synthesis-v10` is available
+
+**Essay Templates** (`data/1_raw/essay_templates.csv`):
+- Set desired essay-phase templates to `active: true`  
+- Currently only `creative-synthesis-v10` is available
+
+This limits generation to specific prompt styles for each phase of the two-phase generation process.
 
 #### 3. Mark Experiment Metadata
 
@@ -116,7 +121,8 @@ Use a Dagster run tag to label the run, e.g. `experiment_id=exp_default_mode_onl
 
 Optionally stash selection files for traceability:
 - `data/experiments/exp_default_mode_only/active_concepts.csv`
-- `data/experiments/exp_default_mode_only/active_generation_templates.csv`
+- `data/experiments/exp_default_mode_only/active_link_templates.csv`
+- `data/experiments/exp_default_mode_only/active_essay_templates.csv`
 - `data/experiments/exp_default_mode_only/active_evaluation_templates.csv`
 
 ---
@@ -128,19 +134,19 @@ Optionally stash selection files for traceability:
 1. **Generate setup assets and tasks:**
    ```bash
    uv run dagster asset materialize -f daydreaming_dagster/definitions.py \
-     --select "group:raw_data,group:llm_tasks"
+    --select "group:raw_data,group:task_definitions"
    ```
 
 2. **Run generation assets:**
    ```bash
    uv run dagster asset materialize -f daydreaming_dagster/definitions.py \
-     --select "group:llm_generation"
+    --select "group:generation_links,group:generation_essays"
    ```
 
 3. **Run evaluation assets:**
    ```bash
    uv run dagster asset materialize -f daydreaming_dagster/definitions.py \
-     --select "group:llm_evaluation"
+    --select "group:evaluation"
    ```
 
 4. **Process results and run analysis:**
@@ -291,7 +297,7 @@ uv run dagster asset materialize --select "+generation_response" -f daydreaming_
 
 **Prevention:**
 - Always materialize generation assets before evaluation assets
-- Use asset group materialization: `group:llm_generation` before `group:llm_evaluation`
+- Use asset group materialization: `group:generation_links,group:generation_essays` before `group:evaluation`
 - Set up monitoring alerts for failed generation partitions
 
 ### 2. Invalid Foreign Key Reference
@@ -338,12 +344,13 @@ Invalid generation_task_id referenced by evaluation task 'eval_001': ''
 **Solutions:**
 ```bash
 # Option 1: Re-materialize task creation pipeline
-uv run dagster asset materialize --select "group:raw_data,group:llm_tasks" -f daydreaming_dagster/definitions.py
+uv run dagster asset materialize --select "group:raw_data,group:task_definitions" -f daydreaming_dagster/definitions.py
 
 # Option 2: Check for underlying data issues
 # Inspect concepts, templates, and models for corruption
 head data/1_raw/concepts/concepts_metadata.csv
-head data/1_raw/generation_templates.csv
+head data/1_raw/link_templates.csv
+head data/1_raw/essay_templates.csv
 head data/1_raw/llm_models.csv
 
 # Option 3: Clear and rebuild all task data
@@ -520,7 +527,7 @@ rm -rf data/3_generation/*
 rm -rf data/4_evaluation/*
 
 # 2. Restart from raw data
-uv run dagster asset materialize --select "group:raw_data,group:llm_tasks" -f daydreaming_dagster/definitions.py
+uv run dagster asset materialize --select "group:raw_data,group:task_definitions" -f daydreaming_dagster/definitions.py
 
 # 3. Verify task integrity before proceeding
 head data/2_tasks/generation_tasks.csv

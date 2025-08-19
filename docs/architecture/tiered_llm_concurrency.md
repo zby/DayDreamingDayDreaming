@@ -54,7 +54,7 @@ run_queue:
 
 1. Prepare data and tasks:
 ```bash
-uv run dagster asset materialize -f daydreaming_dagster/definitions.py --select "group:raw_data,group:llm_tasks"
+uv run dagster asset materialize -f daydreaming_dagster/definitions.py --select "group:raw_data,group:task_definitions"
 ```
 
 2. Free generation (serialized globally):

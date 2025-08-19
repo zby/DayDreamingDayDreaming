@@ -1,11 +1,4 @@
 from dagster import Definitions, multiprocess_executor
-from daydreaming_dagster.assets.llm_generation import (
-    generation_prompt,
-    generation_response
-)
-from daydreaming_dagster.assets.parsed_generation import (
-    parsed_generation_responses
-)
 from daydreaming_dagster.assets.two_phase_generation import (
     links_prompt,
     links_response,
@@ -32,19 +25,22 @@ from daydreaming_dagster.assets.results_summary import (
 from daydreaming_dagster.assets.raw_data import (
     concepts,
     llm_models,
-    generation_templates,
-    evaluation_templates
+    link_templates,
+    essay_templates,
+    evaluation_templates,
 )
 from daydreaming_dagster.assets.core import (
     content_combinations,
     content_combinations_csv,
-    generation_tasks,
+    link_generation_tasks,
+    essay_generation_tasks,
     evaluation_tasks
 )
 from daydreaming_dagster.assets.cross_experiment import (
     filtered_evaluation_results,
     template_version_comparison_pivot,
-    generation_results_append,
+    link_generation_results_append,
+    essay_generation_results_append,
     evaluation_results_append
 )
 from daydreaming_dagster.resources.llm_client import LLMClientResource
@@ -62,19 +58,16 @@ defs = Definitions(
         # Raw data assets (now load all data, no filtering)
         concepts,                       # Loads ALL concepts with descriptions and applies filtering
         llm_models,                     # Loads ALL models
-        generation_templates,           # Loads ALL generation templates with content
+        link_templates,                 # Link-phase templates
+        essay_templates,                # Essay-phase templates
         evaluation_templates,           # Loads ALL evaluation templates with content
         
         # Core processing assets
         content_combinations,
         content_combinations_csv,
-        generation_tasks,
+        link_generation_tasks,
+        essay_generation_tasks,
         evaluation_tasks,
-        
-        # LLM prompt and response assets
-        generation_prompt,
-        generation_response,
-        parsed_generation_responses,
         
         # Two-phase generation assets
         links_prompt,
@@ -99,7 +92,8 @@ defs = Definitions(
         template_version_comparison_pivot,
         
         # Auto-materializing results tracking assets
-        generation_results_append,
+        link_generation_results_append,
+        essay_generation_results_append,
         evaluation_results_append
     ],
     resources={
@@ -111,12 +105,6 @@ defs = Definitions(
         
         # Simplified I/O managers - no complex source mappings or filtering
         "csv_io_manager": CSVIOManager(base_path=Path("data") / "2_tasks"),
-        # Prompts can safely overwrite to reflect latest template code
-        "generation_prompt_io_manager": PartitionedTextIOManager(base_path=Path("data") / "3_generation" / "generation_prompts", overwrite=True),
-        # Responses must never overwrite by default to preserve prior generations
-        "generation_response_io_manager": PartitionedTextIOManager(base_path=Path("data") / "3_generation" / "generation_responses", overwrite=False),
-        # Parsed generation responses go into generation directory as structured data
-        "parsed_generation_io_manager": PartitionedTextIOManager(base_path=Path("data") / "3_generation" / "parsed_generation_responses", overwrite=True),
         
         # Two-phase generation I/O managers
         "links_prompt_io_manager": PartitionedTextIOManager(base_path=Path("data") / "3_generation" / "links_prompts", overwrite=True),
@@ -128,7 +116,6 @@ defs = Definitions(
         "evaluation_response_io_manager": PartitionedTextIOManager(base_path=Path("data") / "4_evaluation" / "evaluation_responses", overwrite=False),
         "error_log_io_manager": CSVIOManager(base_path=Path("data") / "7_reporting"),
         "parsing_results_io_manager": CSVIOManager(base_path=Path("data") / "5_parsing"),
-        "parsed_generation_io_manager": PartitionedTextIOManager(base_path=Path("data") / "3_generation" / "parsed_generation_responses", overwrite=True),
         "summary_results_io_manager": CSVIOManager(base_path=Path("data") / "6_summary"),
         "cross_experiment_io_manager": CrossExperimentIOManager()
     },

@@ -3,13 +3,13 @@ from typing import Dict, List, Tuple
 import pandas as pd
 from collections import defaultdict
 import hashlib
-from .llm_generation import generation_prompt
+from .two_phase_generation import links_prompt
 from .llm_evaluation import evaluation_prompt
 
 
 @asset(
     group_name="data_validation",
-    deps=[generation_prompt],
+    deps=[links_prompt],
     io_manager_key="summary_results_io_manager"
 )
 def generation_prompt_consistency_report(context, generation_tasks) -> pd.DataFrame:
@@ -34,7 +34,7 @@ def generation_prompt_consistency_report(context, generation_tasks) -> pd.DataFr
     total_prompts_checked = 0
     groups_skipped = 0
     
-    prompt_io_manager = context.resources.generation_prompt_io_manager
+    prompt_io_manager = context.resources.links_prompt_io_manager
     
     class MockLoadContext:
         def __init__(self, partition_key):
@@ -137,8 +137,8 @@ def generation_prompt_consistency_report(context, generation_tasks) -> pd.DataFr
                 ### Fix Steps:
                 1. Check template rendering logic for non-deterministic behavior
                 2. Verify content_combinations data consistency
-                3. Re-materialize: `dagster asset materialize --select generation_prompt`
-                """)
+                3. Re-materialize: `dagster asset materialize --select links_prompt`
+            """)
             }
         )
     else:

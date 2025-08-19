@@ -59,7 +59,7 @@ uv run dagster dev -f daydreaming_dagster/definitions.py
 ```bash
 # Step 1: Generate setup assets and task CSV files
 # Option A: Use asset groups (recommended - simpler)
-uv run dagster asset materialize --select "group:raw_data,group:llm_tasks" -f daydreaming_dagster/definitions.py
+uv run dagster asset materialize --select "group:raw_data,group:task_definitions" -f daydreaming_dagster/definitions.py
 
 # Option B: Use dependency resolution (alternative)
 uv run dagster asset materialize --select "+generation_tasks,+evaluation_tasks" -f daydreaming_dagster/definitions.py
@@ -71,16 +71,15 @@ uv run dagster asset materialize --select "concepts,concepts_metadata,generation
 
 # Step 2: Generate LLM responses using two-phase generation
 # Now you can run individual partitions or use the UI to run all
-# Tip: get a partition key from the first column of generation_tasks.csv
-# Example:
-# PART=$(cut -d',' -f1 data/2_tasks/generation_tasks.csv | sed -n '2p')
-# uv run dagster asset materialize --select "group:two_phase_generation" --partition "$PART" -f daydreaming_dagster/definitions.py
+# Tip: get a link partition key from the first column of link_generation_tasks.csv
+# Example (Phase 1):
+# LINK=$(cut -d',' -f1 data/2_tasks/link_generation_tasks.csv | sed -n '2p')
+# uv run dagster asset materialize --select "group:generation_links" --partition "$LINK" -f daydreaming_dagster/definitions.py
 
-# Two-phase generation (recommended):
-uv run dagster asset materialize --select "links_prompt,links_response,essay_prompt,essay_response,canonical_generation_response,parsed_generation_responses" --partition "<a_generation_task_id_from_csv>" -f daydreaming_dagster/definitions.py
-
-# Legacy single-phase generation (still supported):
-# uv run dagster asset materialize --select "generation_prompt,generation_response,parsed_generation_responses" --partition "<a_generation_task_id_from_csv>" -f daydreaming_dagster/definitions.py
+# Then get an essay partition key for that link from essay_generation_tasks.csv
+# Example (Phase 2):
+# ESSAY=$(awk -F, -v link="$LINK" 'NR==1{for(i=1;i<=NF;i++)h[$i]=i} NR>1 && $h["link_task_id"]==link {print $h["essay_task_id"]; exit}' data/2_tasks/essay_generation_tasks.csv)
+# uv run dagster asset materialize --select "group:generation_essays" --partition "$ESSAY" -f daydreaming_dagster/definitions.py
 
 # Step 3: Process results (after sufficient generation/evaluation data)
 uv run dagster asset materialize --select "parsed_scores,final_results" -f daydreaming_dagster/definitions.py
@@ -88,10 +87,10 @@ uv run dagster asset materialize --select "parsed_scores,final_results" -f daydr
 
 **Asset Group Breakdown**:
 - `group:raw_data`: concepts, models, templates, and their metadata (loads from `data/1_raw/`)
-- `group:llm_tasks`: content_combinations, generation_tasks, evaluation_tasks (creates `data/2_tasks/`)
-- `group:two_phase_generation`: links_prompt, links_response, essay_prompt, essay_response, canonical_generation_response (creates `data/3_generation/links_*`, `data/3_generation/essay_*`)
-- `group:llm_generation`: (legacy) generation_prompt, generation_response, parsed_generation_responses (creates `data/3_generation/`)
-- `group:llm_evaluation`: evaluation_prompt, evaluation_response (creates `data/4_evaluation/`)
+- `group:task_definitions`: content_combinations, link_generation_tasks, essay_generation_tasks, evaluation_tasks (creates `data/2_tasks/`)
+- `group:generation_links`: links_prompt, links_response (creates `data/3_generation/links_*`)
+- `group:generation_essays`: essay_prompt, essay_response (creates `data/3_generation/essay_*`)
+- `group:evaluation`: evaluation_prompt, evaluation_response (creates `data/4_evaluation/`)
 - `group:results_processing`: parsed_scores, analysis, and final_results (creates `data/5_parsing/`, `data/6_summary/`)
 
 **Why the specific asset dependencies matter**: 
@@ -100,7 +99,7 @@ uv run dagster asset materialize --select "parsed_scores,final_results" -f daydr
 - These metadata assets load CSV files that specify which templates are active
 - Using asset groups or dependency resolution (`+`) automatically includes these dependencies
 
-**Dynamic Partitioning**: Partitions are automatically created from the task CSV files when LLM assets are materialized. Partition keys are based on `generation_task_id`, which includes a stable `combo_id` prefix.
+**Dynamic Partitioning**: Partitions are automatically created from the task CSV files when LLM assets are materialized. Partition keys are based on `link_task_id` (links) and `essay_task_id` (essays), which include a stable `combo_id` prefix.
 
 ### Running All LLM Partitions
 
@@ -260,7 +259,7 @@ data/1_raw/generation_templates/
    **Solution**: Template assets need their metadata dependencies. Use one of these approaches:
    ```bash
    # Recommended: Use asset groups
-   uv run dagster asset materialize --select "group:raw_data,group:llm_tasks" -f daydreaming_dagster/definitions.py
+   uv run dagster asset materialize --select "group:raw_data,group:task_definitions" -f daydreaming_dagster/definitions.py
    
    # Alternative: Use dependency resolution
    uv run dagster asset materialize --select "+generation_tasks,+evaluation_tasks" -f daydreaming_dagster/definitions.py

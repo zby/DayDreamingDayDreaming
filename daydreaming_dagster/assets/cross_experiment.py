@@ -9,7 +9,11 @@ import fcntl
 import time
 
 from ..utils.evaluation_processing import parse_evaluation_files_cross_experiment, calculate_evaluation_metadata
-from .partitions import generation_tasks_partitions, evaluation_tasks_partitions
+from .partitions import (
+    link_tasks_partitions,
+    essay_tasks_partitions,
+    evaluation_tasks_partitions,
+)
 
 
 def append_to_results_csv(file_path: str, new_row: dict):
@@ -148,63 +152,98 @@ def template_version_comparison_pivot(
 # ============================================================================
 
 @asset(
-    partitions_def=generation_tasks_partitions,
-    deps=["generation_response"],
+    partitions_def=link_tasks_partitions,
+    deps=["links_response"],
     auto_materialize_policy=AutoMaterializePolicy.eager(),
     group_name="cross_experiment_tracking",
-    description="Automatically appends new row when generation_response completes"
+    description="Automatically appends new row when links_response completes"
 )
-def generation_results_append(context, generation_tasks):
-    """Automatically appends new row when generation_response completes."""
+def link_generation_results_append(context, link_generation_tasks):
+    """Automatically appends new row when links_response completes."""
     task_id = context.partition_key
     
-    # Get the specific task for this partition
-    task_rows = generation_tasks[generation_tasks["generation_task_id"] == task_id]
+    task_rows = link_generation_tasks[link_generation_tasks["link_task_id"] == task_id]
     if task_rows.empty:
-        context.log.warning(f"No task found for generation response {task_id}")
+        context.log.warning(f"No task found for links response {task_id}")
         return "no_task_found"
-        
     task_row = task_rows.iloc[0]
     
-    # Check if response file exists (it should, since generation_response completed)
-    response_file = Path(f"data/3_generation/generation_responses/{task_id}.txt")
+    response_file = Path(f"data/3_generation/links_responses/{task_id}.txt")
     response_exists = response_file.exists()
     
-    # Create row data
     new_row = {
-        "generation_task_id": task_id,
+        "link_task_id": task_id,
         "combo_id": task_row["combo_id"],
-        "generation_template": task_row["generation_template"],
+        "link_template_id": task_row["link_template"],
         "generation_model": task_row["generation_model_name"],
         "generation_status": "success" if response_exists else "failed",
         "generation_timestamp": datetime.now().isoformat(),
-        "response_file": f"generation_responses/{task_id}.txt"
+        "response_file": f"links_responses/{task_id}.txt"
     }
-    
-    # Add file size if file exists
     if response_exists:
         new_row["response_size_bytes"] = response_file.stat().st_size
     
-    # Append to results table
     try:
-        append_to_results_csv("data/7_cross_experiment/generation_results.csv", new_row)
-        context.log.info(f"Auto-appended generation result for {task_id}")
-        
-        # Add output metadata
+        append_to_results_csv("data/7_cross_experiment/link_generation_results.csv", new_row)
         context.add_output_metadata({
             "task_id": MetadataValue.text(task_id),
             "combo_id": MetadataValue.text(task_row["combo_id"]),
-            "generation_template": MetadataValue.text(task_row["generation_template"]),
+            "link_template_id": MetadataValue.text(task_row["link_template"]),
             "generation_model": MetadataValue.text(task_row["generation_model_name"]),
             "response_exists": MetadataValue.bool(response_exists),
-            "table_file": MetadataValue.path("data/7_cross_experiment/generation_results.csv"),
-            "append_timestamp": MetadataValue.timestamp(time.time())
+            "table_file": MetadataValue.path("data/7_cross_experiment/link_generation_results.csv"),
         })
-        
         return "appended"
-        
     except Exception as e:
-        context.log.error(f"Failed to append generation result for {task_id}: {e}")
+        context.log.error(f"Failed to append link generation result for {task_id}: {e}")
+        raise
+
+
+@asset(
+    partitions_def=essay_tasks_partitions,
+    deps=["essay_response"],
+    auto_materialize_policy=AutoMaterializePolicy.eager(),
+    group_name="cross_experiment_tracking",
+    description="Automatically appends new row when essay_response completes"
+)
+def essay_generation_results_append(context, essay_generation_tasks):
+    """Automatically appends new row when essay_response completes."""
+    task_id = context.partition_key
+    
+    task_rows = essay_generation_tasks[essay_generation_tasks["essay_task_id"] == task_id]
+    if task_rows.empty:
+        context.log.warning(f"No task found for essay response {task_id}")
+        return "no_task_found"
+    task_row = task_rows.iloc[0]
+    
+    response_file = Path(f"data/3_generation/essay_responses/{task_id}.txt")
+    response_exists = response_file.exists()
+    
+    new_row = {
+        "essay_task_id": task_id,
+        "combo_id": task_row["combo_id"],
+        "essay_template_id": task_row["essay_template"],
+        "generation_model": task_row["generation_model_name"],
+        "generation_status": "success" if response_exists else "failed",
+        "generation_timestamp": datetime.now().isoformat(),
+        "response_file": f"essay_responses/{task_id}.txt"
+    }
+    if response_exists:
+        new_row["response_size_bytes"] = response_file.stat().st_size
+    
+    try:
+        append_to_results_csv("data/7_cross_experiment/essay_generation_results.csv", new_row)
+        context.add_output_metadata({
+            "task_id": MetadataValue.text(task_id),
+            "combo_id": MetadataValue.text(task_row["combo_id"]),
+            "essay_template_id": MetadataValue.text(task_row["essay_template"]),
+            "generation_model": MetadataValue.text(task_row["generation_model_name"]),
+            "response_exists": MetadataValue.bool(response_exists),
+            "table_file": MetadataValue.path("data/7_cross_experiment/essay_generation_results.csv"),
+        })
+        return "appended"
+    except Exception as e:
+        context.log.error(f"Failed to append essay generation result for {task_id}: {e}")
         raise
 
 
@@ -215,7 +254,7 @@ def generation_results_append(context, generation_tasks):
     group_name="cross_experiment_tracking",
     description="Automatically appends new row when evaluation_response completes"
 )
-def evaluation_results_append(context, evaluation_tasks, generation_tasks):
+def evaluation_results_append(context, evaluation_tasks, essay_generation_tasks):
     """Automatically appends new row when evaluation_response completes."""
     task_id = context.partition_key
     
@@ -227,14 +266,15 @@ def evaluation_results_append(context, evaluation_tasks, generation_tasks):
         
     eval_task_row = eval_task_rows.iloc[0]
     
-    # Get generation metadata via foreign key
-    gen_task_id = eval_task_row["generation_task_id"]
-    gen_task_rows = generation_tasks[generation_tasks["generation_task_id"] == gen_task_id]
-    if gen_task_rows.empty:
-        context.log.warning(f"No generation task found for evaluation {task_id} (gen_task_id: {gen_task_id})")
-        return "no_gen_task_found"
-        
-    gen_task_row = gen_task_rows.iloc[0]
+    # Get essay metadata via foreign key
+    essay_task_id = eval_task_row["essay_task_id"]
+    essay_rows = essay_generation_tasks[essay_generation_tasks["essay_task_id"] == essay_task_id]
+    if essay_rows.empty:
+        context.log.warning(
+            f"No essay task found for evaluation {task_id} (essay_task_id: {essay_task_id})"
+        )
+        return "no_essay_task_found"
+    essay_row = essay_rows.iloc[0]
     
     # Check if evaluation response file exists
     eval_response_file = Path(f"data/4_evaluation/evaluation_responses/{task_id}.txt")
@@ -243,10 +283,11 @@ def evaluation_results_append(context, evaluation_tasks, generation_tasks):
     # Create row data
     new_row = {
         "evaluation_task_id": task_id,
-        "generation_task_id": gen_task_id,
-        "combo_id": gen_task_row["combo_id"],
-        "generation_template": gen_task_row["generation_template"],
-        "generation_model": gen_task_row["generation_model_name"],
+        "essay_task_id": essay_task_id,
+        "combo_id": essay_row["combo_id"],
+        "link_template": essay_row.get("link_template", "unknown"),
+        "essay_template": essay_row["essay_template"],
+        "generation_model": essay_row["generation_model_name"],
         "evaluation_template": eval_task_row["evaluation_template"],
         "evaluation_model": eval_task_row["evaluation_model_name"],
         "evaluation_status": "success" if eval_response_exists else "failed",
@@ -266,12 +307,13 @@ def evaluation_results_append(context, evaluation_tasks, generation_tasks):
         # Add output metadata
         context.add_output_metadata({
             "evaluation_task_id": MetadataValue.text(task_id),
-            "generation_task_id": MetadataValue.text(gen_task_id),
-            "combo_id": MetadataValue.text(gen_task_row["combo_id"]),
+            "essay_task_id": MetadataValue.text(essay_task_id),
+            "combo_id": MetadataValue.text(essay_row["combo_id"]),
             "evaluation_template": MetadataValue.text(eval_task_row["evaluation_template"]),
             "evaluation_model": MetadataValue.text(eval_task_row["evaluation_model_name"]),
-            "generation_template": MetadataValue.text(gen_task_row["generation_template"]),
-            "generation_model": MetadataValue.text(gen_task_row["generation_model_name"]),
+            "link_template": MetadataValue.text(essay_row.get("link_template", "unknown")),
+            "essay_template": MetadataValue.text(essay_row["essay_template"]),
+            "generation_model": MetadataValue.text(essay_row["generation_model_name"]),
             "response_exists": MetadataValue.bool(eval_response_exists),
             "table_file": MetadataValue.path("data/7_cross_experiment/evaluation_results.csv"),
             "append_timestamp": MetadataValue.timestamp(time.time())

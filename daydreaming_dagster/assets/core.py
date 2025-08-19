@@ -7,11 +7,16 @@ from ..utils.nodes_standalone import (
     create_evaluation_tasks_from_generation_tasks,
 )
 from ..models import Concept, ContentCombination
-from .partitions import generation_tasks_partitions, evaluation_tasks_partitions
+from .partitions import (
+    generation_tasks_partitions,
+    evaluation_tasks_partitions,
+    link_tasks_partitions,
+    essay_tasks_partitions,
+)
 from ..utils.combo_ids import ComboIDManager
 
 @asset(
-    group_name="llm_tasks",
+    group_name="task_definitions",
     required_resource_keys={"experiment_config"}
 )
 def content_combinations(
@@ -57,7 +62,7 @@ def content_combinations(
     return content_combos
 
 @asset(
-    group_name="llm_tasks",
+    group_name="task_definitions",
     io_manager_key="csv_io_manager"
 )
 def content_combinations_csv(
@@ -86,128 +91,163 @@ def content_combinations_csv(
     return df
 
 @asset(
-    group_name="llm_tasks", 
+    group_name="task_definitions",
     io_manager_key="csv_io_manager",
-    required_resource_keys={"experiment_config"}
+    required_resource_keys={"experiment_config"},
 )
-def generation_tasks(
+def link_generation_tasks(
     context,
     content_combinations: List[ContentCombination],
     llm_models: pd.DataFrame,
-    generation_templates: pd.DataFrame,
+    link_templates: pd.DataFrame,
 ) -> pd.DataFrame:
-    """Create generation tasks and save as CSV for understanding task IDs."""
-    # Filter for generation models
+    """Create link-generation tasks (combo × link_template × model)."""
     generation_models = llm_models[llm_models["for_generation"] == True]
-    
-    # Filter DataFrame directly for active templates
-    active_templates_df = generation_templates[generation_templates["active"] == True]
-    
-    # Convert to dict format expected by utility functions (explicit loop)
-    active_generation_templates = {}
-    for _, row in active_templates_df.iterrows():
-        active_generation_templates[row["template_id"]] = row["content"]
-    
-    tasks_df = create_generation_tasks_from_content_combinations(
-        content_combinations, 
-        generation_models, 
-        active_generation_templates
+
+    active_templates_df = link_templates[link_templates["active"] == True]
+    active_templates = list(active_templates_df["template_id"].tolist())
+
+    rows: List[dict] = []
+    for combo in content_combinations:
+        for template_id in active_templates:
+            for _, model_row in generation_models.iterrows():
+                model_id = model_row["id"]
+                model_name = model_row["model"]
+                link_task_id = f"{combo.combo_id}_{template_id}_{model_id}"
+                rows.append(
+                    {
+                        "link_task_id": link_task_id,
+                        "combo_id": combo.combo_id,
+                        "link_template": template_id,
+                        "generation_model": model_id,
+                        "generation_model_name": model_name,
+                    }
+                )
+
+    tasks_df = pd.DataFrame(rows)
+
+    # Register dynamic partitions for links
+    existing = context.instance.get_dynamic_partitions(link_tasks_partitions.name)
+    if existing:
+        for p in existing:
+            context.instance.delete_dynamic_partition(link_tasks_partitions.name, p)
+    context.instance.add_dynamic_partitions(link_tasks_partitions.name, tasks_df["link_task_id"].tolist())
+
+    context.add_output_metadata(
+        {
+            "task_count": MetadataValue.int(len(tasks_df)),
+            "unique_combinations": MetadataValue.int(tasks_df["combo_id"].nunique()),
+            "unique_link_templates": MetadataValue.int(tasks_df["link_template"].nunique()),
+            "unique_models": MetadataValue.int(tasks_df["generation_model"].nunique()),
+        }
     )
-    
-    # Clear existing partitions and register new ones for LLM processing
-    existing_partitions = context.instance.get_dynamic_partitions(generation_tasks_partitions.name)
-    partitions_removed = len(existing_partitions) if existing_partitions else 0
-    
-    if existing_partitions:
-        context.log.info(f"Removing {len(existing_partitions)} existing partitions")
-        for partition in existing_partitions:
-            context.instance.delete_dynamic_partition(
-                generation_tasks_partitions.name, 
-                partition
+    return tasks_df
+
+
+@asset(
+    group_name="task_definitions",
+    io_manager_key="csv_io_manager",
+    required_resource_keys={"experiment_config"},
+)
+def essay_generation_tasks(
+    context,
+    link_generation_tasks: pd.DataFrame,
+    essay_templates: pd.DataFrame,
+) -> pd.DataFrame:
+    """Create essay-generation tasks (FK to link tasks × essay_template)."""
+    active_templates_df = essay_templates[essay_templates["active"] == True]
+    essay_templates = list(active_templates_df["template_id"].tolist())
+
+    rows: List[dict] = []
+    for _, link_row in link_generation_tasks.iterrows():
+        link_task_id = link_row["link_task_id"]
+        combo_id = link_row["combo_id"]
+        model_id = link_row["generation_model"]
+        model_name = link_row["generation_model_name"]
+        for essay_template_id in essay_templates:
+            essay_task_id = f"{link_task_id}_{essay_template_id}"
+            rows.append(
+                {
+                    "essay_task_id": essay_task_id,
+                    "link_task_id": link_task_id,
+                    "combo_id": combo_id,
+                    "link_template": link_row["link_template"],
+                    "essay_template": essay_template_id,
+                    "generation_model": model_id,
+                    "generation_model_name": model_name,
+                }
             )
-    
-    new_partitions = tasks_df["generation_task_id"].tolist()
-    context.instance.add_dynamic_partitions(
-        generation_tasks_partitions.name,
-        new_partitions
+
+    tasks_df = pd.DataFrame(rows)
+
+    # Register dynamic partitions for essays
+    existing = context.instance.get_dynamic_partitions(essay_tasks_partitions.name)
+    if existing:
+        for p in existing:
+            context.instance.delete_dynamic_partition(essay_tasks_partitions.name, p)
+    context.instance.add_dynamic_partitions(essay_tasks_partitions.name, tasks_df["essay_task_id"].tolist())
+
+    context.add_output_metadata(
+        {
+            "task_count": MetadataValue.int(len(tasks_df)),
+            "unique_links": MetadataValue.int(tasks_df["link_task_id"].nunique()),
+            "unique_essay_templates": MetadataValue.int(tasks_df["essay_template"].nunique()),
+        }
     )
-    
-    context.log.info(f"Created {len(tasks_df)} generation task partitions")
-    
-    # Add output metadata
-    context.add_output_metadata({
-        "task_count": MetadataValue.int(len(tasks_df)),
-        "partitions_created": MetadataValue.int(len(new_partitions)),
-        "partitions_removed": MetadataValue.int(partitions_removed),
-        "unique_combinations": MetadataValue.int(tasks_df["combo_id"].nunique()),
-        "unique_templates": MetadataValue.int(tasks_df["generation_template"].nunique()),
-        "unique_models": MetadataValue.int(tasks_df["generation_model"].nunique())
-    })
-    
     return tasks_df
 
 @asset(
-    group_name="llm_tasks",
+    group_name="task_definitions",
     io_manager_key="csv_io_manager",
-    required_resource_keys={"experiment_config"}
+    required_resource_keys={"experiment_config"},
 )
 def evaluation_tasks(
     context,
-    generation_tasks: pd.DataFrame,
+    essay_generation_tasks: pd.DataFrame,
     llm_models: pd.DataFrame,
     evaluation_templates: pd.DataFrame,
 ) -> pd.DataFrame:
-    """Create evaluation tasks and save as CSV for understanding task IDs."""
-    # COMMENTED OUT: Multiple runs feature for future use
-    # config = context.resources.config
-    # num_evaluation_runs = getattr(config, 'num_evaluation_runs', 3)  # Default to 3 runs
-    
-    # Filter for evaluation models
+    """Create evaluation tasks referencing essay_task_id (one or more per essay)."""
     evaluation_models = llm_models[llm_models["for_evaluation"] == True]
-    
-    # Filter DataFrame directly for active templates
+
     active_templates_df = evaluation_templates[evaluation_templates["active"] == True]
-    
-    # Convert to dict format expected by utility functions (explicit loop)
-    active_evaluation_templates = {}
-    for _, row in active_templates_df.iterrows():
-        active_evaluation_templates[row["template_id"]] = row["content"]
-    
-    tasks_df = create_evaluation_tasks_from_generation_tasks(
-        generation_tasks,
-        evaluation_models, 
-        active_evaluation_templates
-        # num_evaluation_runs=num_evaluation_runs  # COMMENTED OUT
-    )
-    
-    # Clear existing partitions and register new ones for LLM processing
-    existing_partitions = context.instance.get_dynamic_partitions(evaluation_tasks_partitions.name)
-    partitions_removed = len(existing_partitions) if existing_partitions else 0
-    
-    if existing_partitions:
-        context.log.info(f"Removing {len(existing_partitions)} existing evaluation partitions")
-        for partition in existing_partitions:
-            context.instance.delete_dynamic_partition(
-                evaluation_tasks_partitions.name, 
-                partition
-            )
-    
-    new_partitions = tasks_df["evaluation_task_id"].tolist()
+    eval_templates = list(active_templates_df["template_id"].tolist())
+
+    rows: List[dict] = []
+    for _, essay_row in essay_generation_tasks.iterrows():
+        essay_task_id = essay_row["essay_task_id"]
+        for _, eval_model_row in evaluation_models.iterrows():
+            eval_model_id = eval_model_row["id"]
+            eval_model_name = eval_model_row["model"]
+            for eval_template_id in eval_templates:
+                evaluation_task_id = f"{essay_task_id}_{eval_template_id}_{eval_model_id}"
+                rows.append(
+                    {
+                        "evaluation_task_id": evaluation_task_id,
+                        "essay_task_id": essay_task_id,
+                        "evaluation_template": eval_template_id,
+                        "evaluation_model": eval_model_id,
+                        "evaluation_model_name": eval_model_name,
+                    }
+                )
+
+    tasks_df = pd.DataFrame(rows)
+
+    # Register dynamic partitions for evaluations
+    existing = context.instance.get_dynamic_partitions(evaluation_tasks_partitions.name)
+    if existing:
+        for p in existing:
+            context.instance.delete_dynamic_partition(evaluation_tasks_partitions.name, p)
     context.instance.add_dynamic_partitions(
-        evaluation_tasks_partitions.name,
-        new_partitions
+        evaluation_tasks_partitions.name, tasks_df["evaluation_task_id"].tolist()
     )
-    
-    context.log.info(f"Created {len(tasks_df)} evaluation task partitions")
-    
-    # Add output metadata
-    context.add_output_metadata({
-        "task_count": MetadataValue.int(len(tasks_df)),
-        "partitions_created": MetadataValue.int(len(new_partitions)),
-        "partitions_removed": MetadataValue.int(partitions_removed),
-        "unique_generation_tasks": MetadataValue.int(tasks_df["generation_task_id"].nunique()),
-        "unique_eval_templates": MetadataValue.int(tasks_df["evaluation_template"].nunique()),
-        "unique_eval_models": MetadataValue.int(tasks_df["evaluation_model"].nunique())
-    })
-    
+
+    context.add_output_metadata(
+        {
+            "task_count": MetadataValue.int(len(tasks_df)),
+            "unique_essays": MetadataValue.int(tasks_df["essay_task_id"].nunique()),
+            "unique_eval_templates": MetadataValue.int(tasks_df["evaluation_template"].nunique()),
+            "unique_eval_models": MetadataValue.int(tasks_df["evaluation_model"].nunique()),
+        }
+    )
     return tasks_df

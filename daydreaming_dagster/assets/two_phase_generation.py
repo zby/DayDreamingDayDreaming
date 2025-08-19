@@ -2,21 +2,20 @@ from dagster import asset, Failure, MetadataValue, AutoMaterializePolicy
 from pathlib import Path
 import pandas as pd
 from jinja2 import Environment
-from .partitions import generation_tasks_partitions
+from .partitions import link_tasks_partitions, essay_tasks_partitions
 from ..utils.template_loader import load_generation_template
 
 
 @asset(
-    partitions_def=generation_tasks_partitions,
-    group_name="two_phase_generation",
+    partitions_def=link_tasks_partitions,
+    group_name="generation_links",
     io_manager_key="links_prompt_io_manager",
-    deps=["generation_tasks"],
 )
 def links_prompt(
-    context, 
-    generation_tasks, 
-    content_combinations, 
-    generation_templates
+    context,
+    link_generation_tasks,
+    content_combinations,
+    link_templates,
 ) -> str:
     """
     Generate Phase 1 prompts for concept link generation.
@@ -24,7 +23,7 @@ def links_prompt(
     task_id = context.partition_key
     
     # Get the specific task for this partition
-    matching_tasks = generation_tasks[generation_tasks["generation_task_id"] == task_id]
+    matching_tasks = link_generation_tasks[link_generation_tasks["link_task_id"] == task_id]
     if matching_tasks.empty:
         available_tasks = generation_tasks["generation_task_id"].tolist()[:5]
         context.log.error(f"Task ID '{task_id}' not found in generation_tasks DataFrame")
@@ -40,7 +39,7 @@ def links_prompt(
         )
     task_row = matching_tasks.iloc[0]
     combo_id = task_row["combo_id"]
-    template_name = task_row["generation_template"]
+    template_name = task_row["link_template"]
     
     # Find the ContentCombination for this combo_id
     content_combination = None
@@ -86,13 +85,12 @@ def links_prompt(
 
 
 @asset(
-    partitions_def=generation_tasks_partitions,
-    group_name="two_phase_generation",
+    partitions_def=link_tasks_partitions,
+    group_name="generation_links",
     io_manager_key="links_response_io_manager",
     required_resource_keys={"openrouter_client"},
-    deps=["generation_tasks"],
 )
-def links_response(context, links_prompt, generation_tasks) -> str:
+def links_response(context, links_prompt, link_generation_tasks) -> str:
     """
     Generate Phase 1 LLM responses for concept links.
     Validates that the response contains at least 3 lines of content.
@@ -100,7 +98,7 @@ def links_response(context, links_prompt, generation_tasks) -> str:
     task_id = context.partition_key
     
     # Get the specific task for this partition
-    task_row = generation_tasks[generation_tasks["generation_task_id"] == task_id].iloc[0]
+    task_row = link_generation_tasks[link_generation_tasks["link_task_id"] == task_id].iloc[0]
     
     # Use the model name directly from the task
     model_name = task_row["generation_model_name"]
@@ -135,16 +133,15 @@ def links_response(context, links_prompt, generation_tasks) -> str:
 
 
 @asset(
-    partitions_def=generation_tasks_partitions,
-    group_name="two_phase_generation",
+    partitions_def=essay_tasks_partitions,
+    group_name="generation_essays",
     io_manager_key="essay_prompt_io_manager",
-    deps=["generation_tasks"],
+    required_resource_keys={"links_response_io_manager"},
 )
 def essay_prompt(
-    context, 
-    links_response,
-    generation_tasks, 
-    content_combinations
+    context,
+    essay_generation_tasks,
+    essay_templates,
 ) -> str:
     """
     Generate Phase 2 prompts for essay generation based on Phase 1 links.
@@ -153,7 +150,7 @@ def essay_prompt(
     task_id = context.partition_key
     
     # Get the specific task for this partition
-    matching_tasks = generation_tasks[generation_tasks["generation_task_id"] == task_id]
+    matching_tasks = essay_generation_tasks[essay_generation_tasks["essay_task_id"] == task_id]
     if matching_tasks.empty:
         context.log.error(f"Task ID '{task_id}' not found in generation_tasks DataFrame")
         raise Failure(
@@ -161,10 +158,18 @@ def essay_prompt(
             metadata={"task_id": MetadataValue.text(task_id)}
         )
     task_row = matching_tasks.iloc[0]
-    template_name = task_row["generation_template"]
-    
-    # Use links_response directly from asset dependency
-    links_content = links_response
+    template_name = task_row["essay_template"]
+
+    # Load links_response using FK to link_task_id
+    link_task_id = task_row["link_task_id"]
+    links_io = context.resources.links_response_io_manager
+
+    class MockLoadContext:
+        def __init__(self, partition_key):
+            self.partition_key = partition_key
+
+    links_context = MockLoadContext(link_task_id)
+    links_content = links_io.load_input(links_context)
     links_lines = [line.strip() for line in links_content.split('\n') if line.strip()]
     context.log.info(f"Using {len(links_lines)} validated links from links_response for task {task_id}")
     
@@ -198,20 +203,19 @@ def essay_prompt(
 
 
 @asset(
-    partitions_def=generation_tasks_partitions,
-    group_name="two_phase_generation",
+    partitions_def=essay_tasks_partitions,
+    group_name="generation_essays",
     io_manager_key="essay_response_io_manager",
     required_resource_keys={"openrouter_client"},
-    deps=["generation_tasks"],
 )
-def essay_response(context, essay_prompt, generation_tasks) -> str:
+def essay_response(context, essay_prompt, essay_generation_tasks) -> str:
     """
     Generate Phase 2 LLM responses for essays.
     """
     task_id = context.partition_key
     
     # Get the specific task for this partition
-    task_row = generation_tasks[generation_tasks["generation_task_id"] == task_id].iloc[0]
+    task_row = essay_generation_tasks[essay_generation_tasks["essay_task_id"] == task_id].iloc[0]
     
     # Use the model name directly from the task
     model_name = task_row["generation_model_name"]
@@ -222,5 +226,3 @@ def essay_response(context, essay_prompt, generation_tasks) -> str:
     
     context.log.info(f"Generated essay response for task {task_id} using model {model_name}")
     return response
-
-
