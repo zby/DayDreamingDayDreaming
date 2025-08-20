@@ -268,7 +268,7 @@ Missing generation response required for evaluation task 'eval_001_creativity_cl
 - File was deleted or moved outside of Dagster
 
 **Diagnostic Steps:**
-1. Check if the referenced `generation_task_id` exists:
+1. Check if the referenced `essay_task_id` exists:
    ```bash
    ls data/3_generation/generation_responses/ | grep combo_001_essay-inventive-synthesis_claude_f
    ```
@@ -304,12 +304,12 @@ uv run dagster asset materialize --select "+generation_response" -f daydreaming_
 
 **Error Message:**
 ```
-Invalid generation_task_id referenced by evaluation task 'eval_001': ''
+Invalid essay_task_id referenced by evaluation task 'eval_001': ''
 ```
 
 **Symptoms:**
 - `evaluation_prompt` fails immediately with FK validation error
-- `generation_task_id` field is empty, null, or malformed
+- `essay_task_id` field is empty, null, or malformed
 - Error occurs before any file access attempts
 
 **Root Causes:**
@@ -331,14 +331,14 @@ Invalid generation_task_id referenced by evaluation task 'eval_001': ''
 
 3. Validate all FK references:
    ```bash
-   # Extract all generation_task_ids from evaluation_tasks
+   # Extract all essay_task_ids from evaluation_tasks
    cut -d',' -f2 data/2_tasks/evaluation_tasks.csv | sort | uniq > eval_fks.txt
    
-   # Extract all generation_task_ids from generation_tasks  
-   cut -d',' -f1 data/2_tasks/generation_tasks.csv | sort | uniq > gen_ids.txt
+   # Extract all essay_task_ids from essay_generation_tasks  
+   cut -d',' -f1 data/2_tasks/essay_generation_tasks.csv | sort | uniq > essay_ids.txt
    
    # Find orphaned FKs
-   comm -23 eval_fks.txt gen_ids.txt
+   comm -23 eval_fks.txt essay_ids.txt
    ```
 
 **Solutions:**
@@ -487,14 +487,14 @@ Create a validation script:
 import pandas as pd
 
 # Load both task tables
-gen_tasks = pd.read_csv("data/2_tasks/generation_tasks.csv")
+essay_tasks = pd.read_csv("data/2_tasks/essay_generation_tasks.csv")
 eval_tasks = pd.read_csv("data/2_tasks/evaluation_tasks.csv")
 
 # Check FK integrity
-gen_ids = set(gen_tasks["generation_task_id"])
-eval_fks = set(eval_tasks["generation_task_id"])
+essay_ids = set(essay_tasks["essay_task_id"])
+eval_fks = set(eval_tasks["essay_task_id"])
 
-orphaned = eval_fks - gen_ids
+orphaned = eval_fks - essay_ids
 print(f"Orphaned FKs: {orphaned}")
 
 # Check for duplicates
@@ -566,7 +566,7 @@ Contact a developer if:
 Set up monitoring for:
 - High failure rate on evaluation assets (>5% of partitions failing)
 - Increasing numbers of orphaned FK references
-- Unusual patterns in generation_task_id references
+- Unusual patterns in essay_task_id references
 - IO manager path configuration drift
 - Asset dependency chain breaks
 

@@ -465,12 +465,105 @@ class TestPipelineIntegration:
                     f"✅ Task verification completed: {actual_link_task_count} link tasks, {len(eval_tasks_csv)} evaluation tasks"
                 )
 
-                print("⚠ Skipping generation and evaluation materialization in integration test (focus on task plumbing)")
-                # Final verification of task outputs only
+                # STEP 2: Materialize generation pipeline (links and essays)
+                print("🔗 Step 2: Materializing generation pipeline...")
+                
+                # Get task IDs for generation
+                gen_tasks_df = pd.read_csv(task_dir / "link_generation_tasks.csv")
+                test_gen_partitions = gen_tasks_df["link_task_id"].tolist()[:2]  # Limit to 2 for testing
+                
+                # Materialize a few generation tasks for testing
+                from daydreaming_dagster.assets.two_phase_generation import (
+                    links_prompt, links_response, essay_prompt, essay_response
+                )
+                
+                # Materialize link generation for specific partitions
+                for partition_key in test_gen_partitions:
+                    print(f"  Materializing links for partition: {partition_key}")
+                    result = materialize(
+                        [
+                            # Core dependencies for links
+                            concepts, llm_models, link_templates, content_combinations,
+                            link_generation_tasks,
+                            # Link generation assets
+                            links_prompt, links_response
+                        ],
+                        resources=resources,
+                        instance=instance,
+                        partition_key=partition_key
+                    )
+                    if not result.success:
+                        print(f"  ⚠ Links generation failed for partition {partition_key} - continuing")
+                        continue
+                
+                # Materialize essay generation for corresponding essay task partitions
+                essay_tasks_df = pd.read_csv(task_dir / "essay_generation_tasks.csv")
+                test_essay_partitions = essay_tasks_df["essay_task_id"].tolist()[:2]  # Limit to 2 for testing
+                
+                for partition_key in test_essay_partitions:
+                    print(f"  Materializing essays for partition: {partition_key}")
+                    result = materialize(
+                        [
+                            # Core dependencies for essays
+                            concepts, llm_models, link_templates, essay_templates, content_combinations,
+                            link_generation_tasks, essay_generation_tasks,
+                            # Essay generation assets
+                            essay_prompt, essay_response
+                        ],
+                        resources=resources,
+                        instance=instance,
+                        partition_key=partition_key
+                    )
+                    if not result.success:
+                        print(f"  ⚠ Essay generation failed for partition {partition_key} - continuing")
+                        continue
+                
+                print("✅ Generation materialization completed")
+                
+                # STEP 3: Test evaluation pipeline with limited partitions
+                print("📊 Step 3: Testing evaluation pipeline...")
+                
+                eval_tasks_df = pd.read_csv(task_dir / "evaluation_tasks.csv")
+                # Only test evaluation tasks that reference the generated essays
+                essay_tasks_df = pd.read_csv(task_dir / "essay_generation_tasks.csv")
+                generated_essay_ids = essay_tasks_df["essay_task_id"].tolist()[:2]  # Match generation limit
+                
+                test_eval_partitions = eval_tasks_df[
+                    eval_tasks_df["essay_task_id"].isin(generated_essay_ids)
+                ]["evaluation_task_id"].tolist()[:2]  # Limit to 2 for testing
+                
+                if test_eval_partitions:
+                    print(f"  Testing {len(test_eval_partitions)} evaluation partitions")
+                    
+                    # Test evaluation_prompt asset specifically (this was missing the essay_task_id issue)
+                    for partition_key in test_eval_partitions:
+                        print(f"  Materializing evaluation for partition: {partition_key}")
+                        try:
+                            result = materialize(
+                                [
+                                    # Dependencies
+                                    evaluation_templates, evaluation_tasks,
+                                    # Evaluation assets
+                                    evaluation_prompt, evaluation_response
+                                ],
+                                resources=resources,
+                                instance=instance,
+                                partition_key=partition_key
+                            )
+                            if result.success:
+                                print(f"  ✅ Evaluation succeeded for partition {partition_key}")
+                            else:
+                                print(f"  ⚠ Evaluation failed for partition {partition_key}")
+                        except Exception as e:
+                            print(f"  ❌ Evaluation error for partition {partition_key}: {str(e)[:100]}")
+                else:
+                    print("  ⚠ No evaluation partitions found for testing")
+                
+                # Final verification including generated files
                 self._verify_expected_files(
                     pipeline_data_root,
-                    [],
-                    [],
+                    test_gen_partitions,
+                    test_eval_partitions,
                 )
                 print("🎉 Task setup workflow test passed successfully!")
 

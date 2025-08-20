@@ -216,7 +216,7 @@ data/1_raw/generation_templates/
 
 **Partitioning Strategy**:
 - **Generation**: Partitioned by `{combo_id}_{template}_{model}`
-- **Evaluation**: Partitioned by `{generation_task_id}_{eval_template}_{eval_model}`
+- **Evaluation**: Partitioned by `{essay_task_id}_{eval_template}_{eval_model}`
 
 **Key Features**:
 - **Individual File Storage**: Each prompt/response stored as separate files
@@ -375,7 +375,7 @@ The pipeline uses Dagster's dynamic partitioning to create fine-grained, recover
 - Stable combo IDs follow `combo_v1_<12-hex>` (e.g., `combo_v1_1f3a9c2d7b2c_02_problem_solving_deepseek`).
 - Legacy format `combo_XXX_...` remains supported in older artifacts/tests.
 
-**Evaluation Tasks**: `{generation_task}_{eval_template}_{eval_model}/{eval_model_version}`
+**Evaluation Tasks**: `{essay_task}_{eval_template}_{eval_model}/{eval_model_version}`
 - Example with stable ID: `combo_v1_1f3a9c2d7b2c_02_problem_solving_deepseek_creativity_metrics_deepseek/deepseek-r1:free`
 
 ## Storage Architecture
@@ -487,17 +487,17 @@ The pipeline is designed for efficient concurrent processing:
 
 The `evaluation_prompt` asset needs to consume content from the `generation_response` asset, but they use different partition schemes:
 
-- `generation_response`: Partitioned by `generation_task_id`
+- `essay_response`: Partitioned by `essay_task_id`
 - `evaluation_prompt`: Partitioned by `evaluation_task_id` 
 
-The relationship between them is established through a foreign key (`generation_task_id`) stored in the evaluation tasks table.
+The relationship between them is established through a foreign key (`essay_task_id`) stored in the evaluation tasks table.
 
 ### Solution: Manual IO with Foreign Keys
 
 Rather than using complex multi-dimensional partitions, we use a simpler approach:
 
-1. **Foreign Key Lookup**: `evaluation_prompt` reads its partition's row from `evaluation_tasks` to get the associated `generation_task_id`
-2. **Manual IO Loading**: Uses the IO manager directly to load the `generation_response` content by `generation_task_id`
+1. **Foreign Key Lookup**: `evaluation_prompt` reads its partition's row from `evaluation_tasks` to get the associated `essay_task_id`
+2. **Manual IO Loading**: Uses the IO manager directly to load the `essay_response` content by `essay_task_id`
 3. **MockLoadContext Pattern**: Creates a temporary context object to interface with the IO manager
 
 ### Implementation Pattern
@@ -507,8 +507,8 @@ class MockLoadContext:
     def __init__(self, partition_key):
         self.partition_key = partition_key
 
-mock_context = MockLoadContext(generation_task_id)
-generation_response = gen_response_io_manager.load_input(mock_context)
+mock_context = MockLoadContext(essay_task_id)
+essay_response = essay_response_io_manager.load_input(mock_context)
 ```
 
 This pattern allows us to load data from a different partition key than the current asset's partition.
@@ -520,7 +520,7 @@ This pattern allows us to load data from a different partition key than the curr
 - **Explicit Data Flow**: The FK relationship is visible in the evaluation tasks table
 - **Flexible**: Easy to change partition mapping logic without touching partition definitions
 - **Testable**: Can easily mock IO managers for testing
-- **Performance**: Only loads the specific generation response needed
+- **Performance**: Only loads the specific essay response needed
 
 **Trade-offs:**
 - **Manual IO**: Requires explicit IO manager usage instead of Dagster inputs

@@ -38,13 +38,13 @@ class TestAgreementClassification:
             assert result == test_case["expected"]
 
 
-class TestGenerationTaskIdExtraction:
-    """Test generation task ID extraction logic."""
+class TestEssayTaskIdExtraction:
+    """Test essay task ID extraction logic."""
     
-    def test_extract_generation_task_id(self):
-        """Test extraction of generation_task_id from evaluation_task_id."""
-        def extract_generation_task_id(eval_task_id):
-            """Extract generation_task_id from evaluation_task_id."""
+    def test_extract_essay_task_id(self):
+        """Test extraction of essay_task_id from evaluation_task_id."""
+        def extract_essay_task_id(eval_task_id):
+            """Extract essay_task_id from evaluation_task_id."""
             if pd.isna(eval_task_id):
                 return None
             
@@ -64,21 +64,21 @@ class TestGenerationTaskIdExtraction:
         test_cases = [
             {
                 "eval_task_id": "combo_001_systematic-analytical-v2_deepseek_r1_f_daydreaming-verification-v2_qwq_32b_f",
-                "expected_gen_id": "combo_001_systematic-analytical-v2_deepseek_r1_f"
+                "expected_essay_id": "combo_001_systematic-analytical-v2_deepseek_r1_f"
             },
             {
                 "eval_task_id": "combo_002_creative_synthesis_google_creativity-metrics_deepseek",
-                "expected_gen_id": "combo_002_creative_synthesis"  # First 4 parts: combo, 002, creative, synthesis
+                "expected_essay_id": "combo_002_creative_synthesis"  # First 4 parts: combo, 002, creative, synthesis
             },
             {
                 "eval_task_id": "simple_task_id",
-                "expected_gen_id": "simple_task_id"  # Fallback case
+                "expected_essay_id": "simple_task_id"  # Fallback case
             }
         ]
         
         for test_case in test_cases:
-            result = extract_generation_task_id(test_case["eval_task_id"])
-            assert result == test_case["expected_gen_id"]
+            result = extract_essay_task_id(test_case["eval_task_id"])
+            assert result == test_case["expected_essay_id"]
 
 
 class TestVarianceStabilityClassification:
@@ -202,14 +202,14 @@ class TestVarianceUtilityFunctions:
     def test_aggregation_functions(self):
         """Test aggregation functions used in analysis."""
         test_data = pd.DataFrame({
-            "generation_task_id": ["gen_001", "gen_001", "gen_002"],
+            "essay_task_id": ["essay_001", "essay_001", "essay_002"],
             "score": [8.0, 7.5, 9.0],
             "eval_template": ["template1", "template1", "template2"],
             "eval_model": ["model1", "model2", "model1"]
         })
         
         # Test groupby aggregation
-        grouped = test_data.groupby('generation_task_id')['score'].agg([
+        grouped = test_data.groupby('essay_task_id')['score'].agg([
             ('count', 'count'),
             ('mean', 'mean'),
             ('std', 'std'),
@@ -217,14 +217,14 @@ class TestVarianceUtilityFunctions:
             ('max', 'max')
         ])
         
-        # Verify gen_001 has 2 evaluations
-        gen_001_stats = grouped.loc['gen_001']
-        assert gen_001_stats['count'] == 2
-        assert gen_001_stats['mean'] == 7.75  # (8.0 + 7.5) / 2
-        assert gen_001_stats['min'] == 7.5
-        assert gen_001_stats['max'] == 8.0
+        # Verify essay_001 has 2 evaluations
+        essay_001_stats = grouped.loc['essay_001']
+        assert essay_001_stats['count'] == 2
+        assert essay_001_stats['mean'] == 7.75  # (8.0 + 7.5) / 2
+        assert essay_001_stats['min'] == 7.5
+        assert essay_001_stats['max'] == 8.0
         
-        # Verify gen_002 has 1 evaluation 
-        gen_002_stats = grouped.loc['gen_002']
-        assert gen_002_stats['count'] == 1
-        assert gen_002_stats['mean'] == 9.0
+        # Verify essay_002 has 1 evaluation 
+        essay_002_stats = grouped.loc['essay_002']
+        assert essay_002_stats['count'] == 1
+        assert essay_002_stats['mean'] == 9.0

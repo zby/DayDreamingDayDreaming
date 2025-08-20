@@ -4,6 +4,8 @@ import pandas as pd
 from jinja2 import Environment
 from .partitions import link_tasks_partitions, essay_tasks_partitions
 from ..utils.template_loader import load_generation_template
+from ..utils.dataframe_helpers import get_task_row
+from ..utils.shared_context import MockLoadContext
 
 
 @asset(
@@ -23,21 +25,7 @@ def links_prompt(
     task_id = context.partition_key
     
     # Get the specific task for this partition
-    matching_tasks = link_generation_tasks[link_generation_tasks["link_task_id"] == task_id]
-    if matching_tasks.empty:
-        available_tasks = generation_tasks["generation_task_id"].tolist()[:5]
-        context.log.error(f"Task ID '{task_id}' not found in generation_tasks DataFrame")
-        raise Failure(
-            description=f"Generation task '{task_id}' not found in task database",
-            metadata={
-                "task_id": MetadataValue.text(task_id),
-                "available_tasks_sample": MetadataValue.text(str(available_tasks)),
-                "total_tasks": MetadataValue.int(len(generation_tasks)),
-                "resolution_1": MetadataValue.text("Check if generation_tasks asset was materialized recently"),
-                "resolution_2": MetadataValue.text("Run: dagster asset materialize --select generation_tasks"),
-            }
-        )
-    task_row = matching_tasks.iloc[0]
+    task_row = get_task_row(link_generation_tasks, "link_task_id", task_id, context, "link_generation_tasks")
     combo_id = task_row["combo_id"]
     template_name = task_row["link_template"]
     
@@ -98,7 +86,7 @@ def links_response(context, links_prompt, link_generation_tasks) -> str:
     task_id = context.partition_key
     
     # Get the specific task for this partition
-    task_row = link_generation_tasks[link_generation_tasks["link_task_id"] == task_id].iloc[0]
+    task_row = get_task_row(link_generation_tasks, "link_task_id", task_id, context, "link_generation_tasks")
     
     # Use the model name directly from the task
     model_name = task_row["generation_model_name"]
@@ -150,23 +138,12 @@ def essay_prompt(
     task_id = context.partition_key
     
     # Get the specific task for this partition
-    matching_tasks = essay_generation_tasks[essay_generation_tasks["essay_task_id"] == task_id]
-    if matching_tasks.empty:
-        context.log.error(f"Task ID '{task_id}' not found in generation_tasks DataFrame")
-        raise Failure(
-            description=f"Generation task '{task_id}' not found in task database",
-            metadata={"task_id": MetadataValue.text(task_id)}
-        )
-    task_row = matching_tasks.iloc[0]
+    task_row = get_task_row(essay_generation_tasks, "essay_task_id", task_id, context, "essay_generation_tasks")
     template_name = task_row["essay_template"]
 
     # Load links_response using FK to link_task_id
     link_task_id = task_row["link_task_id"]
     links_io = context.resources.links_response_io_manager
-
-    class MockLoadContext:
-        def __init__(self, partition_key):
-            self.partition_key = partition_key
 
     links_context = MockLoadContext(link_task_id)
     links_content = links_io.load_input(links_context)
@@ -215,7 +192,7 @@ def essay_response(context, essay_prompt, essay_generation_tasks) -> str:
     task_id = context.partition_key
     
     # Get the specific task for this partition
-    task_row = essay_generation_tasks[essay_generation_tasks["essay_task_id"] == task_id].iloc[0]
+    task_row = get_task_row(essay_generation_tasks, "essay_task_id", task_id, context, "essay_generation_tasks")
     
     # Use the model name directly from the task
     model_name = task_row["generation_model_name"]

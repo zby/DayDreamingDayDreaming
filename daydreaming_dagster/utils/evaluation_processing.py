@@ -215,13 +215,13 @@ def parse_evaluation_files_cross_experiment(base_path: Path, context=None) -> pd
 
 
 def enrich_evaluation_data(parsed_df: pd.DataFrame, evaluation_tasks: pd.DataFrame, 
-                          generation_tasks: pd.DataFrame, required_columns: List[str] = None) -> pd.DataFrame:
+                          essay_generation_tasks: pd.DataFrame, required_columns: List[str] = None) -> pd.DataFrame:
     """Enrich parsed evaluation data with task metadata via DataFrame joins.
     
     Args:
         parsed_df: DataFrame with parsed evaluation results
         evaluation_tasks: Evaluation task metadata
-        generation_tasks: Generation task metadata
+        essay_generation_tasks: Essay generation task metadata
         required_columns: List of columns to ensure exist (with 'unknown' defaults)
         
     Returns:
@@ -232,21 +232,21 @@ def enrich_evaluation_data(parsed_df: pd.DataFrame, evaluation_tasks: pd.DataFra
         
     # Join with evaluation metadata
     enriched_df = parsed_df.merge(
-        evaluation_tasks[['evaluation_task_id', 'generation_task_id', 'evaluation_template', 'evaluation_model']],
+        evaluation_tasks[['evaluation_task_id', 'essay_task_id', 'evaluation_template', 'evaluation_model']],
         on='evaluation_task_id',
         how='left'
     )
     
-    # Join with generation metadata
-    if not generation_tasks.empty:
+    # Join with essay generation metadata
+    if not essay_generation_tasks.empty:
         enriched_df = enriched_df.merge(
-            generation_tasks[['generation_task_id', 'combo_id', 'generation_template', 'generation_model']],
-            on='generation_task_id',
+            essay_generation_tasks[['essay_task_id', 'combo_id', 'essay_template', 'generation_model']],
+            on='essay_task_id',
             how='left'
         )
     else:
         enriched_df['combo_id'] = 'unknown'
-        enriched_df['generation_template'] = 'unknown'
+        enriched_df['essay_template'] = 'unknown'
         enriched_df['generation_model'] = 'unknown'
     
     # Ensure required columns exist

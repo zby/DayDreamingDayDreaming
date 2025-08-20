@@ -7,8 +7,8 @@ from unittest.mock import Mock
 
 
 # Extract core logic functions for testing (without Dagster decorators)
-def extract_generation_task_id(eval_task_id):
-    """Extract generation_task_id from evaluation_task_id."""
+def extract_essay_task_id(eval_task_id):
+    """Extract essay_task_id from evaluation_task_id."""
     if pd.isna(eval_task_id):
         return None
     
@@ -58,11 +58,11 @@ def calculate_evaluator_agreement(parsed_scores):
     if valid_scores.empty:
         return pd.DataFrame()
     
-    # Add generation_task_id column
-    valid_scores['generation_task_id'] = valid_scores['evaluation_task_id'].apply(extract_generation_task_id)
+    # Add essay_task_id column
+    valid_scores['essay_task_id'] = valid_scores['evaluation_task_id'].apply(extract_essay_task_id)
     
-    # Group by generation_task_id to find cases where multiple evaluators scored the same response
-    agreement_stats = valid_scores.groupby('generation_task_id')['score'].agg([
+    # Group by essay_task_id to find cases where multiple evaluators scored the same response
+    agreement_stats = valid_scores.groupby('essay_task_id')['score'].agg([
         ('evaluator_count', 'count'),
         ('mean_score', 'mean'),
         ('std_dev', 'std'),
@@ -110,14 +110,14 @@ def calculate_comprehensive_variance(parsed_scores):
     if valid_scores.empty:
         return pd.DataFrame()
     
-    # Extract generation_task_id and evaluation info
-    valid_scores['generation_task_id'] = valid_scores['evaluation_task_id'].apply(extract_generation_task_id)
+    # Extract essay_task_id and evaluation info
+    valid_scores['essay_task_id'] = valid_scores['evaluation_task_id'].apply(extract_essay_task_id)
     valid_scores[['eval_template', 'eval_model']] = valid_scores['evaluation_task_id'].apply(
         lambda x: pd.Series(parse_evaluation_info(x))
     )
     
-    # Overall variance: Group only by generation_task_id
-    overall_variance = valid_scores.groupby('generation_task_id').agg({
+    # Overall variance: Group only by essay_task_id
+    overall_variance = valid_scores.groupby('essay_task_id').agg({
         'score': ['count', 'mean', 'std', 'min', 'max'],
         'eval_template': lambda x: x.nunique(),
         'eval_model': lambda x: x.nunique()
@@ -187,10 +187,10 @@ class TestVarianceAnalysis(unittest.TestCase):
         self.mock_context.log.info = Mock()
         self.mock_context.log.warning = Mock()
 
-    def test_generation_task_id_extraction(self):
-        """Test that generation_task_id is correctly extracted from evaluation_task_id."""
-        def extract_generation_task_id(eval_task_id):
-            """Extract generation_task_id from evaluation_task_id (same logic as in asset)."""
+    def test_essay_task_id_extraction(self):
+        """Test that essay_task_id is correctly extracted from evaluation_task_id."""
+        def extract_essay_task_id(eval_task_id):
+            """Extract essay_task_id from evaluation_task_id (same logic as in asset)."""
             if pd.isna(eval_task_id):
                 return None
             
@@ -205,7 +205,7 @@ class TestVarianceAnalysis(unittest.TestCase):
             
             return eval_task_id
 
-        # Test cases with expected generation_task_ids
+        # Test cases with expected essay_task_ids
         test_cases = [
             ('combo_001_systematic-analytical-v2_deepseek_r1_f_daydreaming-verification-v2_deepseek_r1_f',
              'combo_001_systematic-analytical-v2_deepseek_r1_f'),
@@ -215,11 +215,11 @@ class TestVarianceAnalysis(unittest.TestCase):
              'combo_002_creative-synthesis-v2_gemma_3_27b_f'),
         ]
 
-        for eval_task_id, expected_gen_task_id in test_cases:
+        for eval_task_id, expected_essay_task_id in test_cases:
             with self.subTest(eval_task_id=eval_task_id):
-                result = extract_generation_task_id(eval_task_id)
-                self.assertEqual(result, expected_gen_task_id,
-                    f"Expected {expected_gen_task_id}, got {result} for {eval_task_id}")
+                result = extract_essay_task_id(eval_task_id)
+                self.assertEqual(result, expected_essay_task_id,
+                    f"Expected {expected_essay_task_id}, got {result} for {eval_task_id}")
 
     def test_evaluation_info_parsing(self):
         """Test that evaluation template and model are correctly parsed."""
@@ -274,7 +274,7 @@ class TestVarianceAnalysis(unittest.TestCase):
         # Should have found multiple evaluators for some generation responses
         if not result.empty:
             # Check required columns exist
-            expected_columns = ['generation_task_id', 'evaluator_count', 'mean_score', 'std_dev', 
+            expected_columns = ['essay_task_id', 'evaluator_count', 'mean_score', 'std_dev', 
                               'score_range', 'agreement_classification']
             for col in expected_columns:
                 self.assertIn(col, result.columns, f"Missing expected column: {col}")

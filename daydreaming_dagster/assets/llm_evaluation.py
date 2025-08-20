@@ -4,6 +4,8 @@ from .partitions import evaluation_tasks_partitions
 import pandas as pd
 import logging
 from jinja2 import Environment
+from ..utils.dataframe_helpers import get_task_row
+from ..utils.shared_context import MockLoadContext
 
 logger = logging.getLogger(__name__)
 
@@ -111,24 +113,7 @@ def evaluation_prompt(context, evaluation_tasks, evaluation_templates) -> str:
     task_id = context.partition_key
     
     # Get the specific task for this partition with debugging
-    matching_tasks = evaluation_tasks[evaluation_tasks["evaluation_task_id"] == task_id]
-    if len(matching_tasks) == 0:
-        available_tasks = evaluation_tasks["evaluation_task_id"].tolist()[:5]  # Show first 5
-        context.log.error(f"Evaluation task '{task_id}' not found in evaluation_tasks DataFrame")
-        raise Failure(
-            description=f"Evaluation task '{task_id}' not found in task database",
-            metadata={
-                "task_id": MetadataValue.text(task_id),
-                "available_tasks_sample": MetadataValue.text(str(available_tasks)),
-                "total_tasks": MetadataValue.int(len(evaluation_tasks)),
-                "resolution_1": MetadataValue.text("Check if evaluation_tasks asset was materialized recently"),
-                "resolution_2": MetadataValue.text("Run: dagster asset materialize --select evaluation_tasks"),
-                "resolution_3": MetadataValue.text("Verify partitions are up to date - stale partitions may reference old task IDs"),
-                "resolution_4": MetadataValue.text("Ensure generation_tasks was materialized first (evaluation depends on it)")
-            }
-        )
-    
-    task_row = matching_tasks.iloc[0]
+    task_row = get_task_row(evaluation_tasks, "evaluation_task_id", task_id, context, "evaluation_tasks")
     essay_task_id = task_row["essay_task_id"]
     
     # Log the foreign key relationship for debugging
@@ -154,15 +139,6 @@ def evaluation_prompt(context, evaluation_tasks, evaluation_templates) -> str:
     # Create a mock context for the generation partition (documented pattern)
     # This allows us to load data from a different partition than the current asset's partition
     # The IO manager only needs the partition_key attribute to locate the correct file
-    class MockLoadContext:
-        """Minimal context object for cross-partition IO manager calls.
-        
-        This pattern is documented in docs/evaluation_asset_architecture.md as an
-        intentional way to load data from foreign key referenced partitions.
-        """
-        def __init__(self, partition_key):
-            self.partition_key = partition_key
-    
     mock_context = MockLoadContext(essay_task_id)
     
     # Check if the file exists before attempting to load (better error context)
@@ -225,7 +201,7 @@ def evaluation_prompt(context, evaluation_tasks, evaluation_templates) -> str:
         "essay_task_id_used": MetadataValue.text(essay_task_id),
         "essay_content_length": MetadataValue.int(len(essay_content)),
         "evaluation_prompt_length": MetadataValue.int(len(eval_prompt)),
-        "fk_relationship": MetadataValue.text(f"eval:{task_id} -> gen:{generation_task_id}"),
+        "fk_relationship": MetadataValue.text(f"eval:{task_id} -> essay:{essay_task_id}"),
         "io_manager_base_path": MetadataValue.path(str(essay_io_manager.base_path)),
         "template_used": MetadataValue.text(task_row["evaluation_template"]),
         "model_planned": MetadataValue.text(task_row["evaluation_model_name"])
@@ -246,24 +222,7 @@ def evaluation_response(context, evaluation_prompt, evaluation_tasks) -> str:
     task_id = context.partition_key
     
     # Debug: Check if task_id exists in evaluation_tasks
-    matching_tasks = evaluation_tasks[evaluation_tasks["evaluation_task_id"] == task_id]
-    if len(matching_tasks) == 0:
-        available_tasks = evaluation_tasks["evaluation_task_id"].tolist()[:5]  # Show first 5
-        context.log.error(f"Evaluation task '{task_id}' not found in evaluation_tasks DataFrame")
-        raise Failure(
-            description=f"Evaluation task '{task_id}' not found in task database",
-            metadata={
-                "task_id": MetadataValue.text(task_id),
-                "available_tasks_sample": MetadataValue.text(str(available_tasks)),
-                "total_tasks": MetadataValue.int(len(evaluation_tasks)),
-                "resolution_1": MetadataValue.text("Check if evaluation_tasks asset was materialized recently"),
-                "resolution_2": MetadataValue.text("Run: dagster asset materialize --select evaluation_tasks"),
-                "resolution_3": MetadataValue.text("Verify partitions are up to date - stale partitions may reference old task IDs"),
-                "resolution_4": MetadataValue.text("Ensure evaluation_prompt was materialized first (evaluation_response depends on it)")
-            }
-        )
-    
-    task_row = matching_tasks.iloc[0]
+    task_row = get_task_row(evaluation_tasks, "evaluation_task_id", task_id, context, "evaluation_tasks")
     
     # Use the model name directly from the task
     model_name = task_row["evaluation_model_name"]

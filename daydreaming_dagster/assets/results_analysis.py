@@ -10,7 +10,7 @@ import numpy as np
 def evaluator_agreement_analysis(context, parsed_scores: pd.DataFrame) -> pd.DataFrame:
     """
     Calculate evaluator agreement metrics for the same generation responses.
-    Groups evaluations by generation_task_id to analyze variance across:
+    Groups evaluations by essay_task_id to analyze variance across:
     1. Multiple evaluation models (deepseek_r1_f vs qwq_32b_f)  
     2. Multiple evaluation templates (when available)
     

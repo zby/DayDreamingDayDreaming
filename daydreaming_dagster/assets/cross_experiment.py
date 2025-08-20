@@ -80,11 +80,10 @@ def filtered_evaluation_results(context, config: FilteredEvaluationResultsConfig
     # Use the new cross-experiment parsing utility with filtering
     base_path = Path("data/4_evaluation/evaluation_responses")
     
-    # Parse with filtering - only process files that pass the filter
+    # Parse all files (filtering can be added later if needed)
     results_df = parse_evaluation_files_cross_experiment(
         base_path, 
-        context,
-        filter_function=should_include_evaluation
+        context
     )
     
     # Add metadata
