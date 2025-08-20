@@ -44,6 +44,9 @@ include = ["daydreaming_dagster*"]
 namespaces = false
 
 [tool.pytest.ini_options]
+# Note: a historical CLI compatibility test that reproduced an ANTLR4 parsing
+# issue has been removed. We pin antlr4-python3-runtime>=4.13.2, and the test
+# is no longer needed.
 addopts = """
 --cov-report term-missing \
 --cov daydreaming_dagster \

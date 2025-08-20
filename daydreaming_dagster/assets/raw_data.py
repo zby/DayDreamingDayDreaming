@@ -118,6 +118,8 @@ def essay_templates(context) -> pd.DataFrame:
     """Load essay-phase templates with content."""
     data_root = context.resources.data_root
     essay_csv = Path(data_root) / "1_raw" / "essay_templates.csv"
+    # Note: phase directories use 'links/' (plural) and 'essay/' (singular)
+    # to reflect many links generated vs. a single essay output per task.
     essay_dir = Path(data_root) / "1_raw" / "generation_templates" / "essay"
 
     if not essay_csv.exists():

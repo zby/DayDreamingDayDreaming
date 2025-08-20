@@ -269,8 +269,10 @@ class TestPathGeneration:
         with patch('daydreaming_dagster.assets.results_summary.is_two_phase_template') as mock_is_two_phase:
             mock_is_two_phase.return_value = True
             
-            path = get_generation_response_path("combo_123", "creative-synthesis-v8", "qwen-model")
-            expected = "data/3_generation/essay_responses/combo_123_creative-synthesis-v8_qwen-model.txt"
+            # New two-phase path includes link_template and essay_template
+            from daydreaming_dagster.assets.results_summary import get_generation_response_path as gen_path
+            path = gen_path("combo_123", "creative-synthesis-v8", "creative-synthesis-v8", "qwen-model")
+            expected = "data/3_generation/essay_responses/combo_123_creative-synthesis-v8_qwen-model_creative-synthesis-v8.txt"
             assert path == expected
     
     def test_regular_template_path_generation(self):
@@ -278,6 +280,7 @@ class TestPathGeneration:
         with patch('daydreaming_dagster.assets.results_summary.is_two_phase_template') as mock_is_two_phase:
             mock_is_two_phase.return_value = False
             
-            path = get_generation_response_path("combo_456", "creative-synthesis-v2", "gpt-model")
+            from daydreaming_dagster.assets.results_summary import get_generation_response_path as gen_path
+            path = gen_path("combo_456", None, "creative-synthesis-v2", "gpt-model")
             expected = "data/3_generation/generation_responses/combo_456_creative-synthesis-v2_gpt-model.txt"
             assert path == expected

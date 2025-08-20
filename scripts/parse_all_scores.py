@@ -43,27 +43,25 @@ LEGACY_TEMPLATES = {
 
 
 def parse_identifiers_from_eval_task_id(evaluation_task_id: str) -> Dict[str, Any]:
-    """Parse identifiers from an evaluation_task_id string using pattern recognition.
+    """Parse identifiers from an evaluation_task_id string using the new scheme.
 
-    Format: {combo_id}_{generation_template}_{generation_model}_{eval_template}_{eval_model}
-    
-    Examples:
-    - combo_v1_8723d84d33de_essay-inventive-synthesis_deepseek_r1_f_o3-prior-art-eval_deepseek_r1_f
-    - combo_001_creative-synthesis-v2_deepseek_r1_f_daydreaming-verification-v2_qwq_32b_f
-    
-    Strategy:
-    1. Known combo_id patterns: combo_NNN or combo_v1_HASH
-    2. Templates use hyphens (no underscores): creative-synthesis-v3, o3-prior-art-eval
-    3. Models may have underscores: deepseek_r1_f, qwq_32b_f
-    4. Parse from right to left, using template patterns to identify boundaries
-    
-    Returns keys: generation_task_id, combo_id, generation_template,
-                  generation_model, evaluation_template, evaluation_model
+    New format (split tasks):
+      evaluation_task_id = {essay_task_id}_{eval_template}_{eval_model}
+      essay_task_id      = {combo_id}_{link_template}_{generation_model}_{essay_template}
+
+    We extract:
+      - essay_task_id
+      - combo_id
+      - link_template
+      - essay_template (reported as generation_template for backward compatibility)
+      - generation_model
+      - evaluation_template, evaluation_model
     """
     result: Dict[str, Any] = {
-        "generation_task_id": None,
+        "essay_task_id": None,
         "combo_id": None,
-        "generation_template": None,
+        "link_template": None,
+        "generation_template": None,  # holds essay_template for compatibility
         "generation_model": None,
         "evaluation_template": None,
         "evaluation_model": None,
@@ -118,43 +116,43 @@ def parse_identifiers_from_eval_task_id(evaluation_task_id: str) -> Dict[str, An
         eval_model = parts[-1]
         remaining_parts = parts[:-2]
 
-    # Now parse generation side from remaining_parts
-    if len(remaining_parts) < 3:  # Need combo + template + model minimum
+    # Now parse essay_task_id side from remaining_parts
+    # Expect: combo_parts + link_template + generation_model (+ underscores) + essay_template
+    if len(remaining_parts) < 4:  # Need at least combo + link_template + model + essay_template
         result.update({
             "evaluation_template": eval_template,
             "evaluation_model": eval_model,
         })
         return result
 
-    # Find generation template by matching known patterns
-    gen_template = None
+    # Essay template is last known template token from the right
+    essay_template = None
     gen_model = None
-    combo_parts = []
-    
-    for i in range(len(remaining_parts)-1, 0, -1):  # Need at least 1 part left for combo
-        candidate_template = remaining_parts[i-1] 
-        candidate_model_parts = remaining_parts[i:]
-        
-        if candidate_template in known_templates:
-            gen_template = candidate_template
-            gen_model = "_".join(candidate_model_parts)
-            combo_parts = remaining_parts[:i-1]
+    link_template = None
+    combo_parts: List[str] = []
+
+    # Find essay_template as last known template token in remaining_parts
+    for i in range(len(remaining_parts)-1, -1, -1):
+        if remaining_parts[i] in known_templates:
+            essay_template = remaining_parts[i]
+            # generation_model is the token(s) before essay_template until encountering the link_template
+            # Assume generation_model is a single token (may include underscores)
+            if i - 1 >= 0:
+                gen_model = remaining_parts[i-1]
+            # link_template is immediately before generation_model
+            if i - 2 >= 0:
+                link_template = remaining_parts[i-2]
+                combo_parts = remaining_parts[:i-2]
             break
-    
-    if not gen_template:
-        # Fallback: assume pattern combo_parts + template + model
-        if len(remaining_parts) >= 2:
-            gen_model = remaining_parts[-1]
-            gen_template = remaining_parts[-2]
-            combo_parts = remaining_parts[:-2]
 
     combo_id = "_".join(combo_parts) if combo_parts else None
-    generation_task_id = "_".join(remaining_parts) if remaining_parts else None
+    essay_task_id = "_".join(remaining_parts) if remaining_parts else None
 
     result.update({
-        "generation_task_id": generation_task_id,
+        "essay_task_id": essay_task_id,
         "combo_id": combo_id,
-        "generation_template": gen_template,
+        "link_template": link_template,
+        "generation_template": essay_template,
         "generation_model": gen_model,
         "evaluation_template": eval_template,
         "evaluation_model": eval_model,
@@ -248,8 +246,9 @@ def parse_all(
             "error": result["error"],
             "evaluation_template": id_parts.get("evaluation_template"),
             "evaluation_model": id_parts.get("evaluation_model"),
-            "generation_task_id": id_parts.get("generation_task_id"),
+            "essay_task_id": id_parts.get("essay_task_id"),
             "combo_id": id_parts.get("combo_id"),
+            "link_template": id_parts.get("link_template"),
             "generation_template": id_parts.get("generation_template"),
             "generation_model": id_parts.get("generation_model"),
             "evaluation_response_path": str(file_path),
@@ -261,6 +260,7 @@ def parse_all(
     # Order columns for readability if present
     column_order = [
         "combo_id",
+        "link_template",
         "generation_template",
         "generation_model",
         "evaluation_template",
@@ -268,7 +268,7 @@ def parse_all(
         "score",
         "error",
         "evaluation_task_id",
-        "generation_task_id",
+        "essay_task_id",
         "evaluation_response_path",
     ]
     existing = [c for c in column_order if c in df.columns]
@@ -320,5 +320,4 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-
 

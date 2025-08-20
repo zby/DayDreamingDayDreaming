@@ -212,7 +212,7 @@ data/3_generation/
 data/4_evaluation/
 data/5_parsing/
 data/6_summary/
-data/7_reporting/
+data/7_cross_experiment/
 data/combo_mappings.csv
 
 # live data copy for tests

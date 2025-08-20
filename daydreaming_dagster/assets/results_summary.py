@@ -1,4 +1,4 @@
-from dagster import asset, MetadataValue
+from dagster import asset, MetadataValue, Failure
 import pandas as pd
 import numpy as np
 from pathlib import Path
@@ -10,14 +10,18 @@ def is_two_phase_template(template_name: str) -> bool:
     return links_path.exists()
 
 
-def get_generation_response_path(combo_id: str, template_name: str, model_name: str) -> str:
-    """Get the correct path for generation response based on template type."""
-    if is_two_phase_template(template_name):
-        # Two-phase templates use essay_responses
-        return f"data/3_generation/essay_responses/{combo_id}_{template_name}_{model_name}.txt"
-    else:
-        # Regular templates use generation_responses
-        return f"data/3_generation/generation_responses/{combo_id}_{template_name}_{model_name}.txt"
+def get_generation_response_path(combo_id: str, link_template: str | None, essay_template: str, model_name: str) -> str:
+    """Construct the essay/generation response path for a given row.
+
+    For two-phase (essay) generations, filenames are:
+      data/3_generation/essay_responses/{combo_id}_{link_template}_{model_name}_{essay_template}.txt
+
+    For legacy single-phase, we fall back to:
+      data/3_generation/generation_responses/{combo_id}_{essay_template}_{model_name}.txt
+    """
+    if link_template:
+        return f"data/3_generation/essay_responses/{combo_id}_{link_template}_{model_name}_{essay_template}.txt"
+    return f"data/3_generation/generation_responses/{combo_id}_{essay_template}_{model_name}.txt"
 
 
 @asset(
@@ -82,11 +86,30 @@ def generation_scores_pivot(context, parsed_scores: pd.DataFrame, evaluation_tem
     else:
         pivot_df['sum_scores'] = 0.0
 
-    # Add path to the generation response file
-    # Uses appropriate directory based on template type (essay_responses for two-phase, generation_responses for regular)
+    # Require link_template in parsed_scores (added with two-phase architecture)
+    if 'link_template' not in valid_scores.columns:
+        # Fail fast with guidance to rematerialize upstream asset
+        raise Failure(
+            description="Missing required column 'link_template' in parsed_scores for two-phase path generation",
+            metadata={
+                "resolution": MetadataValue.text(
+                    "Rematerialize 'parsed_scores' to include new columns (link_template, essay_task_id). "
+                    "For example: `uv run dagster asset materialize --select parsed_scores -f daydreaming_dagster/definitions.py`"
+                ),
+                "present_columns": MetadataValue.text(", ".join(list(valid_scores.columns))),
+                "expected_column": MetadataValue.text("link_template"),
+            }
+        )
+    # Attach link_template for path construction (take first match for the (combo, essay_template, model) triple)
+    link_map = valid_scores[['combo_id', 'generation_template', 'generation_model', 'link_template']].drop_duplicates()
+    pivot_df = pivot_df.merge(link_map, on=['combo_id', 'generation_template', 'generation_model'], how='left')
+
+    # Add path to the generation response file (two-phase file naming)
     pivot_df['generation_response_path'] = pivot_df.apply(
-        lambda row: get_generation_response_path(row['combo_id'], row['generation_template'], row['generation_model']),
-        axis=1
+        lambda row: get_generation_response_path(
+            row['combo_id'], row.get('link_template'), row['generation_template'], row['generation_model']
+        ),
+        axis=1,
     )
     
     # Order columns: index columns first, then evaluation columns
@@ -286,12 +309,15 @@ def perfect_score_paths(context, parsed_scores: pd.DataFrame) -> pd.DataFrame:
     paths_data = []
     
     for _, row in perfect_scores.iterrows():
-        # Reconstruct generation response path - uses appropriate directory based on template type
-        generation_path = get_generation_response_path(row['combo_id'], row['generation_template'], row['generation_model'])
-        
-        # Reconstruct evaluation response path - flat file structure
-        # Format: data/4_evaluation/evaluation_responses/combo_X_template_model_eval_template_eval_model.txt
-        evaluation_path = f"data/4_evaluation/evaluation_responses/{row['combo_id']}_{row['generation_template']}_{row['generation_model']}_{row.get('evaluation_template', 'daydreaming-verification-v2')}_{row['evaluation_model']}.txt"
+        # Generation path: prefer direct essay_task_id if available; otherwise, build via helper if link_template is present
+        if 'essay_task_id' in row and isinstance(row['essay_task_id'], str) and len(row['essay_task_id']):
+            generation_path = f"data/3_generation/essay_responses/{row['essay_task_id']}.txt"
+        else:
+            link_tpl = row.get('link_template') if 'link_template' in row else None
+            generation_path = get_generation_response_path(row['combo_id'], link_tpl, row['generation_template'], row['generation_model'])
+
+        # Evaluation path: use parsed column when present
+        evaluation_path = row['evaluation_response_path'] if 'evaluation_response_path' in row else f"data/4_evaluation/evaluation_responses/{row['combo_id']}_{row['generation_template']}_{row['generation_model']}_{row.get('evaluation_template', 'daydreaming-verification-v2')}_{row['evaluation_model']}.txt"
         
         paths_data.append({
             'combo_id': row['combo_id'],

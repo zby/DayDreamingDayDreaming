@@ -62,10 +62,10 @@ uv run dagster dev -f daydreaming_dagster/definitions.py
 uv run dagster asset materialize --select "group:raw_data,group:task_definitions" -f daydreaming_dagster/definitions.py
 
 # Option B: Use dependency resolution (alternative)
-uv run dagster asset materialize --select "+generation_tasks,+evaluation_tasks" -f daydreaming_dagster/definitions.py
+uv run dagster asset materialize --select "+link_generation_tasks,+essay_generation_tasks,+evaluation_tasks" -f daydreaming_dagster/definitions.py
 
 # Option C: Explicit list with all dependencies (if you prefer explicit control)
-uv run dagster asset materialize --select "concepts,concepts_metadata,generation_models,evaluation_models,generation_templates_metadata,generation_templates,evaluation_templates_metadata,evaluation_templates,content_combinations,generation_tasks,evaluation_tasks" -f daydreaming_dagster/definitions.py
+uv run dagster asset materialize --select "concepts,llm_models,link_templates,essay_templates,evaluation_templates,content_combinations,link_generation_tasks,essay_generation_tasks,evaluation_tasks" -f daydreaming_dagster/definitions.py
 
 # Dynamic partitions are automatically created when needed
 
@@ -94,9 +94,8 @@ uv run dagster asset materialize --select "parsed_scores,final_results" -f daydr
 - `group:results_processing`: parsed_scores, analysis, and final_results (creates `data/5_parsing/`, `data/6_summary/`)
 
 **Why the specific asset dependencies matter**: 
-- `generation_templates` depends on `generation_templates_metadata` 
-- `evaluation_templates` depends on `evaluation_templates_metadata`
-- These metadata assets load CSV files that specify which templates are active
+- `link_templates` and `essay_templates` load their CSVs and template files and determine activeness
+- `evaluation_templates` loads evaluation CSV + files
 - Using asset groups or dependency resolution (`+`) automatically includes these dependencies
 
 **Dynamic Partitioning**: Partitions are automatically created from the task CSV files when LLM assets are materialized. Partition keys are based on `link_task_id` (links) and `essay_task_id` (essays), which include a stable `combo_id` prefix.
@@ -114,16 +113,17 @@ uv run dagster dev -f daydreaming_dagster/definitions.py
 **Alternative**: CLI loop (sequential, slower)
 ```bash
 # Get all partition names and run them one by one (two-phase generation)
-cut -d',' -f1 data/2_tasks/generation_tasks.csv | tail -n +2 | while read partition; do
-  echo "Running partition: $partition"
-  uv run dagster asset materialize --select "links_prompt,links_response,essay_prompt,essay_response,canonical_generation_response,parsed_generation_responses" --partition "$partition" -f daydreaming_dagster/definitions.py
+# Phase 1: run all link partitions
+cut -d',' -f1 data/2_tasks/link_generation_tasks.csv | tail -n +2 | while read LINK; do
+  echo "Running link partition: $LINK"
+  uv run dagster asset materialize --select "group:generation_links" --partition "$LINK" -f daydreaming_dagster/definitions.py
 done
 
-# Legacy single-phase generation (if needed):
-# cut -d',' -f1 data/2_tasks/generation_tasks.csv | tail -n +2 | while read partition; do
-#   echo "Running partition: $partition"
-#   uv run dagster asset materialize --select "generation_prompt,generation_response,parsed_generation_responses" --partition "$partition" -f daydreaming_dagster/definitions.py
-# done
+# Phase 2: run all essay partitions
+cut -d',' -f1 data/2_tasks/essay_generation_tasks.csv | tail -n +2 | while read ESSAY; do
+  echo "Running essay partition: $ESSAY"
+  uv run dagster asset materialize --select "group:generation_essays" --partition "$ESSAY" -f daydreaming_dagster/definitions.py
+done
 ```
 
 ### Automatic Results Tracking **NEW**
@@ -230,7 +230,7 @@ data/1_raw/generation_templates/
 - **Two-Phase Generation**: `data/3_generation/` (links and essays)
   - `links_prompts/`, `links_responses/` (Phase 1 outputs)
   - `essay_prompts/`, `essay_responses/` (Phase 2 outputs)
-  - `parsed_generation_responses/` (canonical interface for downstream processing)
+  - `parsed_generation_responses/` (legacy; two-phase writes directly to `links_*` and `essay_*`)
 - **Legacy Generation**: `data/3_generation/` (single-phase outputs, still supported)
   - `generation_prompts/`, `generation_responses/`
 - **Results**: `data/5_parsing/` (processed results)
@@ -279,7 +279,7 @@ data/1_raw/generation_templates/
    ```
   DagsterUnknownPartitionError: Could not find a partition with key `combo_v1_<hex>_...` (or legacy `combo_001_...`)
    ```
-  **Solution**: Make sure task CSV files exist by running step 1 first. Use `cut -d',' -f1 data/2_tasks/generation_tasks.csv | sed -n '2p'` to retrieve a valid partition key.
+  **Solution**: Make sure task CSV files exist by running step 1 first. Use `cut -d',' -f1 data/2_tasks/link_generation_tasks.csv | sed -n '2p'` to retrieve a valid link partition key.
 
 4. **Partitioned Asset Group Error**:
    ```

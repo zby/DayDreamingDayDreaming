@@ -66,9 +66,11 @@ def parsed_scores(context, evaluation_tasks: pd.DataFrame, essay_generation_task
     # Map essay_template into legacy generation_template column for compatibility
     enriched_df["generation_template"] = enriched_df["essay_template"]
 
-    # Select final columns
+    # Select final columns (include IDs useful for downstream path reconstruction)
     result_df = enriched_df[[
+        "essay_task_id",
         "combo_id",
+        "link_template",
         "generation_template",
         "generation_model",
         "evaluation_template",
