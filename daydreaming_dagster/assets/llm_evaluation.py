@@ -1,7 +1,57 @@
 from dagster import asset, Failure, MetadataValue
 from pathlib import Path
 from .partitions import evaluation_tasks_partitions
-from ..utils.nodes_standalone import generate_evaluation_prompts
+import pandas as pd
+import logging
+from jinja2 import Environment
+
+logger = logging.getLogger(__name__)
+
+
+def generate_evaluation_prompts(
+    essay_responses: dict[str, str],
+    evaluation_tasks: pd.DataFrame,
+    evaluation_templates: dict[str, str],
+) -> dict[str, str]:
+    """
+    Generate evaluation prompts from essay responses.
+
+    Args:
+        essay_responses: Dict mapping essay_task_id to response text
+        evaluation_tasks: DataFrame of evaluation tasks
+        evaluation_templates: Dict of template_id -> template_content
+
+    Returns:
+        Dictionary mapping evaluation_task_id to evaluation prompt text
+    """
+    logger.info("Generating evaluation prompts")
+
+    eval_prompts = {}
+    env = Environment()
+
+    for _, task_row in evaluation_tasks.iterrows():
+        evaluation_task_id = task_row["evaluation_task_id"]
+        essay_task_id = task_row["essay_task_id"]
+        template_id = task_row["evaluation_template"]
+
+        # Get the essay response
+        if essay_task_id not in essay_responses:
+            logger.warning(
+                f"No essay response found for {essay_task_id}, skipping evaluation task {evaluation_task_id}"
+            )
+            continue
+
+        essay_response = essay_responses[essay_task_id]
+
+        # Render evaluation template
+        template_content = evaluation_templates[template_id]
+        template = env.from_string(template_content)
+        eval_prompt = template.render(response=essay_response)
+
+        eval_prompts[evaluation_task_id] = eval_prompt
+
+    logger.info(f"Generated {len(eval_prompts)} evaluation prompts")
+    return eval_prompts
 
 
 @asset(
