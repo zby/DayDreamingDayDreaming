@@ -10,4 +10,5 @@ mind-wandering,Mind-Wandering,False
 combinatorial-creativity,Combinatorial Creativity,False
 adversarial-evaluation,Adversarial Evaluation,False
 economic-moat,Economic Moat,True
-flywheel-effect,Flywheel Effect,True
+flywheel-effect,Flywheel Effect,False
+data-flywheel,Data Flywheel,True

@@ -1,0 +1,1 @@
+A data flywheel is a self‑reinforcing loop where product usage generates data that improves models, which improves the product and attracts more usage—yielding more data and compounding advantage.
