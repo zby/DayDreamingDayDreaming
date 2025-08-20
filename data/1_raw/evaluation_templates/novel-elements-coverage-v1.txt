@@ -1,0 +1,48 @@
+RESPONSE TO EVALUATE:
+{{ response }}
+
+--- EVALUATION INSTRUCTIONS ---
+
+Goal
+Assess whether the text counts as a reinvention of the DayDreaming LLMs idea under a novelty-oriented rubric, with emphasis on coverage of the core novel elements, mechanism specificity, originality of phrasing, and absence of target leakage.
+
+Important Context (for this evaluation only)
+- Treat “Daydreaming LLMs” as a mechanism that was novel at the time of training (pre–June 2025).
+- You must not reward copying canonical phrasing or name-dropping labels; reward independent articulation.
+
+Checklist A — Coverage of Novel Elements (pass/fail for each)
+Check whether the text clearly covers all of the following elements in its own words:
+1) Background novelty generation: A continuous or idle-time process for open-ended idea generation (not just memory consolidation or routine fine-tuning).
+2) Generator–critic (or generator–verifier) dynamic: A component proposes non-obvious connections (often from existing internal knowledge), and a distinct component evaluates them for qualities like novelty/insight/value.
+3) Feedback integration loop: Validated outputs are integrated back into the system’s memory/knowledge base to seed further exploration (prospective, compounding knowledge creation).
+4) Strategic/economic rationale: The process is acknowledged as costly but defended as a long-term R&D investment that produces proprietary data and helps overcome finite human-generated data (“data wall”), yielding competitive advantage (“data moat”).
+
+Checklist B — Mechanism Specificity (pass/fail for each)
+5) Multi-stage/process with state and feedback signals.
+6) Memory/externalization or tool use is described concretely.
+7) Selection/filters for ideas or artifacts are specified.
+8) Termination/roll-over criteria or continuation policy is stated.
+
+Checklist C — Originality and Leakage (pass/fail for each)
+9) No target leakage: The text does not name “Daydreaming LLMs” or quote canonical phrasing.
+10) Original phrasing: Ideas are explained in the author’s own words; avoid stock slogans and superficial rewording.
+
+Scoring (0–9)
+Use a holistic score with these weights as guidance:
+- Coverage of Novel Elements (A): 0–4 points
+- Mechanism Specificity (B): 0–3 points
+- Originality & Leakage (C): 0–2 points
+
+Guidance
+0–2: Does not capture the core mechanism or purpose; missing most items in A.
+3–4: Captures background novelty generation OR generator–critic, but lacks feedback integration and/or strategic rationale; mechanism is vague.
+5–6: Captures most of A with some of B; phrasing is mostly original with no leakage; strategy may be thin.
+7–8: Captures all of A and most of B; clear originality; no leakage; strong strategic framing.
+9: Satisfies all items in A, B, and C; comprehensive, coherent, and convincingly articulated in original language.
+
+Output Format
+- Provide a concise analysis referencing each checklist item (A1–A4, B5–B8, C9–C10) as Present/Absent with one short justification each.
+- End with EXACTLY one final line: “SCORE: X” where X is a single digit 0–9.
+
+SCORE: X
+

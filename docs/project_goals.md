@@ -1,0 +1,59 @@
+# DayDreaming Project Goals
+
+This document states the objective, success criteria, scope, and design guidance for the DayDreaming project in a concise, decision‑oriented form.
+
+## Purpose
+
+Show that DayDreaming‑style workflows help pre‑June‑2025 offline LLMs generate genuinely novel ideas. We use “DayDreaming LLMs” (from Gwern) as a falsifiable novelty benchmark while requiring generality beyond this single target.
+
+## Benchmark Strategy
+
+- Existence goal: From a universal concept pool that is suitable for a general idea‑generation system, demonstrate that there exists at least one k‑sized concept combination which, using the current prompting approach (currently a two‑phase links → essay workflow), yields a valid reinvention of DayDreaming LLMs under our rubric. Because the search space is finite, existence implies a sufficiently budgeted exhaustive search would eventually reach it. The goal does not require two‑phase prompting specifically; prompting strategy may evolve.
+- No leakage: Prompts must not name “Daydreaming” or use canonical phrasing.
+- Generality: The same scaffolding should also surface other novel syntheses when fed different concepts; the benchmark is a proxy for broader capability, not the end goal.
+
+## Success Criteria (Reinvention)
+
+An output (e.g., an essay) counts as a reinvention when all are true:
+- Novel elements: It independently articulates and integrates all currently identified novel elements from our originality reports, in its own words. As reports evolve, we version the rubric/benchmark accordingly.
+- Justification: Coherent causal argument for why capability/understanding improves over time (e.g., curriculum, compression, error‑driven updates).
+- Coherence and originality: Technically plausible, consistent, and non‑derivative phrasing.
+- Evaluation: Meets a threshold score (e.g., ≥7.5/10 average) with evaluator agreement, and passes binary gates including “all current novel elements present”.
+
+## Scope
+
+- In scope: Idea generation using the current prompting approach (currently two‑phase links → essay), evaluation, and minimal bookkeeping for reproducibility. Prompting strategy is an implementation detail that may change.
+- Out of scope (this experiment): Search engine/heuristics for exploring the combination space, retrieval/browsing, and any target‑specific prompt hints. We isolate idea‑generation fidelity and demonstrate existence, not end‑to‑end search.
+
+## Design Guidance
+
+### Templates (Derived Requirements)
+- Target neutrality: Do not name the benchmark target or use canonical phrasing; avoid baking in benchmark‑specific structures.
+- Parseable structure: Use consistent, machine‑readable sections/schema so prompts and responses can be validated and evaluated reproducibly.
+- Generality: Keep prompts domain‑agnostic and reusable across different concept mixes; avoid constraints that preclude broader idea families.
+- Stability and versioning: Keep identifiers and layout stable; version intentional changes to preserve cross‑run comparability.
+
+### Concepts (Derived Requirements)
+- Reference universal pool: We posit an imagined, universal concept pool for a general idea‑generation system; we do not maintain a full enumerated list. Concepts used in the experiment must be defensible as elements of that pool.
+- Target neutrality: Avoid entries that encode or leak the benchmark target; keep concepts general‑purpose rather than DayDreaming‑specific micro‑concepts.
+- Format flexibility: Allow multiple representation formats while using a shared metadata schema.
+- Traceability: Metadata must distinguish pool entries from the experiment subset and record selection rationale.
+
+## Evaluation (Concise)
+
+- Axes (0–10 each): Mechanistic completeness; structural clarity; justification/causality; novelty of phrasing; domain grounding/coherence; coverage of novel elements.
+- Binary gates: Reinvention yes/no; all current novel elements present yes/no; no target leakage yes/no.
+- Agreement and versioning: Track inter‑evaluator variance; version rubric when originality reports update.
+
+DayDreaming‑specific checklist (pass/fail):
+- Clear multi‑stage/process with state.
+- Feedback signals present (critique/review/reflection).
+- Memory/externalization or tool use described.
+- Selection/filters for ideas or artifacts.
+- Termination or roll‑over criteria defined.
+
+## Milestones (Lean)
+
+- V0: Minimal run with universal‑pool subset, current two‑phase prompts (links + essay) or a successor prompting variant, 2 models, rubric v1; produce at least one reinvention.
+- V1: Broader sweep across k_max combos; stable tracking tables; evaluator ensemble.
+- V2: Ablations (single‑ vs. two‑phase), domain transfer checks, contamination tests.
