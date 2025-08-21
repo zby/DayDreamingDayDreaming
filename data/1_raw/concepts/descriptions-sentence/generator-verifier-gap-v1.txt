@@ -1,0 +1,1 @@
+The generator–verifier gap is the asymmetry where making lots of candidates and checking them is easy, but directly producing only high-quality candidates (those that pass the check) is hard.

@@ -3,7 +3,8 @@ dearth-ai-discoveries,Dearth of AI-driven Discoveries,True
 default-mode-network,Default Mode Network,True
 human-creativity-insight,Human Creativity and Insight,False
 combinatorial-search,Combinatorial Search,False
-generator-verifier-gap,Generator-Verifier Gap,True
+generator-verifier-gap,Generator-Verifier Gap,False
+generator-verifier-gap-v1,Generator-Verifier Gap,True
 economic-innovation-models,Economic Innovation Models,True
 experimental-concept,Experimental New Concept,False
 mind-wandering,Mind-Wandering,False

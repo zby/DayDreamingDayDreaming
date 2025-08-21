@@ -136,12 +136,18 @@ The pipeline now includes automatic cross-experiment tracking:
 
 **Initial setup** (populate tables from existing data):
 ```bash
-# Build comprehensive tracking tables from existing responses
-./scripts/rebuild_generation_results.sh
-python scripts/build_evaluation_results_table.py
+# Build tracking tables and pivot from existing responses (two-phase + legacy)
+./scripts/rebuild_results.sh
+
+# Outputs (under data/7_cross_experiment/):
+# - link_generation_results.csv
+# - essay_generation_results.csv
+# - evaluation_results.csv
+# - parsed_scores.csv
+# - evaluation_scores_by_template_model.csv  (pivot: rows=essay_task, cols=evaluation_template__evaluation_model)
 ```
 
-**Ongoing automatic tracking**: No manual intervention needed - new responses are automatically added to tracking tables when generated.
+**Ongoing automatic tracking**: No manual intervention needed - new responses are automatically added to tracking tables when generated (ensure auto-materialization is enabled and the Dagster daemon is running).
 
 ## Development
 

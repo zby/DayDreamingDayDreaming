@@ -27,7 +27,7 @@ from __future__ import annotations
 
 import argparse
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Set
 
 import pandas as pd
 
@@ -42,7 +42,67 @@ LEGACY_TEMPLATES = {
 }
 
 
-def parse_identifiers_from_eval_task_id(evaluation_task_id: str) -> Dict[str, Any]:
+def load_known_templates(base_data: Path) -> Dict[str, Set[str]]:
+    """Load known template IDs from data/1_raw where available.
+
+    Returns a dict with sets: eval_templates, link_templates, essay_templates
+    Fallback to empty sets if files not found.
+    """
+    eval_templates: Set[str] = set()
+    link_templates: Set[str] = set()
+    essay_templates: Set[str] = set()
+
+    # Evaluation templates from CSV and directory
+    eval_csv = base_data / "1_raw" / "evaluation_templates.csv"
+    eval_dir = base_data / "1_raw" / "evaluation_templates"
+    if eval_csv.exists():
+        try:
+            df = pd.read_csv(eval_csv)
+            if "template_id" in df.columns:
+                eval_templates.update(df["template_id"].astype(str).tolist())
+        except Exception:
+            pass
+    if eval_dir.exists():
+        for p in eval_dir.glob("*.txt"):
+            eval_templates.add(p.stem)
+
+    # Generation templates (links and essay)
+    link_csv = base_data / "1_raw" / "link_templates.csv"
+    essay_csv = base_data / "1_raw" / "essay_templates.csv"
+    link_dir = base_data / "1_raw" / "generation_templates" / "links"
+    essay_dir = base_data / "1_raw" / "generation_templates" / "essay"
+    if link_csv.exists():
+        try:
+            df = pd.read_csv(link_csv)
+            if "template_id" in df.columns:
+                link_templates.update(df["template_id"].astype(str).tolist())
+        except Exception:
+            pass
+    if essay_csv.exists():
+        try:
+            df = pd.read_csv(essay_csv)
+            if "template_id" in df.columns:
+                essay_templates.update(df["template_id"].astype(str).tolist())
+        except Exception:
+            pass
+    if link_dir.exists():
+        for p in link_dir.glob("*.txt"):
+            link_templates.add(p.stem)
+    if essay_dir.exists():
+        for p in essay_dir.glob("*.txt"):
+            essay_templates.add(p.stem)
+
+    return {
+        "eval_templates": eval_templates,
+        "link_templates": link_templates,
+        "essay_templates": essay_templates,
+    }
+
+
+def parse_identifiers_from_eval_task_id(
+    evaluation_task_id: str,
+    known: Optional[Dict[str, Set[str]]] = None,
+) -> Dict[str, Any]:
     """Parse identifiers from an evaluation_task_id string using the new scheme.
 
     New format (split tasks):
@@ -70,51 +130,36 @@ def parse_identifiers_from_eval_task_id(evaluation_task_id: str) -> Dict[str, An
     if not evaluation_task_id:
         return result
 
-    # Known template patterns (use hyphens, not underscores)
-    known_templates = {
-        'creative-synthesis', 'creative-synthesis-v2', 'creative-synthesis-v3',
-        'essay-inventive-synthesis', 'essay-inventive-synthesis-v3',
-        'research-discovery', 'research-discovery-v2', 'research-discovery-v3',
-        'systematic-analytical', 'systematic-analytical-v2',
-        'problem-solving', 'problem-solving-v2',
-        'application-implementation', 'application-implementation-v2',
-        'gwern-original',
-        'daydreaming-verification', 'daydreaming-verification-v2',
-        'o3-prior-art-eval', 'gemini-prior-art-eval', 
-        'style-coherence',
-        'creativity-metrics', 'iterative-loops', 'scientific-rigor'
-    }
-    
-    # Known model patterns 
-    known_models = {
-        'deepseek_r1_f', 'qwq_32b_f', 'gemini_2.5_flash', 'deepseek', 'qwen', 'google'
-    }
+    # Known template IDs loaded from disk if provided
+    eval_templates = set()
+    link_templates = set()
+    essay_templates = set()
+    if known:
+        eval_templates = known.get("eval_templates", set())
+        link_templates = known.get("link_templates", set())
+        essay_templates = known.get("essay_templates", set())
 
     parts = evaluation_task_id.split("_")
     if len(parts) < 5:  # Need at least combo_X_template_model_eval_template_eval_model
         return result
 
-    # Strategy: Find evaluation template by matching known patterns from right side
-    eval_model = None
+    # Strategy: Find evaluation template by scanning from right for a token in eval_templates
     eval_template = None
+    eval_model = None
     remaining_parts = parts[:]
-    
-    # Try to find eval_template + eval_model pattern from the right
-    for i in range(len(parts)-1, 1, -1):  # Start from right, need at least 2 parts
-        candidate_template = parts[i-1]
-        candidate_model_parts = parts[i:]  # Take all remaining parts for model (may have underscores)
-        
-        if candidate_template in known_templates:
-            eval_template = candidate_template
-            eval_model = "_".join(candidate_model_parts)
-            remaining_parts = parts[:i-1]  # Everything before the eval template
-            break
-    
+    if eval_templates:
+        for i in range(len(parts)-1, -1, -1):
+            token = parts[i]
+            if token in eval_templates:
+                eval_template = token
+                eval_model = "_".join(parts[i+1:]) if i+1 < len(parts) else None
+                remaining_parts = parts[:i]
+                break
     if not eval_template:
-        # Fallback: assume last two parts are eval_template and eval_model
+        # Fallback: assume last two logical segments
         eval_template = parts[-2] if len(parts) >= 2 else None
-        eval_model = parts[-1]
-        remaining_parts = parts[:-2]
+        eval_model = parts[-1] if len(parts) >= 1 else None
+        remaining_parts = parts[:-2] if len(parts) >= 2 else []
 
     # Now parse essay_task_id side from remaining_parts
     # Expect: combo_parts + link_template + generation_model (+ underscores) + essay_template
@@ -125,25 +170,29 @@ def parse_identifiers_from_eval_task_id(evaluation_task_id: str) -> Dict[str, An
         })
         return result
 
-    # Essay template is last known template token from the right
+    # Essay template is last known essay template token from the right
     essay_template = None
     gen_model = None
-    link_template = None
+    link_template_val = None
     combo_parts: List[str] = []
 
-    # Find essay_template as last known template token in remaining_parts
-    for i in range(len(remaining_parts)-1, -1, -1):
-        if remaining_parts[i] in known_templates:
-            essay_template = remaining_parts[i]
-            # generation_model is the token(s) before essay_template until encountering the link_template
-            # Assume generation_model is a single token (may include underscores)
-            if i - 1 >= 0:
-                gen_model = remaining_parts[i-1]
-            # link_template is immediately before generation_model
-            if i - 2 >= 0:
-                link_template = remaining_parts[i-2]
-                combo_parts = remaining_parts[:i-2]
-            break
+    if essay_templates and link_templates:
+        for i in range(len(remaining_parts)-1, -1, -1):
+            token = remaining_parts[i]
+            if token in essay_templates:
+                essay_template = token
+                # Find last link template before position i
+                l_idx = None
+                for j in range(i-1, -1, -1):
+                    if remaining_parts[j] in link_templates:
+                        l_idx = j
+                        break
+                if l_idx is not None:
+                    link_template_val = remaining_parts[l_idx]
+                    gen_tokens = remaining_parts[l_idx+1:i]
+                    gen_model = "_".join(gen_tokens) if gen_tokens else None
+                    combo_parts = remaining_parts[:l_idx]
+                break
 
     combo_id = "_".join(combo_parts) if combo_parts else None
     essay_task_id = "_".join(remaining_parts) if remaining_parts else None
@@ -151,7 +200,7 @@ def parse_identifiers_from_eval_task_id(evaluation_task_id: str) -> Dict[str, An
     result.update({
         "essay_task_id": essay_task_id,
         "combo_id": combo_id,
-        "link_template": link_template,
+        "link_template": link_template_val,
         "generation_template": essay_template,
         "generation_model": gen_model,
         "evaluation_template": eval_template,
@@ -218,6 +267,12 @@ def parse_all(
 
     rows: List[Dict[str, Any]] = []
 
+    # Load known templates from data root to improve parsing robustness
+    # Expect responses_dir like data/4_evaluation/evaluation_responses
+    # Base data root should be 'data'
+    base_data = responses_dir.parents[1] if len(responses_dir.parents) >= 2 else Path("data")
+    known = load_known_templates(base_data)
+
     # CROSS-EXPERIMENT: Scan all *.txt files and parse entirely from filenames
     # No dependency on task CSV files - works across all experiments
     candidate_ids: List[str] = [p.stem for p in responses_dir.glob("*.txt")]
@@ -236,7 +291,7 @@ def parse_all(
         text = file_path.read_text(encoding="utf-8", errors="ignore")
 
         # Parse all metadata from filename - no task CSV dependencies
-        id_parts = parse_identifiers_from_eval_task_id(evaluation_task_id)
+        id_parts = parse_identifiers_from_eval_task_id(evaluation_task_id, known)
         strategy = detect_parsing_strategy(id_parts.get("evaluation_template"))
         result = try_parse_with_fallback(text, strategy)
 
@@ -320,4 +375,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

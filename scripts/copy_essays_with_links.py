@@ -4,6 +4,10 @@ Copy top-scoring essays (and their links + templates) for manual review.
 
 Usage:
     python scripts/copy_essays_with_links.py [N]
+    # Or use cross-experiment pivot and current experiment eval tasks
+    python scripts/copy_essays_with_links.py --use-big-pivot --n 10 \
+        --big-pivot data/7_cross_experiment/evaluation_scores_by_template_model.csv \
+        --evaluation-tasks data/2_tasks/evaluation_tasks.csv
 
 Examples:
     python scripts/copy_essays_with_links.py       # top 5 (default)
@@ -31,10 +35,11 @@ import shutil
 import sys
 import pandas as pd
 from pathlib import Path
-from typing import List
+from typing import List, Tuple
+import argparse
 
 
-def get_top_scoring_generations(n: int = 5, scores_csv: str = "data/6_summary/generation_scores_pivot.csv"):
+def get_top_scoring_generations(n: int = 5, scores_csv: str = "data/6_summary/generation_scores_pivot.csv") -> Tuple[List[str], List[dict]]:
     """
     Get the top N scoring generations from the generation_scores_pivot.csv file.
     
@@ -69,6 +74,65 @@ def get_top_scoring_generations(n: int = 5, scores_csv: str = "data/6_summary/ge
             'score': row['sum_scores']
         })
     
+    return essay_filenames, generation_info
+
+
+def get_top_from_big_pivot(
+    n: int = 5,
+    pivot_csv: str = "data/7_cross_experiment/evaluation_scores_by_template_model.csv",
+    evaluation_tasks_csv: str = "data/2_tasks/evaluation_tasks.csv",
+) -> Tuple[List[str], List[dict]]:
+    """
+    Compute top N essays using the cross-experiment pivot, summing only the columns
+    corresponding to the current experiment's evaluation templates and models.
+
+    - pivot has rows per essay_task_id with metadata, columns per evaluation_template__evaluation_model
+    - evaluation_tasks_csv provides which template+model pairs to sum.
+    """
+    if not os.path.exists(pivot_csv):
+        raise FileNotFoundError(f"Big pivot CSV not found: {pivot_csv}")
+    if not os.path.exists(evaluation_tasks_csv):
+        raise FileNotFoundError(f"Evaluation tasks CSV not found: {evaluation_tasks_csv}")
+
+    df = pd.read_csv(pivot_csv)
+    et = pd.read_csv(evaluation_tasks_csv)
+
+    # Determine required evaluation columns as template__model
+    et_cols = (
+        et[["evaluation_template", "evaluation_model"]]
+        .dropna()
+        .drop_duplicates()
+        .assign(col=lambda d: d["evaluation_template"].astype(str) + "__" + d["evaluation_model"].astype(str))
+    )["col"].tolist()
+
+    # Ensure required columns exist (missing treated as NaN => excluded in sum)
+    for c in et_cols:
+        if c not in df.columns:
+            df[c] = float("nan")
+
+    # Compute total score across current experiment's eval template+model pairs
+    df["sum_scores"] = df[et_cols].sum(axis=1, skipna=True)
+
+    # Sort and pick top N
+    top = df.nlargest(n, "sum_scores")
+
+    # Build outputs
+    essay_filenames: List[str] = []
+    generation_info: List[dict] = []
+    for _, row in top.iterrows():
+        essay_task_id = row.get("essay_task_id")
+        if not isinstance(essay_task_id, str) or not essay_task_id:
+            continue
+        filename = f"{essay_task_id}.txt"
+        essay_filenames.append(filename)
+        generation_info.append({
+            "filename": filename,
+            "combo_id": row.get("combo_id"),
+            "template": row.get("generation_template"),
+            "model": row.get("generation_model"),
+            "score": row.get("sum_scores", 0.0),
+        })
+
     return essay_filenames, generation_info
 
 
@@ -228,40 +292,43 @@ def copy_essays_with_links(essay_paths: List[str], generation_info: List[dict],
 
 def main():
     """Main function to handle command line usage."""
-    # Parse command line arguments
-    if len(sys.argv) > 2:
-        print("Usage: python copy_essays_with_links.py [N]")
-        print("  N: Number of top scoring generations to copy (default: 5)")
-        print("Example: python copy_essays_with_links.py 10")
-        print("Example: python copy_essays_with_links.py")
+    parser = argparse.ArgumentParser(description="Copy top-scoring essays with links, templates, and evaluations")
+    parser.add_argument("pos_n", nargs="?", type=int, help="Top N to copy (back-compat positional)")
+    parser.add_argument("--n", type=int, default=None, help="Top N to copy (overrides positional)")
+    parser.add_argument("--use-big-pivot", action="store_true", help="Use cross-experiment pivot + current eval tasks to compute totals")
+    parser.add_argument("--scores-csv", type=str, default="data/6_summary/generation_scores_pivot.csv", help="Path to experiment pivot (default mode)")
+    parser.add_argument("--big-pivot", type=str, default="data/7_cross_experiment/evaluation_scores_by_template_model.csv", help="Path to cross-experiment pivot table")
+    parser.add_argument("--evaluation-tasks", type=str, default="data/2_tasks/evaluation_tasks.csv", help="Path to evaluation_tasks.csv (to select eval template+model columns)")
+    args = parser.parse_args()
+
+    # Resolve N with backward compatibility
+    n = args.n if args.n is not None else (args.pos_n if args.pos_n is not None else 5)
+    if n <= 0:
+        print("Error: N must be positive")
         sys.exit(1)
-    
-    # Get number of generations to copy (default: 5)
-    n = 5
-    if len(sys.argv) == 2:
-        try:
-            n = int(sys.argv[1])
-            if n <= 0:
-                print("Error: Number of generations must be positive")
-                sys.exit(1)
-        except ValueError:
-            print("Error: Please provide a valid number")
-            sys.exit(1)
-    
+
     print(f"Finding top {n} scoring generations...")
-    
-    # Get top scoring generations from CSV
+
+    # Get top scoring generations from selected source
     try:
-        essay_filenames, generation_info = get_top_scoring_generations(n)
-    except FileNotFoundError as e:
-        print(f"Error: {e}")
-        sys.exit(1)
+        if args.use_big_pivot:
+            essay_filenames, generation_info = get_top_from_big_pivot(
+                n=n, pivot_csv=args.big_pivot, evaluation_tasks_csv=args.evaluation_tasks
+            )
+        else:
+            essay_filenames, generation_info = get_top_scoring_generations(n=n, scores_csv=args.scores_csv)
     except Exception as e:
-        print(f"Error reading scores CSV: {e}")
+        print(f"Error computing top-scoring essays: {e}")
         sys.exit(1)
     
     if not essay_filenames:
-        print("No generations found in scores CSV")
+        if 'args' in locals() and getattr(args, 'use_big_pivot', False):
+            print("No essays found using big pivot mode.")
+            print("- Ensure the big pivot exists and is populated: data/7_cross_experiment/evaluation_scores_by_template_model.csv")
+            print("- If missing or empty, run: ./scripts/rebuild_results.sh")
+            print("- Also confirm evaluation_tasks.csv lists the template+model pairs for this experiment.")
+        else:
+            print("No generations found in scores CSV (data/6_summary/generation_scores_pivot.csv)")
         sys.exit(1)
     
     print(f"Selected {len(essay_filenames)} top scoring generations:")

@@ -230,11 +230,8 @@ uv run dagster asset materialize -f daydreaming_dagster/definitions.py \
 For initial setup or when you need to rebuild the cross-experiment tracking tables from existing data:
 
 ```bash
-# Generate generation_results.csv from all existing generation responses
-./scripts/rebuild_generation_results.sh
-
-# Generate evaluation_results.csv from all existing evaluation responses  
-python scripts/build_evaluation_results_table.py
+# Rebuild cross-experiment tracking tables from existing files (two-phase + legacy)
+./scripts/rebuild_results.sh
 ```
 
 These scripts scan existing response files and rebuild the comprehensive tracking tables. Useful for:

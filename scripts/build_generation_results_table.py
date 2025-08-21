@@ -1,16 +1,22 @@
 #!/usr/bin/env python3
 """
-Build generation_results.csv from existing generation response files.
+Build cross-experiment generation tracking tables from existing response files.
 
 Usage:
     python scripts/build_generation_results_table.py
 
 What it does:
-- Scans legacy single-phase responses in `data/3_generation/generation_responses/` for all `.txt` files
-- Matches files to tasks in `data/2_tasks/generation_tasks.csv` when available; otherwise parses filenames
-- Appends rows to `data/7_cross_experiment/generation_results.csv` with:
-  - generation_task_id, combo_id, generation_template, generation_model
-  - generation_status, generation_timestamp, response_file, response_size_bytes
+- Two-phase (current):
+  - Scans links responses in `data/3_generation/links_responses/` and essays in `data/3_generation/essay_responses/`
+  - Matches files to tasks in `data/2_tasks/link_generation_tasks.csv` and `data/2_tasks/essay_generation_tasks.csv`
+  - Appends rows to:
+      • `data/7_cross_experiment/link_generation_results.csv`
+      • `data/7_cross_experiment/essay_generation_results.csv`
+    with metadata consistent with auto-tracking assets
+- Legacy single-phase (optional):
+  - Scans `data/3_generation/generation_responses/` for `.txt` files
+  - Matches files to `data/2_tasks/generation_tasks.csv` when available; otherwise parses filenames
+  - Appends rows to `data/7_cross_experiment/generation_results.csv`
 
 When to use:
 - Initial migration to cross-experiment tracking
@@ -19,9 +25,9 @@ When to use:
 - Analyzing existing historical single-phase data
 
 Notes:
-- The active pipeline uses a two-phase system (links/essay) with auto-materializing
-  tracking assets. This script targets legacy single-phase outputs and is safe to
-  keep for historical data.
+- The active pipeline uses a two-phase system with auto-materializing tracking. This
+  script backfills the same tables from existing files (useful for historical data
+  or when the daemon wasn’t running).
 
 Error handling:
 - Continues on individual file errors and prints a summary at the end
@@ -41,26 +47,96 @@ from daydreaming_dagster.assets.cross_experiment import append_to_results_csv
 from filename_parser import parse_generation_filename
 
 
-def rebuild_generation_results():
-    """Scan all existing generation responses and build the table."""
+def _safe_read_csv(path: Path):
+    try:
+        return pd.read_csv(path)
+    except FileNotFoundError:
+        return None
+
+
+def rebuild_two_phase_generation_results() -> int:
+    """Backfill two-phase tracking tables (links and essays). Returns rows appended."""
+    total_appended = 0
+
+    # Load task metadata
+    link_tasks = _safe_read_csv(Path("data/2_tasks/link_generation_tasks.csv"))
+    essay_tasks = _safe_read_csv(Path("data/2_tasks/essay_generation_tasks.csv"))
+
+    # Links
+    links_dir = Path("data/3_generation/links_responses")
+    if links_dir.exists():
+        print(f"🔍 Scanning {links_dir} for link responses...")
+        for f in links_dir.glob("*.txt"):
+            link_task_id = f.stem
+            row = None
+            if link_tasks is not None:
+                m = link_tasks[link_tasks["link_task_id"] == link_task_id]
+                if not m.empty:
+                    row = m.iloc[0]
+            if row is None:
+                print(f"⚠️  No task metadata for link {link_task_id}; skipping")
+                continue
+            new_row = {
+                "link_task_id": link_task_id,
+                "combo_id": row["combo_id"],
+                "link_template_id": row["link_template"],
+                "generation_model": row["generation_model_name"],
+                "generation_status": "success",
+                "generation_timestamp": datetime.fromtimestamp(f.stat().st_mtime).isoformat(),
+                "response_file": f"links_responses/{link_task_id}.txt",
+                "response_size_bytes": f.stat().st_size,
+            }
+            append_to_results_csv("data/7_cross_experiment/link_generation_results.csv", new_row)
+            total_appended += 1
+
+    # Essays
+    essays_dir = Path("data/3_generation/essay_responses")
+    if essays_dir.exists():
+        print(f"🔍 Scanning {essays_dir} for essay responses...")
+        for f in essays_dir.glob("*.txt"):
+            essay_task_id = f.stem
+            row = None
+            if essay_tasks is not None:
+                m = essay_tasks[essay_tasks["essay_task_id"] == essay_task_id]
+                if not m.empty:
+                    row = m.iloc[0]
+            if row is None:
+                print(f"⚠️  No task metadata for essay {essay_task_id}; skipping")
+                continue
+            new_row = {
+                "essay_task_id": essay_task_id,
+                "combo_id": row["combo_id"],
+                "essay_template_id": row["essay_template"],
+                "generation_model": row["generation_model_name"],
+                "generation_status": "success",
+                "generation_timestamp": datetime.fromtimestamp(f.stat().st_mtime).isoformat(),
+                "response_file": f"essay_responses/{essay_task_id}.txt",
+                "response_size_bytes": f.stat().st_size,
+            }
+            append_to_results_csv("data/7_cross_experiment/essay_generation_results.csv", new_row)
+            total_appended += 1
+
+    return total_appended
+
+
+def rebuild_legacy_single_phase_results() -> int:
+    """Backfill legacy single-phase generation_results.csv. Returns rows appended."""
     
     print("🔍 Loading task metadata...")
     
     # Load task metadata (optional - we'll use filename parsing as fallback)
-    generation_tasks = None
-    try:
-        generation_tasks = pd.read_csv("data/2_tasks/generation_tasks.csv")
+    generation_tasks = _safe_read_csv(Path("data/2_tasks/generation_tasks.csv"))
+    if generation_tasks is not None:
         print(f"✅ Loaded {len(generation_tasks)} generation tasks for matching")
-    except FileNotFoundError:
-        print("⚠️  data/2_tasks/generation_tasks.csv not found")
-        print("   Will rely on filename parsing for all files")
+    else:
+        print("⚠️  data/2_tasks/generation_tasks.csv not found; will parse filenames")
     
     # Scan generation response files
     response_dir = Path("data/3_generation/generation_responses/")
     
     if not response_dir.exists():
-        print(f"❌ Error: {response_dir} directory not found")
-        return False
+        print(f"ℹ️  Legacy directory not found: {response_dir} (skipping)")
+        return 0
     
     print(f"🔍 Scanning {response_dir} for response files...")
     response_files = list(response_dir.glob("*.txt"))
@@ -128,11 +204,11 @@ def rebuild_generation_results():
         if len(errors) > 10:
             print(f"   ... and {len(errors) - 10} more errors")
     
-    return processed_count > 0
+    return processed_count
 
 
 if __name__ == "__main__":
-    print("🚀 Building generation_results.csv from existing data...")
+    print("🚀 Backfilling cross-experiment generation tables from existing data...")
     
     # Check if we're in the right directory
     if not Path("data").exists():
@@ -140,19 +216,24 @@ if __name__ == "__main__":
         print("   Please run this script from the project root directory")
         sys.exit(1)
     
-    success = rebuild_generation_results()
-    
-    if success:
-        print("✅ generation_results.csv built successfully")
-        
-        # Show summary of created table
-        results_file = Path("data/7_cross_experiment/generation_results.csv")
-        if results_file.exists():
-            df = pd.read_csv(results_file)
-            print(f"📊 Table summary: {len(df)} rows, {len(df.columns)} columns")
-            print(f"📁 Table location: {results_file}")
-        
-        sys.exit(0)
-    else:
-        print("❌ Failed to build generation_results.csv")
-        sys.exit(1)
+    two_phase = rebuild_two_phase_generation_results()
+    legacy = rebuild_legacy_single_phase_results()
+
+    print(f"✅ Appended rows — two-phase: {two_phase}, legacy: {legacy}")
+
+    # Summaries
+    link_file = Path("data/7_cross_experiment/link_generation_results.csv")
+    essay_file = Path("data/7_cross_experiment/essay_generation_results.csv")
+    legacy_file = Path("data/7_cross_experiment/generation_results.csv")
+
+    if link_file.exists():
+        df = pd.read_csv(link_file)
+        print(f"📊 link_generation_results.csv: {len(df)} rows")
+    if essay_file.exists():
+        df = pd.read_csv(essay_file)
+        print(f"📊 essay_generation_results.csv: {len(df)} rows")
+    if legacy_file.exists():
+        df = pd.read_csv(legacy_file)
+        print(f"📊 generation_results.csv (legacy): {len(df)} rows")
+
+    sys.exit(0)
