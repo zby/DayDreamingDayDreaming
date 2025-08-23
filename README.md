@@ -109,7 +109,7 @@ After completing Step 1 above, you'll have ~150 LLM partitions available. To run
 
 **Recommended**: Use the Dagster UI
 ```bash
-export DAGSTER_HOME=./dagster_home
+export DAGSTER_HOME=$(pwd)/dagster_home
 uv run dagster dev -f daydreaming_dagster/definitions.py
 # Go to http://localhost:3000, find the partitioned assets, click "Materialize all partitions"
 ```
@@ -158,7 +158,7 @@ The pipeline now includes automatic cross-experiment tracking:
 - `evaluation_results_append`: Automatically adds new rows when `evaluation_response` completes
 
 **Requirements for Auto-Materialization**:
-1. Set `DAGSTER_HOME=./dagster_home` (uses project configuration with auto-materialization enabled)
+1. Set `DAGSTER_HOME=$(pwd)/dagster_home` (uses project configuration with auto-materialization enabled)
 2. Start Dagster with daemon enabled: `uv run dagster dev -f daydreaming_dagster/definitions.py`
 3. The Dagster daemon will automatically detect and materialize assets with `AutoMaterializePolicy.eager()`
 
@@ -187,9 +187,9 @@ uv run pytest --cov=daydreaming_dagster
 ### Environment Variables
 
 - `OPENROUTER_API_KEY`: OpenRouter API key for LLM access
-- `DAGSTER_HOME`: Dagster metadata storage (set to `./dagster_home` to use project configuration)
+- `DAGSTER_HOME`: Dagster metadata storage (set to absolute path of `dagster_home/` directory)
 
-**Important**: Set `DAGSTER_HOME=./dagster_home` to use the project's Dagster configuration, which includes auto-materialization settings. Without this, Dagster uses temporary storage and ignores the project configuration.
+**Important**: Set `DAGSTER_HOME=$(pwd)/dagster_home` to use the project's Dagster configuration, which includes auto-materialization settings. Without this, Dagster uses temporary storage and ignores the project configuration.
 
 ### Pipeline Parameters
 
