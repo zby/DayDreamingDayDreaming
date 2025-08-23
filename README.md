@@ -45,6 +45,9 @@ cp .env.example .env
 
 #### Option 1: Dagster UI (Recommended)
 ```bash
+# Set DAGSTER_HOME to use project configuration (required for auto-materialization)
+export DAGSTER_HOME=$(pwd)/dagster_home
+
 # Start the Dagster development server
 uv run dagster dev -f daydreaming_dagster/definitions.py
 
@@ -106,6 +109,7 @@ After completing Step 1 above, you'll have ~150 LLM partitions available. To run
 
 **Recommended**: Use the Dagster UI
 ```bash
+export DAGSTER_HOME=./dagster_home
 uv run dagster dev -f daydreaming_dagster/definitions.py
 # Go to http://localhost:3000, find the partitioned assets, click "Materialize all partitions"
 ```
@@ -147,7 +151,18 @@ The pipeline now includes automatic cross-experiment tracking:
 # - evaluation_scores_by_template_model.csv  (pivot: rows=essay_task, cols=evaluation_template__evaluation_model)
 ```
 
-**Ongoing automatic tracking**: No manual intervention needed - new responses are automatically added to tracking tables when generated (ensure auto-materialization is enabled and the Dagster daemon is running).
+**Automatic Materialization**: The pipeline includes auto-materializing assets that automatically trigger when their dependencies are updated:
+
+- `link_generation_results_append`: Automatically adds new rows when `links_response` completes
+- `essay_generation_results_append`: Automatically adds new rows when `essay_response` completes  
+- `evaluation_results_append`: Automatically adds new rows when `evaluation_response` completes
+
+**Requirements for Auto-Materialization**:
+1. Set `DAGSTER_HOME=./dagster_home` (uses project configuration with auto-materialization enabled)
+2. Start Dagster with daemon enabled: `uv run dagster dev -f daydreaming_dagster/definitions.py`
+3. The Dagster daemon will automatically detect and materialize assets with `AutoMaterializePolicy.eager()`
+
+**Ongoing automatic tracking**: No manual intervention needed - new responses are automatically added to tracking tables when generated.
 
 ## Development
 
@@ -172,7 +187,9 @@ uv run pytest --cov=daydreaming_dagster
 ### Environment Variables
 
 - `OPENROUTER_API_KEY`: OpenRouter API key for LLM access
-- `DAGSTER_HOME`: Dagster metadata storage (defaults to `dagster_home/`)
+- `DAGSTER_HOME`: Dagster metadata storage (set to `./dagster_home` to use project configuration)
+
+**Important**: Set `DAGSTER_HOME=./dagster_home` to use the project's Dagster configuration, which includes auto-materialization settings. Without this, Dagster uses temporary storage and ignores the project configuration.
 
 ### Pipeline Parameters
 
