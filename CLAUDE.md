@@ -64,10 +64,27 @@ This project follows strict TDD practices:
 #### TDD Workflow
 
 1. Define feature requirements or bug reports
-2. Invoke test-writer to create failing tests
-3. Verify tests fail for the correct reasons
-4. Implement code to make tests pass
-5. Refactor while keeping tests green
+2. **CRITICAL**: Ensure no implementation exists yet - if you've already implemented the feature, revert/undo the changes first
+3. Invoke test-writer to create failing tests
+4. Verify tests fail for the correct reasons (RED phase)
+5. Implement code to make tests pass (GREEN phase)  
+6. Refactor while keeping tests green (REFACTOR phase)
+
+#### ⚠️ Important TDD Constraints
+
+**The test-writer agent requires unchanged code**: If you've already implemented a feature, you MUST revert those changes before using test-writer. The agent creates tests that expect to fail, but if the implementation already exists, the tests will pass immediately, breaking the TDD cycle.
+
+**Example Problem**:
+```
+❌ WRONG: Implement enhanced error handling → Use test-writer → Tests pass (not TDD)
+✅ CORRECT: Use test-writer → Tests fail → Implement enhanced error handling → Tests pass
+```
+
+**Recovery Strategy**: If you accidentally implement before testing:
+1. Identify what needs to be reverted (git diff, git status)
+2. Revert the implementation changes (git stash, manual undo, etc.)
+3. Use test-writer to create failing tests
+4. Re-implement the feature to make tests pass
 
 
 ## Testing Structure
