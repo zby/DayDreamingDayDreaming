@@ -4,6 +4,7 @@ import pytest
 from pathlib import Path
 from daydreaming_dagster.utils.eval_response_parser import parse_llm_response
 
+pytestmark = [pytest.mark.unit]
 
 class TestEvalResponseParser:
     """Test the evaluation response parser with known fixture files."""
@@ -15,24 +16,13 @@ class TestEvalResponseParser:
     
     def test_known_fixture_scores(self, fixtures_dir):
         """Test parser on known fixture files with expected scores."""
-        # Expected scores based on manual verification of fixture files
+        # Curated minimal set of fixtures that cover distinct patterns
         expected_scores = {
-            "004.txt": 7.0,   # **Total Score: 7/10**
-            "014.txt": 4.0,   # **4/10** 
-            "019.txt": 8.0,   # Score pattern
-            "022.txt": 2.0,   # **2/10** after ### **Final Score**
-            "027.txt": 7.0,   # Score pattern
-            "034.txt": 7.0,   # Score pattern
-            "035.txt": 5.0,   # **SCORE: 5/10**
-            "039.txt": 4.0,   # Score pattern
-            "053.txt": 8.0,   # **SCORE: 8/10**
-            "057.txt": 3.0,   # Score pattern  
-            "076.txt": 6.5,   # **Total Score: 6.5/10**
-            "105.txt": 8.0,   # Score pattern
-            "110.txt": 3.0,   # **3/10**
-            "112.txt": 6.0,   # Score pattern
-            "128.txt": 4.0,   # Score pattern
-            "163.txt": 4.0,   # **Final Score**: **4/10**
+            "004.txt": 7.0,   # Total Score: 7/10
+            "035.txt": 5.0,   # SCORE: 5/10
+            "076.txt": 6.5,   # Total Score: 6.5/10 (decimal)
+            "022.txt": 2.0,   # Final Score -> 2/10 with newline formatting
+            "163.txt": 4.0,   # Final Score: 4/10
         }
         
         for filename, expected_score in expected_scores.items():

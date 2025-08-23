@@ -17,15 +17,13 @@ import os
 
 from dagster import materialize, DagsterInstance, Failure
 
+pytestmark = [pytest.mark.integration]
+
 class TestCSVErrorHandling:
     """Tests for enhanced CSV parsing error handling in raw_data assets."""
 
     def test_evaluation_templates_malformed_csv_error_handling(self):
-        """Test that evaluation_templates asset provides enhanced error message for malformed CSV.
-        
-        This test should initially fail because the current evaluation_templates asset
-        just calls pd.read_csv() directly without enhanced error handling.
-        """
+        """Test that evaluation_templates asset provides enhanced error message for malformed CSV."""
         with tempfile.TemporaryDirectory() as temp_root:
             temp_dagster_home = Path(temp_root) / "dagster_home"
             temp_data_dir = Path(temp_root) / "data"
@@ -56,7 +54,7 @@ scientific-rigor,Scientific Rigor,Assesses methodological soundness,true'''
                     "data_root": str(temp_data_dir),
                 }
                 
-                # This should fail due to malformed CSV
+                # This should fail due to malformed CSV and include enhanced context
                 with pytest.raises(Failure) as exc_info:
                     materialize(
                         [evaluation_templates],
@@ -92,14 +90,10 @@ scientific-rigor,Scientific Rigor,Assesses methodological soundness,true'''
                 assert "evaluation_templates.csv" in failure_message, \
                     f"Should mention the file being parsed. Got: {failure_message}"
                 
-                print("✅ Test correctly detected that enhanced error handling is not yet implemented")
-                print(f"Current error message: {failure_message[:200]}...")
+                print("✅ Enhanced CSV error handling produced detailed context for evaluation_templates.csv")
 
     def test_evaluation_templates_successful_parsing_with_quoted_commas(self):
-        """Test that evaluation_templates asset works correctly with properly quoted CSV.
-        
-        This test should pass to ensure we don't break valid CSV parsing.
-        """
+        """Test that evaluation_templates asset works correctly with properly quoted CSV."""
         with tempfile.TemporaryDirectory() as temp_root:
             temp_dagster_home = Path(temp_root) / "dagster_home"
             temp_data_dir = Path(temp_root) / "data"

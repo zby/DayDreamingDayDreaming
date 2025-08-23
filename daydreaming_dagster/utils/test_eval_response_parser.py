@@ -4,6 +4,7 @@ import pytest
 
 from daydreaming_dagster.utils.eval_response_parser import parse_llm_response
 
+pytestmark = [pytest.mark.unit]
 
 class TestParseLLMResponseComplex:
     """Test the parse_llm_response function with the 'complex' strategy."""
@@ -232,4 +233,3 @@ class TestParseLLMResponseInLastLine:
         result = parse_llm_response(response, "in_last_line")
         assert result["score"] == 7.0
         assert result["error"] is None
-
