@@ -19,20 +19,61 @@ class CannedLLMResource(ConfigurableResource):
     
     def generate(self, prompt: str, model: str, temperature: float = 0.7, max_tokens: int = None) -> str:
         """Generate method that matches LLMClientResource interface."""
-        # Determine if this is generation or evaluation based on prompt content
-        if "SCORE" in prompt or "Rate" in prompt or "evaluate" in prompt.lower():
+        # Determine the type of response needed based on prompt content
+        # Check links generation FIRST since it might contain scoring keywords
+        if ("concept link generation" in prompt.lower() or 
+            "link generation" in prompt.lower() or 
+            ("generate" in prompt.lower() and "links" in prompt.lower()) or
+            "candidate links" in prompt.lower() or
+            "pair explorer" in prompt.lower()):
+            # This is a links generation prompt - return structured bullet points
+            return self._get_links_response(model, prompt)
+        elif "SCORE" in prompt or "Rate" in prompt or "evaluate" in prompt.lower():
             # This is an evaluation prompt - return a score
             return self._get_evaluation_response(model)
         else:
-            # This is a generation prompt - return creative content
-            return self._get_generation_response(model, prompt)
+            # This is an essay generation prompt - return full essay
+            return self._get_essay_response(model, prompt)
     
     def get_client(self):
         """Backward compatibility method - return self since we now implement generate directly."""
         return self
     
-    def _get_generation_response(self, model, prompt):
-        """Generate realistic creative responses based on model."""
+    def _get_links_response(self, model, prompt):
+        """Generate realistic links responses with bullet points (at least 3 lines)."""
+        responses = {
+            "deepseek/deepseek-r1:free": """
+• Default mode network activation creates structured conceptual exploration rather than random wandering
+• Combinatorial creativity emerges from systematic intersection of disparate domains and concepts
+• Economic innovation models fail to capture non-linear value creation from unexpected connections
+• Generator-verifier gap highlights complementary roles of human intuition and AI systematization
+• Daydreaming can be formalized into reproducible methodology for breakthrough discovery
+• Mind-wandering patterns mirror how breakthrough innovations actually emerge in practice
+""".strip(),
+            
+            "deepseek/deepseek-r1-zero:free": """
+• Brain's default mode network functions as systematic conceptual space explorer during unfocused thinking
+• Innovation patterns follow predictable cognitive mechanisms rather than pure serendipity
+• Creative discovery amplifies when human intuition combines with systematic verification processes
+• Economic models need non-linear frameworks to capture creative value emergence
+• Structured daydreaming protocols could formalize breakthrough discovery methodologies
+• Concept combination exploration mirrors natural innovation discovery patterns
+""".strip(),
+            
+            "google/gemma-3-27b-it:free": """
+• Default mode network facilitates active exploration of conceptual possibility spaces during daydreaming
+• Combinatorial thinking systems can amplify human creativity through structured concept intersection
+• Innovation engines emerge from systematic search combined with intuitive creative leaps
+• Economic frameworks need to account for creative value creation through novel combinations
+• Human-AI hybrid systems leverage both systematic verification and intuitive discovery processes
+• Structured concept combination protocols can transform serendipitous discovery into intentional exploration
+""".strip()
+        }
+        
+        return responses.get(model, f"• Creative concept connections using {model}\n• Systematic exploration of idea combinations\n• Novel insights from conceptual intersections")
+
+    def _get_essay_response(self, model, prompt):
+        """Generate realistic essay responses based on model."""
         responses = {
             "deepseek/deepseek-r1:free": """
 # Breakthrough in Daydreaming Methodology

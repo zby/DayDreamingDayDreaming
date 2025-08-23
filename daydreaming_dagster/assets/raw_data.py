@@ -155,8 +155,35 @@ def evaluation_templates(context) -> pd.DataFrame:
     if not metadata_path.exists():
         raise Failure(f"Required evaluation templates CSV not found: {metadata_path}")
     
-    # Load CSV metadata
-    templates_df = pd.read_csv(metadata_path)
+    # Load CSV metadata with better error handling
+    try:
+        templates_df = pd.read_csv(metadata_path)
+    except pd.errors.ParserError as e:
+        # Show the actual CSV content around the problematic line for debugging
+        with open(metadata_path, 'r') as f:
+            lines = f.readlines()
+        
+        # Extract line number from error message if possible
+        error_msg = str(e)
+        line_num = None
+        if "line" in error_msg:
+            import re
+            match = re.search(r'line (\d+)', error_msg)
+            if match:
+                line_num = int(match.group(1))
+        
+        context_info = f"CSV parsing failed for {metadata_path}\n"
+        context_info += f"Original error: {error_msg}\n"
+        
+        if line_num and line_num <= len(lines):
+            context_info += f"\nProblematic content around line {line_num}:\n"
+            start = max(0, line_num - 3)
+            end = min(len(lines), line_num + 2)
+            for i in range(start, end):
+                marker = ">>> " if i + 1 == line_num else "    "
+                context_info += f"{marker}Line {i+1}: {lines[i].rstrip()}\n"
+        
+        raise Failure(context_info) from e
     
     # Add content column by reading template files in explicit loop
     content_list = []

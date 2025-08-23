@@ -9,5 +9,5 @@ gemini-prior-art-eval,Prior Art gemini, Gemini research based prior art evaluati
 style-coherence,Style Coherence,Evaluates writing coherence and concept integration quality,false
 style-coherence-v2,Style Coherence V2,Enhanced template with detailed scoring rubric and calibration examples,false
 style-coherence-v3,Style Coherence V3,Advanced template with structure-preserving link framework and quality checks,true
- interdisciplinary-coherence,Interdisciplinary Coherence,Specialized template for evaluating interdisciplinary work and domain integration,false
-novel-elements-coverage-v1,Novel Elements Coverage,Checks coverage of novel elements, mechanism specificity, originality, and leakage (0–9 score),false
+interdisciplinary-coherence,Interdisciplinary Coherence,Specialized template for evaluating interdisciplinary work and domain integration,false
+novel-elements-coverage-v1,Novel Elements Coverage,"Checks coverage of novel elements, mechanism specificity, originality, and leakage (0–9 score)",false
