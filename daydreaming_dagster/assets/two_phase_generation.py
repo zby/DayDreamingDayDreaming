@@ -76,7 +76,7 @@ def links_prompt(
     partitions_def=link_tasks_partitions,
     group_name="generation_links",
     io_manager_key="links_response_io_manager",
-    required_resource_keys={"openrouter_client"},
+    required_resource_keys={"openrouter_client", "experiment_config"},
 )
 def links_response(context, links_prompt, link_generation_tasks) -> str:
     """
@@ -91,9 +91,14 @@ def links_response(context, links_prompt, link_generation_tasks) -> str:
     # Use the model name directly from the task
     model_name = task_row["generation_model_name"]
     
-    # Generate using Dagster LLM resource
+    # Generate using Dagster LLM resource with link generation token limit
     llm_client = context.resources.openrouter_client
-    response = llm_client.generate(links_prompt, model=model_name)
+    experiment_config = context.resources.experiment_config
+    response = llm_client.generate(
+        links_prompt, 
+        model=model_name,
+        max_tokens=experiment_config.link_generation_max_tokens
+    )
     
     # Validate response quality - fail immediately if insufficient
     response_lines = [line.strip() for line in response.split('\n') if line.strip()]

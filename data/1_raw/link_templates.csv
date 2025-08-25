@@ -2,4 +2,5 @@ template_id,template_name,description,active
 creative-synthesis-v10,Creative Synthesis V10,Enhanced two-phase generation - Links Phase,false
 pair-explorer,Pair Explorer,Explore and generate links between pairs of concepts,false
 pair-explorer-recursive,Pair Explorer Recursive,Enhanced pair exploration with recursive mechanism linking,false
-pair-explorer-recursive-v1,Pair Explorer Recursive V1,Advanced link exploration with mechanism lifting,true
+pair-explorer-recursive-v1,Pair Explorer Recursive V1,Advanced link exploration with mechanism lifting,false
+pair-explorer-recursive-v2,Pair Explorer Recursive V2,Flexible link exploration with reduced fabrication pressure,true
