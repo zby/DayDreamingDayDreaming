@@ -1,0 +1,87 @@
+# Concept Link Generation — v15 (precision + recursion + strategy-light)
+
+**Role:** Interdisciplinary mechanism designer  
+**Your task:** Given the concept list below, produce a *single* structured response with:
+1) **Pair Explorer** stubs and selections,  
+2) **Selected Links** with explicit mechanism details and micro-tests,  
+3) an optional **Recursive Round** when a novel capability appears,  
+4) **Universal Patterns** (lightweight cross-domain synthesis), and  
+5) a concise **Gate Report** summarizing coverage, quality, and issues.
+
+Your response **must** follow the exact headings and field names below.
+
+---
+
+## Inputs (concept list)
+{% for concept in concepts %}
+**{{ concept.name }}**  
+{{ concept.content }}
+---
+{% endfor %}
+
+**Production budget & diversity:** Explore ≤ **6** unordered pairs; output **6–8** final links; cover **≥3 link types** and **≥3 distinct roles** across finals.
+
+**Link types (choose 1 per link):**
+
+1. Reframing / Problem Translation 2) Constraint→Objective Import 3) Mechanism Composition
+2. Feature Graft / Capability Transfer 5) Structure-Preserving Analogy
+
+**Role palette (use in “Roles:” line):** resource · process · constraint · objective · evaluator · environment · interface
+
+---
+
+## Output format (print exactly this structure)
+
+### A) Pair Explorer
+
+For each unordered pair **{A, B}** (choose up to 6 diverse pairs):
+
+* **Pair i:** `{A, B}`
+* **Option Slate (≤4 stubs, one line each):**
+  `ID [i-k] · Type & Direction (A→B or B→A) · New (operator|state|signal|guardrail) · Lever`
+* **Score & Select:** Impact · Tractability · Clarity · Novelty (1–5 each) → **Winners:** `[i-k, …]` (1–2)
+* **Why not the others (≤1 line each):** specific weakness per non-winner.
+
+### B) Selected Links (expand winners only; one block per winner)
+
+**Link g:** `A → B`
+
+* **Type:** (from list)
+* **Roles:** `A(role=…) → B(role=…)`
+* **Mechanism (≤90 words):** *Because A has **\[lever]**, apply **\[operator]** in B to move **\[state variables]** via **\[control signal/feedback]**, yielding **\[effect + payoff metric]**.*
+* **State / Signals:** `state = {s1, s2, …} · signals = {input, feedback, stop}`
+* **Guardrails & Failure Modes (≤2 lines):** when to abort / limits.
+* **Micro-test (24–48h):** falsifiable probe + success indicator.
+* **Example (≤2 lines; mark *(hypothetical)* if unsourced).**
+* **One-sentence delta (≤20 words).**
+
+### C) Recursive Round (optional, ≤2 links)
+
+**Trigger (when to use):** If any **winning link** introduces a **novel capability** (an operator or lever not present in original concept descriptions), treat that link as a **virtual concept** `V = {operator, lever}`.
+**How to choose partners:** Pair `V` with **1–2 original concepts** that are **unused** (not yet appearing as source *or* target in any **Selected Link**), where `V` can serve as a **resource/constraint/process** for that concept. Prefer pairs that increase **role coverage** or **link-type diversity**.
+**Keep only** recursive links that introduce a **new control signal or guardrail**.
+**Format:** same as “Selected Links,” and tag header with **(Recursive)**.
+
+### D) Universal Patterns (≤3)
+
+For each pattern, 1–2 lines total:
+
+* **Pattern name —** concise principle that appears across ≥2 links, stated in domain-neutral language, with the shared **operator/feedback/guardrail** highlighted.
+
+### E) Gate Report (concise, nuanced)
+
+* **Coverage:** Types used = `[ … ]` | Roles used = `[ … ]` | **Gaps:** brief notes.
+* **Quality:** Novel mechanisms present? **\[y/n + 1 line]** · Clear micro-tests? **\[y/n + 1 line]** · Distinct payoffs (no overlap)? **\[y/n + IDs if overlapping]**
+* **Issues:** Potential duplicates (**IDs**), unclear variables (**IDs**), missing guardrails (**IDs**).
+* **Action:** *Drop or rewrite IDs:* `[…]`.
+
+---
+
+## Rubric to apply while writing (do not print verbosely)
+
+* **Impact:** size of effect if true.
+* **Tractability:** a small team can run the micro-test within 48h.
+* **Clarity:** explicit operator/variables/signals/stop rule.
+* **Novelty:** mechanism-level difference vs other options in this run.
+
+
