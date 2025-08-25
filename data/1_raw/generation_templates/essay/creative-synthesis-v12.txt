@@ -14,15 +14,22 @@ COHERENT SYNTHESIS (do not list selections explicitly)
 - Only incorporate additional links when they naturally strengthen your central argument - forced connections reduce essay quality.
 - Develop your chosen theme deeply rather than superficially covering many topics.
 - Integrate ideas seamlessly; never enumerate or restate the notes. No "as in the notes…" sentences.
-- Use the conceptual insights from the links, but disregard specific metrics, timelines, or measurements that seem unrealistic or fabricated.
+
+INSPIRATION NOT REPLICATION
+- The links are technical frameworks meant to inspire ideas, NOT formal specifications to follow.
+- Extract core conceptual insights and translate them into natural, flowing prose.
+- Use metrics and technical details selectively - only when they genuinely strengthen your narrative and seem credible.
+- Avoid copying formal structures, jargon-heavy language, or artificial-sounding technical specifications.
+- Write in clear, accessible language rather than academic or engineering terminology.
 
 MECHANISM-FIRST EXPLANATION
-- Explain mappings → mechanisms in plain language; then show how mechanisms compose within your central theme.
-- Use consistent terminology and units; define metrics precisely (computation, baselines → targets).
+- Explain how your central theme works in plain language, showing how different elements connect and reinforce each other.
+- Use consistent terminology and units; define metrics precisely when they serve your argument.
 
 SPECIFICS & TESTABILITY
-- Include targets; metric formulas; baselines → targets; levers; concise test plans (datasets, ablations, sample sizes, multiple-testing control).
-- Use small, concrete examples or mini case studies to illustrate mechanisms in action.
+- When helpful to your central argument, include concrete targets, test plans, and examples that make your ideas tangible and actionable.
+- Use small, concrete examples or mini case studies to illustrate key concepts in action.
+- Ensure all technical details support rather than overwhelm your core narrative.
 
 FEASIBILITY & PRIOR ART
 - Assess feasibility (economic, strategic, operational) tied directly to the mechanisms (resources, protection, ROI, risks).
