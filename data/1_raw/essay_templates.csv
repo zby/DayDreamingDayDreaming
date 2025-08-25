@@ -1,3 +1,4 @@
 template_id,template_name,description,active
 creative-synthesis-v10,Creative Synthesis V10,Enhanced two-phase generation - Essay Phase,false
-creative-synthesis-v11,Creative Synthesis V11,Enhanced with critical judgment for fabricated details - Essay Phase,true
+creative-synthesis-v11,Creative Synthesis V11,Enhanced with critical judgment for fabricated details - Essay Phase,false
+creative-synthesis-v12,Creative Synthesis V12,Focus on coherent single-theme essays rather than comprehensive coverage - Essay Phase,true
