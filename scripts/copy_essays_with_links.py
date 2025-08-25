@@ -20,14 +20,16 @@ What it does:
 3) Copies to `to_analyse/`:
    - Essay responses from `data/3_generation/essay_responses/`
    - Links responses from `data/3_generation/links_responses/` (as `<name>_links_response.txt`)
-   - One copy per unique template used:
-       * Essay template: `{template}_essay_template.txt` from `data/1_raw/generation_templates/essay/`
-       * Links template: `{template}_links_template.txt` from `data/1_raw/generation_templates/links/`
+   - Template files from the two-phase generation system:
+       * Essay templates: `{essay_template}_essay_template.txt` from `data/1_raw/generation_templates/essay/`
+       * Links templates: `{links_template}_links_template.txt` from `data/1_raw/generation_templates/links/`
 
 Notes:
-- Links files get a `_links_response` postfix to avoid naming conflicts with essay files.
+- Supports the two-phase generation system where links and essays use different templates
+- Links files get a `_links_response` postfix to avoid naming conflicts with essay files
+- Links template names are extracted from the link task ID structure
 - Evaluation responses by Sonnet (`evaluation_model_id='sonnet-4'`) are copied into
-  a subdirectory named `evaluations_sonnet/` alongside the other files.
+  a subdirectory named `evaluations_sonnet/` alongside the other files
 """
 
 import os
@@ -69,7 +71,8 @@ def get_top_scoring_generations(n: int = 5, scores_csv: str = "data/6_summary/ge
         generation_info.append({
             'filename': filename,
             'combo_id': row['combo_id'],
-            'template': row['generation_template'],
+            'template': row['generation_template'],  # Essay template
+            'link_template': row['link_template'],   # Links template
             'model': row['generation_model'],
             'score': row['sum_scores']
         })
@@ -129,6 +132,7 @@ def get_top_from_big_pivot(
             "filename": filename,
             "combo_id": row.get("combo_id"),
             "template": row.get("generation_template"),
+            "link_template": row.get("link_template"),  # May be None for old data
             "model": row.get("generation_model"),
             "score": row.get("sum_scores", 0.0),
         })
@@ -195,28 +199,30 @@ def copy_essays_with_links(essay_paths: List[str], generation_info: List[dict],
             print(f"\nWarning: No generation info found for {essay_filename}")
             continue
             
-        template_name = info['template']
+        essay_template_name = info['template']
+        links_template_name = info.get('link_template', essay_template_name)  # Use link_template if available
         
         # Define source file paths
         essay_response_src = essay_responses_path / essay_filename
         # Link responses are saved by link_task_id, not essay_task_id.
         # essay_task_id = f"{link_task_id}_{essay_template}" so we drop the trailing
-        # "_{template_name}" from the essay filename stem to get the link filename.
+        # "_{essay_template_name}" from the essay filename stem to get the link filename.
         link_filename_stem = essay_filename.stem
-        suffix_to_remove = f"_{template_name}"
+        suffix_to_remove = f"_{essay_template_name}"
         if link_filename_stem.endswith(suffix_to_remove):
             link_filename_stem = link_filename_stem[: -len(suffix_to_remove)]
         links_response_src = links_responses_path / f"{link_filename_stem}{essay_filename.suffix}"
-        essay_template_src = essay_templates_path / f"{template_name}.txt"
-        links_template_src = links_templates_path / f"{template_name}.txt"
+        
+        essay_template_src = essay_templates_path / f"{essay_template_name}.txt"
+        links_template_src = links_templates_path / f"{links_template_name}.txt"
         
         # Define destination file paths
         essay_response_dst = output_path / essay_filename
         links_response_dst = output_path / f"{essay_filename.stem}_links_response{essay_filename.suffix}"
-        essay_template_dst = output_path / f"{template_name}_essay_template.txt"
-        links_template_dst = output_path / f"{template_name}_links_template.txt"
+        essay_template_dst = output_path / f"{essay_template_name}_essay_template.txt"
+        links_template_dst = output_path / f"{links_template_name}_links_template.txt"
         
-        print(f"\nProcessing: {essay_filename} (template: {template_name})")
+        print(f"\nProcessing: {essay_filename} (essay_template: {essay_template_name}, links_template: {links_template_name})")
         
         # Copy essay response
         if essay_response_src.exists():
@@ -251,8 +257,11 @@ def copy_essays_with_links(essay_paths: List[str], generation_info: List[dict],
         else:
             print(f"  - No evaluations by {evaluation_model_id} found for {essay_task_id}")
             
-        # Copy essay template (only if not already copied)
-        if template_name not in copied_templates:
+        # Copy templates (only if not already copied)
+        # Use a compound key for both essay and links templates
+        template_key = f"{essay_template_name}+{links_template_name}"
+        if template_key not in copied_templates:
+            # Copy essay template
             if essay_template_src.exists():
                 shutil.copy2(essay_template_src, essay_template_dst)
                 print(f"  ✓ Copied essay template: {essay_template_dst.name}")
@@ -270,10 +279,10 @@ def copy_essays_with_links(essay_paths: List[str], generation_info: List[dict],
                 print(f"  ✗ Links template not found: {links_template_src}")
                 missing_files.append(str(links_template_src))
             
-            # Mark this template as copied
-            copied_templates.add(template_name)
+            # Mark this template combination as copied
+            copied_templates.add(template_key)
         else:
-            print(f"  - Templates for '{template_name}' already copied, skipping")
+            print(f"  - Templates for '{essay_template_name}' + '{links_template_name}' already copied, skipping")
     
     # Print summary
     print(f"\n{'='*60}")
@@ -333,7 +342,8 @@ def main():
     
     print(f"Selected {len(essay_filenames)} top scoring generations:")
     for i, info in enumerate(generation_info, 1):
-        print(f"  {i}. {info['model']} | {info['template']} | Score: {info['score']} | {info['combo_id']}")
+        link_template = info.get('link_template', 'N/A')
+        print(f"  {i}. {info['model']} | Essay: {info['template']} | Links: {link_template} | Score: {info['score']} | {info['combo_id']}")
         print(f"     -> {info['filename']}")
     
     print(f"\nCopying files...")
