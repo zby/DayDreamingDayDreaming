@@ -3,4 +3,6 @@ creative-synthesis-v10,Creative Synthesis V10,Enhanced two-phase generation - Li
 pair-explorer,Pair Explorer,Explore and generate links between pairs of concepts,false
 pair-explorer-recursive,Pair Explorer Recursive,Enhanced pair exploration with recursive mechanism linking,false
 pair-explorer-recursive-v1,Pair Explorer Recursive V1,Advanced link exploration with mechanism lifting,false
-pair-explorer-recursive-v2,Pair Explorer Recursive V2,Flexible link exploration with reduced fabrication pressure,true
+pair-explorer-recursive-v2,Pair Explorer Recursive V2,Flexible link exploration with reduced fabrication pressure,false
+pair-explorer-recursive-v3,Pair Explorer Recursive V3,Full analysis with extractable essay summary section,true
+pair-explorer-recursive-v4,Pair Explorer Recursive V4,Streamlined conceptual focus for essay writers,true
