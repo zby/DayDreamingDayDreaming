@@ -13,6 +13,6 @@
 
 ## Output rules
 - **Format for convenient reading using Markdown.** Use a clear title and whatever light structure (short sections, brief subheads, emphasis) improves readability. Avoid procedural detail; keep examples brief and illustrative.
-- **Length:** Aim for 2,200 ± 400 words - enough depth to fully develop the theme without losing focus.
+- **Length:** Aim for 1,200 ± 400 words - enough depth to fully develop the theme without losing focus.
 - **Coherence:** Maintain consistent terms and metrics throughout; avoid contradictions; ensure smooth narrative arc from introduction to conclusion.
 - End with a concise wrap-up that reiterates the main theme and why it works.
