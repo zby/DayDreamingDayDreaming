@@ -2,5 +2,7 @@ template_id,template_name,description,active
 creative-synthesis-v10,Creative Synthesis V10,Enhanced two-phase generation - Essay Phase,false
 creative-synthesis-v11,Creative Synthesis V11,Enhanced with critical judgment for fabricated details - Essay Phase,false
 creative-synthesis-v12,Creative Synthesis V12,Focus on coherent single-theme essays rather than comprehensive coverage - Essay Phase,false
-synthesis-technical,Synthesis Technical,Technical keystone mechanism focus with precise terminology,true
-synthesis-plain,Synthesis Plain,Plain-language keystone focus accessible to non-technical readers,true
+synthesis-technical,Synthesis Technical,Technical keystone mechanism focus with precise terminology,false
+synthesis-plain,Synthesis Plain,Plain-language keystone focus accessible to non-technical readers,false
+synthesis-strategical,Synthesis Strategical,Plain-language keystone focus accessible to non-technical readers,false
+synthesis-theme-narrative-v16,Essay Synthesis V16,Main theme narrative approach with focused development,true
