@@ -10,7 +10,8 @@
 ## Build, Test, and Development Commands
 - Install: `uv sync` (use `uv sync --dev` for Black/Ruff).
 - Dagster UI: `uv run dagster dev -f daydreaming_dagster/definitions.py` (set `DAGSTER_HOME=./dagster_home`).
-- Materialize setup assets: `uv run dagster asset materialize --select "group:raw_data,group:task_definitions" -f daydreaming_dagster/definitions.py`.
+- Auto-update upstream assets: start Dagster with the daemon (`export DAGSTER_HOME=./dagster_home && uv run dagster dev -f daydreaming_dagster/definitions.py`). Raw loaders and task definitions auto-rematerialize when `data/1_raw/**/*` changes.
+- Optional seed (once): `uv run dagster asset materialize --select "group:task_definitions" -f daydreaming_dagster/definitions.py`.
 - Two‑phase generation (split tasks):
   - Links: `uv run dagster asset materialize --select "group:generation_links" --partition <link_task_id> -f daydreaming_dagster/definitions.py`.
   - Essays: `uv run dagster asset materialize --select "group:generation_essays" --partition <essay_task_id> -f daydreaming_dagster/definitions.py`.

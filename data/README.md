@@ -123,7 +123,8 @@ data/
 
 ## Usage Notes
 
-- Always materialize `group:raw_data,group:task_definitions` before running LLM generation
+- Raw and task-definition assets auto-update when `data/1_raw/**/*` changes (daemon required). Start Dagster with the daemon to keep them fresh.
+- Optional: seed `group:task_definitions` once to create initial CSVs and partitions.
 - The pipeline creates directories automatically as needed
 - Use Dagster UI to monitor data generation progress
 - Large datasets in generation/evaluation folders can be safely deleted and regenerated
@@ -174,8 +175,8 @@ rm -rf data/6_summary/*
 rm -rf data/7_reporting/*
 ```
 
-Recreate tasks and downstream data by materializing:
+Recreate tasks and downstream data by materializing (seed once; daemon handles updates):
 
 ```bash
-uv run dagster asset materialize --select "group:raw_data,group:task_definitions" -f daydreaming_dagster/definitions.py
+uv run dagster asset materialize --select "group:task_definitions" -f daydreaming_dagster/definitions.py
 ```

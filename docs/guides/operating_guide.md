@@ -355,8 +355,8 @@ Invalid essay_task_id referenced by evaluation task 'eval_001': ''
 
 **Solutions:**
 ```bash
-# Option 1: Re-materialize task creation pipeline
-uv run dagster asset materialize --select "group:raw_data,group:task_definitions" -f daydreaming_dagster/definitions.py
+# Option 1: Re-materialize task creation pipeline (tasks only)
+uv run dagster asset materialize --select "group:task_definitions" -f daydreaming_dagster/definitions.py
 
 # Option 2: Check for underlying data issues
 # Inspect concepts, templates, and models for corruption
@@ -462,8 +462,8 @@ mkdir -p data/3_generation/generation_responses
 mkdir -p data/4_evaluation/evaluation_prompts
 mkdir -p data/4_evaluation/evaluation_responses
 
-# Option 2: Re-run raw data materialization (creates directories)
-uv run dagster asset materialize --select "group:raw_data" -f daydreaming_dagster/definitions.py
+# Option 2: Seed task definitions (creates expected directories under data/2_tasks/)
+uv run dagster asset materialize --select "group:task_definitions" -f daydreaming_dagster/definitions.py
 
 # Option 3: Check and fix permissions
 chmod 755 data/3_generation/generation_responses/
@@ -538,8 +538,8 @@ rm -rf data/2_tasks/*.csv
 rm -rf data/3_generation/*
 rm -rf data/4_evaluation/*
 
-# 2. Restart from raw data
-uv run dagster asset materialize --select "group:raw_data,group:task_definitions" -f daydreaming_dagster/definitions.py
+# 2. Seed task definitions (daemon will keep them updated)
+uv run dagster asset materialize --select "group:task_definitions" -f daydreaming_dagster/definitions.py
 
 # 3. Verify task integrity before proceeding
 head data/2_tasks/generation_tasks.csv

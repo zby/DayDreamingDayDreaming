@@ -52,9 +52,13 @@ run_queue:
 
 ## How to run (CLI or Dagit)
 
-1. Prepare data and tasks:
+1. Prepare data and tasks (daemon preferred; optional seed once):
 ```bash
-uv run dagster asset materialize -f daydreaming_dagster/definitions.py --select "group:raw_data,group:task_definitions"
+export DAGSTER_HOME=$(pwd)/dagster_home
+uv run dagster dev -f daydreaming_dagster/definitions.py  # keeps raw+tasks auto-updated
+
+# Optional initial seed
+uv run dagster asset materialize -f daydreaming_dagster/definitions.py --select "group:task_definitions"
 ```
 
 2. Free generation (serialized globally):

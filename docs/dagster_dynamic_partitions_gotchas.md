@@ -8,7 +8,7 @@ Current Model
 - I/O: PartitionedTextIOManager stores prompts/responses by task IDs; cross‑phase loads use a small helper context.
 
 Gotchas (and fixes)
-- Registration order: materialize `group:raw_data,group:task_definitions` first, then generation/evaluation assets.
+- Registration order: start Dagster with the daemon; raw + task assets auto-update when `data/1_raw/**/*` changes. If needed, seed `group:task_definitions` once before generation/evaluation assets.
 - Key consistency: task IDs are the ground truth. Always use `link_task_id` for links and `essay_task_id` for essays.
 - Cross‑phase reads: assets like `essay_prompt` and `evaluation_prompt` read upstream responses by FK using MockLoadContext (utils/shared_context.py). This is expected.
 - Stale CSVs: if a downstream asset expects new columns in `parsed_scores` (e.g., `link_template`) and fails, rematerialize upstream with a clear error. Example: `uv run dagster asset materialize --select parsed_scores -f daydreaming_dagster/definitions.py`.
@@ -18,7 +18,7 @@ Why not multi‑dimensional partitions?
 - Dagster supports only 2D multi‑partitions; our model has ≥3 dimensions. Encoding them into composite keys adds more complexity than our task tables + dynamic partitions. We’ll revisit if Dagster adds richer partitioning.
 
 Common commands
-- Initialize tasks: `uv run dagster asset materialize --select "group:raw_data,group:task_definitions" -f daydreaming_dagster/definitions.py`
+- Initialize tasks (optional): `uv run dagster asset materialize --select "group:task_definitions" -f daydreaming_dagster/definitions.py`
 - Run a link: `uv run dagster asset materialize --select "group:generation_links" --partition "$LINK_TASK_ID" -f daydreaming_dagster/definitions.py`
 - Run an essay: `uv run dagster asset materialize --select "group:generation_essays" --partition "$ESSAY_TASK_ID" -f daydreaming_dagster/definitions.py`
 - Evaluate an essay: `uv run dagster asset materialize --select "evaluation_prompt,evaluation_response" --partition "$EVALUATION_TASK_ID" -f daydreaming_dagster/definitions.py`
