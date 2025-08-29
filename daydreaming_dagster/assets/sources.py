@@ -44,8 +44,7 @@ def _fingerprint_paths(paths: Iterable[Path]) -> str:
     return h.hexdigest()
 
 
-@observable_source_asset(name="raw_concepts_source")
-def raw_concepts_source(context: AssetExecutionContext) -> ObserveResult:
+def _raw_concepts_source(context: AssetExecutionContext) -> ObserveResult:
     base = Path("data/1_raw/concepts")
     fingerprint = _fingerprint_paths([
         base / "concepts_metadata.csv",
@@ -59,8 +58,7 @@ def raw_concepts_source(context: AssetExecutionContext) -> ObserveResult:
     )
 
 
-@observable_source_asset(name="llm_models_source")
-def llm_models_source(context: AssetExecutionContext) -> ObserveResult:
+def _llm_models_source(context: AssetExecutionContext) -> ObserveResult:
     p = Path("data/1_raw/llm_models.csv")
     fingerprint = _fingerprint_paths([p])
     return ObserveResult(
@@ -69,8 +67,7 @@ def llm_models_source(context: AssetExecutionContext) -> ObserveResult:
     )
 
 
-@observable_source_asset(name="link_templates_source")
-def link_templates_source(context: AssetExecutionContext) -> ObserveResult:
+def _link_templates_source(context: AssetExecutionContext) -> ObserveResult:
     csv_path = Path("data/1_raw/link_templates.csv")
     dir_path = Path("data/1_raw/generation_templates/links")
     fingerprint = _fingerprint_paths([csv_path, dir_path])
@@ -84,8 +81,7 @@ def link_templates_source(context: AssetExecutionContext) -> ObserveResult:
     )
 
 
-@observable_source_asset(name="essay_templates_source")
-def essay_templates_source(context: AssetExecutionContext) -> ObserveResult:
+def _essay_templates_source(context: AssetExecutionContext) -> ObserveResult:
     csv_path = Path("data/1_raw/essay_templates.csv")
     dir_path = Path("data/1_raw/generation_templates/essay")
     fingerprint = _fingerprint_paths([csv_path, dir_path])
@@ -99,8 +95,7 @@ def essay_templates_source(context: AssetExecutionContext) -> ObserveResult:
     )
 
 
-@observable_source_asset(name="evaluation_templates_source")
-def evaluation_templates_source(context: AssetExecutionContext) -> ObserveResult:
+def _evaluation_templates_source(context: AssetExecutionContext) -> ObserveResult:
     csv_path = Path("data/1_raw/evaluation_templates.csv")
     dir_path = Path("data/1_raw/evaluation_templates")
     fingerprint = _fingerprint_paths([csv_path, dir_path])
@@ -112,3 +107,11 @@ def evaluation_templates_source(context: AssetExecutionContext) -> ObserveResult
         },
         data_version=DataVersion(fingerprint),
     )
+
+
+# Expose Dagster observable source assets with expected names
+raw_concepts_source = observable_source_asset(name="raw_concepts_source")(_raw_concepts_source)
+llm_models_source = observable_source_asset(name="llm_models_source")(_llm_models_source)
+link_templates_source = observable_source_asset(name="link_templates_source")(_link_templates_source)
+essay_templates_source = observable_source_asset(name="essay_templates_source")(_essay_templates_source)
+evaluation_templates_source = observable_source_asset(name="evaluation_templates_source")(_evaluation_templates_source)
