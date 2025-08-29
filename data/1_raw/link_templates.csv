@@ -11,4 +11,5 @@ recursive-light,Recursive Light,Precision mechanism design with recursion and li
 recursive-precise,Recursive Precise,Precision mechanism design with enhanced accuracy and detailed analysis,false
 recursive-precise-v1,Recursive Precise V1,Decision-tree approach with structured output and sanity checks,false
 recursive-precise-v2,Recursive Precise V2,Decision-tree approach with systematic validation and graph growth,false
-recursive_construction,Recursive Construction,Problem-first constructive synthesis with online recursion,true
+recursive_construction,Recursive Construction,Problem-first constructive synthesis with online recursion,false
+recursive-construction,Recursive Construction V1,Problem-first constructive synthesis with online recursion,true
