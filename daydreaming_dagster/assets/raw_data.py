@@ -1,4 +1,4 @@
-from dagster import asset, MetadataValue, Failure, AssetKey, AutoMaterializePolicy
+from dagster import asset, MetadataValue, Failure, AutoMaterializePolicy
 import pandas as pd
 from pathlib import Path
 from typing import List
@@ -9,7 +9,6 @@ from ..utils.csv_reading import read_csv_with_context
 @asset(
     group_name="raw_data",
     required_resource_keys={"data_root"},
-    deps=[AssetKey("raw_concepts_source")],
     auto_materialize_policy=AutoMaterializePolicy.eager(),
 )
 def concepts(context) -> List[Concept]:
@@ -70,7 +69,6 @@ def concepts(context) -> List[Concept]:
 @asset(
     group_name="raw_data",
     required_resource_keys={"data_root"},
-    deps=[AssetKey("llm_models_source")],
     auto_materialize_policy=AutoMaterializePolicy.eager(),
 )
 def llm_models(context) -> pd.DataFrame:
@@ -96,7 +94,6 @@ def llm_models(context) -> pd.DataFrame:
 @asset(
     group_name="raw_data",
     required_resource_keys={"data_root"},
-    deps=[AssetKey("link_templates_source")],
     auto_materialize_policy=AutoMaterializePolicy.eager(),
 )
 def link_templates(context) -> pd.DataFrame:
@@ -132,7 +129,6 @@ def link_templates(context) -> pd.DataFrame:
 @asset(
     group_name="raw_data",
     required_resource_keys={"data_root"},
-    deps=[AssetKey("essay_templates_source")],
     auto_materialize_policy=AutoMaterializePolicy.eager(),
 )
 def essay_templates(context) -> pd.DataFrame:
@@ -169,7 +165,6 @@ def essay_templates(context) -> pd.DataFrame:
 @asset(
     group_name="raw_data",
     required_resource_keys={"data_root"},
-    deps=[AssetKey("evaluation_templates_source")],
     auto_materialize_policy=AutoMaterializePolicy.eager(),
 )
 def evaluation_templates(context) -> pd.DataFrame:

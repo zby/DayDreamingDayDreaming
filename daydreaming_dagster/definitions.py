@@ -22,13 +22,6 @@ from daydreaming_dagster.assets.results_summary import (
     generation_scores_pivot,
     evaluation_model_template_pivot
 )
-from daydreaming_dagster.assets.sources import (
-    raw_concepts_source,
-    llm_models_source,
-    link_templates_source,
-    essay_templates_source,
-    evaluation_templates_source,
-)
 from daydreaming_dagster.assets.raw_data import (
     concepts,
     llm_models,
@@ -62,13 +55,6 @@ from pathlib import Path
 
 defs = Definitions(
     assets=[
-        # Observable sources (enable timestamp/content-fingerprint based staleness)
-        raw_concepts_source,
-        llm_models_source,
-        link_templates_source,
-        essay_templates_source,
-        evaluation_templates_source,
-
         # Raw data assets (now load all data, no filtering)
         concepts,                       # Loads ALL concepts with descriptions and applies filtering
         llm_models,                     # Loads ALL models
