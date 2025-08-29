@@ -10,16 +10,24 @@ class CannedLLMResource(ConfigurableResource):
     """
 
     def generate(self, prompt: str, model: str, temperature: float = 0.7, max_tokens: int = None) -> str:
-        # Links generation first (keywords may overlap with evaluation)
+        # Heuristic routing:
+        # - links_response always sets max_tokens explicitly in production; use that as primary signal
+        if max_tokens is not None:
+            return self._get_links_response(model, prompt)
+        
+        # Fallbacks by prompt content (useful if call sites change):
+        pl = prompt.lower()
         if (
-            "concept link generation" in prompt.lower()
-            or "link generation" in prompt.lower()
-            or ("generate" in prompt.lower() and "links" in prompt.lower())
-            or "candidate links" in prompt.lower()
-            or "pair explorer" in prompt.lower()
+            "concept link generation" in pl
+            or "link generation" in pl
+            or ("generate" in pl and "links" in pl)
+            or "candidate links" in pl
+            or "pair explorer" in pl
+            or "constructive synthesis" in pl
+            or "link type menu" in pl
         ):
             return self._get_links_response(model, prompt)
-        elif "score" in prompt.lower() or "rate" in prompt.lower() or "evaluate" in prompt.lower():
+        elif "score" in pl or "rate" in pl or "evaluate" in pl:
             return self._get_evaluation_response(model)
         else:
             return self._get_essay_response(model, prompt)
@@ -28,16 +36,8 @@ class CannedLLMResource(ConfigurableResource):
         return self
 
     def _get_links_response(self, model: str, prompt: str) -> str:
-        # Minimal, still >= 3 lines
-        return (
-            "\n".join(
-                [
-                    f"• Creative concept connections using {model}",
-                    "• Systematic exploration of idea combinations",
-                    "• Novel insights from conceptual intersections",
-                ]
-            )
-        )
+        # Always return a simple multi-line body (template-agnostic)
+        return "bla bla bla\nblas blas blas\nblablabla\n"
 
     def _get_essay_response(self, model: str, prompt: str) -> str:
         return (
@@ -50,4 +50,3 @@ class CannedLLMResource(ConfigurableResource):
             "Reasoning: Good creative synthesis with practical implications.\n\n"
             "SCORE: 7.5"
         )
-
