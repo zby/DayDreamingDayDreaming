@@ -141,7 +141,7 @@ Optionally stash selection files for traceability:
    uv run dagster dev -f daydreaming_dagster/definitions.py
    ```
 
-   The pipeline uses observable sources + eager auto-materialization for cheap assets. You typically do not need to materialize `group:raw_data` explicitly.
+   Raw loaders are standalone (no observable sources). When files under `data/1_raw/**/*` change, re‑materialize `group:raw_data` to refresh downstream tasks.
 
    Optional one-time seed (creates initial task CSVs and partitions):
    ```bash
@@ -170,9 +170,9 @@ Optionally stash selection files for traceability:
 
 The pipeline includes several auto-materializing assets that provide automatic data processing:
 
-#### Raw + Task Definitions (NEW)
-- Raw loaders (`group:raw_data`) depend on observable sources that fingerprint `data/1_raw/**/*` and are configured with `AutoMaterializePolicy.eager()`. When inputs change, Dagster re-materializes these automatically.
-- Task definitions (`group:task_definitions`) are also eager, so they update automatically when raw assets change.
+#### Raw + Task Definitions
+- Raw loaders (`group:raw_data`) are configured with `AutoMaterializePolicy.eager()`. To reflect file edits under `data/1_raw/**/*` during development, manually re‑materialize these assets.
+- Task definitions (`group:task_definitions`) are also eager; re‑materializing raw assets will refresh them.
 
 #### Results Tracking (Cross-Experiment)
 - **`generation_results_append`**: Automatically appends a row to `generation_results.csv` when any generation completes (works with both two-phase and legacy generation)

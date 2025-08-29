@@ -98,30 +98,24 @@ Assets are organized into logical groups for easy selection and understanding:
 
 ## Data Flow Architecture
 
-### 1. Raw Data Loading (`raw_data.py`) + Observable Sources (NEW)
+### 1. Raw Data Loading (`raw_data.py`)
 
 **Assets**: `concepts`, `llm_models`, `link_templates`, `essay_templates`, `evaluation_templates`
- plus observable source assets: `raw_concepts_source`, `llm_models_source`, `link_templates_source`, `essay_templates_source`, `evaluation_templates_source`.
 
 **Purpose**: Load and validate external data files from `data/1_raw/`.
-Changes are detected via observable source assets that fingerprint the corresponding files/directories. When fingerprints change, Dagster marks downstream raw assets stale and (with eager policy) re-materializes them automatically.
+Note: Observable source assets were removed for simplicity during development. When inputs change, re‑materialize the raw loader assets to refresh downstream tasks.
 
 **Key Features**:
 - **Selective Loading**: Filter concepts and templates based on configuration
 - **Validation**: Ensure required fields and structure
 - **Metadata Extraction**: Generate searchable metadata for concepts
 - **Template Processing**: Load and validate Jinja2 templates
- - **Auto-Update**: Timestamp/content fingerprinting triggers automatic re-materialization when inputs change
+ - **Manual Refresh**: Re‑materialize `group:raw_data` after editing files under `data/1_raw/**` to propagate changes
 
 **Implementation Details**:
 ```python
-# Observable source (computes data_version from mtime hash)
-@observable_source_asset(name="raw_concepts_source")
-def raw_concepts_source(context):
-    ...  # fingerprint data/1_raw/concepts/**/*
-
-# Raw asset depends on the observable source and uses eager auto-materialization
-@asset(group_name="raw_data", deps=[AssetKey("raw_concepts_source")], auto_materialize_policy=AutoMaterializePolicy.eager())
+# Raw asset uses eager auto-materialization
+@asset(group_name="raw_data", auto_materialize_policy=AutoMaterializePolicy.eager())
 def concepts(context) -> List[Concept]:
     ...  # load from CSV and description files
 ```

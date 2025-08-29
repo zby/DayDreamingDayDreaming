@@ -62,11 +62,10 @@ uv run dagster dev -f daydreaming_dagster/definitions.py
 
 #### Option 2: Command Line (Simplified)
 
-With observable sources and eager auto-materialization enabled, you usually do not need to manually run the raw setup assets. When files under `data/1_raw/**/*` change, Dagster detects the change and re-materializes the cheap upstream assets automatically (raw loaders and task definitions). Keep the LLM steps manual.
+Raw loaders are standalone (no observable source assets). After editing files under `data/1_raw/**/*`, re‑materialize the raw setup assets to refresh downstream tasks. Keep the LLM steps manual.
 
 ```bash
-## (Optional) Seed setup assets and task CSVs once
-# The daemon will keep these updated automatically when inputs change.
+## Seed/setup assets and task CSVs
 uv run dagster asset materialize --select "group:task_definitions" -f daydreaming_dagster/definitions.py
 
 # Dynamic partitions are automatically created/updated by the task assets
@@ -88,8 +87,7 @@ uv run dagster asset materialize --select "parsed_scores,final_results" -f daydr
 ```
 
 **Asset Group Breakdown**:
-- `observable sources`: internal source assets that fingerprint `data/1_raw/**/*` to detect changes (no direct user action needed)
-- `group:raw_data`: concepts, models, templates (auto-materialize when sources change; loads from `data/1_raw/`)
+- `group:raw_data`: concepts, models, templates (loads from `data/1_raw/`; re‑materialize after edits)
 - `group:task_definitions`: content_combinations, link_generation_tasks, essay_generation_tasks, evaluation_tasks (auto-materialize; creates `data/2_tasks/`)
 - `group:generation_links`: links_prompt, links_response (creates `data/3_generation/links_*`)
 - `group:generation_essays`: essay_prompt, essay_response (creates `data/3_generation/essay_*`)
