@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dagster import observable_source_asset, AssetExecutionContext, ObservationResult
+from dagster import observable_source_asset, AssetExecutionContext, ObserveResult, DataVersion
 from pathlib import Path
 from hashlib import sha256
 from typing import Iterable
@@ -45,7 +45,7 @@ def _fingerprint_paths(paths: Iterable[Path]) -> str:
 
 
 @observable_source_asset(name="raw_concepts_source")
-def raw_concepts_source(context: AssetExecutionContext) -> ObservationResult:
+def raw_concepts_source(context: AssetExecutionContext) -> ObserveResult:
     base = Path("data/1_raw/concepts")
     fingerprint = _fingerprint_paths([
         base / "concepts_metadata.csv",
@@ -53,63 +53,62 @@ def raw_concepts_source(context: AssetExecutionContext) -> ObservationResult:
         base / "descriptions-paragraph",
         base / "descriptions-article",
     ])
-    return ObservationResult(
+    return ObserveResult(
         metadata={"path": str(base), "fingerprint": fingerprint},
-        data_version=fingerprint,
+        data_version=DataVersion(fingerprint),
     )
 
 
 @observable_source_asset(name="llm_models_source")
-def llm_models_source(context: AssetExecutionContext) -> ObservationResult:
+def llm_models_source(context: AssetExecutionContext) -> ObserveResult:
     p = Path("data/1_raw/llm_models.csv")
     fingerprint = _fingerprint_paths([p])
-    return ObservationResult(
+    return ObserveResult(
         metadata={"path": str(p), "fingerprint": fingerprint},
-        data_version=fingerprint,
+        data_version=DataVersion(fingerprint),
     )
 
 
 @observable_source_asset(name="link_templates_source")
-def link_templates_source(context: AssetExecutionContext) -> ObservationResult:
+def link_templates_source(context: AssetExecutionContext) -> ObserveResult:
     csv_path = Path("data/1_raw/link_templates.csv")
     dir_path = Path("data/1_raw/generation_templates/links")
     fingerprint = _fingerprint_paths([csv_path, dir_path])
-    return ObservationResult(
+    return ObserveResult(
         metadata={
             "csv": str(csv_path),
             "dir": str(dir_path),
             "fingerprint": fingerprint,
         },
-        data_version=fingerprint,
+        data_version=DataVersion(fingerprint),
     )
 
 
 @observable_source_asset(name="essay_templates_source")
-def essay_templates_source(context: AssetExecutionContext) -> ObservationResult:
+def essay_templates_source(context: AssetExecutionContext) -> ObserveResult:
     csv_path = Path("data/1_raw/essay_templates.csv")
     dir_path = Path("data/1_raw/generation_templates/essay")
     fingerprint = _fingerprint_paths([csv_path, dir_path])
-    return ObservationResult(
+    return ObserveResult(
         metadata={
             "csv": str(csv_path),
             "dir": str(dir_path),
             "fingerprint": fingerprint,
         },
-        data_version=fingerprint,
+        data_version=DataVersion(fingerprint),
     )
 
 
 @observable_source_asset(name="evaluation_templates_source")
-def evaluation_templates_source(context: AssetExecutionContext) -> ObservationResult:
+def evaluation_templates_source(context: AssetExecutionContext) -> ObserveResult:
     csv_path = Path("data/1_raw/evaluation_templates.csv")
     dir_path = Path("data/1_raw/evaluation_templates")
     fingerprint = _fingerprint_paths([csv_path, dir_path])
-    return ObservationResult(
+    return ObserveResult(
         metadata={
             "csv": str(csv_path),
             "dir": str(dir_path),
             "fingerprint": fingerprint,
         },
-        data_version=fingerprint,
+        data_version=DataVersion(fingerprint),
     )
-
