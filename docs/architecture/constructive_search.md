@@ -1,7 +1,7 @@
-## Constructive Search and Goal Alignment (Concise)
+## Constructive Search and Goal Alignment (Current Approach)
 
 **Intent**
-- Complement the Project Goals doc with a brief, architecture‑level view of how a structured, finite search paired with fixed templates can meet the existence goal without relying on token permutations.
+- Describe the current approach: a structured, finite search paired with fixed templates that can meet the existence goal without relying on token permutations.
 
 **Search Space**
 - Finite, enumerable selections from a target‑neutral concept pool up to `k_max` (order‑sensitive: C1 = problem; C2..Ck attach in order).
@@ -30,3 +30,15 @@
 
 **Fit to Goals**
 - Structured, finite search + fixed grammar provides a practical existence path stronger than token‑level enumeration.
+
+## Previous Approach (Unordered Free‑Association)
+
+- Summary: Earlier runs explored unordered combinations of concepts and encouraged free associations to surface target ideas indirectly.
+- Limitations:
+  - Weak anchoring: No problem‑first root; attachments often decorative rather than causal.
+  - Degeneracy: Many semantically similar outputs with different phrasing, inflating search space without added mechanism.
+  - Pruning difficulty: Lacked per‑step micro‑tests and adjacency deltas; harder to prune early and compare structures.
+- Improvements in current approach:
+  - Problem‑first ordering (C1 as root) with a single primary attachment per step reduces branching and enforces causality.
+  - Transformation/Node gates canonicalize concepts and only add `E::…` when genuine new capability appears.
+  - Per‑step micro‑tests and explicit topology deltas enable earlier pruning and reproducible comparisons.

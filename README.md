@@ -6,6 +6,11 @@ This is a Dagster-based data pipeline that tests whether pre-June 2025 LLMs can 
 
 The system tests k_max-sized concept combinations to elicit the Day-Dreaming idea from offline LLMs using automated LLM-based evaluation. The pipeline features a **two-phase generation architecture** that separates creative brainstorming from structured essay composition for improved quality and consistency.
 
+### Conceptual Framing
+- Project goals and benchmark framing: see `docs/project_goals.md` (existence vs. practicality, neutrality, scope).
+- Current approach — Constructive search: see `docs/architecture/constructive_search.md` (finite, structured search with problem‑first `recursive_construction`).
+- Prior approach (context): unordered free‑association over concept combinations; kept for historical reference but superseded by constructive search for better anchoring and pruning.
+
 ### Two-Phase Generation System 🚀
 
 The pipeline uses an innovative two-phase approach to LLM generation:
@@ -55,22 +60,16 @@ uv run dagster dev -f daydreaming_dagster/definitions.py
 # Use the UI to materialize assets interactively
 ```
 
-#### Option 2: Command Line (3-Step Process)
+#### Option 2: Command Line (Simplified)
 
-**Important**: The pipeline requires a specific sequence due to Dagster's dynamic partitioning system.
+With observable sources and eager auto-materialization enabled, you usually do not need to manually run the raw setup assets. When files under `data/1_raw/**/*` change, Dagster detects the change and re-materializes the cheap upstream assets automatically (raw loaders and task definitions). Keep the LLM steps manual.
 
 ```bash
-# Step 1: Generate setup assets and task CSV files
-# Option A: Use asset groups (recommended - simpler)
-uv run dagster asset materialize --select "group:raw_data,group:task_definitions" -f daydreaming_dagster/definitions.py
+## (Optional) Seed setup assets and task CSVs once
+# The daemon will keep these updated automatically when inputs change.
+uv run dagster asset materialize --select "group:task_definitions" -f daydreaming_dagster/definitions.py
 
-# Option B: Use dependency resolution (alternative)
-uv run dagster asset materialize --select "+link_generation_tasks,+essay_generation_tasks,+evaluation_tasks" -f daydreaming_dagster/definitions.py
-
-# Option C: Explicit list with all dependencies (if you prefer explicit control)
-uv run dagster asset materialize --select "concepts,llm_models,link_templates,essay_templates,evaluation_templates,content_combinations,link_generation_tasks,essay_generation_tasks,evaluation_tasks" -f daydreaming_dagster/definitions.py
-
-# Dynamic partitions are automatically created when needed
+# Dynamic partitions are automatically created/updated by the task assets
 
 # Step 2: Generate LLM responses using two-phase generation
 # Now you can run individual partitions or use the UI to run all
@@ -89,19 +88,20 @@ uv run dagster asset materialize --select "parsed_scores,final_results" -f daydr
 ```
 
 **Asset Group Breakdown**:
-- `group:raw_data`: concepts, models, templates, and their metadata (loads from `data/1_raw/`)
-- `group:task_definitions`: content_combinations, link_generation_tasks, essay_generation_tasks, evaluation_tasks (creates `data/2_tasks/`)
+- `observable sources`: internal source assets that fingerprint `data/1_raw/**/*` to detect changes (no direct user action needed)
+- `group:raw_data`: concepts, models, templates (auto-materialize when sources change; loads from `data/1_raw/`)
+- `group:task_definitions`: content_combinations, link_generation_tasks, essay_generation_tasks, evaluation_tasks (auto-materialize; creates `data/2_tasks/`)
 - `group:generation_links`: links_prompt, links_response (creates `data/3_generation/links_*`)
 - `group:generation_essays`: essay_prompt, essay_response (creates `data/3_generation/essay_*`)
 - `group:evaluation`: evaluation_prompt, evaluation_response (creates `data/4_evaluation/`)
 - `group:results_processing`: parsed_scores, analysis, and final_results (creates `data/5_parsing/`, `data/6_summary/`)
 
-**Why the specific asset dependencies matter**: 
+**Why the specific asset dependencies matter**:
 - `link_templates` and `essay_templates` load their CSVs and template files and determine activeness
 - `evaluation_templates` loads evaluation CSV + files
 - Using asset groups or dependency resolution (`+`) automatically includes these dependencies
 
-**Dynamic Partitioning**: Partitions are automatically created from the task CSV files when LLM assets are materialized. Partition keys are based on `link_task_id` (links) and `essay_task_id` (essays), which include a stable `combo_id` prefix.
+**Dynamic Partitioning**: Partitions are created/updated by the task assets. Partition keys are based on `link_task_id` (links) and `essay_task_id` (essays), which include a stable `combo_id` prefix.
 
 ### Running All LLM Partitions
 
