@@ -35,6 +35,14 @@
  - Separation policy: if a change includes both logic and formatting, split into two commits (logic first, then style). This keeps review diffs readable and aligns with our LLM workflow.
 - PRs: clear description, linked issues, test plan (`pytest` output), and, when relevant, screenshots of Dagster runs or sample artifacts. Note any data/schema changes.
 
+### Staging Rules (Important)
+- Do not use `git add -A`. This can accidentally stage unrelated files, large artifacts, or local cruft. Instead, explicitly stage only the intended paths (e.g., `git add daydreaming_dagster/assets/core.py` or `git add data/1_raw/...`).
+- Separate commits by scope:
+  - Data-only changes: stage files under `data/` explicitly.
+  - Code-only changes: stage only source files and tests.
+  - Docs-only changes: stage only `docs/` or specific markdown files.
+- Never mix functional changes and formatting in the same commit; format in a follow-up commit.
+
 ## Security & Configuration Tips
 - Secrets: never commit API keys or real outputs; use a local `.env` and environment variables (`OPENROUTER_API_KEY`, `DAGSTER_HOME`).
 - Data: large generated folders under `data/` should be git‑ignored unless explicitly needed for tests/docs.
