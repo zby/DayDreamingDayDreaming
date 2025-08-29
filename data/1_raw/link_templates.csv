@@ -12,4 +12,5 @@ recursive-precise,Recursive Precise,Precision mechanism design with enhanced acc
 recursive-precise-v1,Recursive Precise V1,Decision-tree approach with structured output and sanity checks,false
 recursive-precise-v2,Recursive Precise V2,Decision-tree approach with systematic validation and graph growth,false
 recursive_construction,Recursive Construction,Problem-first constructive synthesis with online recursion,false
-recursive-construction,Recursive Construction V1,Problem-first constructive synthesis with online recursion,true
+recursive-construction,Recursive Construction V1,Problem-first constructive synthesis with online recursion,false
+rolling-summary-v1,Rolling Summary V1,Readable idea-thread recursion with enforced link types,true

@@ -6,6 +6,7 @@ daydreaming-verification,Daydreaming Verification,Systematically verifies AI Day
 daydreaming-verification-v2,Daydreaming Verification V2,Enhanced template with reliable 0-9 scoring and strict SCORE format,false
 o3-prior-art-eval,Prior Art o3, O3 research based prior art evaluation,false
 gemini-prior-art-eval,Prior Art gemini, Gemini research based prior art evaluation,true
+gemini-prior-art-eval-v2,Prior Art gemini V2 (terminology-flex),Terminology‑flex prior art evaluation (mechanism priority),true
 style-coherence,Style Coherence,Evaluates writing coherence and concept integration quality,false
 style-coherence-v2,Style Coherence V2,Enhanced template with detailed scoring rubric and calibration examples,false
 style-coherence-v3,Style Coherence V3,Advanced template with structure-preserving link framework and quality checks,true

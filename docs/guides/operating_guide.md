@@ -107,7 +107,7 @@ Edit the template CSV files to control which templates are active:
 
 **Link Templates** (`data/1_raw/link_templates.csv`):
 - Set desired link-phase templates to `active: true` (set all others to `false`).
-- Active by default in this repo: `recursive_construction` (problem-first constructive synthesis with online recursion).
+- Active by default in this repo: `rolling-summary-v1` (readable idea-thread recursion with enforced link types and rolling summaries).
 - To introduce a new link template:
   - Add a file under `data/1_raw/generation_templates/links/<template_id>.txt`.
   - Add a row to `data/1_raw/link_templates.csv` with the same `template_id` and set `active=true`.

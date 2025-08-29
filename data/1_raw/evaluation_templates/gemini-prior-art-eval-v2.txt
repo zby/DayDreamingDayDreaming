@@ -1,0 +1,50 @@
+RESPONSE TO EVALUATE:
+{{ response }}
+
+====
+
+Prompt: Prior Art Analysis for the "AI Daydreaming" Concept (Terminology‑Flexible)
+
+Objective:
+You are an expert AI researcher specializing in novelty assessment. Analyze the text to determine whether it constitutes prior art for the "AI Daydreaming" concept. Prioritize mechanism‑level equivalence over specific terminology. Do not require exact phrases like “daydreaming,” “DMN,” “training data,” “data wall,” or “tax” if the functional ideas are clearly present.
+
+Concept Under Evaluation (mechanism‑level framing):
+The concept combines three pillars:
+
+Conceptual (Background Exploration): The system has a background or recurring exploratory process (continuous or scheduled) that runs without a user goal, used to generate novel concepts/insights (as opposed to maintenance or task adaptation). Accept synonyms such as incubation, mind‑wandering, unfocused exploration, off‑policy exploration, or background synthesis.
+
+Architectural (Generator–Critic with Prospective Loop): A generator proposes non‑obvious connections from internal knowledge; a critic/verifier evaluates them (novelty/value/insight or empirical plausibility). Validated results feed forward to improve future generation (a compounding, prospective loop that creates new knowledge/heuristics), not merely to memorize past data.
+
+Strategic (Defensible Advantage via Self‑Generated Knowledge): The process is cast as a long‑horizon investment that accumulates internally unique knowledge/heuristics/data, yielding a durable competitive edge (a “moat”). Accept functionally equivalent framings: proprietary research corpus, internal discovery heuristics, self‑generated knowledge base, reduced dependence on external data; explicit “data wall” or “tax” wording is not required.
+
+Evaluation Instructions:
+Address each section explicitly and judge based on function, not word choice.
+
+1) Conceptual Framework (40%)
+- Does the text describe a background or recurring, self‑directed exploratory process (continuous or scheduled), distinct from maintenance/catastrophic‑forgetting prevention?
+- Is the explicit purpose open‑ended novelty generation, discovery, or insight (not just task tuning)?
+- If exact analogies (DMN/daydreaming) are absent, are functionally equivalent descriptions present (e.g., incubation, mind‑wandering, unfocused exploration)?
+
+2) Architectural Implementation (30%)
+- Is there a generator proposing non‑obvious links from internal knowledge/memory?
+- Is there a critic/verifier evaluating proposals (accept either abstract qualities like novelty/value/insight or empirical plausibility/validity)?
+- Is there a prospective, compounding feedback loop that improves the generator or its heuristics with validated outputs?
+
+3) Strategic Rationale (30%)
+- Does the text argue for a durable advantage from internally accumulated outputs (knowledge, data, or discovery heuristics)?
+- Is long‑term investment/compute cost acknowledged or implied (even without “tax” language)?
+- Is reduced dependence on external data or a defensible moat implied or stated (even without “data wall” phrasing)?
+
+Scoring and Final Output:
+Provide a holistic novelty score (0–9) using these anchors; do not penalize for missing exact phrases if the mechanisms are equivalent.
+
+0: Unrelated.
+1–2: Mentions a related piece (e.g., synthetic data) without the background exploration + prospective loop.
+3–4: Has looped self‑training or replay for maintenance/alignment, but not open‑ended discovery.
+5–6: Clearly presents background exploration and generator–critic loop, but strategic/defensibility dimension is weak or absent.
+7–8: Presents background exploration, generator–critic with prospective feedback, and a clear defensibility/advantage from self‑generated knowledge.
+9: Fully specifies all three pillars with mechanism‑level clarity; functionally identical even if wording differs.
+
+Your response should provide a structured analysis for sections 1–3, then the final score on a new line in this format:
+SCORE: 7
+

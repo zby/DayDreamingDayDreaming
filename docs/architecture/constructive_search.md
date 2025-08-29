@@ -4,20 +4,20 @@
 - Describe the current approach: a structured, finite search paired with fixed templates that can meet the existence goal without relying on token permutations.
 
 **Search Space**
-- Finite, enumerable selections from a target‑neutral concept pool up to `k_max` (order‑sensitive: C1 = problem; C2..Ck attach in order).
+- Finite, enumerable selections from a target‑neutral concept pool up to `k_max` (order‑sensitive: C1 is an initial seed; C2..Ck attach in order).
 - Canonical ordering: The realized order of concepts is inherited from the
   row order in `data/1_raw/concepts/concepts_metadata.csv` after applying the
   `active` filter. Templates receive concepts in exactly this order, ensuring
   deterministic rendering across runs.
-- Fixed, parseable grammar via `recursive_construction` (one primary attachment per step) constrains outputs and reduces degeneracy.
+- Fixed, parseable grammar via `rolling-summary-v1` (quick Q1→Q5 probing with exactly one enforced link type per step and a rolling “Idea So Far — i”) constrains outputs and reduces degeneracy.
 
 **Why This Template Helps**
-- Problem‑first anchoring and single‑link decision (Types 1–5) per step keep branching low and attachments causal.
-- Transformation and Node‑Introduction gates canonicalize concepts and add `E::…` only when a true new capability appears.
-- Local micro‑tests + adjacency deltas enable early pruning and reproducible structure.
+- Single‑link decision with enforced link types and stop‑at‑first‑yes keeps branching low and attachments causal.
+- Rolling “Idea So Far” summaries maintain readability and provide a stable default anchor; minimal, faithful transformations are recorded explicitly.
+- Optional micro‑tests enable early pruning; earliest‑leaf default and Q1 preference for Mechanism Composition promote causal strength.
 
 **Existence Sketch**
-- For fixed `k_max`, ordered sequences × bounded rendering choices are finite; a bounded enumerator (or stochastic policy with exploration) covers this space in finite time.
+- For fixed `k_max`, ordered sequences × bounded rendering choices (link types + short summaries) are finite; a bounded enumerator (or stochastic policy with exploration) covers this space in finite time.
 - Evaluation gates detect reinvention when all current novel elements are present with coherence/justification.
 
 **Practicality Levers**
@@ -43,6 +43,6 @@
   - Degeneracy: Many semantically similar outputs with different phrasing, inflating search space without added mechanism.
   - Pruning difficulty: Lacked per‑step micro‑tests and adjacency deltas; harder to prune early and compare structures.
 - Improvements in current approach:
-  - Problem‑first ordering (C1 as root) with a single primary attachment per step reduces branching and enforces causality.
-  - Transformation/Node gates canonicalize concepts and only add `E::…` when genuine new capability appears.
-  - Per‑step micro‑tests and explicit topology deltas enable earlier pruning and reproducible comparisons.
+  - Seed‑first ordering (C1 as initial seed) with a single primary attachment per step reduces branching and enforces causality.
+  - Minimal, explicit transformations and enforced link‑type selection constrain drift and clarify mechanisms.
+  - Per‑step micro‑tests (optional) and rolling summaries enable earlier pruning and reproducible comparisons.

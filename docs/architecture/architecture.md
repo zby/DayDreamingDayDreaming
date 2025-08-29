@@ -201,9 +201,9 @@ data/1_raw/generation_templates/
     └── systematic-analytical.txt
 ```
 
-Active Link Template (Problem‑First):
-- `recursive_construction` (file: `data/1_raw/generation_templates/links/recursive_construction.txt`, selectable via `data/1_raw/link_templates.csv`).
-- Approach: C1 is normalized into a one‑line Problem; for each subsequent concept (fixed order, no swaps), the model may lightly operationalize it (Transformation Gate) and attach it to the evolving graph using the existing 1–5 link decision tree. If a coupling yields a new capability, it instantiates an `E::…` mechanism (Node‑Introduction Gate) and records local rewires. Each step includes a micro‑test and an adjacency delta; a final Reflections section suggests better ordering without changing the built graph.
+Active Link Template:
+- `rolling-summary-v1` (file: `data/1_raw/generation_templates/links/rolling-summary-v1.txt`, selectable via `data/1_raw/link_templates.csv`).
+- Approach: Build a readable idea thread. Start from C1 as an initial seed (problem or kernel), then attach each subsequent concept to “Idea So Far — i‑1”. Each step selects exactly one link type via a quick Q1→Q5 probe (stop at first yes; earliest‑leaf default; Q1 preference for Mechanism Composition). Record the decision path and any minimal transformation. Update a ≤2‑line “Idea So Far — i”, with optional micro‑test. Final reflections suggest alternative anchors/order without rewriting earlier steps.
 
 
 **Data Flow**:

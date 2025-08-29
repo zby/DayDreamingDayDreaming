@@ -245,6 +245,9 @@ Adding a new link template:
 - Register it in `data/1_raw/link_templates.csv` with the same `template_id` and set `active=true` (set others to `false`).
 - Optional: set `GEN_TEMPLATES_ROOT` to point to a different root if you maintain templates outside the repo.
 
+Default active link template:
+- `rolling-summary-v1` — Readable idea-thread recursion with enforced link types and a rolling “Idea So Far — i” summary. See `data/1_raw/generation_templates/links/rolling-summary-v1.txt`.
+
 **Phase 2 Templates** (`essay/`):
 - Focus on structured essay composition
 - Input: `links_block` (raw output from Phase 1)

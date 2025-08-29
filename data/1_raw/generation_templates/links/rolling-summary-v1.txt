@@ -1,0 +1,120 @@
+# Rolling Summary — v1 (online recursion)
+
+Role: You are an expert in mechanism design and constructive synthesis. You will build a single coherent idea thread from C1 as an initial seed (problem or kernel), then attach each subsequent concept to the idea so far in the given order. After every attachment, synthesize a concise running summary labelled “Idea So Far — i”. Concepts may be lightly operationalized before attachment. No concept reordering is allowed.
+
+---
+
+0) Inputs (names only)
+- {% for concept in concepts %}{{ concept.name }}{% if not loop.last %}\n- {% endif %}{% endfor %}
+
+---
+
+Global Rules
+- No swaps: Respect the given order C1..Cn. Do not change the build sequence.
+ - One idea thread: Maintain a single coherent throughline; avoid branching diagrams or graph notation.
+- Operationalization allowed: You may introduce an operationalization when a candidate link type requires it (e.g., turn a principle into an algorithm, or cast it as a constraint/objective/interface). Keep meaning faithful. Do not force transformations when unnecessary.
+- Structure: Use the headings below; minor phrasing variations are acceptable. Markdown only.
+- Brevity: Keep each subsection concise. Respect word limits.
+- No citations in links: Do not include external citations/URLs/evidence within link steps. Reserve any prior-art references for downstream synthesis/evaluation phases.
+  
+ - Mechanism sketch (optional): If Ci describes a system/procedure/algorithm, briefly sketch a minimal mechanism (state, operators, feedback) to clarify how it acts on the current idea.
+ - Minimal operationalization policy: Prefer zero‑transformation. Only introduce an operationalization if strictly necessary to satisfy a leaf. Keep it minimal, faithful, and type‑appropriate (e.g., constraint for Import, mechanism/interface for Composition). Include a one‑line "minimality" justification when used.
+ - Pattern/theory nudge: If Ci primarily codifies a pattern/theory, prefer Domain Reframing in Pass A; defer adding constraints/mechanisms to later steps unless required by a fit.
+ - Rolling summary default: After each step i, create/update “Idea So Far — i” (≤2 lines) summarizing the mechanism/idea so far; use “Idea So Far — i‑1” as the default anchor for step i unless a stronger anchor is justified (record rationale when overriding).
+ - Link types are mandatory: For each attachment, select exactly one link type using the quick probe below; name it explicitly.
+ - Stop-at-first-yes: In the quick probe, stop at the first “yes”. Do not evaluate or record later questions for that step.
+ - Earliest-leaf default: Choose the earliest satisfied leaf by default. If you choose a later leaf, include a 2–3 bullet tradeoff (causal leverage, micro‑test discriminability, simplicity/adjacency cost).
+ - Q1 preference: If Q1 = yes and Mechanism Composition introduces a distinct capability, prefer Mechanism Composition. If not chosen, include the 2–3 bullet tradeoff.
+ - Minimal op only: If a transformation is needed to satisfy a leaf, keep it minimal and faithful; record it as a one‑line “Transformation” with type=name and a minimality justification.
+ - No problem‑first requirement: C1 need not be a Problem; treat it as a problem or kernel capability/principle as faithful to its meaning.
+
+---
+
+Link Types (mandatory)
+- Structure‑Preserving Analogy
+- Mechanism Composition
+- Constraint → Objective Import
+- Property Transfer / Feature Grafting
+- Domain Reframing / Problem Translation
+Selection rule: use the quick probe (Q1→Q5) and stop at the first yes; record the decision path and chosen type by name (see 2.1). Earliest‑leaf and Q1 preference rules apply.
+
+---
+
+1) Initial Seed (from C1)
+- One‑line normalization: problem or kernel capability/principle (faithful; no change in meaning).
+- Initialize “Idea So Far — 1” (≤2 lines): crisp mechanism/idea implied by C1.
+- Default next‑step anchor: “Idea So Far — 1” (override only with rationale).
+
+---
+
+2) Build Steps (i = 2..n)
+For each concept Ci, output exactly the following schema. Use “Idea So Far — i‑1” as the default anchor unless recorded otherwise.
+
+### Step i: Concept Ci
+
+#### 2.1 Type Selection (quick probe; stop at first yes)
+- Q1. New capability by coupling? → yes/no (Mechanism Composition if yes)
+- If no → Q2. Importing a rule/goal? → yes/no (Constraint → Objective Import if yes)
+- If no → Q3. Attaching a property? → yes/no (Property Transfer if yes)
+- If no → Q4. Same structure, different surface? → yes/no (Structure‑Preserving Analogy if yes)
+- If no → Q5. Changing the problem representation? → yes/no (Domain Reframing if yes)
+- Decision path (e.g., Q1=no → Q2=yes) | Chosen type: <name>
+- Earliest satisfied leaf: <name>
+- Tradeoff (required if not choosing earliest or not choosing Mechanism Composition after Q1=yes):
+  - Causal leverage: …
+  - Discriminability (micro‑test strength): …
+  - Simplicity / adjacency cost: …
+
+#### 2.2 Attachment (to the idea so far)
+- Anchor: “Idea So Far — i‑1” (default) | other (rationale ≤1 line)
+- Intent (≤1 line): how Ci is attached to the idea so far.
+- Link type: <name> (from 2.1)
+- Transformation: none | type=name — one‑liner (minimality rationale)
+
+#### 2.3 Effect on the Idea
+- 2–4 sentences explaining how Ci changes, strengthens, or redirects the idea thread. Avoid graph jargon; be readable and concrete.
+
+#### 2.4 Micro‑Test (optional)
+- Setup: …
+- Measure: …
+- Pass if: (single numeric threshold or event)
+
+#### 2.5 Idea So Far — i (≤2 lines)
+- Concise summary of the idea thread after attaching Ci.
+
+---
+
+3) Attachment Summary (≤150 words)
+- Name the 2–3 most valuable attachments so far and why they clarify or unlock the idea thread.
+- Optional order note (≤1 sentence): neutrally state why the observed sequence is reasonable here.
+
+---
+
+4) Light Checks (advisory)
+- Order preserved: C1..Cn attached in sequence = yes/no
+- Readability: Attachment + Effect present for each step = yes/no
+- Micro‑tests: present where useful = yes/no
+- Rolling summary: “Idea So Far — 1…i” updated each step = yes/no
+- Anchor default: “Idea So Far — i‑1” unless a justified override is recorded = yes/no
+- Problem‑first not required: C1 normalized as problem or kernel = yes/no
+ - Link type: chosen and decision path recorded for each step = yes/no
+ - Stop-at-first-yes: no later questions recorded after the first “yes” = yes/no
+ - Earliest‑leaf respected or tradeoff recorded = yes/no
+ - Q1 preference respected or tradeoff recorded = yes/no
+ - Transformation minimal and faithful when present = yes/no
+
+---
+
+5) Reflections (no edits)
+- Better order (≤3 bullets): where a different sequence might have yielded cleaner attachments (hypothetical; do not rewrite earlier steps)
+- Missed attachment points (≤3 bullets): plausible alternative anchors for specific steps
+- Future mechanisms (≤2 bullets): mechanisms that could emerge with additional concepts
+- Order rationale (≤2 sentences, optional): briefly and neutrally explain the trade‑off of the chosen sequence versus a credible alternative (e.g., engine → constraint → amplification for constraint‑aware design vs. constraint‑first to front‑load feasibility), without recommending changes.
+
+---
+
+Output Rules (light)
+- Use the headings above; minor phrasing variations are acceptable.
+- Be concise. Prefer clear, readable prose over formal graph terms.
+- Do not expose internal prompt mechanics or discuss being an AI.
+- Avoid external citations/URLs within attachment steps.
