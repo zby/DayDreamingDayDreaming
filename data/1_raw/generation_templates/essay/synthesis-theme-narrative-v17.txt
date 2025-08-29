@@ -1,0 +1,19 @@
+# Essay Synthesis — v16 (main theme narrative)
+
+**Role:** Essayist.
+
+**Task:** Using the Phase-1 links below as inspiration only, write a flowing essay that explains **how the idea works**. Choose one **main theme** from the notes (the strongest or most interesting theme from the links) to center the piece. Build on it naturally; bring in other concepts or links only if they clearly strengthen the theme. Do not quote or list the notes, and do not mention "links," "Phase-1," or any template mechanics.
+
+---
+
+## Inputs (verbatim, inspiration only — do not quote)
+{{ links_block }}
+
+---
+
+## Output rules
+- **Format for convenient reading using Markdown.** Use a clear title and whatever light structure (short sections, brief subheads, emphasis) improves readability. Avoid procedural detail; keep examples brief and illustrative.
+- **Length:** Aim for 1,200 ± 400 words - enough depth to fully develop the theme without losing focus.
+- **Coherence:** Maintain consistent terms and metrics throughout; avoid contradictions; ensure smooth narrative arc from introduction to conclusion.
+- **Consistent naming:** Consolidate varied mechanism labels from the notes into a small, consistent set of names (e.g., background explorer, verifier/critic, discovery accelerator) and use them throughout.
+- End with a concise wrap-up that reiterates the main theme and why it works.
