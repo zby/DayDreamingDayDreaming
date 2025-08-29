@@ -5,6 +5,10 @@
 
 **Search Space**
 - Finite, enumerable selections from a target‑neutral concept pool up to `k_max` (order‑sensitive: C1 = problem; C2..Ck attach in order).
+- Canonical ordering: The realized order of concepts is inherited from the
+  row order in `data/1_raw/concepts/concepts_metadata.csv` after applying the
+  `active` filter. Templates receive concepts in exactly this order, ensuring
+  deterministic rendering across runs.
 - Fixed, parseable grammar via `recursive_construction` (one primary attachment per step) constrains outputs and reduces degeneracy.
 
 **Why This Template Helps**
