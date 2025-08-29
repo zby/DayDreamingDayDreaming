@@ -15,8 +15,8 @@
 ---
 
 ## Global Constraints
-- Generate up to **N=8** candidate links in Section 2.  
-- Cover ≥ **3 distinct link types** and ≥ **3 distinct roles** across Section 2.  
+- Generate up to **N=8** candidate links in Section 1.  
+- Cover ≥ **3 distinct link types** and ≥ **3 distinct roles** across Section 1.  
 - Prefer diversity; avoid duplicate or near-duplicate pairs.  
 - Keep each link block ≤ **250 words** (excluding header).  
 - **Markdown only.** No JSON/YAML/tables unless explicitly asked.  
@@ -72,12 +72,7 @@ Metric/Scorekeeper · Interface/Translator · Memory/Store · Policy/Controller 
 
 ---
 
-## 1) Brief Framing (≤120 words)
-State the overall opportunity you see in these concepts and what a “good” link contributes (mechanism clarity, testability, and two-hop usefulness).
-
----
-
-## 2) Candidate Links (0–N blocks)
+## 1) Candidate Links (0–N blocks)
 For each, output exactly this schema:
 
 ### Link N: C*A* → C*B*
@@ -102,8 +97,8 @@ For each, output exactly this schema:
 
 ---
 
-## 3) Recursive Round — **Graph Growth** (required if any link implies a new capability)
-If your Section 2 links imply an emergent capability that did **not** exist in any single input concept, you must instantiate it as a new node and extend the graph. If no such capability exists, perform the **Refactor Attempt** below to force a minimal viable capability.
+## 2) Recursive Round — **Graph Growth** (required if any link implies a new capability)
+If your Section 1 links imply an emergent capability that did **not** exist in any single input concept, you must instantiate it as a new node and extend the graph. If no such capability exists, perform the **Refactor Attempt** below to force a minimal viable capability.
 
 ### 3.1 Capability Formalization
 - **Name (≤6 words):** `E::[short-handle]`
@@ -112,7 +107,7 @@ If your Section 2 links imply an emergent capability that did **not** exist in a
 - **Objective / Metric:** A measurable target (e.g., “∆novel-hypotheses per 1k tokens”, “% defensible novelty”).
 
 ### 3.2 Recursive Links (R1–Rk; **k ≥ 3**)
-Produce **at least three** new, *typed* links that integrate E with the existing graph. Use the **exact same schema** as in Section 2. Requirements:
+Produce **at least three** new, *typed* links that integrate E with the existing graph. Use the **exact same schema** as in Section 1. Requirements:
 - At least **one** link **E → C\*** and at least **one** **C\* → E** (bidirectional integration).
 - Cover **≥2 distinct link types** across R-links.
 - Each R-link must include a **Decision path** from the tree and a **Micro-test** (`Setup → Measure → Pass if`), with a concrete input and a numeric or unambiguous pass criterion.
@@ -137,22 +132,22 @@ Label them clearly:
 - **Two-hop note (≤2 bullets):** Show one **new** two-hop causal path that did not exist before E (e.g., `E → Moat → Feedback`) and why it matters.
 
 **Refactor Attempt (only if you found no valid E):**  
-In ≤120 words, *compose two of your Section-2 links* to force a candidate capability. Then redo **3.1–3.3** with this forced E.
+In ≤120 words, *compose two of your Section-1 links* to force a candidate capability. Then redo **3.1–3.3** with this forced E.
 
 ---
 
-## 4) Link Selection Summary (≤150 words)
+## 3) Link Selection Summary (≤150 words)
 Name the 2–3 most valuable links (including any R-links), and say why they are keystones for mechanism clarity and extensibility.
 
 ---
 
-## 5) Gate Report (hard checks)
+## 4) Gate Report (hard checks)
 Report each item as `yes/no` (and a one-line rationale for any `no`):
-- **Coverage (base):** ≥3 link types across Section 2.  
-- **Role diversity (base):** ≥3 distinct roles used across Section 2.  
+- **Coverage (base):** ≥3 link types across Section 1.  
+- **Role diversity (base):** ≥3 distinct roles used across Section 1.  
 - **Duplication control:** No near-duplicate links (A→B) with only superficial wording changes.  
-- **Micro-tests (base):** Every Section-2 link includes Setup/Measure/Pass-if with a concrete criterion.  
-- **Decision paths (base):** Every Section-2 link records a valid decision path = yes/no.  
+- **Micro-tests (base):** Every Section-1 link includes Setup/Measure/Pass-if with a concrete criterion.  
+- **Decision paths (base):** Every Section-1 link records a valid decision path = yes/no.  
 - **Recursion – new node:** `new_node_present = yes/no` (E:: handle stated).  
 - **Recursion – link count:** `new_links_count ≥ 3 = yes/no`.  
 - **Recursion – bidirectional:** `E↔C* present = yes/no`.  
