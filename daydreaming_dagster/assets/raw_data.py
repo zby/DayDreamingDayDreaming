@@ -1,4 +1,4 @@
-from dagster import asset, MetadataValue, Failure
+from dagster import asset, MetadataValue, Failure, AssetKey, AutoMaterializePolicy
 import pandas as pd
 from pathlib import Path
 from typing import List
@@ -6,7 +6,12 @@ from typing import List
 from ..models import Concept
 from ..utils.csv_reading import read_csv_with_context
 
-@asset(group_name="raw_data", required_resource_keys={"data_root"})
+@asset(
+    group_name="raw_data",
+    required_resource_keys={"data_root"},
+    deps=[AssetKey("raw_concepts_source")],
+    auto_materialize_policy=AutoMaterializePolicy.eager(),
+)
 def concepts(context) -> List[Concept]:
     """Load ALL concepts from CSV with description files, applying active filtering."""
     data_root = context.resources.data_root
@@ -62,7 +67,12 @@ def concepts(context) -> List[Concept]:
     
     return concepts
 
-@asset(group_name="raw_data", required_resource_keys={"data_root"})
+@asset(
+    group_name="raw_data",
+    required_resource_keys={"data_root"},
+    deps=[AssetKey("llm_models_source")],
+    auto_materialize_policy=AutoMaterializePolicy.eager(),
+)
 def llm_models(context) -> pd.DataFrame:
     """Load ALL LLM models from CSV - no filtering."""
     data_root = context.resources.data_root
@@ -83,7 +93,12 @@ def llm_models(context) -> pd.DataFrame:
     return df
 
 
-@asset(group_name="raw_data", required_resource_keys={"data_root"})
+@asset(
+    group_name="raw_data",
+    required_resource_keys={"data_root"},
+    deps=[AssetKey("link_templates_source")],
+    auto_materialize_policy=AutoMaterializePolicy.eager(),
+)
 def link_templates(context) -> pd.DataFrame:
     """Load link-phase templates with content."""
     data_root = context.resources.data_root
@@ -114,7 +129,12 @@ def link_templates(context) -> pd.DataFrame:
     })
     return df
 
-@asset(group_name="raw_data", required_resource_keys={"data_root"})
+@asset(
+    group_name="raw_data",
+    required_resource_keys={"data_root"},
+    deps=[AssetKey("essay_templates_source")],
+    auto_materialize_policy=AutoMaterializePolicy.eager(),
+)
 def essay_templates(context) -> pd.DataFrame:
     """Load essay-phase templates with content."""
     data_root = context.resources.data_root
@@ -146,7 +166,12 @@ def essay_templates(context) -> pd.DataFrame:
         "templates_dir": MetadataValue.text(str(essay_dir)),
     })
     return df
-@asset(group_name="raw_data", required_resource_keys={"data_root"})
+@asset(
+    group_name="raw_data",
+    required_resource_keys={"data_root"},
+    deps=[AssetKey("evaluation_templates_source")],
+    auto_materialize_policy=AutoMaterializePolicy.eager(),
+)
 def evaluation_templates(context) -> pd.DataFrame:
     """Load evaluation templates CSV with template file content."""
     data_root = context.resources.data_root

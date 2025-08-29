@@ -1,4 +1,4 @@
-from dagster import asset, MetadataValue
+from dagster import asset, MetadataValue, AutoMaterializePolicy
 from typing import Dict, Tuple, List
 import pandas as pd
 from itertools import combinations
@@ -13,7 +13,8 @@ from ..utils.combo_ids import ComboIDManager
 
 @asset(
     group_name="task_definitions",
-    required_resource_keys={"experiment_config"}
+    required_resource_keys={"experiment_config"},
+    auto_materialize_policy=AutoMaterializePolicy.eager(),
 )
 def content_combinations(
     context,
@@ -59,7 +60,8 @@ def content_combinations(
 
 @asset(
     group_name="task_definitions",
-    io_manager_key="csv_io_manager"
+    io_manager_key="csv_io_manager",
+    auto_materialize_policy=AutoMaterializePolicy.eager(),
 )
 def content_combinations_csv(
     context,
@@ -90,6 +92,7 @@ def content_combinations_csv(
     group_name="task_definitions",
     io_manager_key="csv_io_manager",
     required_resource_keys={"experiment_config"},
+    auto_materialize_policy=AutoMaterializePolicy.eager(),
 )
 def link_generation_tasks(
     context,
@@ -144,6 +147,7 @@ def link_generation_tasks(
     group_name="task_definitions",
     io_manager_key="csv_io_manager",
     required_resource_keys={"experiment_config"},
+    auto_materialize_policy=AutoMaterializePolicy.eager(),
 )
 def essay_generation_tasks(
     context,
@@ -196,6 +200,7 @@ def essay_generation_tasks(
     group_name="task_definitions",
     io_manager_key="csv_io_manager",
     required_resource_keys={"experiment_config"},
+    auto_materialize_policy=AutoMaterializePolicy.eager(),
 )
 def evaluation_tasks(
     context,
