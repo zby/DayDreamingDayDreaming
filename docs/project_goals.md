@@ -58,9 +58,3 @@ DayDreaming‑specific checklist (pass/fail):
 - Memory/externalization or tool use described.
 - Selection/filters for ideas or artifacts.
 - Termination or roll‑over criteria defined.
-
-## Milestones (Lean)
-
-- V0: Minimal run with universal‑pool subset, current two‑phase prompts (links + essay) or a successor prompting variant, 2 models, rubric v1; produce at least one reinvention.
-- V1: Broader sweep across k_max combos; stable tracking tables; evaluator ensemble.
-- V2: Ablations (single‑ vs. two‑phase), domain transfer checks, contamination tests.
