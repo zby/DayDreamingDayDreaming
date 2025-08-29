@@ -106,14 +106,17 @@ This drives the first pipeline step to regenerate `content_combinations` using o
 Edit the template CSV files to control which templates are active:
 
 **Link Templates** (`data/1_raw/link_templates.csv`):
-- Set desired link-phase templates to `active: true`
-- Currently only `creative-synthesis-v10` is available
+- Set desired link-phase templates to `active: true` (set all others to `false`).
+- Active by default in this repo: `recursive_construction` (problem-first constructive synthesis with online recursion).
+- To introduce a new link template:
+  - Add a file under `data/1_raw/generation_templates/links/<template_id>.txt`.
+  - Add a row to `data/1_raw/link_templates.csv` with the same `template_id` and set `active=true`.
 
 **Essay Templates** (`data/1_raw/essay_templates.csv`):
 - Set desired essay-phase templates to `active: true`  
 - Currently only `creative-synthesis-v10` is available
 
-This limits generation to specific prompt styles for each phase of the two-phase generation process.
+This limits generation to specific prompt styles for each phase of the two-phase generation process. You can also override the template root by setting `GEN_TEMPLATES_ROOT` (defaults to `data/1_raw/generation_templates`).
 
 #### 3. Mark Experiment Metadata
 

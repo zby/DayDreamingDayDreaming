@@ -218,7 +218,7 @@ config = ExperimentConfig(
 
 ### Input Data
 - **Concepts**: `data/1_raw/concepts/day_dreaming_concepts.json`
-- **Templates**: `data/1_raw/generation_templates/` (Jinja2 templates with two-phase structure)
+- **Templates**: `data/1_raw/generation_templates/` (Jinja2 templates with two-phase structure; override root with `GEN_TEMPLATES_ROOT`)
 - **Models**: `data/1_raw/*_models.csv` (available LLM models)
 
 #### Template Structure (Two-Phase)
@@ -238,9 +238,14 @@ data/1_raw/generation_templates/
 ```
 
 **Phase 1 Templates** (`links/`): 
-- Focus on brainstorming conceptual connections
-- Output: 6-12 bullet points describing concept combinations
+- Focus on generating the structure that will drive the essay phase. Multiple styles are supported.
+- Output: Structured Markdown according to the selected template schema.
 - Template variables: `concepts` (list with name, content)
+
+Adding a new link template:
+- Place the template file under `data/1_raw/generation_templates/links/<template_id>.txt`.
+- Register it in `data/1_raw/link_templates.csv` with the same `template_id` and set `active=true` (set others to `false`).
+- Optional: set `GEN_TEMPLATES_ROOT` to point to a different root if you maintain templates outside the repo.
 
 **Phase 2 Templates** (`essay/`):
 - Focus on structured essay composition
