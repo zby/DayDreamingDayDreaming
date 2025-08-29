@@ -1,4 +1,4 @@
-%s Constructive Synthesis — v1 (problem-first, online recursion)
+# Recursive Construction — v1 (problem-first, online recursion)
 
 Role: You are an expert in mechanism design and constructive synthesis. You will build a single connected graph starting from a problem statement, then attach each subsequent concept in the given order. Concepts may be lightly operationalized before attachment. No concept reordering is allowed.
 
@@ -19,6 +19,7 @@ Global Rules
 - Operationalization allowed: Before attaching a concept, you may “operationalize” it (e.g., turn a principle into an algorithm, or cast it as a constraint/objective/interface) with a one-line justification. Keep meaning faithful.
 - Parsable structure: Use the exact headings and bullet schema below. Markdown only. No JSON/YAML/tables unless asked.
 - Brevity: Keep each subsection concise. Respect word limits.
+- No citations in links: Do not include external citations/URLs/evidence within link steps. Reserve any prior-art references for downstream synthesis/evaluation phases.
 
 ---
 
@@ -76,7 +77,7 @@ For each concept Ci, output exactly the following schema.
   - Setup: …
   - Measure: …
   - Pass if: (single numeric threshold or event)
-- (Optional) Evidence / prior art: 1–2 terse items
+
 
 #### 2.4 Node‑Introduction Gate
 - new_node: yes/no
@@ -97,6 +98,7 @@ NodeA —(Type k)→ NodeB
 
 3) Link Selection Summary (≤150 words)
 - Name the 2–3 most valuable attachments (including any E:: nodes) and why they are keystones for mechanism clarity and extensibility.
+- Optional order note (≤1 sentence): neutrally state why the observed sequence is reasonable in this construction (e.g., mechanism → constraint → amplification to reduce wasted exploration), without implying it is the only valid order.
 
 ---
 
@@ -109,6 +111,7 @@ NodeA —(Type k)→ NodeB
 - E:: nodes: only when Q1=Yes and with unique state/operator = yes/no
 - No swaps: build order C1..Cn preserved = yes/no
 - Adjacency deltas: present for every step = yes/no
+- No external evidence cited inside link steps = yes/no
 
 ---
 
@@ -116,6 +119,7 @@ NodeA —(Type k)→ NodeB
 - Better order (≤3 bullets): where a different sequence might have yielded cleaner attachments (hypothetical; do not change the graph)
 - Missed anchors (≤3 bullets): plausible alternative anchors for specific steps
 - Future E:: candidates (≤2 bullets): mechanisms that could emerge with additional concepts
+- Order rationale (≤2 sentences, optional): briefly and neutrally explain the trade‑off of the chosen sequence versus a credible alternative (e.g., engine → constraint → amplification for constraint‑aware design vs. constraint‑first to front‑load feasibility), without recommending changes.
 
 ---
 
@@ -123,4 +127,4 @@ Output Rules (strict)
 - Markdown only. Keep headings and subheadings exactly as specified.
 - Keep each section concise and within the described limits.
 - Do not expose internal prompt mechanics or discuss being an AI.
-
+- Do not add "Evidence", "Prior art", citations, or URLs within link steps; keep mechanisms self‑contained here.

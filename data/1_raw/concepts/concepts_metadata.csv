@@ -4,13 +4,12 @@ default-mode-network,Default Mode Network,True
 human-creativity-insight,Human Creativity and Insight,False
 combinatorial-search,Combinatorial Search,False
 generator-verifier-gap,Generator-Verifier Gap,False
-generator-verifier-gap-v1,Generator-Verifier Gap,False
+generator-verifier-gap-v1,Generator-Verifier Gap,True
 economic-innovation-models,Economic Innovation Models,False
-experimental-concept,Experimental New Concept,False
 mind-wandering,Mind-Wandering,False
 combinatorial-creativity,Combinatorial Creativity,False
 adversarial-evaluation,Adversarial Evaluation,False
+positive-feedback-loop,Positive Feedback Loop,True
 economic-moat,Economic Moat,True
 flywheel-effect,Flywheel Effect,False
 data-flywheel,Data Flywheel,False
-positive-feedback-loop,Positive Feedback Loop,True

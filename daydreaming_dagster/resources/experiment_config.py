@@ -5,7 +5,7 @@ class ExperimentConfig(ConfigurableResource):
     """
     Experiment configuration matching parameters.yml from Kedro.
     """
-    k_max: int = 4
+    k_max: int = 5
     description_level: str = "paragraph"
     generation_temperature: float = 0.7
     evaluation_temperature: float = 0.1
