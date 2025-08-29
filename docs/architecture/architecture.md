@@ -98,29 +98,35 @@ Assets are organized into logical groups for easy selection and understanding:
 
 ## Data Flow Architecture
 
-### 1. Raw Data Loading (`raw_data.py`)
+### 1. Raw Data Loading (`raw_data.py`) + Observable Sources (NEW)
 
-**Assets**: `concepts`, `concepts_metadata`, `generation_models`, `evaluation_models`, `link_templates`, `essay_templates`, `evaluation_templates`
+**Assets**: `concepts`, `llm_models`, `link_templates`, `essay_templates`, `evaluation_templates`
+ plus observable source assets: `raw_concepts_source`, `llm_models_source`, `link_templates_source`, `essay_templates_source`, `evaluation_templates_source`.
 
-**Purpose**: Load and validate external data files from `data/01_raw/`
+**Purpose**: Load and validate external data files from `data/1_raw/`.
+Changes are detected via observable source assets that fingerprint the corresponding files/directories. When fingerprints change, Dagster marks downstream raw assets stale and (with eager policy) re-materializes them automatically.
 
 **Key Features**:
 - **Selective Loading**: Filter concepts and templates based on configuration
 - **Validation**: Ensure required fields and structure
 - **Metadata Extraction**: Generate searchable metadata for concepts
 - **Template Processing**: Load and validate Jinja2 templates
+ - **Auto-Update**: Timestamp/content fingerprinting triggers automatic re-materialization when inputs change
 
 **Implementation Details**:
 ```python
-@asset(group_name="raw_data")
+# Observable source (computes data_version from mtime hash)
+@observable_source_asset(name="raw_concepts_source")
+def raw_concepts_source(context):
+    ...  # fingerprint data/1_raw/concepts/**/*
+
+# Raw asset depends on the observable source and uses eager auto-materialization
+@asset(group_name="raw_data", deps=[AssetKey("raw_concepts_source")], auto_materialize_policy=AutoMaterializePolicy.eager())
 def concepts(context) -> List[Concept]:
-    # Load concepts with active filtering
-    data_root = context.resources.data_root
-    concepts_df = load_concepts_csv(data_root)
-    if "active" in concepts_df.columns:
-        concepts_df = concepts_df[concepts_df["active"] == True]
-    return build_concept_objects(concepts_df)
+    ...  # load from CSV and description files
 ```
+
+LLM generation assets (links/essays/evaluation) remain manual to avoid surprise API usage/costs.
 
 ### 2. Core Processing (`core.py`)
 

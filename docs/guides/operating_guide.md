@@ -134,10 +134,18 @@ Optionally stash selection files for traceability:
 
 ### Basic Pipeline Execution
 
-1. **Generate setup assets and tasks:**
+1. **Setup auto-updates (daemon):**
+   Ensure the daemon is running so raw data loaders and task definitions auto-update when `data/1_raw/**/*` changes.
    ```bash
-   uv run dagster asset materialize -f daydreaming_dagster/definitions.py \
-    --select "group:raw_data,group:task_definitions"
+   export DAGSTER_HOME=$(pwd)/dagster_home
+   uv run dagster dev -f daydreaming_dagster/definitions.py
+   ```
+
+   The pipeline uses observable sources + eager auto-materialization for cheap assets. You typically do not need to materialize `group:raw_data` explicitly.
+
+   Optional one-time seed (creates initial task CSVs and partitions):
+   ```bash
+   uv run dagster asset materialize -f daydreaming_dagster/definitions.py --select "group:task_definitions"
    ```
 
 2. **Run generation assets:**
@@ -162,6 +170,10 @@ Optionally stash selection files for traceability:
 
 The pipeline includes several auto-materializing assets that provide automatic data processing:
 
+#### Raw + Task Definitions (NEW)
+- Raw loaders (`group:raw_data`) depend on observable sources that fingerprint `data/1_raw/**/*` and are configured with `AutoMaterializePolicy.eager()`. When inputs change, Dagster re-materializes these automatically.
+- Task definitions (`group:task_definitions`) are also eager, so they update automatically when raw assets change.
+
 #### Results Tracking (Cross-Experiment)
 - **`generation_results_append`**: Automatically appends a row to `generation_results.csv` when any generation completes (works with both two-phase and legacy generation)
 - **`evaluation_results_append`**: Automatically appends a row to `evaluation_results.csv` when any `evaluation_response` completes
@@ -174,10 +186,10 @@ These assets use Dagster's eager auto-materialization policy to run automaticall
 - Cross-experiment tracking tables are always up-to-date
 - Backward compatibility is maintained seamlessly
 
-**Note**: Auto-materialization requires the Dagster daemon to be running. In development, you can manually trigger the chain:
+**Note**: Auto-materialization requires the Dagster daemon to be running. In development, you can manually trigger assets if needed:
 ```bash
-# Manually materialize the auto-materializing chain
-uv run dagster asset materialize --select "parsed_generation_responses" --partition "TASK_ID"
+# Manually materialize a specific asset
+uv run dagster asset materialize --select "content_combinations,link_generation_tasks,essay_generation_tasks,evaluation_tasks" -f daydreaming_dagster/definitions.py
 ```
 
 ### Free vs Paid LLM Runs (Separate Pools)
