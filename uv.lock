@@ -451,8 +451,8 @@ test = [
 requires-dist = [
     { name = "antlr4-python3-runtime", specifier = ">=4.13.2" },
     { name = "black", marker = "extra == 'dev'", specifier = ">=25.1.0" },
-    { name = "dagster", specifier = ">=1.11.4" },
-    { name = "dagster-webserver", specifier = ">=1.11.4" },
+    { name = "dagster", specifier = ">=1.11.5" },
+    { name = "dagster-webserver", specifier = ">=1.11.5" },
     { name = "jinja2", specifier = ">=3.0.0" },
     { name = "openai", specifier = ">=1.0.0" },
     { name = "pandas", specifier = ">=1.5.0" },
