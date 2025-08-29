@@ -4,8 +4,8 @@ import numpy as np
 
 
 @asset(
-    group_name="results_processing",
-    io_manager_key="parsing_results_io_manager"
+    group_name="results_summary",
+    io_manager_key="summary_results_io_manager"
 )
 def evaluator_agreement_analysis(context, parsed_scores: pd.DataFrame) -> pd.DataFrame:
     """
@@ -110,8 +110,8 @@ def evaluator_agreement_analysis(context, parsed_scores: pd.DataFrame) -> pd.Dat
 
 
 @asset(
-    group_name="results_processing",
-    io_manager_key="parsing_results_io_manager"
+    group_name="results_summary",
+    io_manager_key="summary_results_io_manager"
 )
 def comprehensive_variance_analysis(context, parsed_scores: pd.DataFrame) -> pd.DataFrame:
     """

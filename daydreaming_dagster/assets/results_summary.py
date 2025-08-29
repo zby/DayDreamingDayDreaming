@@ -25,7 +25,7 @@ def get_generation_response_path(combo_id: str, link_template: str | None, essay
 
 
 @asset(
-    group_name="results_summary",
+    group_name="results_processing",
     io_manager_key="summary_results_io_manager"
 )
 def generation_scores_pivot(context, parsed_scores: pd.DataFrame, evaluation_templates: pd.DataFrame) -> pd.DataFrame:
