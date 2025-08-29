@@ -1,4 +1,4 @@
-from dagster import asset, MetadataValue, AutoMaterializePolicy
+from dagster import asset, MetadataValue, AutoMaterializePolicy, Failure
 from typing import Dict, Tuple, List
 import pandas as pd
 from itertools import combinations
@@ -26,6 +26,26 @@ def content_combinations(
     
     context.log.info(f"Generating content combinations with k_max={k_max}")
     
+    # Fail fast when there aren't enough active concepts to form any combination
+    if len(concepts) < k_max:
+        raise Failure(
+            description=(
+                "Insufficient active concepts to generate content combinations. "
+                "Increase active concepts or lower k_max."
+            ),
+            metadata={
+                "active_concepts": MetadataValue.int(len(concepts)),
+                "k_max": MetadataValue.int(k_max),
+                "additional_needed": MetadataValue.int(max(0, k_max - len(concepts))),
+                "resolution_1": MetadataValue.text(
+                    "Activate more concepts in data/1_raw/concepts/concepts_metadata.csv"
+                ),
+                "resolution_2": MetadataValue.text(
+                    "Or lower k_max via ExperimentConfig in the Dagster Launchpad"
+                ),
+            },
+        )
+    
     # Generate all k-max combinations and create ContentCombination objects
     content_combos: List[ContentCombination] = []
     description_level = experiment_config.description_level
@@ -46,6 +66,23 @@ def content_combinations(
         content_combos.append(content_combo)
     
     context.log.info(f"Generated {len(content_combos)} content combinations")
+    
+    if not content_combos:
+        # Defensive check: combinations() yielded zero results for the given inputs
+        raise Failure(
+            description=(
+                "No content combinations were generated. This typically occurs when "
+                "k_max is too large for the number of active concepts."
+            ),
+            metadata={
+                "active_concepts": MetadataValue.int(len(concepts)),
+                "k_max": MetadataValue.int(k_max),
+                "description_level": MetadataValue.text(description_level),
+                "resolution": MetadataValue.text(
+                    "Increase active concepts or lower k_max in ExperimentConfig"
+                ),
+            },
+        )
     
     # Add output metadata
     context.add_output_metadata({
@@ -68,6 +105,21 @@ def content_combinations_csv(
     content_combinations: List[ContentCombination],
 ) -> pd.DataFrame:
     """Export content combinations as normalized relational table with combo_id and concept_id columns."""
+    # Fail fast if no combinations are available
+    if not content_combinations:
+        raise Failure(
+            description=(
+                "Content combinations input is empty. Upstream generation did not create any combinations."
+            ),
+            metadata={
+                "resolution_1": MetadataValue.text(
+                    "Check active concepts and k_max in ExperimentConfig"
+                ),
+                "resolution_2": MetadataValue.text(
+                    "Ensure data/1_raw/concepts/concepts_metadata.csv has enough active concepts"
+                ),
+            },
+        )
     # Create normalized rows: one row per concept in each combination
     rows = []
     for combo in content_combinations:
@@ -77,12 +129,13 @@ def content_combinations_csv(
                 "concept_id": concept_id
             })
     
-    df = pd.DataFrame(rows)
+    # Ensure a stable schema even when there are no rows
+    df = pd.DataFrame(rows, columns=["combo_id", "concept_id"]) if rows else pd.DataFrame(columns=["combo_id", "concept_id"])
     
     context.add_output_metadata({
         "total_rows": MetadataValue.int(len(df)),
         "unique_combinations": MetadataValue.int(len(content_combinations)),
-        "unique_concepts": MetadataValue.int(df["concept_id"].nunique()),
+        "unique_concepts": MetadataValue.int(df["concept_id"].nunique() if not df.empty else 0),
         "sample_rows": MetadataValue.text(str(df.head(5).to_dict("records")))
     })
 
@@ -123,21 +176,36 @@ def link_generation_tasks(
                     }
                 )
 
-    tasks_df = pd.DataFrame(rows)
+    # Build DataFrame with stable schema even if there are no rows
+    columns = [
+        "link_task_id",
+        "combo_id",
+        "link_template",
+        "generation_model",
+        "generation_model_name",
+    ]
+    tasks_df = pd.DataFrame(rows, columns=columns)
 
-    # Register dynamic partitions for links
+    # Register dynamic partitions for links (guard empty)
     existing = context.instance.get_dynamic_partitions(link_tasks_partitions.name)
-    if existing:
-        for p in existing:
-            context.instance.delete_dynamic_partition(link_tasks_partitions.name, p)
-    context.instance.add_dynamic_partitions(link_tasks_partitions.name, tasks_df["link_task_id"].tolist())
+    if not tasks_df.empty:
+        # Replace partitions atomically: clear then add
+        if existing:
+            for p in existing:
+                context.instance.delete_dynamic_partition(link_tasks_partitions.name, p)
+        context.instance.add_dynamic_partitions(link_tasks_partitions.name, tasks_df["link_task_id"].tolist())
+    else:
+        # Keep existing partitions if no new tasks are produced in this run
+        context.log.warning(
+            "No link-generation tasks produced (check active concepts, k_max, active link templates, generation models). Keeping existing dynamic partitions."
+        )
 
     context.add_output_metadata(
         {
             "task_count": MetadataValue.int(len(tasks_df)),
-            "unique_combinations": MetadataValue.int(tasks_df["combo_id"].nunique()),
-            "unique_link_templates": MetadataValue.int(tasks_df["link_template"].nunique()),
-            "unique_models": MetadataValue.int(tasks_df["generation_model"].nunique()),
+            "unique_combinations": MetadataValue.int(tasks_df["combo_id"].nunique() if not tasks_df.empty else 0),
+            "unique_link_templates": MetadataValue.int(tasks_df["link_template"].nunique() if not tasks_df.empty else 0),
+            "unique_models": MetadataValue.int(tasks_df["generation_model"].nunique() if not tasks_df.empty else 0),
         }
     )
     return tasks_df
