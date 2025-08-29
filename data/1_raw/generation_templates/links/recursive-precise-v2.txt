@@ -1,0 +1,171 @@
+# Concept Link Generation — recursive-precise-v2-dt (Markdown-only)
+
+**Role:** You are an expert in interdisciplinary synthesis and mechanism design. Produce *valuable, non-redundant* links between concepts and **grow the graph** during the Recursive Round.
+
+---
+
+## Inputs (concept list)
+{% for concept in concepts %}
+**{{ concept.name }}**
+{{ concept.content }}
+---
+
+{% endfor %}
+
+---
+
+## Global Constraints
+- Generate up to **N=8** candidate links in Section 2.  
+- Cover ≥ **3 distinct link types** and ≥ **3 distinct roles** across Section 2.  
+- Prefer diversity; avoid duplicate or near-duplicate pairs.  
+- Keep each link block ≤ **250 words** (excluding header).  
+- **Markdown only.** No JSON/YAML/tables unless explicitly asked.  
+- **Prose-only recursion is not allowed**: if a new capability emerges, you **must** add a new node and ≥3 typed links in Section 3.
+
+---
+
+## Link Type Menu (exactly one per link)
+1) **Structure-Preserving Analogy**  
+2) **Mechanism Composition**  
+3) **Constraint → Objective Import**  
+4) **Property Transfer / Feature Grafting**  
+5) **Domain Reframing / Problem Translation**
+
+---
+
+## Link Type Decision Tree (required)
+For **each link**, choose the type by following the questions **in order** and record the path (e.g., `Q1→Yes → Type 2`).
+
+**Q1. New capability by coupling?**  
+Does A interacting with B create a capability neither has alone (new operator, control loop, or emergent state)?  
+→ **Yes → Type 2: Mechanism Composition.**  
+→ **No → Q2.**
+
+**Q2. Importing a rule/goal?**  
+Is a **constraint, objective, or evaluation rule** from A being imposed on or adopted by B to steer behavior/optimization?  
+→ **Yes → Type 3: Constraint → Objective Import.**  
+→ **No → Q3.**
+
+**Q3. Attaching a property?**  
+Is a **specific property/feature** of A being **grafted** onto B to enhance B without changing B’s core mechanism?  
+→ **Yes → Type 4: Property Transfer / Feature Grafting.**  
+→ **No → Q4.**
+
+**Q4. Same structure, different surface?**  
+Is there a **state/operator/feedback isomorphism** where A↔B preserve key invariants (same “math,” different domain)?  
+→ **Yes → Type 1: Structure-Preserving Analogy.**  
+→ **No → Q5.**
+
+**Q5. Changing the problem representation?**  
+Is the problem of A being **reframed** into B’s formalism to leverage B’s solvers/data/affordances?  
+→ **Yes → Type 5: Domain Reframing / Problem Translation.**  
+→ **No → Q6.**
+
+**Q6. Fallback (pick the *closest*):**  
+Briefly justify which single type is the least-wrong given the intended causal effect.
+
+---
+
+## Role Palette (use diverse roles across links)
+Engine/Generator · Filter/Verifier · Amplifier/Accelerator · Constraint/Brake · Objective/Goal ·  
+Metric/Scorekeeper · Interface/Translator · Memory/Store · Policy/Controller · Data Source
+
+---
+
+## 1) Brief Framing (≤120 words)
+State the overall opportunity you see in these concepts and what a “good” link contributes (mechanism clarity, testability, and two-hop usefulness).
+
+---
+
+## 2) Candidate Links (0–N blocks)
+For each, output exactly this schema:
+
+### Link N: C*A* → C*B*
+- **Decision path:** (e.g., `Q1→No, Q2→Yes → Type 3`)
+- **Link type:** (from menu)
+- **Roles:** C*A* (role=…) → C*B* (role=…)
+- **Mechanism (3–5 sentences):** How A maps into/onto B to produce a causal effect.
+- **Mappings (bullet points):**
+  - **State(s):** …
+  - **Operator(s):** …
+  - **Signal(s) / Feedback:** …
+  - **Constraint(s):** …
+  - **Metric / Objective:** …
+  - **Invariant preserved:** …
+- **Micro-test:**  
+  **Setup:** …  
+  **Measure:** …  
+  **Pass if:** (single quantitative threshold or event)
+- *(Optional)* **Evidence / prior art:** 1–2 terse citations or exemplars.
+
+*(Repeat until you reach N or run out of high-quality links.)*
+
+---
+
+## 3) Recursive Round — **Graph Growth** (required if any link implies a new capability)
+If your Section 2 links imply an emergent capability that did **not** exist in any single input concept, you must instantiate it as a new node and extend the graph. If no such capability exists, perform the **Refactor Attempt** below to force a minimal viable capability.
+
+### 3.1 Capability Formalization
+- **Name (≤6 words):** `E::[short-handle]`
+- **One-line definition:** What E does that none of the inputs did alone.
+- **State / Operators / Signals:** Name the *new* state variables, operators, and feedback signals E introduces.
+- **Objective / Metric:** A measurable target (e.g., “∆novel-hypotheses per 1k tokens”, “% defensible novelty”).
+
+### 3.2 Recursive Links (R1–Rk; **k ≥ 3**)
+Produce **at least three** new, *typed* links that integrate E with the existing graph. Use the **exact same schema** as in Section 2. Requirements:
+- At least **one** link **E → C\*** and at least **one** **C\* → E** (bidirectional integration).
+- Cover **≥2 distinct link types** across R-links.
+- Each R-link must include a **Decision path** from the tree and a **Micro-test** (`Setup → Measure → Pass if`), with a concrete input and a numeric or unambiguous pass criterion.
+
+Label them clearly:
+
+### Link R1: …
+… (full schema incl. Decision path)
+
+### Link R2: …
+… (full schema incl. Decision path)
+
+### Link R3: …
+… (full schema incl. Decision path)
+
+*(Add R4+ only if they are non-redundant and ≤250 words each.)*
+
+### 3.3 Mini Topology
+- **Adjacency (ASCII):** List E and its new edges, e.g.  
+  `E::Autocatalysis —(Mechanism Composition)→ Default Mode Network`  
+  `Dearth of AI Discoveries —(Constraint→Objective)→ E::Autocatalysis`
+- **Two-hop note (≤2 bullets):** Show one **new** two-hop causal path that did not exist before E (e.g., `E → Moat → Feedback`) and why it matters.
+
+**Refactor Attempt (only if you found no valid E):**  
+In ≤120 words, *compose two of your Section-2 links* to force a candidate capability. Then redo **3.1–3.3** with this forced E.
+
+---
+
+## 4) Link Selection Summary (≤150 words)
+Name the 2–3 most valuable links (including any R-links), and say why they are keystones for mechanism clarity and extensibility.
+
+---
+
+## 5) Gate Report (hard checks)
+Report each item as `yes/no` (and a one-line rationale for any `no`):
+- **Coverage (base):** ≥3 link types across Section 2.  
+- **Role diversity (base):** ≥3 distinct roles used across Section 2.  
+- **Duplication control:** No near-duplicate links (A→B) with only superficial wording changes.  
+- **Micro-tests (base):** Every Section-2 link includes Setup/Measure/Pass-if with a concrete criterion.  
+- **Decision paths (base):** Every Section-2 link records a valid decision path = yes/no.  
+- **Recursion – new node:** `new_node_present = yes/no` (E:: handle stated).  
+- **Recursion – link count:** `new_links_count ≥ 3 = yes/no`.  
+- **Recursion – bidirectional:** `E↔C* present = yes/no`.  
+- **Recursion – type coverage:** `≥2 distinct types across R-links = yes/no`.  
+- **Recursion – testability:** Every R-link has a concrete Micro-test with input, measure, and pass criterion = yes/no.  
+- **Recursion – decision paths:** Every R-link records a valid decision path = yes/no.
+
+**If any of the recursion checks are `no`, explicitly mark:** `Validator sanity check = FAIL` and explain in one sentence what is missing.
+
+---
+
+### Output Rules (strict)
+- **Markdown only.**  
+- No meta-commentary about being an AI.  
+- Do not invent citations; keep “Evidence” optional and terse.  
+- Keep all headings as defined above.
