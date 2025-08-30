@@ -14,3 +14,4 @@ recursive-precise-v2,Recursive Precise V2,Decision-tree approach with systematic
 recursive_construction,Recursive Construction,Problem-first constructive synthesis with online recursion,false
 recursive-construction,Recursive Construction V1,Problem-first constructive synthesis with online recursion,false
 rolling-summary-v1,Rolling Summary V1,Readable idea-thread recursion with enforced link types,true
+rolling-summary-simplified,Rolling Summary Simplified,Minimal rolling summary with single-line steps,true
