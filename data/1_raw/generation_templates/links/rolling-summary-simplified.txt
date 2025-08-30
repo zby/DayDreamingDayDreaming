@@ -8,14 +8,10 @@ Goal: Build one clear idea thread in order C1..Cn. Keep outputs to single lines.
 1) Seed from C1
 - Idea So Far — 1: one line derived faithfully from C1
 
-Link types (choose one each step):
-- Mechanism Composition | Constraint → Objective Import | Property Transfer / Feature Grafting | Structure‑Preserving Analogy | Domain Reframing / Problem Translation
-
 2) Steps (i = 2..n)
 For each concept Ci, output exactly:
 
 ### Step i: Concept Ci
-- Link type: <name>
 - Effect: one line on how Ci changes the idea
 - Idea So Far — i: one line summary after attaching Ci
 
