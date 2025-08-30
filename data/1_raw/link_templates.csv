@@ -13,5 +13,6 @@ recursive-precise-v1,Recursive Precise V1,Decision-tree approach with structured
 recursive-precise-v2,Recursive Precise V2,Decision-tree approach with systematic validation and graph growth,false
 recursive_construction,Recursive Construction,Problem-first constructive synthesis with online recursion,false
 recursive-construction,Recursive Construction V1,Problem-first constructive synthesis with online recursion,false
-rolling-summary-v1,Rolling Summary V1,Readable idea-thread recursion with enforced link types,true
-rolling-summary-simplified,Rolling Summary Simplified,Minimal rolling summary with single-line steps,true
+rolling-summary-v1,Rolling Summary V1,Readable idea-thread recursion with enforced link types,false
+rolling-summary-simplified,Rolling Summary Simplified,Minimal rolling summary with single-line steps,false
+rolling-summary-simplified-v1,Rolling Summary Simplified V1,Cumulative idea thread; 3–5 sentence Effect; +1 sentence growth per step,true
