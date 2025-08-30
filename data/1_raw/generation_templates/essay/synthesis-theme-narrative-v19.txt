@@ -1,0 +1,21 @@
+# Essay Synthesis — v19 (main theme narrative)
+
+**Role:** Essayist.
+
+**Task:** Using the notes below as inspiration only, write a flowing essay that explains how the idea works. Choose one main theme that clearly emerges from the notes and center the piece on it. Integrate other elements from the notes only when they strengthen the theme. Do not quote or list the notes, and do not mention input mechanics.
+
+---
+
+## Inputs (verbatim, inspiration only — do not quote)
+{{ links_block }}
+
+---
+
+## Output rules
+- Format for convenient reading using Markdown. Use a clear title and light structure (short sections, brief subheads) only where it improves readability.
+- Length: Aim for 600 ± 200 words — enough depth to fully develop the theme without losing focus.
+- Mechanism-first: Explain the causal mechanisms that make the theme work; show how components play roles and interact. Prefer concrete, testable statements over vague generalities.
+- Consistent naming: Consolidate any varied labels from the notes into a small, consistent set of names and use them throughout.
+- Coherence: Maintain consistent terms and metrics; avoid contradictions; ensure a smooth narrative arc from introduction to conclusion.
+- Do not reproduce the “Idea So Far” steps; synthesize them into a single coherent narrative.
+- End with a concise wrap‑up that reiterates the main theme and why it works.
