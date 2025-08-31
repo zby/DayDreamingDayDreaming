@@ -171,7 +171,7 @@ Optionally stash selection files for traceability:
 The pipeline includes several auto-materializing assets that provide automatic data processing:
 
 #### Raw + Task Definitions
-- Raw loaders (`group:raw_data`) are configured with `AutoMaterializePolicy.eager()`. To reflect file edits under `data/1_raw/**/*` during development, manually re‑materialize these assets.
+- Raw loaders (`group:raw_data`) are configured with `AutomationCondition.eager()`. To reflect file edits under `data/1_raw/**/*` during development, manually re‑materialize these assets.
 - Task definitions (`group:task_definitions`) are also eager; re‑materializing raw assets will refresh them.
 
 #### Results Tracking (Cross-Experiment)

@@ -115,7 +115,7 @@ Note: Observable source assets were removed for simplicity during development. W
 **Implementation Details**:
 ```python
 # Raw asset uses eager auto-materialization
-@asset(group_name="raw_data", auto_materialize_policy=AutoMaterializePolicy.eager())
+@asset(group_name="raw_data", automation_condition=AutomationCondition.eager())
 def concepts(context) -> List[Concept]:
     ...  # load from CSV and description files
 ```
@@ -260,7 +260,7 @@ Active Link Template:
 - **`essay_generation_results_append`**: Automatically appends rows to `essay_generation_results.csv` when any `essay_response` completes
 - **`evaluation_results_append`**: Automatically appends rows to `evaluation_results.csv` when any `evaluation_response` completes
 - **Thread-safe CSV operations**: Uses file locking to handle concurrent updates
-- **Immediate execution**: Uses `AutoMaterializePolicy.eager()` for instant updates
+- **Immediate execution**: Uses `AutomationCondition.eager()` for instant updates
 
 **Tracking Tables**:
 - **Link Generation Results**: Metadata for link generation
@@ -280,7 +280,7 @@ Active Link Template:
 @asset(
     partitions_def=link_tasks_partitions,
     deps=["links_response"],
-    auto_materialize_policy=AutoMaterializePolicy.eager(),
+    automation_condition=AutomationCondition.eager(),
     group_name="cross_experiment_tracking"
 )
 def link_generation_results_append(context, link_generation_tasks):

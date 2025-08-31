@@ -158,7 +158,7 @@ The pipeline now includes automatic cross-experiment tracking:
 **Requirements for Auto-Materialization**:
 1. Set `DAGSTER_HOME=$(pwd)/dagster_home` (uses project configuration with auto-materialization enabled)
 2. Start Dagster with daemon enabled: `uv run dagster dev -f daydreaming_dagster/definitions.py`
-3. The Dagster daemon will automatically detect and materialize assets with `AutoMaterializePolicy.eager()`
+3. The Dagster daemon will automatically detect and materialize assets with `AutomationCondition.eager()`
 
 **Ongoing automatic tracking**: No manual intervention needed - new responses are automatically added to tracking tables when generated.
 
