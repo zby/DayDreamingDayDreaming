@@ -162,6 +162,13 @@ The pipeline now includes automatic cross-experiment tracking:
 
 **Ongoing automatic tracking**: No manual intervention needed - new responses are automatically added to tracking tables when generated.
 
+### Raw CSV Change Handling (Schedule)
+
+- The project includes a lightweight schedule that scans the five raw CSVs under `data/1_raw/` (concepts_metadata.csv, llm_models.csv, link_templates.csv, essay_templates.csv, evaluation_templates.csv).
+- On detecting a change, the schedule writes a pending fingerprint and launches a run (run_key = fingerprint) that refreshes the core/task layer (`group:task_definitions`).
+- If the run fails or is canceled, a future tick will retry the same pending fingerprint (same run_key). On success, the schedule promotes the pending fingerprint to last and skips until the next change.
+- This gives at‑least‑once behavior for task updates without auto‑running any LLM assets. Downstream runs still “pull” and rebuild stale upstream as needed.
+
 ## Development
 
 ### Testing
