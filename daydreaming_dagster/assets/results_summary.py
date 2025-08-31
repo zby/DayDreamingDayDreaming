@@ -2,6 +2,8 @@ from dagster import asset, MetadataValue, Failure
 import pandas as pd
 import numpy as np
 from pathlib import Path
+from .raw_data import EVALUATION_TEMPLATES_KEY
+from ..utils.raw_readers import read_evaluation_templates
 
 
 def is_two_phase_template(template_name: str) -> bool:
@@ -26,9 +28,11 @@ def get_generation_response_path(combo_id: str, link_template: str | None, essay
 
 @asset(
     group_name="results_processing",
-    io_manager_key="summary_results_io_manager"
+    io_manager_key="summary_results_io_manager",
+    required_resource_keys={"data_root"},
+    deps={EVALUATION_TEMPLATES_KEY},
 )
-def generation_scores_pivot(context, parsed_scores: pd.DataFrame, evaluation_templates: pd.DataFrame) -> pd.DataFrame:
+def generation_scores_pivot(context, parsed_scores: pd.DataFrame) -> pd.DataFrame:
     """
     Pivot individual evaluation scores per generation.
 
@@ -36,12 +40,12 @@ def generation_scores_pivot(context, parsed_scores: pd.DataFrame, evaluation_tem
     Columns: Each unique (evaluation_template, evaluation_model) combination
     Values: Individual score for that specific evaluator combination (no averaging)
     """
-    # Get active evaluation template names
-    if evaluation_templates is None or evaluation_templates.empty:
-        context.log.warning("No evaluation_templates provided; returning empty pivot")
+    # Load evaluation templates CSV and extract active templates
+    eval_df = read_evaluation_templates(Path(context.resources.data_root))
+    if eval_df is None or eval_df.empty:
+        context.log.warning("No evaluation templates CSV found or empty; returning empty pivot")
         return pd.DataFrame()
-    
-    active_templates = evaluation_templates[evaluation_templates['active'] == True]['template_id'].tolist()
+    active_templates = eval_df[eval_df.get('active', True) == True]['template_id'].tolist()
     
     if not active_templates:
         context.log.warning("No active evaluation templates found; returning empty pivot")

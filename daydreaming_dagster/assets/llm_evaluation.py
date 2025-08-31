@@ -6,6 +6,8 @@ import logging
 from jinja2 import Environment
 from ..utils.dataframe_helpers import get_task_row
 from ..utils.shared_context import MockLoadContext
+from ..utils.raw_readers import read_evaluation_templates
+from .raw_data import EVALUATION_TEMPLATES_KEY
 
 logger = logging.getLogger(__name__)
 
@@ -61,9 +63,9 @@ def generate_evaluation_prompts(
     group_name="evaluation",
     io_manager_key="evaluation_prompt_io_manager",
     required_resource_keys={"essay_response_io_manager"},
-    deps=["evaluation_tasks", "evaluation_templates"],
+    deps={EVALUATION_TEMPLATES_KEY},
 )
-def evaluation_prompt(context, evaluation_tasks, evaluation_templates) -> str:
+def evaluation_prompt(context, evaluation_tasks) -> str:
     """
     Generate one evaluation prompt per partition using FK-based data loading.
     
@@ -181,8 +183,13 @@ def evaluation_prompt(context, evaluation_tasks, evaluation_templates) -> str:
             }
         ) from e
     
-    # Convert DataFrame to dict format expected by generate_evaluation_prompts
-    evaluation_templates_dict = evaluation_templates.set_index('template_id')['content'].to_dict()
+    # Load evaluation templates directly from CSV and convert to dict
+    eval_df = read_evaluation_templates(Path(context.resources.data_root))
+    if 'content' in eval_df.columns:
+        evaluation_templates_dict = eval_df.set_index('template_id')['content'].to_dict()
+    else:
+        # When content not present, templates are not needed for rendering here
+        evaluation_templates_dict = {}
     
     # Generate evaluation prompt using existing logic
     response_dict = {essay_task_id: essay_content}

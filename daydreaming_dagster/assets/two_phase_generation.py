@@ -1,4 +1,4 @@
-from dagster import asset, Failure, MetadataValue, AutoMaterializePolicy
+from dagster import asset, Failure, MetadataValue
 from pathlib import Path
 import pandas as pd
 from jinja2 import Environment
@@ -17,7 +17,6 @@ def links_prompt(
     context,
     link_generation_tasks,
     content_combinations,
-    link_templates,
 ) -> str:
     """
     Generate Phase 1 prompts for concept link generation.
@@ -134,7 +133,6 @@ def links_response(context, links_prompt, link_generation_tasks) -> str:
 def essay_prompt(
     context,
     essay_generation_tasks,
-    essay_templates,
 ) -> str:
     """
     Generate Phase 2 prompts for essay generation based on Phase 1 links.

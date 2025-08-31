@@ -1,6 +1,6 @@
 """Cross-experiment analysis assets for template version comparison and results tracking."""
 
-from dagster import asset, AssetIn, MetadataValue, Config, AutoMaterializePolicy
+from dagster import asset, AssetIn, MetadataValue, Config, AutomationCondition
 from pathlib import Path
 import pandas as pd
 from typing import Dict, Any
@@ -153,7 +153,7 @@ def template_version_comparison_pivot(
 @asset(
     partitions_def=link_tasks_partitions,
     deps=["links_response"],
-    auto_materialize_policy=AutoMaterializePolicy.eager(),
+    automation_condition=AutomationCondition.eager(),
     group_name="cross_experiment_tracking",
     description="Automatically appends new row when links_response completes"
 )
@@ -201,7 +201,7 @@ def link_generation_results_append(context, link_generation_tasks):
 @asset(
     partitions_def=essay_tasks_partitions,
     deps=["essay_response"],
-    auto_materialize_policy=AutoMaterializePolicy.eager(),
+    automation_condition=AutomationCondition.eager(),
     group_name="cross_experiment_tracking",
     description="Automatically appends new row when essay_response completes"
 )
@@ -249,7 +249,7 @@ def essay_generation_results_append(context, essay_generation_tasks):
 @asset(
     partitions_def=evaluation_tasks_partitions, 
     deps=["evaluation_response"],
-    auto_materialize_policy=AutoMaterializePolicy.eager(),
+    automation_condition=AutomationCondition.eager(),
     group_name="cross_experiment_tracking",
     description="Automatically appends new row when evaluation_response completes"
 )

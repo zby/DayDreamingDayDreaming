@@ -1,8 +1,23 @@
-from dagster import asset, MetadataValue, AutoMaterializePolicy, Failure
+from dagster import asset, MetadataValue, AutomationCondition, Failure, AssetKey
 from typing import Dict, Tuple, List
+from pathlib import Path
 import pandas as pd
 from itertools import combinations
-from ..models import Concept, ContentCombination
+from ..models import ContentCombination
+from .raw_data import (
+    CONCEPTS_METADATA_KEY,
+    LLM_MODELS_KEY,
+    LINK_TEMPLATES_KEY,
+    ESSAY_TEMPLATES_KEY,
+    EVALUATION_TEMPLATES_KEY,
+)
+from ..utils.raw_readers import (
+    read_concepts,
+    read_llm_models,
+    read_link_templates,
+    read_essay_templates,
+    read_evaluation_templates,
+)
 from .partitions import (
     generation_tasks_partitions,
     evaluation_tasks_partitions,
@@ -13,14 +28,17 @@ from ..utils.combo_ids import ComboIDManager
 
 @asset(
     group_name="task_definitions",
-    required_resource_keys={"experiment_config"},
-    auto_materialize_policy=AutoMaterializePolicy.eager(),
+    required_resource_keys={"experiment_config", "data_root"},
+    automation_condition=AutomationCondition.eager(),
+    deps={CONCEPTS_METADATA_KEY},
 )
 def content_combinations(
     context,
-    concepts: List[Concept],
 ) -> List[ContentCombination]:
     """Generate k-max combinations of concepts with resolved content using ContentCombination."""
+    # Read concepts directly from raw CSV + descriptions; filter active
+    data_root = context.resources.data_root
+    concepts = read_concepts(Path(data_root), filter_active=True)
     experiment_config = context.resources.experiment_config
     k_max = experiment_config.k_max
     
@@ -98,7 +116,7 @@ def content_combinations(
 @asset(
     group_name="task_definitions",
     io_manager_key="csv_io_manager",
-    auto_materialize_policy=AutoMaterializePolicy.eager(),
+    automation_condition=AutomationCondition.eager(),
 )
 def content_combinations_csv(
     context,
@@ -144,20 +162,20 @@ def content_combinations_csv(
 @asset(
     group_name="task_definitions",
     io_manager_key="csv_io_manager",
-    required_resource_keys={"experiment_config"},
-    auto_materialize_policy=AutoMaterializePolicy.eager(),
+    required_resource_keys={"experiment_config", "data_root"},
+    automation_condition=AutomationCondition.eager(),
 )
 def link_generation_tasks(
     context,
     content_combinations: List[ContentCombination],
-    llm_models: pd.DataFrame,
-    link_templates: pd.DataFrame,
 ) -> pd.DataFrame:
     """Create link-generation tasks (combo × link_template × model)."""
-    generation_models = llm_models[llm_models["for_generation"] == True]
+    data_root = context.resources.data_root
+    models_df = read_llm_models(Path(data_root))
+    generation_models = models_df[models_df["for_generation"] == True]
 
-    active_templates_df = link_templates[link_templates["active"] == True]
-    active_templates = list(active_templates_df["template_id"].tolist())
+    templates_df = read_link_templates(Path(data_root), filter_active=True)
+    active_templates = list(templates_df["template_id"].tolist())
 
     rows: List[dict] = []
     for combo in content_combinations:
@@ -214,17 +232,17 @@ def link_generation_tasks(
 @asset(
     group_name="task_definitions",
     io_manager_key="csv_io_manager",
-    required_resource_keys={"experiment_config"},
-    auto_materialize_policy=AutoMaterializePolicy.eager(),
+    required_resource_keys={"experiment_config", "data_root"},
+    automation_condition=AutomationCondition.eager(),
 )
 def essay_generation_tasks(
     context,
     link_generation_tasks: pd.DataFrame,
-    essay_templates: pd.DataFrame,
 ) -> pd.DataFrame:
     """Create essay-generation tasks (FK to link tasks × essay_template)."""
-    active_templates_df = essay_templates[essay_templates["active"] == True]
-    essay_templates = list(active_templates_df["template_id"].tolist())
+    data_root = context.resources.data_root
+    essay_templates_df = read_essay_templates(Path(data_root), filter_active=True)
+    essay_templates = list(essay_templates_df["template_id"].tolist())
 
     rows: List[dict] = []
     for _, link_row in link_generation_tasks.iterrows():
@@ -267,20 +285,22 @@ def essay_generation_tasks(
 @asset(
     group_name="task_definitions",
     io_manager_key="csv_io_manager",
-    required_resource_keys={"experiment_config"},
-    auto_materialize_policy=AutoMaterializePolicy.eager(),
+    required_resource_keys={"experiment_config", "data_root"},
+    automation_condition=AutomationCondition.eager(),
 )
 def evaluation_tasks(
     context,
     essay_generation_tasks: pd.DataFrame,
-    llm_models: pd.DataFrame,
-    evaluation_templates: pd.DataFrame,
 ) -> pd.DataFrame:
     """Create evaluation tasks referencing essay_task_id (one or more per essay)."""
-    evaluation_models = llm_models[llm_models["for_evaluation"] == True]
+    data_root = context.resources.data_root
+    models_df = read_llm_models(Path(data_root))
+    evaluation_models = models_df[models_df["for_evaluation"] == True]
 
-    active_templates_df = evaluation_templates[evaluation_templates["active"] == True]
-    eval_templates = list(active_templates_df["template_id"].tolist())
+    evaluation_templates_df = read_evaluation_templates(Path(data_root))
+    if "active" in evaluation_templates_df.columns:
+        evaluation_templates_df = evaluation_templates_df[evaluation_templates_df["active"] == True]
+    eval_templates = list(evaluation_templates_df["template_id"].tolist())
 
     rows: List[dict] = []
     for _, essay_row in essay_generation_tasks.iterrows():

@@ -223,9 +223,6 @@ class TestPipelineIntegration:
             with patch.dict(os.environ, {"DAGSTER_HOME": str(temp_dagster_home)}):
                 instance = DagsterInstance.ephemeral(tempdir=str(temp_dagster_home))
 
-                from daydreaming_dagster.assets.raw_data import (
-                    concepts, llm_models, link_templates, essay_templates, evaluation_templates
-                )
                 from daydreaming_dagster.assets.core import (
                     content_combinations, content_combinations_csv, link_generation_tasks, essay_generation_tasks, evaluation_tasks
                 )
@@ -277,12 +274,10 @@ class TestPipelineIntegration:
 
                 print("🚀 Starting complete pipeline workflow...")
                 
-                # STEP 1: Materialize all raw data and task assets
-                print("📋 Step 1: Materializing raw data and task definitions...")
+                # STEP 1: Materialize task definitions (consumers read raw sources directly)
+                print("📋 Step 1: Materializing task definitions...")
                 result = materialize(
                     [
-                        concepts, llm_models,
-                        link_templates, essay_templates, evaluation_templates,
                         content_combinations, content_combinations_csv,
                         link_generation_tasks, essay_generation_tasks, evaluation_tasks,
                     ],
@@ -380,7 +375,7 @@ class TestPipelineIntegration:
                     result = materialize(
                         [
                             # Core dependencies for links
-                            concepts, llm_models, link_templates, content_combinations,
+                            content_combinations,
                             link_generation_tasks,
                             # Link generation assets
                             links_prompt, links_response
@@ -402,7 +397,7 @@ class TestPipelineIntegration:
                     result = materialize(
                         [
                             # Core dependencies for essays
-                            concepts, llm_models, link_templates, essay_templates, content_combinations,
+                            content_combinations,
                             link_generation_tasks, essay_generation_tasks,
                             # Essay generation assets
                             essay_prompt, essay_response
@@ -509,7 +504,6 @@ class TestPipelineIntegration:
                 instance = DagsterInstance.ephemeral(tempdir=str(temp_dagster_home))
                 
                 # Import and test just the content_combinations_csv asset
-                from daydreaming_dagster.assets.raw_data import concepts
                 from daydreaming_dagster.assets.core import content_combinations, content_combinations_csv
                 from daydreaming_dagster.resources.io_managers import CSVIOManager
                 from daydreaming_dagster.resources.experiment_config import ExperimentConfig
@@ -523,7 +517,7 @@ class TestPipelineIntegration:
                 }
                 
                 result = materialize(
-                    [concepts, content_combinations, content_combinations_csv],
+                    [content_combinations, content_combinations_csv],
                     resources=resources,
                     instance=instance
                 )
@@ -628,10 +622,6 @@ class TestPipelineIntegration:
             with patch.dict(os.environ, {'DAGSTER_HOME': str(temp_dagster_home)}):
                 instance = DagsterInstance.ephemeral(tempdir=str(temp_dagster_home))
                 
-                from daydreaming_dagster.assets.raw_data import (
-                    concepts, llm_models,
-                    link_templates
-                )
                 from daydreaming_dagster.assets.core import (
                     content_combinations, link_generation_tasks
                 )
@@ -653,8 +643,7 @@ class TestPipelineIntegration:
                 }
                 
                 result = materialize([
-                    concepts, llm_models,
-                    link_templates, content_combinations, link_generation_tasks
+                    content_combinations, link_generation_tasks
                 ], resources=resources, instance=instance)
                 
                 assert result.success, "Template filtering test materialization should succeed"

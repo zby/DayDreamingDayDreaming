@@ -22,13 +22,8 @@ from daydreaming_dagster.assets.results_summary import (
     generation_scores_pivot,
     evaluation_model_template_pivot
 )
-from daydreaming_dagster.assets.raw_data import (
-    concepts,
-    llm_models,
-    link_templates,
-    essay_templates,
-    evaluation_templates,
-)
+from daydreaming_dagster.assets.raw_data import RAW_SOURCE_ASSETS
+from daydreaming_dagster.schedules.raw_schedule import raw_schedule
 from daydreaming_dagster.assets.core import (
     content_combinations,
     content_combinations_csv,
@@ -55,13 +50,6 @@ from pathlib import Path
 
 defs = Definitions(
     assets=[
-        # Raw data assets (now load all data, no filtering)
-        concepts,                       # Loads ALL concepts with descriptions and applies filtering
-        llm_models,                     # Loads ALL models
-        link_templates,                 # Link-phase templates
-        essay_templates,                # Essay-phase templates
-        evaluation_templates,           # Loads ALL evaluation templates with content
-        
         # Core processing assets
         content_combinations,
         content_combinations_csv,
@@ -94,8 +82,11 @@ defs = Definitions(
         # Auto-materializing results tracking assets
         link_generation_results_append,
         essay_generation_results_append,
-        evaluation_results_append
+        evaluation_results_append,
+        # Source assets (CSV-only)
+        *RAW_SOURCE_ASSETS,
     ],
+    schedules=[raw_schedule],
     resources={
         "openrouter_client": LLMClientResource(),
         "experiment_config": ExperimentConfig(),

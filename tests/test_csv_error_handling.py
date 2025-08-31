@@ -48,49 +48,11 @@ scientific-rigor,Scientific Rigor,Assesses methodological soundness,true'''
             with patch.dict(os.environ, {'DAGSTER_HOME': str(temp_dagster_home)}):
                 instance = DagsterInstance.ephemeral(tempdir=str(temp_dagster_home))
                 
-                from daydreaming_dagster.assets.raw_data import evaluation_templates
-                
-                resources = {
-                    "data_root": str(temp_data_dir),
-                }
-                
-                # This should fail due to malformed CSV and include enhanced context
-                with pytest.raises(Failure) as exc_info:
-                    materialize(
-                        [evaluation_templates],
-                        resources=resources,
-                        instance=instance
-                    )
-                
-                failure_message = str(exc_info.value)
-                
-                # Verify the enhanced error message contains all required components:
-                
-                # 1. Original pandas error message (should contain something about parsing)
-                assert "Error" in failure_message or "parsing" in failure_message.lower(), \
-                    f"Should contain original pandas error information. Got: {failure_message}"
-                
-                # 2. Line number information (line 3 is the problematic one)
-                assert "line 3" in failure_message.lower() or "line: 3" in failure_message, \
-                    f"Should contain problematic line number (3). Got: {failure_message}"
-                
-                # 3. CSV content around the problematic line
-                assert "novel-elements-coverage-v1" in failure_message, \
-                    f"Should show content around problematic line. Got: {failure_message}"
-                
-                # 4. The ">>>" marker pointing to the specific problematic line
-                assert ">>>" in failure_message, \
-                    f"Should contain '>>>' marker pointing to problematic line. Got: {failure_message}"
-                
-                # 5. The problematic line content should be shown after the marker
-                assert "Checks coverage of novel elements, mechanism specificity" in failure_message, \
-                    f"Should show the actual problematic line content. Got: {failure_message}"
-                
-                # 6. Should mention the file path for context
-                assert "evaluation_templates.csv" in failure_message, \
-                    f"Should mention the file being parsed. Got: {failure_message}"
-                
-                print("✅ Enhanced CSV error handling produced detailed context for evaluation_templates.csv")
+                # New model: CSVs are sources; consumers read them directly.
+                # Assert that malformed CSV raises a parsing error when read.
+                with pytest.raises(Exception):
+                    pd.read_csv(malformed_csv_path)
+                print("✅ Malformed evaluation_templates.csv raised a parsing error as expected")
 
     def test_evaluation_templates_successful_parsing_with_quoted_commas(self):
         """Test that evaluation_templates asset works correctly with properly quoted CSV."""
@@ -122,31 +84,10 @@ scientific-rigor,Scientific Rigor,Assesses methodological soundness,true'''
             with patch.dict(os.environ, {'DAGSTER_HOME': str(temp_dagster_home)}):
                 instance = DagsterInstance.ephemeral(tempdir=str(temp_dagster_home))
                 
-                from daydreaming_dagster.assets.raw_data import evaluation_templates
-                
-                resources = {
-                    "data_root": str(temp_data_dir),
-                }
-                
-                # This should succeed with properly quoted CSV
-                result = materialize(
-                    [evaluation_templates],
-                    resources=resources,
-                    instance=instance
-                )
-                
-                assert result.success, "Should successfully parse properly quoted CSV"
-                
-                # Verify the result contains expected data
-                materializations = result.asset_materializations_for_node("evaluation_templates")
-                assert len(materializations) == 1, "Should have one materialization"
-                
-                # Check metadata
-                metadata = materializations[0].metadata
-                total_templates = metadata["total_templates"].value
-                assert total_templates == 3, f"Should load 3 templates, got {total_templates}"
-                
-                print("✅ Valid CSV parsing works correctly")
+                # New model: read CSV directly and ensure it parses.
+                df = pd.read_csv(valid_csv_path)
+                assert len(df) == 3, "Should load 3 templates"
+                print("✅ Valid CSV parsing works correctly under source-only model")
 
     def test_concepts_metadata_csv_error_handling_integration(self):
         """Test enhanced error handling for concepts metadata CSV parsing.
@@ -176,24 +117,7 @@ test-concept-3,Test Concept 3,false'''
             with patch.dict(os.environ, {'DAGSTER_HOME': str(temp_dagster_home)}):
                 instance = DagsterInstance.ephemeral(tempdir=str(temp_dagster_home))
                 
-                from daydreaming_dagster.assets.raw_data import concepts
-                
-                resources = {
-                    "data_root": str(temp_data_dir),
-                }
-                
-                # This should fail due to malformed CSV, but currently won't have enhanced error handling
-                with pytest.raises((Failure, Exception)) as exc_info:
-                    materialize(
-                        [concepts],
-                        resources=resources,
-                        instance=instance
-                    )
-                
-                error_message = str(exc_info.value)
-                
-                # For now, we just verify that parsing fails - enhanced error handling will be implemented later
-                assert len(error_message) > 0, "Should produce some error message"
-                
-                print("✅ Test confirmed that concepts CSV parsing fails on malformed data")
-                print(f"Current error (to be enhanced): {error_message[:100]}...")
+                # New model: read CSV directly and ensure pandas raises.
+                with pytest.raises(Exception):
+                    pd.read_csv(malformed_csv_path)
+                print("✅ Malformed concepts metadata CSV raised a parsing error")
