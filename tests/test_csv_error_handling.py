@@ -111,7 +111,7 @@ test-concept-1,Test Concept 1,true
 malformed-concept,Test Concept with, unquoted commas in name,true
 test-concept-3,Test Concept 3,false'''
             
-            malformed_csv_path = concepts_dir / "concepts_metadata.csv"
+            malformed_csv_path = temp_data_dir / "1_raw" / "concepts_metadata.csv"
             malformed_csv_path.write_text(malformed_csv_content)
             
             with patch.dict(os.environ, {'DAGSTER_HOME': str(temp_dagster_home)}):

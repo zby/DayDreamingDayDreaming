@@ -106,7 +106,7 @@ The system uses CSV-based configuration for easy experiment setup without code c
 
 #### 1. Choose Active Concepts
 
-Edit `data/1_raw/concepts/concepts_metadata.csv` and set `active` to:
+Edit `data/1_raw/concepts_metadata.csv` and set `active` to:
 - `default-mode-network`: True
 - `mind-wandering`: False  
 - `combinatorial-creativity`: False
@@ -373,7 +373,7 @@ uv run dagster asset materialize --select "group:task_definitions" -f daydreamin
 
 # Option 2: Check for underlying data issues
 # Inspect concepts, templates, and models for corruption
-head data/1_raw/concepts/concepts_metadata.csv
+head data/1_raw/concepts_metadata.csv
 head data/1_raw/link_templates.csv
 head data/1_raw/essay_templates.csv
 head data/1_raw/llm_models.csv

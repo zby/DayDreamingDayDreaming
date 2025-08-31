@@ -56,7 +56,7 @@ def content_combinations(
                 "k_max": MetadataValue.int(k_max),
                 "additional_needed": MetadataValue.int(max(0, k_max - len(concepts))),
                 "resolution_1": MetadataValue.text(
-                    "Activate more concepts in data/1_raw/concepts/concepts_metadata.csv"
+                "Activate more concepts in data/1_raw/concepts_metadata.csv"
                 ),
                 "resolution_2": MetadataValue.text(
                     "Or lower k_max via ExperimentConfig in the Dagster Launchpad"
@@ -134,7 +134,7 @@ def content_combinations_csv(
                     "Check active concepts and k_max in ExperimentConfig"
                 ),
                 "resolution_2": MetadataValue.text(
-                    "Ensure data/1_raw/concepts/concepts_metadata.csv has enough active concepts"
+                    "Ensure data/1_raw/concepts_metadata.csv has enough active concepts"
                 ),
             },
         )

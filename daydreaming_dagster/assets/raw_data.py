@@ -4,7 +4,7 @@ from pathlib import Path
 RAW_BASE = Path("data") / "1_raw"
 
 # CSV-only SourceAssets (no per-description or per-template .txt assets)
-CONCEPTS_METADATA_KEY = AssetKey(["raw_source", "concepts", "concepts_metadata_csv"])
+CONCEPTS_METADATA_KEY = AssetKey(["raw_source", "concepts_metadata_csv"])
 LLM_MODELS_KEY = AssetKey(["raw_source", "llm_models_csv"])
 LINK_TEMPLATES_KEY = AssetKey(["raw_source", "link_templates_csv"])
 ESSAY_TEMPLATES_KEY = AssetKey(["raw_source", "essay_templates_csv"])
@@ -13,9 +13,9 @@ EVALUATION_TEMPLATES_KEY = AssetKey(["raw_source", "evaluation_templates_csv"])
 RAW_SOURCE_ASSETS = [
     AssetSpec(
         key=CONCEPTS_METADATA_KEY,
-        description=f"External raw CSV: {RAW_BASE / 'concepts' / 'concepts_metadata.csv'}",
+        description=f"External raw CSV: {RAW_BASE / 'concepts_metadata.csv'}",
         group_name="raw_sources",
-        metadata={"path": str(RAW_BASE / "concepts" / "concepts_metadata.csv")},
+        metadata={"path": str(RAW_BASE / "concepts_metadata.csv")},
     ),
     AssetSpec(
         key=LLM_MODELS_KEY,

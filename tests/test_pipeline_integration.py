@@ -75,8 +75,14 @@ def pipeline_data_root_prepared():
         if len(eval_files) == 0:
             raise RuntimeError("No evaluation template files found after copy")
 
+    # Ensure concepts metadata is available at new root location
+    old_concepts_csv = pipeline_data_root / "1_raw" / "concepts" / "concepts_metadata.csv"
+    new_concepts_csv = pipeline_data_root / "1_raw" / "concepts_metadata.csv"
+    if old_concepts_csv.exists() and not new_concepts_csv.exists():
+        shutil.copy2(old_concepts_csv, new_concepts_csv)
+
     # Limit active rows in key CSVs
-    concepts_csv = pipeline_data_root / "1_raw" / "concepts" / "concepts_metadata.csv"
+    concepts_csv = pipeline_data_root / "1_raw" / "concepts_metadata.csv"
     link_templates_csv = pipeline_data_root / "1_raw" / "link_templates.csv"
     essay_templates_csv = pipeline_data_root / "1_raw" / "essay_templates.csv"
     eval_templates_csv = pipeline_data_root / "1_raw" / "evaluation_templates.csv"
@@ -316,7 +322,7 @@ class TestPipelineIntegration:
                 assert all(cid.startswith("combo_") for cid in combo_ids)
 
                 # Active concept IDs subset check
-                active_concepts_df = pd.read_csv(pipeline_data_root / "1_raw" / "concepts" / "concepts_metadata.csv")
+                active_concepts_df = pd.read_csv(pipeline_data_root / "1_raw" / "concepts_metadata.csv")
                 expected_active_concept_ids = set(active_concepts_df[active_concepts_df["active"] == True]["concept_id"])
                 actual_concept_ids = set(combinations_csv["concept_id"].unique())
                 assert actual_concept_ids.issubset(expected_active_concept_ids)
@@ -491,7 +497,7 @@ class TestPipelineIntegration:
                 {"concept_id": "test-concept-2", "name": "Test Concept 2", "active": True},
                 {"concept_id": "inactive-concept", "name": "Inactive Concept", "active": False}
             ])
-            test_concepts.to_csv(concepts_dir / "concepts_metadata.csv", index=False)
+            test_concepts.to_csv(temp_data_dir / "1_raw" / "concepts_metadata.csv", index=False)
             
             # Create minimal description files
             desc_para_dir = concepts_dir / "descriptions-paragraph" 
@@ -587,7 +593,7 @@ class TestPipelineIntegration:
                 {"concept_id": "test-concept-1", "name": "Test Concept 1", "active": True},
                 {"concept_id": "test-concept-2", "name": "Test Concept 2", "active": True},
             ])
-            test_concepts.to_csv(concepts_dir / "concepts_metadata.csv", index=False)
+            test_concepts.to_csv(temp_data_dir / "1_raw" / "concepts_metadata.csv", index=False)
             
             desc_para_dir = concepts_dir / "descriptions-paragraph"
             desc_para_dir.mkdir()

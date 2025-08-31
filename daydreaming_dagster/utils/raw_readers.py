@@ -10,7 +10,7 @@ from .csv_reading import read_csv_with_context
 
 def read_concepts(data_root: Path, filter_active: bool = True) -> List[Concept]:
     base = Path(data_root) / "1_raw" / "concepts"
-    metadata_path = base / "concepts_metadata.csv"
+    metadata_path = Path(data_root) / "1_raw" / "concepts_metadata.csv"
     df = pd.read_csv(metadata_path)
     if filter_active and "active" in df.columns:
         df = df[df["active"] == True]
@@ -64,4 +64,3 @@ def read_evaluation_templates(data_root: Path) -> pd.DataFrame:
     base = Path(data_root) / "1_raw"
     csv_path = base / "evaluation_templates.csv"
     return pd.read_csv(csv_path)
-

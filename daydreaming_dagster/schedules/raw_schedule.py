@@ -17,7 +17,7 @@ from ..utils.raw_state import FingerprintState, read_last_state, write_last_stat
 
 
 RAW_CSVS = [
-    Path("data/1_raw/concepts/concepts_metadata.csv"),
+    Path("data/1_raw/concepts_metadata.csv"),
     Path("data/1_raw/llm_models.csv"),
     Path("data/1_raw/link_templates.csv"),
     Path("data/1_raw/essay_templates.csv"),

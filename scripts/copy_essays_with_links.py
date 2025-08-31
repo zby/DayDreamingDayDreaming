@@ -152,7 +152,7 @@ def get_top_scoring_generations(n: int = 5, scores_csv: str = "data/6_summary/ge
 
 def get_all_current_generations(
     essay_responses_dir: str = "data/3_generation/essay_responses",
-    concepts_metadata_path: str = "data/1_raw/concepts/concepts_metadata.csv",
+    concepts_metadata_path: str = "data/1_raw/concepts_metadata.csv",
     content_combinations_path: str = "data/2_tasks/content_combinations_csv.csv",
     essay_tasks_path: str = "data/2_tasks/essay_generation_tasks.csv",
     essay_templates_path: str = "data/1_raw/essay_templates.csv",
@@ -512,7 +512,7 @@ def main():
     parser.add_argument("--big-pivot", type=str, default="data/7_cross_experiment/evaluation_scores_by_template_model.csv", help="Path to cross-experiment pivot table")
     parser.add_argument("--evaluation-tasks", type=str, default="data/2_tasks/evaluation_tasks.csv", help="Path to evaluation_tasks.csv (to select eval template+model columns)")
     parser.add_argument("--essay-responses-dir", type=str, default="data/3_generation/essay_responses", help="Directory containing essay response files")
-    parser.add_argument("--concepts-metadata", type=str, default="data/1_raw/concepts/concepts_metadata.csv", help="Path to concepts metadata CSV")
+    parser.add_argument("--concepts-metadata", type=str, default="data/1_raw/concepts_metadata.csv", help="Path to concepts metadata CSV")
     parser.add_argument("--content-combinations", type=str, default="data/2_tasks/content_combinations_csv.csv", help="Path to content combinations CSV")
     parser.add_argument("--essay-tasks", type=str, default="data/2_tasks/essay_generation_tasks.csv", help="Path to essay generation tasks CSV")
     parser.add_argument("--essay-templates", type=str, default="data/1_raw/essay_templates.csv", help="Path to essay templates CSV")

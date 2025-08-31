@@ -22,7 +22,7 @@ All of these are currently software-defined `@asset`s that directly read files. 
 
 **Asset Key Conventions**
 - Namespace under a clear, stable prefix, e.g. `AssetKey(["raw_source", <relative_path_components>])`.
-  - Example: `raw_source/concepts/concepts_metadata.csv`.
+  - Example: `raw_source/concepts_metadata.csv`.
   - Example: `raw_source/concepts/descriptions-sentence/<file>.txt`.
 - Maintain current compute asset keys for compatibility: `concepts`, `llm_models`, `link_templates`, `essay_templates`, `evaluation_templates` remain unchanged.
 
@@ -67,7 +67,7 @@ All of these are currently software-defined `@asset`s that directly read files. 
 
 - Unit tests (colocated next to utils/assets as appropriate):
   - `test_raw_source_keys.py`: path→AssetKey mapping is deterministic and reversible enough for debugging; enumerate expected files under a temp `data_root`.
-- `test_raw_sources_registry.py`: given a temp directory with a few files, the module builds the expected set of SourceAssets with correct keys and metadata. Assert that no SourceAssets are created for concept description files; only `concepts/concepts_metadata.csv` is present for concepts.
+- `test_raw_sources_registry.py`: given a temp directory with a few files, the module builds the expected set of SourceAssets with correct keys and metadata. Assert that no SourceAssets are created for concept description files; only `concepts_metadata.csv` is present for concepts.
   - `test_raw_data_dependencies.py`: ensure compute assets declare `ins` that include the relevant SourceAsset keys (can inspect `assets_def` to assert upstream keys).
 
 - Snapshot/behavior tests for compute assets (unchanged outputs):

@@ -140,13 +140,13 @@ class TestCSVIOManagerSourceMappingLogic:
         """Test that concepts_metadata source mapping should include active filter."""
         # Current source mapping from definitions.py (without active filter)
         current_mapping = {
-            "source_file": "data/1_raw/concepts/concepts_metadata.csv"
+            "source_file": "data/1_raw/concepts_metadata.csv"
             # No filters currently
         }
         
         # Expected mapping after implementing active column feature
         expected_mapping = {
-            "source_file": "data/1_raw/concepts/concepts_metadata.csv",
+            "source_file": "data/1_raw/concepts_metadata.csv",
             "filters": [{"column": "active", "value": True}]
         }
         
