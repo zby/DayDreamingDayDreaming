@@ -353,7 +353,7 @@ class TestPipelineIntegration:
                 eval_tasks_csv_path = task_dir / "evaluation_tasks.csv"
                 eval_tasks_csv = pd.read_csv(eval_tasks_csv_path)
                 assert "evaluation_task_id" in eval_tasks_csv.columns
-                assert "essay_task_id" in eval_tasks_csv.columns
+                assert "link_task_id" in eval_tasks_csv.columns
 
                 unique_combos_in_combinations = len(combinations_csv["combo_id"].unique())
                 unique_combos_in_gen_tasks = len(gen_tasks_csv["combo_id"].unique())
@@ -422,12 +422,12 @@ class TestPipelineIntegration:
                 print("📊 Step 3: Testing evaluation pipeline...")
                 
                 eval_tasks_df = pd.read_csv(task_dir / "evaluation_tasks.csv")
-                # Only test evaluation tasks that reference the generated essays
-                essay_tasks_df = pd.read_csv(task_dir / "essay_generation_tasks.csv")
-                generated_essay_ids = essay_tasks_df["essay_task_id"].tolist()[:2]  # Match generation limit
-                
+                # Only test evaluation tasks that reference the generated link drafts
+                gen_tasks_df = pd.read_csv(task_dir / "link_generation_tasks.csv")
+                generated_link_ids = gen_tasks_df["link_task_id"].tolist()[:2]  # Match generation limit
+
                 test_eval_partitions = eval_tasks_df[
-                    eval_tasks_df["essay_task_id"].isin(generated_essay_ids)
+                    eval_tasks_df["link_task_id"].isin(generated_link_ids)
                 ]["evaluation_task_id"].tolist()[:2]  # Limit to 2 for testing
                 
                 if test_eval_partitions:

@@ -293,9 +293,9 @@ def essay_generation_tasks(
 )
 def evaluation_tasks(
     context,
-    essay_generation_tasks: pd.DataFrame,
+    link_generation_tasks: pd.DataFrame,
 ) -> pd.DataFrame:
-    """Create evaluation tasks referencing essay_task_id (one or more per essay)."""
+    """Create evaluation tasks referencing link_task_id (evaluate drafts directly)."""
     data_root = context.resources.data_root
     models_df = read_llm_models(Path(data_root))
     evaluation_models = models_df[models_df["for_evaluation"] == True]
@@ -306,17 +306,17 @@ def evaluation_tasks(
     eval_templates = list(evaluation_templates_df["template_id"].tolist())
 
     rows: List[dict] = []
-    for _, essay_row in essay_generation_tasks.iterrows():
-        essay_task_id = essay_row["essay_task_id"]
+    for _, link_row in link_generation_tasks.iterrows():
+        link_task_id = link_row["link_task_id"]
         for _, eval_model_row in evaluation_models.iterrows():
             eval_model_id = eval_model_row["id"]
             eval_model_name = eval_model_row["model"]
             for eval_template_id in eval_templates:
-                evaluation_task_id = f"{essay_task_id}_{eval_template_id}_{eval_model_id}"
+                evaluation_task_id = f"{link_task_id}_{eval_template_id}_{eval_model_id}"
                 rows.append(
                     {
                         "evaluation_task_id": evaluation_task_id,
-                        "essay_task_id": essay_task_id,
+                        "link_task_id": link_task_id,
                         "evaluation_template": eval_template_id,
                         "evaluation_model": eval_model_id,
                         "evaluation_model_name": eval_model_name,
@@ -337,7 +337,7 @@ def evaluation_tasks(
     context.add_output_metadata(
         {
             "task_count": MetadataValue.int(len(tasks_df)),
-            "unique_essays": MetadataValue.int(tasks_df["essay_task_id"].nunique()),
+            "unique_links": MetadataValue.int(tasks_df["link_task_id"].nunique()),
             "unique_eval_templates": MetadataValue.int(tasks_df["evaluation_template"].nunique()),
             "unique_eval_models": MetadataValue.int(tasks_df["evaluation_model"].nunique()),
         }

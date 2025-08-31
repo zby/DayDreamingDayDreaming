@@ -11,16 +11,16 @@ from ..utils.evaluation_processing import parse_evaluation_files, enrich_evaluat
     required_resource_keys={"evaluation_response_io_manager"},
     ins={
         "evaluation_tasks": AssetIn(),
-        "essay_generation_tasks": AssetIn(),
+        "link_generation_tasks": AssetIn(),
     },
     description="Parse evaluation responses and enrich with task metadata",
     compute_kind="pandas"
 )
-def parsed_scores(context, evaluation_tasks: pd.DataFrame, essay_generation_tasks: pd.DataFrame) -> pd.DataFrame:
+def parsed_scores(context, evaluation_tasks: pd.DataFrame, link_generation_tasks: pd.DataFrame) -> pd.DataFrame:
     """Parse evaluation responses to extract scores and enrich with metadata."""
     # Validate inputs
-    if evaluation_tasks is None or essay_generation_tasks is None:
-        raise Failure("Both evaluation_tasks and essay_generation_tasks are required")
+    if evaluation_tasks is None or link_generation_tasks is None:
+        raise Failure("Both evaluation_tasks and link_generation_tasks are required")
     
     # Get base path and parse responses using evaluation processing utility
     base_path = Path(context.resources.evaluation_response_io_manager.base_path)
@@ -31,7 +31,7 @@ def parsed_scores(context, evaluation_tasks: pd.DataFrame, essay_generation_task
     enriched_df = parsed_df.merge(
         evaluation_tasks[[
             "evaluation_task_id",
-            "essay_task_id",
+            "link_task_id",
             "evaluation_template",
             "evaluation_model",
         ]],
@@ -40,22 +40,20 @@ def parsed_scores(context, evaluation_tasks: pd.DataFrame, essay_generation_task
     )
 
     # Join with essay generation metadata to recover combo/model/template
-    if not essay_generation_tasks.empty:
+    if not link_generation_tasks.empty:
         enriched_df = enriched_df.merge(
-            essay_generation_tasks[[
-                "essay_task_id",
+            link_generation_tasks[[
+                "link_task_id",
                 "combo_id",
                 "link_template",
-                "essay_template",
                 "generation_model",
                 "generation_model_name",
             ]],
-            on="essay_task_id",
+            on="link_task_id",
             how="left",
         )
     else:
         enriched_df["combo_id"] = "unknown"
-        enriched_df["essay_template"] = "unknown"
         enriched_df["generation_model"] = "unknown"
 
     # Construct evaluation response path directly from task id
@@ -63,12 +61,12 @@ def parsed_scores(context, evaluation_tasks: pd.DataFrame, essay_generation_task
         lambda tid: str(Path("data/4_evaluation/evaluation_responses") / f"{tid}.txt")
     )
 
-    # Map essay_template into legacy generation_template column for compatibility
-    enriched_df["generation_template"] = enriched_df["essay_template"]
+    # For legacy compatibility, expose link template under generation_template
+    enriched_df["generation_template"] = enriched_df["link_template"]
 
     # Select final columns (include IDs useful for downstream path reconstruction)
     result_df = enriched_df[[
-        "essay_task_id",
+        "link_task_id",
         "combo_id",
         "link_template",
         "generation_template",
@@ -84,7 +82,7 @@ def parsed_scores(context, evaluation_tasks: pd.DataFrame, essay_generation_task
     metadata = calculate_evaluation_metadata(result_df)
     metadata.update({
         "evaluation_tasks_processed": MetadataValue.int(len(evaluation_tasks)),
-        "essay_tasks_available": MetadataValue.int(len(essay_generation_tasks)),
+        "link_tasks_available": MetadataValue.int(len(link_generation_tasks)),
         "response_file_path": MetadataValue.path(base_path),
     })
     
