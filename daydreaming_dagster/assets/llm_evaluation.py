@@ -62,7 +62,7 @@ def generate_evaluation_prompts(
     partitions_def=evaluation_tasks_partitions,
     group_name="evaluation",
     io_manager_key="evaluation_prompt_io_manager",
-    required_resource_keys={"links_response_io_manager"},
+    required_resource_keys={"links_response_io_manager", "data_root"},
     deps={EVALUATION_TEMPLATES_KEY},
 )
 def evaluation_prompt(context, evaluation_tasks) -> str:

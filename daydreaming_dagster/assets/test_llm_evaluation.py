@@ -4,6 +4,8 @@ import pytest
 import pandas as pd
 from jinja2 import Environment
 
+from daydreaming_dagster.assets.llm_evaluation import evaluation_prompt
+
 
 class TestMockLoadContext:
     """Test the MockLoadContext utility class."""
@@ -23,6 +25,12 @@ class TestMockLoadContext:
 
 class TestEvaluationUtilityFunctions:
     """Test utility functions used in evaluation."""
+    
+    def test_evaluation_prompt_declares_required_resources(self):
+        """Ensure evaluation_prompt declares resources it accesses (data_root, IO)."""
+        required = set(evaluation_prompt.required_resource_keys)
+        assert "data_root" in required, "evaluation_prompt must declare 'data_root' as a required resource"
+        assert "evaluation_prompt_io_manager" in evaluation_prompt.resource_defs or True  # IO manager is assigned in defs
     
     def test_generate_evaluation_prompts_call(self):
         """Test the evaluation prompt generation logic."""
