@@ -435,6 +435,7 @@ data/
 - Dynamic partitions for tasks are cleared and recreated when `generation_tasks`/`evaluation_tasks` run.
 - Prompts are allowed to overwrite to reflect current templates.
 - Responses are write-once by default; existing response files will not be overwritten. Delete files to regenerate or change the partition key.
+- To enable overwriting responses for reruns, set the environment variable `OVERWRITE_GENERATED_FILES=true` (accepted truthy values: `1`, `true`, `yes`, `y`). This applies to links/essays/evaluations response folders; prompts always overwrite.
 
 ## Performance and Scalability
 

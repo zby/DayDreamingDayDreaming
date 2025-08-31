@@ -37,6 +37,19 @@ This comprehensive guide covers everything you need to know to set up, run, and 
    uv run dagster dev -f daydreaming_dagster/definitions.py
    ```
 
+### Controlling Overwrites of Generated Files
+
+By default, generated responses (links/essays/evaluations) are write‑once for safety: existing files are not overwritten. To allow overwriting during reruns (useful for experimentation):
+
+```bash
+export OVERWRITE_GENERATED_FILES=true   # accepts: 1/true/yes/y (case‑insensitive)
+uv run dagster dev -f daydreaming_dagster/definitions.py
+```
+
+Notes:
+- Prompts always overwrite to reflect current templates.
+- CSV outputs (task tables, pivots) are rewritten as part of normal materialization.
+
 ### Two-Phase Generation System 🚀
 
 The pipeline uses an innovative two-phase generation approach for improved quality:
