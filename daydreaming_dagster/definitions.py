@@ -1,4 +1,5 @@
 from dagster import Definitions, multiprocess_executor
+import os
 from daydreaming_dagster.assets.two_phase_generation import (
     links_prompt,
     links_response,
@@ -47,6 +48,8 @@ from daydreaming_dagster.resources.io_managers import (
 from daydreaming_dagster.resources.cross_experiment_io_manager import CrossExperimentIOManager
 from pathlib import Path
 
+
+overwrite_generated = os.getenv("OVERWRITE_GENERATED_FILES", "false").lower() in ("1", "true", "yes", "y")
 
 defs = Definitions(
     assets=[
@@ -99,12 +102,12 @@ defs = Definitions(
         
         # Two-phase generation I/O managers
         "links_prompt_io_manager": PartitionedTextIOManager(base_path=Path("data") / "3_generation" / "links_prompts", overwrite=True),
-        "links_response_io_manager": PartitionedTextIOManager(base_path=Path("data") / "3_generation" / "links_responses", overwrite=False),
+        "links_response_io_manager": PartitionedTextIOManager(base_path=Path("data") / "3_generation" / "links_responses", overwrite=overwrite_generated),
         "essay_prompt_io_manager": PartitionedTextIOManager(base_path=Path("data") / "3_generation" / "essay_prompts", overwrite=True),
-        "essay_response_io_manager": PartitionedTextIOManager(base_path=Path("data") / "3_generation" / "essay_responses", overwrite=False),
+        "essay_response_io_manager": PartitionedTextIOManager(base_path=Path("data") / "3_generation" / "essay_responses", overwrite=overwrite_generated),
         "evaluation_prompt_io_manager": PartitionedTextIOManager(base_path=Path("data") / "4_evaluation" / "evaluation_prompts", overwrite=True),
         # Evaluations are outputs; keep overwrite disabled for safety
-        "evaluation_response_io_manager": PartitionedTextIOManager(base_path=Path("data") / "4_evaluation" / "evaluation_responses", overwrite=False),
+        "evaluation_response_io_manager": PartitionedTextIOManager(base_path=Path("data") / "4_evaluation" / "evaluation_responses", overwrite=overwrite_generated),
         "error_log_io_manager": CSVIOManager(base_path=Path("data") / "7_reporting"),
         "parsing_results_io_manager": CSVIOManager(base_path=Path("data") / "5_parsing"),
         "summary_results_io_manager": CSVIOManager(base_path=Path("data") / "6_summary"),
