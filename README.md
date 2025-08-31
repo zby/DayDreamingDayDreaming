@@ -300,8 +300,9 @@ Default active link template:
    ```
    **Solution**: Always set DAGSTER_HOME before running any commands:
    ```bash
-   export DAGSTER_HOME=./dagster_home
-   mkdir -p $DAGSTER_HOME
+   export DAGSTER_HOME=$(pwd)/dagster_home
+   # Ensure the directory exists if missing
+   [ -d "$DAGSTER_HOME" ] || mkdir -p "$DAGSTER_HOME"
    ```
 
 3. **Partition Not Found Error**:

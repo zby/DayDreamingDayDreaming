@@ -29,7 +29,7 @@ This comprehensive guide covers everything you need to know to set up, run, and 
 2. **Set environment variables:**
    ```bash
    export OPENROUTER_API_KEY="your_api_key_here"
-   export DAGSTER_HOME="./dagster_home"
+  export DAGSTER_HOME="$(pwd)/dagster_home"
    ```
 
 3. **Verify configuration:**

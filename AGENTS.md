@@ -9,8 +9,8 @@
 
 ## Build, Test, and Development Commands
 - Install: `uv sync` (use `uv sync --dev` for Black/Ruff).
-- Dagster UI: `uv run dagster dev -f daydreaming_dagster/definitions.py` (set `DAGSTER_HOME=./dagster_home`).
-- Auto-update upstream assets: start Dagster with the daemon (`export DAGSTER_HOME=./dagster_home && uv run dagster dev -f daydreaming_dagster/definitions.py`). Raw loaders and task definitions auto-rematerialize when `data/1_raw/**/*` changes.
+- Dagster UI: `uv run dagster dev -f daydreaming_dagster/definitions.py` (set `DAGSTER_HOME=$(pwd)/dagster_home`).
+- Auto-update upstream assets: start Dagster with the daemon (`export DAGSTER_HOME=$(pwd)/dagster_home && uv run dagster dev -f daydreaming_dagster/definitions.py`). Raw loaders and task definitions auto-rematerialize when `data/1_raw/**/*` changes.
 - Optional seed (once): `uv run dagster asset materialize --select "group:task_definitions" -f daydreaming_dagster/definitions.py`.
 - Two‑phase generation (split tasks):
   - Links: `uv run dagster asset materialize --select "group:generation_links" --partition <link_task_id> -f daydreaming_dagster/definitions.py`.
@@ -45,6 +45,7 @@
 
 ## Security & Configuration Tips
 - Secrets: never commit API keys or real outputs; use a local `.env` and environment variables (`OPENROUTER_API_KEY`, `DAGSTER_HOME`).
+  - Set `DAGSTER_HOME` as an absolute path, e.g., `export DAGSTER_HOME=$(pwd)/dagster_home`.
 - Data: large generated folders under `data/` should be git‑ignored unless explicitly needed for tests/docs.
 
 ## Agent‑Specific Notes
