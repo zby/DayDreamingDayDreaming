@@ -164,6 +164,7 @@ def content_combinations_csv(
     io_manager_key="csv_io_manager",
     required_resource_keys={"experiment_config", "data_root"},
     automation_condition=AutomationCondition.eager(),
+    deps={LLM_MODELS_KEY, LINK_TEMPLATES_KEY},
 )
 def link_generation_tasks(
     context,
@@ -234,6 +235,7 @@ def link_generation_tasks(
     io_manager_key="csv_io_manager",
     required_resource_keys={"experiment_config", "data_root"},
     automation_condition=AutomationCondition.eager(),
+    deps={ESSAY_TEMPLATES_KEY},
 )
 def essay_generation_tasks(
     context,
@@ -287,6 +289,7 @@ def essay_generation_tasks(
     io_manager_key="csv_io_manager",
     required_resource_keys={"experiment_config", "data_root"},
     automation_condition=AutomationCondition.eager(),
+    deps={LLM_MODELS_KEY, EVALUATION_TEMPLATES_KEY},
 )
 def evaluation_tasks(
     context,
