@@ -183,11 +183,21 @@ def evaluation_prompt(context, evaluation_tasks) -> str:
 
     # Load evaluation templates directly from CSV and convert to dict
     eval_df = read_evaluation_templates(Path(context.resources.data_root))
+    evaluation_templates_dict: dict[str, str] = {}
     if 'content' in eval_df.columns:
         evaluation_templates_dict = eval_df.set_index('template_id')['content'].to_dict()
     else:
-        # When content not present, templates are not needed for rendering here
-        evaluation_templates_dict = {}
+        # Fallback: read template files from data/1_raw/evaluation_templates/<template_id>.txt
+        templates_base = Path(context.resources.data_root) / "1_raw" / "evaluation_templates"
+        for _, row in eval_df.iterrows():
+            template_id = row.get('template_id')
+            if not isinstance(template_id, str) or not len(template_id):
+                continue
+            fp = templates_base / f"{template_id}.txt"
+            try:
+                evaluation_templates_dict[template_id] = fp.read_text(encoding='utf-8')
+            except FileNotFoundError:
+                context.log.warning(f"Evaluation template file not found: {fp}")
     
     # Generate evaluation prompt using existing logic
     response_dict = {link_task_id: draft_content}
