@@ -96,6 +96,22 @@ Notes:
 - `generation_model` must be an ID present in `data/1_raw/llm_models.csv`; `generation_model_name` should be the provider/model string (e.g., `deepseek/deepseek-r1:free`).
 - Do not place anything into `data/3_generation/generation_responses/` for this workflow; keep legacy empty.
 
+Curated counts and drafts:
+- `evaluation_tasks` builds from both `link_generation_tasks` (drafts) and `essay_generation_tasks` (essays). If `data/2_tasks/link_generation_tasks.csv` still contains many rows (from the cube), those drafts will be included in the document set and inflate counts.
+- To get exact doc counts, either:
+  - Write an empty `link_generation_tasks.csv` (exclude drafts entirely), or
+  - Derive a curated `link_generation_tasks.csv` from your curated essays to include only matching link tasks.
+    - Quick helper (one-liner):
+      ```bash
+      uv run python - <<'PY'
+      import pandas as pd
+      edf = pd.read_csv('data/2_tasks/essay_generation_tasks.csv')
+      cols=['link_task_id','combo_id','link_template','generation_model','generation_model_name']
+      pd.DataFrame(edf[cols].drop_duplicates()).to_csv('data/2_tasks/link_generation_tasks.csv', index=False)
+      print('Wrote curated link_generation_tasks.csv')
+      PY
+      ```
+
 ### How the Script Selects Winners
 
 1) Read `data/5_parsing/parsed_scores.csv` (or any other source)
@@ -134,6 +150,17 @@ uv run dagster asset materialize --select "evaluation_prompt,evaluation_response
 ```bash
 uv run dagster asset materialize --select parsed_scores,generation_scores_pivot -f daydreaming_dagster/definitions.py
 ```
+
+### Exact Task Counts (sanity)
+- `total_tasks = documents × active_evaluation_templates × active_evaluation_models`
+- To get e.g. 10 documents × 2 templates × 1 model = 20 tasks:
+  - Ensure only your 10 docs are present (curated essays; drafts excluded or curated)
+  - In `data/1_raw/evaluation_templates.csv`, set only the target templates to `active: true`
+  - In `data/1_raw/llm_models.csv`, set only the target evaluator (e.g., `sonnet-4`) to `for_evaluation: true`
+
+### UI Partition Keys vs Source of Truth
+- Partition keys are defined by `evaluation_task_id = {document_id}__{evaluation_template}__{evaluation_model_id}` (double underscores).
+- If the UI shows stale or mismatched keys, re-materialize `evaluation_tasks` and copy keys directly from `data/2_tasks/evaluation_tasks.csv`.
 
 ### Important Gotchas
 
