@@ -36,6 +36,7 @@ test = [
 dev = [
     "ruff>=0.5.3",
     "black>=25.1.0",
+    "ast-grep-cli>=0.39.4",
 ]
 
 [tool.setuptools.packages.find]
