@@ -126,16 +126,7 @@ def links_response(context, links_prompt, link_generation_tasks) -> str:
     return response
 
 
-@asset(
-    partitions_def=essay_tasks_partitions,
-    group_name="generation_essays",
-    io_manager_key="essay_prompt_io_manager",
-    required_resource_keys={"links_response_io_manager", "data_root"},
-)
-def essay_prompt(
-    context,
-    essay_generation_tasks,
-) -> str:
+def _essay_prompt_impl(context, essay_generation_tasks) -> str:
     """
     Generate Phase 2 prompts for essay generation based on Phase 1 links.
     Links are guaranteed to be valid by the links_response asset.
@@ -154,9 +145,9 @@ def essay_prompt(
         row = essay_templates_df[essay_templates_df["template_id"] == template_name]
         if not row.empty:
             generator_mode = str(row.iloc[0].get("generator") or "llm")
-    if generator_mode == "parser":
+    if generator_mode in ("parser", "copy"):
         context.log.info(
-            f"Essay template '{template_name}' is parser-driven; returning placeholder prompt."
+            f"Essay template '{template_name}' uses generator='{generator_mode}'; returning placeholder prompt."
         )
         return "PARSER_MODE: no prompt needed"
 
@@ -201,10 +192,17 @@ def essay_prompt(
 @asset(
     partitions_def=essay_tasks_partitions,
     group_name="generation_essays",
-    io_manager_key="essay_response_io_manager",
-    required_resource_keys={"openrouter_client", "links_response_io_manager", "data_root"},
+    io_manager_key="essay_prompt_io_manager",
+    required_resource_keys={"links_response_io_manager", "data_root"},
 )
-def essay_response(context, essay_prompt, essay_generation_tasks) -> str:
+def essay_prompt(
+    context,
+    essay_generation_tasks,
+) -> str:
+    return _essay_prompt_impl(context, essay_generation_tasks)
+
+
+def _essay_response_impl(context, essay_prompt, essay_generation_tasks) -> str:
     """
     Generate Phase 2 LLM responses for essays.
     """
@@ -233,7 +231,7 @@ def essay_response(context, essay_prompt, essay_generation_tasks) -> str:
 
         # Map link_template -> parser function
         parser_name = None
-        if link_template == "deliberate-rolling-thread-v1":
+        if link_template in {"deliberate-rolling-thread-v1", "deliberate-rolling-thread-v2"}:
             parser_name = "essay_idea_last"
             try:
                 parsed_text = parse_essay_idea_last(links_content)
@@ -271,9 +269,39 @@ def essay_response(context, essay_prompt, essay_generation_tasks) -> str:
         )
         return parsed_text
 
+    if generator_mode == "copy":
+        # Copy mode: read links response and return verbatim
+        link_task_id = task_row["link_task_id"]
+        links_io = context.resources.links_response_io_manager
+        links_context = MockLoadContext(link_task_id)
+        links_content = links_io.load_input(links_context)
+
+        context.log.info(
+            f"Copied essay from links for task {task_id} (mode=copy)"
+        )
+        context.add_output_metadata(
+            {
+                "mode": MetadataValue.text("copy"),
+                "source_link_task_id": MetadataValue.text(link_task_id),
+                "chars": MetadataValue.int(len(links_content)),
+                "lines": MetadataValue.int(sum(1 for _ in links_content.splitlines())),
+            }
+        )
+        return links_content
+
     # Default: LLM generation path
     model_name = task_row["generation_model_name"]
     llm_client = context.resources.openrouter_client
     response = llm_client.generate(essay_prompt, model=model_name)
     context.log.info(f"Generated essay response for task {task_id} using model {model_name}")
     return response
+
+
+@asset(
+    partitions_def=essay_tasks_partitions,
+    group_name="generation_essays",
+    io_manager_key="essay_response_io_manager",
+    required_resource_keys={"openrouter_client", "links_response_io_manager", "data_root"},
+)
+def essay_response(context, essay_prompt, essay_generation_tasks) -> str:
+    return _essay_response_impl(context, essay_prompt, essay_generation_tasks)

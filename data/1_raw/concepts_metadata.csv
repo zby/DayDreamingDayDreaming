@@ -1,7 +1,8 @@
 concept_id,name,active
 dearth-ai-discoveries,Dearth of AI-driven Discoveries,True
 default-mode-network,Default Mode Network,True
-large-language-model,Large Language Model (LLM),True
+large-language-model,Large Language Model (LLM),False
+large-language-model-v1,Large Language Model (LLM),True
 human-creativity-insight,Human Creativity and Insight,False
 combinatorial-search,Combinatorial Search,False
 generator-verifier-gap,Generator-Verifier Gap,False

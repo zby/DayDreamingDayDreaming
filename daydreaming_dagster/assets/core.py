@@ -429,29 +429,7 @@ def evaluation_tasks(
     data_root_path = _Path(data_root)
     docs: List[dict] = []
 
-    # Drafts (effective one-phase) — plan tasks regardless of file existence
-    draft_dir = data_root_path / "3_generation" / "links_responses"
-    if not link_generation_tasks.empty:
-        for _, row in link_generation_tasks.iterrows():
-            link_task_id = row["link_task_id"]
-            fp = draft_dir / f"{link_task_id}.txt"
-            docs.append(
-                {
-                    "document_id": link_task_id,
-                    "stage": "essay1p",
-                    "origin": "draft",
-                    "file_path": str(fp),
-                    "combo_id": row["combo_id"],
-                    "link_template": row["link_template"],
-                    "essay_template": row["link_template"],
-                    "generation_model_id": row["generation_model"],
-                    "generation_model_name": row["generation_model_name"],
-                    "link_task_id": link_task_id,
-                    "essay_task_id": None,
-                    "source_asset": "links_response",
-                    "source_dir": "links_responses",
-                }
-            )
+    # Drafts (effective one-phase) — excluded to evaluate essays from current experiment cube only
 
     # Two-phase essays
     essay_dir = data_root_path / "3_generation" / "essay_responses"
@@ -459,6 +437,7 @@ def evaluation_tasks(
         for _, row in essay_generation_tasks.iterrows():
             essay_task_id = row["essay_task_id"]
             fp = essay_dir / f"{essay_task_id}.txt"
+            # Include all planned essays (file may be generated later)
             docs.append(
                 {
                     "document_id": essay_task_id,

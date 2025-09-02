@@ -17,4 +17,5 @@ rolling-summary-v1,Rolling Summary V1,Readable idea-thread recursion with enforc
 rolling-summary-simplified,Rolling Summary Simplified,Minimal rolling summary with single-line steps,false
 rolling-summary-simplified-v1,Rolling Summary Simplified V1,Cumulative idea thread; 3–5 sentence Effect; +1 sentence growth per step,false
 connective-thread-simplified-v1,Connective Thread Simplified V1,Single-thread integration as-if rolled; 4–6 short paragraphs,false
-deliberate-rolling-thread-v1,Deliberate Rolling Thread V1,Tagged rolling idea with deliberate options and per-step <essay-idea>,true
+deliberate-rolling-thread-v1,Deliberate Rolling Thread V1,Tagged rolling idea with deliberate options and per-step <essay-idea>,false
+deliberate-rolling-thread-v2,Deliberate Rolling Thread V2,Tagged rolling idea (free-form thinking) with per-step <essay-idea>,true

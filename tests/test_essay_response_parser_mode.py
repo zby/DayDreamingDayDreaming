@@ -1,10 +1,136 @@
 import pytest
+import pandas as pd
+from pathlib import Path
 
-# These tests describe the expected behavior for essay_response in
-# parser mode (essay_templates.generator == 'parser'). No execution
-# occurs yet; they serve as executable specifications once implemented.
+from daydreaming_dagster.assets.two_phase_generation import _essay_response_impl as essay_response_impl
 
-pytestmark = pytest.mark.skip(reason="essay_response parser mode not implemented yet")
+
+class _FakeLogger:
+    def info(self, *_args, **_kwargs):
+        pass
+
+
+class _FakeLinksIO:
+    def __init__(self, content: str):
+        self._content = content
+
+    def load_input(self, _ctx):
+        return self._content
+
+
+class _FakeContext:
+    def __init__(self, partition_key: str, data_root: Path, links_io):
+        class _Res:
+            pass
+
+        self.partition_key = partition_key
+        self.log = _FakeLogger()
+        self._meta = {}
+        self.resources = _Res()
+        self.resources.data_root = str(data_root)
+        self.resources.links_response_io_manager = links_io
+        # openrouter_client is present but unused in parser mode
+        class _LLM:
+            def generate(self, *_args, **_kwargs):
+                return ""
+
+        self.resources.openrouter_client = _LLM()
+
+    def add_output_metadata(self, meta: dict):
+        self._meta.update(meta)
+
+
+def _write_minimal_essay_templates_csv(dir_path: Path):
+    df = pd.DataFrame(
+        [
+            {
+                "template_id": "parsed-from-links-v1",
+                "template_name": "Parsed From Links (Final Idea)",
+                "description": "Parse final <essay-idea> from links output; no LLM",
+                "active": True,
+                "generator": "parser",
+            }
+        ]
+    )
+    out = dir_path / "1_raw" / "essay_templates.csv"
+    out.parent.mkdir(parents=True, exist_ok=True)
+    df.to_csv(out, index=False)
+
+
+def test_essay_response_parses_from_links_and_writes_output(tmp_path: Path):
+    # Prepare minimal data_root with essay_templates.csv (parser mode)
+    _write_minimal_essay_templates_csv(tmp_path)
+
+    link_task_id = "comboX_deliberate-rolling-thread-v1_sonnet-4"
+    essay_template = "parsed-from-links-v1"
+    essay_task_id = f"{link_task_id}_{essay_template}"
+
+    # Links content with two essay-idea blocks; parser should pick stage=2 content
+    links_content = (
+        "header lines\n"
+        "<essay-idea stage=\"1\">\nSeed paragraph.\n</essay-idea>\n\n"
+        "<essay-idea stage=\"2\">\nFinal integrated idea.\n</essay-idea>\n"
+    )
+
+    # Build a minimal tasks DataFrame row for the partition key
+    tasks = pd.DataFrame(
+        [
+            {
+                "essay_task_id": essay_task_id,
+                "link_task_id": link_task_id,
+                "link_template": "deliberate-rolling-thread-v1",
+                "essay_template": essay_template,
+                "generation_model_name": "unused-in-parser",
+            }
+        ]
+    )
+
+    ctx = _FakeContext(
+        partition_key=essay_task_id,
+        data_root=tmp_path,
+        links_io=_FakeLinksIO(links_content),
+    )
+
+    result = essay_response_impl(ctx, essay_prompt="PARSER_MODE", essay_generation_tasks=tasks)
+
+    assert result.strip() == "Final integrated idea."
+    # Metadata should be present
+    assert (getattr(ctx._meta.get("mode"), "text", ctx._meta.get("mode"))) == "parser"
+    assert (getattr(ctx._meta.get("parser"), "text", ctx._meta.get("parser"))) == "essay_idea_last"
+    assert (getattr(ctx._meta.get("source_link_task_id"), "text", ctx._meta.get("source_link_task_id"))) == link_task_id
+
+
+def test_missing_or_unsupported_parser_mapping_fails_partition(tmp_path: Path):
+    from dagster import Failure
+
+    _write_minimal_essay_templates_csv(tmp_path)
+
+    link_task_id = "comboX_unknown-template_sonnet-4"
+    essay_template = "parsed-from-links-v1"
+    essay_task_id = f"{link_task_id}_{essay_template}"
+    links_content = "<essay-idea>\nIdea\n</essay-idea>\n"
+
+    tasks = pd.DataFrame(
+        [
+            {
+                "essay_task_id": essay_task_id,
+                "link_task_id": link_task_id,
+                "link_template": "unknown-template",
+                "essay_template": essay_template,
+                "generation_model_name": "unused",
+            }
+        ]
+    )
+
+    ctx = _FakeContext(
+        partition_key=essay_task_id,
+        data_root=tmp_path,
+        links_io=_FakeLinksIO(links_content),
+    )
+
+    with pytest.raises(Failure):
+        _ = essay_response_impl(ctx, essay_prompt="PARSER_MODE", essay_generation_tasks=tasks)
+
 
 
 def test_essay_response_parses_from_links_and_writes_output(tmp_path):
@@ -22,4 +148,3 @@ def test_missing_or_unsupported_parser_mapping_fails_partition():
     # If link_template is not mapped to a parser, the asset should raise a Failure
     # with a clear resolution hint.
     pass
-

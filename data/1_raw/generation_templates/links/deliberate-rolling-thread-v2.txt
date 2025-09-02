@@ -1,0 +1,46 @@
+# Deliberate Rolling Thread — v2
+
+Goal: Build one clear idea thread across concepts C1..Cn. For each step produce updated idea text, expanding it so it grows meaningfully with every new concept. You may rephrase earlier parts so the idea reads as one well‑integrated whole. Wrap every updated idea in a dedicated tag for robust parsing.
+
+Deliberation: For integration steps i = 2..n, include a short <thinking> block that brainstorms three candidate ways to integrate Ci, briefly evaluates them, and selects the best one before writing the updated idea. Do NOT include a <thinking> block for step 1 — the seed is verbatim and unchanged.
+
+Tagging rules and growth:
+- After each step, output exactly one `<essay-idea stage="i">…</essay-idea>` with the updated idea text only.
+- Do not include headings, labels, markdown, or nested tags inside `<essay-idea>`.
+- May be multi‑paragraph. Rephrase and reorder earlier material as needed to integrate Ci smoothly; do not drop previously established key content unless replaced by an equivalent, integrated phrasing.
+- Growth rule: at each step i≥2, expand the idea by a few sentences by integrating Ci’s contribution; the final idea should be substantially longer than the initial seed and reflect all concepts cohesively.
+- Tag formatting: Place opening and closing tags on their own lines. For example:
+  - `<thinking>` on its own line, then content lines, then `</thinking>` on its own line.
+  - `<essay-idea stage="i">` on its own line, then the idea text, then `</essay-idea>` on its own line.
+
+## Inputs (concept list)
+{% for concept in concepts %}
+**{{ concept.name }}**
+{{ concept.content }}
+---
+
+{% endfor %}
+
+1) Seed from C1
+- Use C1 content verbatim.
+- Output the idea text only, wrapped as:
+  <essay-idea stage="1">
+  …
+  </essay-idea>
+
+2) Steps (i = 2..n)
+For each concept Ci, output exactly these two blocks in order:
+
+### Step i: Concept Ci
+- <thinking>
+  Think of three different ways to integrate Ci into the current idea, evaluate them in your own words, and decide on the best approach for this step.
+  </thinking>
+- Then output only the updated idea text, wrapped as:
+  <essay-idea stage="i">
+  …
+  </essay-idea>
+  Guidance (do not include this text in the output): integrate Ci using the chosen approach; expand by ~2–4 net sentences; rewrite earlier parts as needed so the result reads as one coherent, well‑integrated idea (avoid list‑like enumeration; multi‑paragraph flow is acceptable).
+
+3) Wrap‑up (≤100 words)
+- Free-form comments (observations, caveats, follow-ups).
+- Optionally: name the 1–2 most helpful attachments and why.
