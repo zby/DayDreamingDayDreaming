@@ -314,9 +314,12 @@ def parse_all(
         # File times (mtime as proxy for creation time on Linux)
         try:
             stat = file_path.stat()
-            mtime_epoch = float(stat.st_mtime)
+            # Use nanosecond precision for stable ordering; use mtime as proxy for creation
+            mtime_ns = int(getattr(stat, "st_mtime_ns", int(stat.st_mtime * 1e9)))
+            mtime_epoch = mtime_ns / 1e9
             mtime_iso = datetime.fromtimestamp(mtime_epoch).isoformat()
         except Exception:
+            mtime_ns = None
             mtime_epoch = None
             mtime_iso = ""
 
@@ -342,6 +345,7 @@ def parse_all(
             "evaluation_response_path": str(file_path),
             "evaluation_response_mtime": mtime_iso,
             "evaluation_response_mtime_epoch": mtime_epoch,
+            "evaluation_response_mtime_ns": mtime_ns,
         }
         rows.append(row)
 
@@ -418,13 +422,9 @@ def parse_all(
         if col in df.columns:
             df[col] = df[col].fillna("")
 
-    # Sort by file creation/modification time (newest first); fall back to stable ordering
-    if "evaluation_response_mtime_epoch" in df.columns and df["evaluation_response_mtime_epoch"].notna().any():
-        df = df.sort_values(by=["evaluation_response_mtime_epoch","evaluation_template","document_id"], ascending=[False, True, True]).reset_index(drop=True)
-    else:
-        sort_cols = [c for c in ["evaluation_template","document_id","evaluation_model"] if c in df.columns]
-        if sort_cols:
-            df = df.sort_values(by=sort_cols).reset_index(drop=True)
+    # Sort strictly by file modification time (newest first). If unavailable, keep existing order.
+    if "evaluation_response_mtime_ns" in df.columns and df["evaluation_response_mtime_ns"].notna().any():
+        df = df.sort_values(by=["evaluation_response_mtime_ns"], ascending=[False], na_position="last").reset_index(drop=True)
 
     df.to_csv(output_csv, index=False)
     print(f"Wrote {len(df)} rows to {output_csv}")
