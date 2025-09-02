@@ -424,7 +424,8 @@ def parse_all(
 
     # Sort strictly by file modification time (newest first). If unavailable, keep existing order.
     if "evaluation_response_mtime_ns" in df.columns and df["evaluation_response_mtime_ns"].notna().any():
-        df = df.sort_values(by=["evaluation_response_mtime_ns"], ascending=[False], na_position="last").reset_index(drop=True)
+        # Oldest first (reverse of previous behavior)
+        df = df.sort_values(by=["evaluation_response_mtime_ns"], ascending=[True], na_position="last").reset_index(drop=True)
 
     df.to_csv(output_csv, index=False)
     print(f"Wrote {len(df)} rows to {output_csv}")
