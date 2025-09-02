@@ -51,6 +51,38 @@
 ## Agent‑Specific Notes
 - Follow TDD: write/adjust tests before implementation; keep unit vs. integration boundaries. See `CLAUDE.md` for deeper conventions and patterns.
 
+### Using ast-grep (sg) for Code Search/Edits
+- Install tools: `uv sync --dev` (sg binary is provided by the `ast-grep-cli` dev dependency). Run with `uv run sg ...`.
+- Quick snippet search (example‑driven):
+  - `uv run sg -e 'def evaluation_tasks(' -l` — list files defining `evaluation_tasks`.
+  - `uv run sg -e 'document_index(' -n 3` — show 3 lines of context for matches.
+  - Add a glob to limit scope: `-g 'daydreaming_dagster/**/*.py'`.
+- Structural search (pattern DSL):
+  - `uv run sg -p 'call[name="read_text"]' -g 'daydreaming_dagster/**/*.py'` — find calls named `read_text`.
+  - `uv run sg -p 'function_definition[name="evaluation_prompt"]'` — find a function by name.
+- JSON output for tooling: `uv run sg -e 'evaluation_prompt(' --json`.
+- Safe rewriting via rules (YAML):
+  1) Create `rule.yml`:
+     ```yaml
+     rule:
+       id: rename-func
+       language: python
+       pattern: |
+         def $NAME($PARGS):
+           $BODY
+       constraints:
+         NAME: { regex: "^old_name$" }
+       fix: |
+         def new_name($PARGS):
+           $BODY
+     ```
+  2) Dry‑run to preview: `uv run sg -r rule.yml --rewrite --diff -g 'daydreaming_dagster/**/*.py'`
+  3) Apply once reviewed: `uv run sg -r rule.yml --rewrite -g 'daydreaming_dagster/**/*.py'`
+- Tips:
+  - Prefer snippet `-e` for quick greps; switch to `-p`/rules for precise structure or refactors.
+  - Always use `-g` to scope searches to the repo path you intend.
+  - For broad text replacements, keep sg as a guardrail (structural match) and review diffs before committing.
+
 ## Project Goals (Summary)
 - Purpose: Demonstrate that DayDreaming‑style workflows enable pre‑June‑2025 offline LLMs to generate genuinely novel ideas; use DayDreaming LLMs as a falsifiable benchmark while maintaining generality beyond this target.
 - Benchmark strategy: Existence goal over a finite concept‑combination space; fixed inputs stay target‑neutral; derived inputs may include benchmark terms if model‑produced; scaffolding should surface other novel syntheses.
