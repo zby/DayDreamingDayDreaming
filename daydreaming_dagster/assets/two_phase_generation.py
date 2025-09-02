@@ -4,6 +4,8 @@ import pandas as pd
 from jinja2 import Environment
 from .partitions import link_tasks_partitions, essay_tasks_partitions
 from ..utils.template_loader import load_generation_template
+from ..utils.raw_readers import read_essay_templates
+from ..utils.idea_parsers import parse_essay_idea_last
 from ..utils.dataframe_helpers import get_task_row
 from ..utils.shared_context import MockLoadContext
 
@@ -144,6 +146,20 @@ def essay_prompt(
     task_row = get_task_row(essay_generation_tasks, "essay_task_id", task_id, context, "essay_generation_tasks")
     template_name = task_row["essay_template"]
 
+    # If this essay template is parser-driven, skip heavy prompt rendering
+    data_root = context.resources.data_root
+    essay_templates_df = read_essay_templates(Path(data_root), filter_active=False)
+    generator_mode = None
+    if not essay_templates_df.empty and "generator" in essay_templates_df.columns:
+        row = essay_templates_df[essay_templates_df["template_id"] == template_name]
+        if not row.empty:
+            generator_mode = str(row.iloc[0].get("generator") or "llm")
+    if generator_mode == "parser":
+        context.log.info(
+            f"Essay template '{template_name}' is parser-driven; returning placeholder prompt."
+        )
+        return "PARSER_MODE: no prompt needed"
+
     # Load links_response using FK to link_task_id
     link_task_id = task_row["link_task_id"]
     links_io = context.resources.links_response_io_manager
@@ -197,12 +213,60 @@ def essay_response(context, essay_prompt, essay_generation_tasks) -> str:
     # Get the specific task for this partition
     task_row = get_task_row(essay_generation_tasks, "essay_task_id", task_id, context, "essay_generation_tasks")
     
-    # Use the model name directly from the task
+    template_name = task_row["essay_template"]
+    data_root = context.resources.data_root
+    essay_templates_df = read_essay_templates(Path(data_root), filter_active=False)
+    generator_mode = None
+    if not essay_templates_df.empty and "generator" in essay_templates_df.columns:
+        row = essay_templates_df[essay_templates_df["template_id"] == template_name]
+        if not row.empty:
+            generator_mode = str(row.iloc[0].get("generator") or "llm")
+
+    if generator_mode == "parser":
+        # Parser mode: read links response, extract final idea, return it
+        link_task_id = task_row["link_task_id"]
+        link_template = task_row.get("link_template")
+
+        links_io = context.resources.links_response_io_manager
+        links_context = MockLoadContext(link_task_id)
+        links_content = links_io.load_input(links_context)
+
+        # Map link_template -> parser function
+        parser_name = None
+        if link_template == "deliberate-rolling-thread-v1":
+            parser_name = "essay_idea_last"
+            parsed_text = parse_essay_idea_last(links_content)
+        else:
+            raise Failure(
+                description=(
+                    f"No parser mapping for link_template '{link_template}' in parser mode"
+                ),
+                metadata={
+                    "link_task_id": MetadataValue.text(link_task_id),
+                    "link_template": MetadataValue.text(str(link_template)),
+                    "resolution": MetadataValue.text(
+                        "Enable mapping in essay_response for this link_template or switch essay template to an LLM generator."
+                    ),
+                },
+            )
+
+        context.log.info(
+            f"Parsed essay from links for task {task_id} (parser={parser_name}, link_template={link_template})"
+        )
+        context.add_output_metadata(
+            {
+                "mode": MetadataValue.text("parser"),
+                "parser": MetadataValue.text(parser_name or "unknown"),
+                "source_link_task_id": MetadataValue.text(link_task_id),
+                "chars": MetadataValue.int(len(parsed_text)),
+                "lines": MetadataValue.int(sum(1 for _ in parsed_text.splitlines())),
+            }
+        )
+        return parsed_text
+
+    # Default: LLM generation path
     model_name = task_row["generation_model_name"]
-    
-    # Generate using Dagster LLM resource
     llm_client = context.resources.openrouter_client
     response = llm_client.generate(essay_prompt, model=model_name)
-    
     context.log.info(f"Generated essay response for task {task_id} using model {model_name}")
     return response
