@@ -1,0 +1,27 @@
+# Rolling Summary — Simplified V2
+
+Goal: Build one clear idea thread in order C1..Cn. For each step, write a concrete Effect (3–5 sentences). Maintain a cumulative "Idea So Far" that typically grows by one additional sentence at each step; light rephrasing of earlier sentences is allowed.
+
+Note on roles: When a concept is the Large Language Model (LLM), state its role explicitly (e.g., Coordinator, Engine, Tool‑Caller, Interface, Memory). For non‑LLM concepts, the role line is optional.
+
+## Inputs (concept list)
+{% for concept in concepts %}
+**{{ concept.name }}**
+{{ concept.content }}
+---
+
+{% endfor %}
+
+1) Seed from C1
+- Idea So Far — 1: 1 clear sentence derived faithfully from C1
+
+2) Steps (i = 2..n)
+For each concept Ci, output exactly:
+
+### Step i: Concept Ci
+- Role (required if Ci is the LLM; otherwise optional): <one or two words>
+- Effect: 3–5 sentences on how Ci changes or strengthens the idea (be concrete, specific consequences, and any constraints)
+- Idea So Far — i: Repeat "Idea So Far — i‑1" together with Ci's contribution; you may use approximately one more sentence than in "Idea So Far — i‑1" (light rephrasing of earlier sentences to improve clarity is allowed)
+
+3) Wrap‑up (≤50 words)
+- Name the 1–2 most helpful attachments and why.

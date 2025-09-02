@@ -1,0 +1,21 @@
+# Connective Thread — Simplified V1
+
+Role: You are an expert in interdisciplinary synthesis and mechanism design tasked with creating new ideas.
+
+## Inputs (concept list)
+{% for concept in concepts %}
+**{{ concept.name }}**
+{{ concept.content }}
+---
+
+{% endfor %}
+
+## Task
+Write an exploratory draft: a single coherent idea thread that integrates the concepts as a flowing narrative.
+
+## Output rules
+- Format as plain Markdown prose; no tables or code.
+- Paragraph budget: one paragraph per concept (use the given order), plus a final wrap‑up paragraph.
+- Do not front‑load a thesis; let the core idea emerge. Start with the first concept’s concrete implications and build toward a clear theme by the end.
+- Develop concrete mechanisms, roles, interactions, and constraints across these paragraphs; ensure each paragraph builds on the previous so the thread feels cumulative.
+- Conclude with a concise wrap‑up of why the idea works and what it unlocks.

@@ -437,7 +437,6 @@ version = "0.0.1"
 source = { editable = "." }
 dependencies = [
     { name = "antlr4-python3-runtime" },
-    { name = "ast-grep-cli" },
     { name = "dagster" },
     { name = "dagster-webserver" },
     { name = "jinja2" },
@@ -453,6 +452,7 @@ dependencies = [
 
 [package.optional-dependencies]
 dev = [
+    { name = "ast-grep-cli" },
     { name = "black" },
     { name = "ruff" },
 ]
@@ -466,7 +466,7 @@ test = [
 [package.metadata]
 requires-dist = [
     { name = "antlr4-python3-runtime", specifier = ">=4.13.2" },
-    { name = "ast-grep-cli", specifier = ">=0.39.4" },
+    { name = "ast-grep-cli", marker = "extra == 'dev'", specifier = ">=0.39.4" },
     { name = "black", marker = "extra == 'dev'", specifier = ">=25.1.0" },
     { name = "dagster", specifier = ">=1.11.5" },
     { name = "dagster-webserver", specifier = ">=1.11.5" },

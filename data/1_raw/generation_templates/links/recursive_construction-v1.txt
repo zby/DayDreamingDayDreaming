@@ -1,0 +1,149 @@
+# Recursive Construction — v1 (problem-first, online recursion)
+
+Role: You are an expert in mechanism design and constructive synthesis. You will build a single connected graph starting from a problem statement, then attach each subsequent concept in the given order. Concepts may be lightly operationalized before attachment. No concept reordering is allowed.
+
+---
+
+0) Inputs (verbatim)
+{% for concept in concepts %}
+**{{ concept.name }}**
+{{ concept.content }}
+---
+{% endfor %}
+
+---
+
+Global Rules
+- No swaps: Respect the given order C1..Cn. Do not change the build sequence.
+- One graph: Maintain a single connected graph; leaves are raw concepts; internal nodes may be mechanisms (E::…), objectives, constraints, metrics, or interfaces.
+- Operationalization allowed: You may introduce an operationalization when a candidate link type requires it (e.g., turn a principle into an algorithm, or cast it as a constraint/objective/interface). Keep meaning faithful. Do not force transformations when unnecessary.
+- Parsable structure: Use the exact headings and bullet schema below. Markdown only. No JSON/YAML/tables unless asked.
+- Brevity: Keep each subsection concise. Respect word limits.
+- No citations in links: Do not include external citations/URLs/evidence within link steps. Reserve any prior-art references for downstream synthesis/evaluation phases.
+ - Multi‑type probe: For every step, quickly evaluate 2–3 plausible link types using the decision tree before selecting a single primary link. Favor valid diversity across steps when choices are comparable.
+ - Name link types explicitly: Always state link types by their names (e.g., "Mechanism Composition"); never use numeric IDs like "Type 2".
+
+---
+
+Link Type Menu (choose exactly one per link — after exploring 2–3 plausible candidates)
+- Structure-Preserving Analogy  
+- Mechanism Composition  
+- Constraint → Objective Import  
+- Property Transfer / Feature Grafting  
+- Domain Reframing / Problem Translation
+Note: Always refer to link types by name; never use numeric IDs.
+
+Decision Tree (record the path for each link)
+# Use this tree to probe multiple plausible interpretations per step (at least two), then select the best‑fit type as the primary link. Record the full path from Q1 to the selected leaf using names (no numbers) and explicit yes/no at each question.
+Q1. New capability by coupling? → Yes → Mechanism Composition; No → Q2  
+Q2. Importing a rule/goal? → Yes → Constraint → Objective Import; No → Q3  
+Q3. Attaching a property? → Yes → Property Transfer / Feature Grafting; No → Q4  
+Q4. Same structure, different surface? → Yes → Structure-Preserving Analogy; No → Q5  
+Q5. Changing the problem representation? → Yes → Domain Reframing / Problem Translation; No → Q6  
+Q6. Fallback: pick the least‑wrong type and note why (record as: "Q1: … → no → Q2: … → no → … → Q6: Fallback → Chosen: <Type‑Name> (why)").
+
+Node Roles (use as needed)
+- Problem, Concept, Mechanism (E::…), Objective/Goal, Constraint/Brake, Metric/Scorekeeper, Interface/Controller, Memory/Store, Data Source
+
+---
+
+1) Normalized Problem (from C1)
+- One-line problem statement (derived from C1; rephrase allowed, no change in meaning).
+
+---
+
+2) Build Steps (i = 2..n)
+For each concept Ci, output exactly the following schema.
+
+### Step i: Concept Ci
+
+#### 2.1 Link‑Type Probes (evaluate 2–3 types)
+- Raw: "Ci: …"
+
+For each candidate link type t, record:
+- Candidate t — Decision path: e.g., "Q1: New capability by coupling? → no → Q2: Importing a rule/goal? → yes → Constraint → Objective Import" (full path; names only)
+- Candidate t — Anchor: {Problem | E::… | Cj}; Rationale (≤1 line)
+- Candidate t — Needs transformation: yes/no
+- If yes, Operationalization: type = {mechanism|constraint|objective|interface|property|data|memory}, name, 1‑line justification
+- Candidate t — Mechanism sketch (2–3 sentences)
+- Candidate t — Micro‑test: Setup / Measure / Pass if …
+
+Do not mutate the graph during probes; these are evaluations only.
+
+#### 2.2 Primary Selection
+- Chosen type: {Structure-Preserving Analogy | Mechanism Composition | Constraint → Objective Import | Property Transfer / Feature Grafting | Domain Reframing / Problem Translation}
+- Chosen anchor: {Problem | E::… | Cj}
+- Chosen transformation: none | type/name (copied from its probe)
+- Reason for selection (≤1 line): why this option dominates alternatives
+
+#### 2.3 Link (single primary link for this step)
+- Decision path: e.g., "Q1: New capability by coupling? → no → Q2: Importing a rule/goal? → yes → Constraint → Objective Import" (full path; names only)
+- Link type: {Structure-Preserving Analogy | Mechanism Composition | Constraint → Objective Import | Property Transfer / Feature Grafting | Domain Reframing / Problem Translation}
+- Roles: Ci (role=…) → Anchor (role=…)
+- Mechanism (3–5 sentences): how Ci acts on/with the anchor to produce a causal effect
+- Mappings:
+  - State(s): …
+  - Operator(s): …
+  - Signal(s) / Feedback: …
+  - Constraint(s): …
+  - Metric / Objective: …
+  - Invariant preserved: …
+- Micro‑test:
+  - Setup: …
+  - Measure: …
+ - Pass if: (single numeric threshold or event)
+
+
+#### 2.4 Node‑Introduction Gate
+- new_node: yes/no
+- If yes:
+ - E::handle: `E::[short-handle]`
+  - Definition (≤2 sentences): what new capability exists only in this coupling
+  - State / Operators / Signals: …
+  - Objective / Metric: …
+  - Rewire (bullets): list edges added/updated (e.g., `Ck → E::X`, `E::X → Problem`)
+
+#### 2.5 Adjacency Delta (ASCII, ≤5 lines)
+```
+NodeA —(Mechanism Composition)→ NodeB
+…
+```
+
+---
+
+3) Link Selection Summary (≤150 words)
+- Name the 2–3 most valuable attachments (including any E:: nodes) and why they are keystones for mechanism clarity and extensibility.
+- Optional order note (≤1 sentence): neutrally state why the observed sequence is reasonable in this construction (e.g., mechanism → constraint → amplification to reduce wasted exploration), without implying it is the only valid order.
+
+---
+
+4) Gate Report (hard checks)
+- Coverage (types): ≥3 distinct link types used overall = yes/no
+- Role diversity: ≥3 distinct roles used overall = yes/no
+- Decision paths: begin at Q1 and end at a link‑type leaf = yes/no
+- Type naming: all link types stated by name (no numeric IDs) = yes/no
+- Probes per step: ≥2 link types evaluated = yes/no
+- Probe transformations: present only when needed and consistent with the candidate type = yes/no
+- Micro‑tests: present for every probe and the primary link = yes/no
+- Primary transformation: none or aligned with its chosen probe = yes/no
+- Primary selection: chosen type/anchor appear among recorded probes = yes/no
+- E:: nodes: only when Q1=Yes and with unique state/operator = yes/no
+- No swaps: build order C1..Cn preserved = yes/no
+- Adjacency deltas: present for every step = yes/no
+- No external evidence cited inside link steps = yes/no
+
+---
+
+5) Reflections (no edits to the graph)
+- Better order (≤3 bullets): where a different sequence might have yielded cleaner attachments (hypothetical; do not change the graph)
+- Missed anchors (≤3 bullets): plausible alternative anchors for specific steps
+- Future E:: candidates (≤2 bullets): mechanisms that could emerge with additional concepts
+- Order rationale (≤2 sentences, optional): briefly and neutrally explain the trade‑off of the chosen sequence versus a credible alternative (e.g., engine → constraint → amplification for constraint‑aware design vs. constraint‑first to front‑load feasibility), without recommending changes.
+
+---
+
+Output Rules (strict)
+- Markdown only. Keep headings and subheadings exactly as specified.
+- Keep each section concise and within the described limits.
+- Do not expose internal prompt mechanics or discuss being an AI.
+- Do not add "Evidence", "Prior art", citations, or URLs within link steps; keep mechanisms self‑contained here.

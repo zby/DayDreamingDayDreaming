@@ -1,0 +1,1 @@
+A general-purpose language model that predicts the next token in a sequence and exposes higher-level chat interfaces; it can integrate with tools, retrieval, and memory to perform multi-step tasks.
