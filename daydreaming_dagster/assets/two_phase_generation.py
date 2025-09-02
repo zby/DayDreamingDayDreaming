@@ -130,7 +130,7 @@ def links_response(context, links_prompt, link_generation_tasks) -> str:
     partitions_def=essay_tasks_partitions,
     group_name="generation_essays",
     io_manager_key="essay_prompt_io_manager",
-    required_resource_keys={"links_response_io_manager"},
+    required_resource_keys={"links_response_io_manager", "data_root"},
 )
 def essay_prompt(
     context,
@@ -202,7 +202,7 @@ def essay_prompt(
     partitions_def=essay_tasks_partitions,
     group_name="generation_essays",
     io_manager_key="essay_response_io_manager",
-    required_resource_keys={"openrouter_client"},
+    required_resource_keys={"openrouter_client", "links_response_io_manager", "data_root"},
 )
 def essay_response(context, essay_prompt, essay_generation_tasks) -> str:
     """
