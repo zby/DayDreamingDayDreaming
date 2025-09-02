@@ -491,47 +491,48 @@ The pipeline is designed for efficient concurrent processing:
 
 ### Partition Relationship Challenge
 
-The `evaluation_prompt` asset needs to consume content from the `generation_response` asset, but they use different partition schemes:
+The evaluation flow is document-centric and decoupled from cross-partition IO. Key elements:
 
-- `essay_response`: Partitioned by `essay_task_id`
-- `evaluation_prompt`: Partitioned by `evaluation_task_id` 
+- `document_index` (Hybrid Document Axis): unified view of all evaluable documents with normalized columns.
+- `evaluation_tasks`: builds dynamic partitions by taking a cross-product of selected documents × active evaluation templates × evaluation models.
+- `evaluation_prompt`: reads the source document directly from a concrete `file_path` carried in each `evaluation_tasks` row and renders the evaluation template with `response=<document text>`.
 
-The relationship between them is established through a foreign key (`essay_task_id`) stored in the evaluation tasks table.
+### Unified Document Axis (document_index)
 
-### Solution: Manual IO with Foreign Keys
+Each row is one evaluable document with explicit provenance and lookup fields:
+- `document_id`, `stage` (`draft | essay2p | essay1p`), `origin` (`draft | two_phase | legacy`), `file_path`
+- `combo_id`, `link_template`, `essay_template`, `generation_model_id`, `generation_model_name`
+- `link_task_id`, `essay_task_id`, `source_asset`, `source_dir`
 
-Rather than using complex multi-dimensional partitions, we use a simpler approach:
+Sources merged:
+- Drafts-as-one-phase (Phase-1 links) from `data/3_generation/links_responses/` (effective `essay1p` for evaluation)
+- Two-phase essays from `data/3_generation/essay_responses/`
+- Curated historical docs added via standard generation task CSVs and files placed under the canonical folders above (no legacy directory scan).
 
-1. **Foreign Key Lookup**: `evaluation_prompt` reads its partition's row from `evaluation_tasks` to get the associated `essay_task_id`
-2. **Manual IO Loading**: Uses the IO manager directly to load the `essay_response` content by `essay_task_id`
-3. **MockLoadContext Pattern**: Creates a temporary context object to interface with the IO manager
+### Evaluation Task Identity
 
-### Implementation Pattern
+- `evaluation_task_id = {document_id}__{evaluation_template}__{evaluation_model_id}` (double-underscore separators)
+- `evaluation_tasks` rows are denormalized with all document fields plus evaluation template/model names.
 
-```python
-class MockLoadContext:
-    def __init__(self, partition_key):
-        self.partition_key = partition_key
+### Prompt Loading (Direct Path)
 
-mock_context = MockLoadContext(essay_task_id)
-essay_response = essay_response_io_manager.load_input(mock_context)
-```
+- `evaluation_prompt` loads document content via `file_path` (no FK hop to IO managers), renders the Jinja template, and records rich metadata including `source_asset`, `source_dir`, and content length.
 
-This pattern allows us to load data from a different partition key than the current asset's partition.
+### Results Processing
 
-### Why This Approach?
+- `parsed_scores` parses evaluator responses and joins denormalized metadata from `evaluation_tasks`.
+- Normalized outputs include `stage`, `origin`, `generation_response_path` (copied from document `file_path`), `source_asset`, `source_dir`.
+- `generation_scores_pivot` pivots by `combo_id`, `stage`, `link_template`, `generation_template`, `generation_model`.
 
-**Advantages:**
-- **Simplicity**: Single-dimension partitions are easier to understand and debug
-- **Explicit Data Flow**: The FK relationship is visible in the evaluation tasks table
-- **Flexible**: Easy to change partition mapping logic without touching partition definitions
-- **Testable**: Can easily mock IO managers for testing
-- **Performance**: Only loads the specific essay response needed
+### Legacy One-Phase Support (Updated)
 
-**Trade-offs:**
-- **Manual IO**: Requires explicit IO manager usage instead of Dagster inputs
-- **No UI Dependency Edge**: Dagster UI doesn't show the data dependency automatically
-- **Error Handling**: Need custom error handling for missing upstream data
+- The pipeline no longer scans `data/3_generation/generation_responses/` for evaluation task discovery.
+- To evaluate historical one‑phase documents, use an external script to emit standard `essay_generation_tasks.csv` rows and place/symlink the essay texts under `data/3_generation/essay_responses/` with proper `essay_task_id` stems. Evaluation then proceeds as usual.
+
+### Notes (2025-09 Update)
+
+- This section supersedes the older FK-based prompt loading approach (MockLoadContext). The IO-manager FK pattern remains in limited use for two-phase generation (`essay_prompt` loading `links_response`) but evaluation now reads source documents by path for uniformity across stages/sources.
+- Legacy directory scanning has been removed from evaluation task discovery; curated inclusion is handled by writing standard generation task CSVs and placing files in canonical folders.
 
 ## Migration Benefits from Kedro
 

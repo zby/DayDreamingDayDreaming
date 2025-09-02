@@ -199,6 +199,37 @@ These assets use Dagster's eager auto-materialization policy to run automaticall
 - Cross-experiment tracking tables are always up-to-date
 - Backward compatibility is maintained seamlessly
 
+---
+
+## Unified Evaluation Update (2025-09)
+
+This repository now uses a document-centric evaluation flow:
+
+- `document_index` unifies drafts, two-phase essays, and legacy one-phase documents with normalized columns and concrete `file_path`.
+- `evaluation_tasks` creates partitions with IDs formatted as `{document_id}__{evaluation_template}__{evaluation_model_id}`.
+- `evaluation_prompt` loads the source document by `file_path` and renders the evaluation template (`response=<document text>`). No cross-partition IO is required for evaluation.
+- `parsed_scores` contains normalized outputs and `generation_response_path` sourced from the document `file_path`.
+- `generation_scores_pivot` indexes include `stage` to distinguish generation modes.
+
+Note on legacy directory scan:
+- Evaluation no longer discovers documents by scanning `data/3_generation/generation_responses/`. To evaluate historical outputs, write standard generation task CSVs (link/essay) and place/symlink their texts under `links_responses/` or `essay_responses/`. Then materialize `evaluation_tasks` to register only those curated documents.
+
+### Targeted Evaluations (No full cube)
+
+To run a specific evaluation (e.g., `novelty`) only on chosen documents (e.g., prior-art winners):
+
+1. Ensure the evaluation template exists and is active in `data/1_raw/evaluation_templates.csv`.
+2. Materialize `evaluation_tasks` once to register partitions.
+3. Materialize only the desired partitions by key:
+   ```bash
+   uv run dagster asset materialize --select "evaluation_prompt,evaluation_response" \
+     --partition "{document_id}__novelty__{evaluation_model_id}" \
+     -f daydreaming_dagster/definitions.py
+   ```
+4. Re-run `parsed_scores` to ingest the new results.
+
+For cross-experiment winners, place or symlink their generation texts under the canonical folders (`links_responses/`, `essay_responses/`, or `generation_responses/`) so they appear in `document_index`/`evaluation_tasks` without changing CSV actives.
+
 **Note**: Auto-materialization requires the Dagster daemon to be running. In development, you can manually trigger assets if needed:
 ```bash
 # Manually materialize a specific asset
