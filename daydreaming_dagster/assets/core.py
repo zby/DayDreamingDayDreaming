@@ -321,7 +321,7 @@ def document_index(
     Includes:
     - Drafts as effective one-phase (if draft file exists)
     - Two-phase essays (if essay file exists)
-    - Legacy one-phase essays (scanned from generation_responses)
+    - Curated historical docs are supported by writing standard generation task CSVs and placing files under canonical folders (no legacy scanning)
     """
     data_root = _Path(context.resources.data_root)
 
