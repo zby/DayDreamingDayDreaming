@@ -99,6 +99,27 @@ def load_known_templates(base_data: Path) -> Dict[str, Set[str]]:
     }
 
 
+def load_model_mapping(base_data: Path) -> Dict[str, str]:
+    """Load evaluation model id -> provider/model mapping from llm_models.csv.
+
+    Returns empty dict if file missing or unreadable.
+    """
+    mapping: Dict[str, str] = {}
+    models_csv = base_data / "1_raw" / "llm_models.csv"
+    if models_csv.exists():
+        try:
+            mdf = pd.read_csv(models_csv)
+            if {"id", "model"}.issubset(mdf.columns):
+                for _, r in mdf.iterrows():
+                    mid = str(r["id"]) if pd.notna(r["id"]) else None
+                    mname = str(r["model"]) if pd.notna(r["model"]) else None
+                    if mid and mname:
+                        mapping[mid] = mname
+        except Exception:
+            pass
+    return mapping
+
+
 def parse_identifiers_from_eval_task_id(
     evaluation_task_id: str,
     known: Optional[Dict[str, Set[str]]] = None,
@@ -272,6 +293,7 @@ def parse_all(
     # Base data root should be 'data'
     base_data = responses_dir.parents[1] if len(responses_dir.parents) >= 2 else Path("data")
     known = load_known_templates(base_data)
+    model_map = load_model_mapping(base_data)
 
     # CROSS-EXPERIMENT: Scan all *.txt files and parse entirely from filenames
     # No dependency on task CSV files - works across all experiments
@@ -312,6 +334,46 @@ def parse_all(
 
     df = pd.DataFrame(rows)
 
+    # Ensure consistent schema with defaults
+    expected_columns = [
+        "evaluation_task_id",
+        "document_id",
+        "essay_task_id",
+        "combo_id",
+        "link_template",
+        "generation_template",
+        "generation_model",
+        "evaluation_template",
+        "evaluation_model",
+        "evaluation_model_name",
+        "score",
+        "error",
+        "evaluation_response_path",
+    ]
+
+    if "document_id" not in df.columns:
+        # Derive from evaluation_task_id if possible (new format)
+        if "evaluation_task_id" in df.columns:
+            def _doc_from_tid(tid: str) -> Optional[str]:
+                if not isinstance(tid, str):
+                    return None
+                parts = tid.split("__")
+                return parts[0] if len(parts) == 3 else None
+            df["document_id"] = df["evaluation_task_id"].map(_doc_from_tid)
+        else:
+            df["document_id"] = None
+
+    # evaluation_model_name from mapping
+    if "evaluation_model" in df.columns:
+        df["evaluation_model_name"] = df["evaluation_model"].map(model_map).fillna(df.get("evaluation_model"))
+    else:
+        df["evaluation_model_name"] = None
+
+    # Fill missing expected columns with None to stabilize schema
+    for col in expected_columns:
+        if col not in df.columns:
+            df[col] = None
+
     # Order columns for readability if present
     column_order = [
         "document_id",
@@ -321,6 +383,7 @@ def parse_all(
         "generation_model",
         "evaluation_template",
         "evaluation_model",
+        "evaluation_model_name",
         "score",
         "error",
         "evaluation_task_id",
@@ -329,6 +392,23 @@ def parse_all(
     ]
     existing = [c for c in column_order if c in df.columns]
     df = df[existing + [c for c in df.columns if c not in existing]]
+
+    # Normalize types and NaNs for readability
+    if "score" in df.columns:
+        df["score"] = pd.to_numeric(df["score"], errors="coerce")
+    # Replace NaN with empty string for text-like columns
+    text_like = [
+        "document_id","combo_id","link_template","generation_template","generation_model",
+        "evaluation_template","evaluation_model","evaluation_model_name","evaluation_task_id","essay_task_id","evaluation_response_path","error"
+    ]
+    for col in text_like:
+        if col in df.columns:
+            df[col] = df[col].fillna("")
+
+    # Sort for stable output
+    sort_cols = [c for c in ["evaluation_template","document_id","evaluation_model"] if c in df.columns]
+    if sort_cols:
+        df = df.sort_values(by=sort_cols).reset_index(drop=True)
 
     df.to_csv(output_csv, index=False)
     print(f"Wrote {len(df)} rows to {output_csv}")
