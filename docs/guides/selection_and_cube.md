@@ -25,7 +25,7 @@ Use a lightweight script that produces a curated set of documents for evaluation
 - Ingestion surface: write standard generation task CSVs and place/symlink chosen documents under the canonical folders (`links_responses/` for drafts, `essay_responses/` for essays). Avoid `generation_responses/` — it is not scanned by evaluation.
   - For two-phase essays: source from `essay_responses/{essay_task_id}.txt`; derive `{combo_id, essay_template, model_id}` from metadata if needed.
   - For drafts-as-one-phase: source from `links_responses/{link_task_id}.txt`; set `essay_template = link_template` for identity in your CSV row.
-- Partition keys: generate `{document_id}__{evaluation_template}__{evaluation_model_id}` where `document_id` equals the filename stem placed above; save to `reports/<job>_partitions.txt`.
+  
 
 Operator flow:
 - Prepare winners via script (write curated CSVs + symlink/copy files under canonical folders; optionally write partition list).
@@ -59,12 +59,12 @@ Trade-offs:
 
 - The legacy scan of `generation_responses/` is removed from evaluation. Use the external script to produce standard generation task CSVs and place texts in canonical folders.
 
-## Example: Novelty on Prior-Art Winners
+## Example: Novelty on Prior-Art Winners (Current Approach)
 
-1. Compute winners from `parsed_scores` where `evaluation_template ∈ {gemini-prior-art-eval, gemini-prior-art-eval-v2}` using your policy (top-N/threshold; union).
-2. For each winner, symlink/copy its generation text into `data/3_generation/generation_responses/{combo_id}_{essay_template}_{model_id}.txt`.
-3. Generate partition keys `{document_id}__novelty__{evaluation_model_id}` and save to `reports/novelty_partitions.txt`.
-4. Materialize `evaluation_tasks` once (register partitions), then materialize `evaluation_prompt,evaluation_response` for the keys in the list.
+1. Compute winners from `data/7_cross_experiment/parsed_scores.csv` where `evaluation_template ∈ {gemini-prior-art-eval, gemini-prior-art-eval-v2}` using your policy (top-N/threshold; union).
+2. For each winner, ensure its essay exists under `data/3_generation/essay_responses/{essay_task_id}.txt`.
+3. Write curated `data/2_tasks/essay_generation_tasks.csv` (and optionally a matching `link_generation_tasks.csv`).
+4. Materialize `evaluation_tasks` once (register partitions), then materialize evaluations for the active templates/models.
 5. Re-run `parsed_scores` and downstream pivots.
 
 ## Acceptance Criteria for Future Implementation (Optional)
