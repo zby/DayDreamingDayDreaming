@@ -28,6 +28,7 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Set
+from datetime import datetime
 
 import pandas as pd
 
@@ -310,6 +311,15 @@ def parse_all(
             })
             continue
 
+        # File times (mtime as proxy for creation time on Linux)
+        try:
+            stat = file_path.stat()
+            mtime_epoch = float(stat.st_mtime)
+            mtime_iso = datetime.fromtimestamp(mtime_epoch).isoformat()
+        except Exception:
+            mtime_epoch = None
+            mtime_iso = ""
+
         text = file_path.read_text(encoding="utf-8", errors="ignore")
 
         # Parse all metadata from filename - no task CSV dependencies
@@ -330,6 +340,8 @@ def parse_all(
             "generation_template": id_parts.get("generation_template"),
             "generation_model": id_parts.get("generation_model"),
             "evaluation_response_path": str(file_path),
+            "evaluation_response_mtime": mtime_iso,
+            "evaluation_response_mtime_epoch": mtime_epoch,
         }
         rows.append(row)
 
@@ -406,10 +418,13 @@ def parse_all(
         if col in df.columns:
             df[col] = df[col].fillna("")
 
-    # Sort for stable output
-    sort_cols = [c for c in ["evaluation_template","document_id","evaluation_model"] if c in df.columns]
-    if sort_cols:
-        df = df.sort_values(by=sort_cols).reset_index(drop=True)
+    # Sort by file creation/modification time (newest first); fall back to stable ordering
+    if "evaluation_response_mtime_epoch" in df.columns and df["evaluation_response_mtime_epoch"].notna().any():
+        df = df.sort_values(by=["evaluation_response_mtime_epoch","evaluation_template","document_id"], ascending=[False, True, True]).reset_index(drop=True)
+    else:
+        sort_cols = [c for c in ["evaluation_template","document_id","evaluation_model"] if c in df.columns]
+        if sort_cols:
+            df = df.sort_values(by=sort_cols).reset_index(drop=True)
 
     df.to_csv(output_csv, index=False)
     print(f"Wrote {len(df)} rows to {output_csv}")
