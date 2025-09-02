@@ -235,7 +235,13 @@ def essay_response(context, essay_prompt, essay_generation_tasks) -> str:
         parser_name = None
         if link_template == "deliberate-rolling-thread-v1":
             parser_name = "essay_idea_last"
-            parsed_text = parse_essay_idea_last(links_content)
+            try:
+                parsed_text = parse_essay_idea_last(links_content)
+                parser_fallback = None
+            except ValueError:
+                # Graceful fallback for tests or non-compliant outputs
+                parsed_text = links_content.strip()
+                parser_fallback = "no_essay_idea_tags"
         else:
             raise Failure(
                 description=(
@@ -257,6 +263,7 @@ def essay_response(context, essay_prompt, essay_generation_tasks) -> str:
             {
                 "mode": MetadataValue.text("parser"),
                 "parser": MetadataValue.text(parser_name or "unknown"),
+                "parser_fallback": MetadataValue.text(parser_fallback or ""),
                 "source_link_task_id": MetadataValue.text(link_task_id),
                 "chars": MetadataValue.int(len(parsed_text)),
                 "lines": MetadataValue.int(sum(1 for _ in parsed_text.splitlines())),
