@@ -1,21 +1,20 @@
 #!/usr/bin/env python3
 """
-Select top-N documents by prior-art scores (cross-experiment) and emit evaluation partition keys.
+Select top-N documents by prior-art scores (cross-experiment) and write
+curated essay generation tasks to data/2_tasks/essay_generation_tasks.csv.
 
 Defaults:
 - TOP_N = 10
 - Prior-art templates: gemini-prior-art-eval, gemini-prior-art-eval-v2 (use whichever are present; if both, take max per document)
-- Target evaluation template: novelty
-- Evaluation model id: sonnet-4
 - Parsed scores source: data/7_cross_experiment/parsed_scores.csv (required)
+ - Output tasks CSV: data/2_tasks/essay_generation_tasks.csv (always)
 
 Usage examples:
   uv run python scripts/select_top_prior_art.py \
-    --parsed-scores data/7_cross_experiment/parsed_scores.csv \
-    --out reports/novelty_partitions.txt
+    --parsed-scores data/7_cross_experiment/parsed_scores.csv
 
   # Override target template or N
-  uv run python scripts/select_top_prior_art.py --top-n 25 --target-template novelty
+  uv run python scripts/select_top_prior_art.py --top-n 25
 """
 
 from __future__ import annotations
@@ -36,10 +35,7 @@ def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--parsed-scores", type=Path, default=Path("data/7_cross_experiment/parsed_scores.csv"), help="Path to cross-experiment parsed_scores.csv")
     p.add_argument("--top-n", type=int, default=10, help="Number of top documents to select")
-    p.add_argument("--target-template", type=str, default="novelty", help="Target evaluation template to run (e.g., novelty)")
-    p.add_argument("--eval-model-id", type=str, default="sonnet-4", help="Evaluation model id to use (must exist in llm_models.csv)")
     p.add_argument("--prior-art-templates", type=str, nargs="*", default=DEFAULT_PRIOR_ART_TEMPLATES, help="Prior-art templates to consider (use whichever are present)")
-    p.add_argument("--out", type=Path, default=None, help="Optional output file to write partition keys")
     return p.parse_args()
 
 
@@ -91,22 +87,59 @@ def main() -> int:
 
     top_docs = best.head(args.top_n)["document_id"].tolist()
 
-    keys = [f"{doc_id}__{args.target_template}__{args.eval_model_id}" for doc_id in top_docs]
+    # Build curated essay_generation_tasks.csv
+    models_csv = Path("data/1_raw/llm_models.csv")
+    essay_dir = Path("data/3_generation/essay_responses")
+    out_csv = Path("data/2_tasks/essay_generation_tasks.csv")
 
-    # Print to stdout
-    for k in keys:
-        print(k)
+    # Load model mapping id -> provider/model name
+    model_map = {}
+    if models_csv.exists():
+        try:
+            mdf = pd.read_csv(models_csv)
+            if {"id","model"}.issubset(mdf.columns):
+                model_map = dict(zip(mdf["id"].astype(str), mdf["model"].astype(str)))
+        except Exception as e:
+            print(f"Warning: failed to read model mapping ({e}); will use model ids as names", file=sys.stderr)
 
-    # Optionally write to file
-    if args.out:
-        args.out.parent.mkdir(parents=True, exist_ok=True)
-        args.out.write_text("\n".join(keys) + "\n", encoding="utf-8")
+    rows = []
+    missing = []
+    for doc in top_docs:
+        parts = doc.split("_")
+        if len(parts) < 4:
+            print(f"Skipping malformed doc id (need >=4 parts): {doc}", file=sys.stderr)
+            continue
+        essay_template = parts[-1]
+        generation_model = parts[-2]
+        link_template = parts[-3]
+        combo_id = "_".join(parts[:-3])
+        link_task_id = f"{combo_id}_{link_template}_{generation_model}"
+        fp = essay_dir / f"{doc}.txt"
+        if not fp.exists():
+            missing.append(str(fp))
+        rows.append({
+            "essay_task_id": doc,
+            "link_task_id": link_task_id,
+            "combo_id": combo_id,
+            "link_template": link_template,
+            "essay_template": essay_template,
+            "generation_model": generation_model,
+            "generation_model_name": model_map.get(generation_model, generation_model),
+        })
 
-    # Summary to stderr
-    print(
-        f"Selected {len(keys)} docs from cross-experiment parsed scores; target='{args.target_template}', model='{args.eval_model_id}'",
-        file=sys.stderr,
-    )
+    out_csv.parent.mkdir(parents=True, exist_ok=True)
+    pd.DataFrame(rows, columns=[
+        "essay_task_id","link_task_id","combo_id","link_template",
+        "essay_template","generation_model","generation_model_name"
+    ]).drop_duplicates(subset=["essay_task_id"]).to_csv(out_csv, index=False)
+
+    print(f"Wrote {len(rows)} curated tasks to {out_csv}")
+    if missing:
+        print("Warning: missing essay files (evaluation will fail for these if run):", file=sys.stderr)
+        for m in missing[:10]:
+            print(" -", m, file=sys.stderr)
+        if len(missing) > 10:
+            print(f" ... {len(missing)-10} more", file=sys.stderr)
     return 0
 
 
