@@ -15,7 +15,7 @@ Key cross-experiment features:
 Defaults:
 - Responses dir: data/4_evaluation/evaluation_responses (read-only)
 - Tasks dir: data/2_tasks (used for metadata enrichment only, not file filtering)
-- Output: data/cross_experiment/parsed_scores.csv
+- Output: data/7_cross_experiment/parsed_scores.csv
 
 Usage examples:
 - uv run scripts/parse_all_scores.py --output data/cross_experiment/parsed_scores.csv
@@ -105,8 +105,9 @@ def parse_identifiers_from_eval_task_id(
 ) -> Dict[str, Any]:
     """Parse identifiers from an evaluation_task_id string using the new scheme.
 
-    New format (split tasks):
-      evaluation_task_id = {essay_task_id}_{eval_template}_{eval_model}
+    New format (split tasks, 2025-09):
+      evaluation_task_id = {document_id}__{eval_template}__{eval_model}
+      document_id        = essay_task_id (two-phase) or link_task_id (draft-as-one-phase)
       essay_task_id      = {combo_id}_{link_template}_{generation_model}_{essay_template}
 
     We extract:
@@ -118,6 +119,7 @@ def parse_identifiers_from_eval_task_id(
       - evaluation_template, evaluation_model
     """
     result: Dict[str, Any] = {
+        "document_id": None,
         "essay_task_id": None,
         "combo_id": None,
         "link_template": None,
@@ -139,66 +141,64 @@ def parse_identifiers_from_eval_task_id(
         link_templates = known.get("link_templates", set())
         essay_templates = known.get("essay_templates", set())
 
-    parts = evaluation_task_id.split("_")
-    if len(parts) < 5:  # Need at least combo_X_template_model_eval_template_eval_model
-        return result
-
-    # Strategy: Find evaluation template by scanning from right for a token in eval_templates
+    # First, try the modern double-underscore format
+    parts3 = evaluation_task_id.split("__")
     eval_template = None
     eval_model = None
-    remaining_parts = parts[:]
-    if eval_templates:
-        for i in range(len(parts)-1, -1, -1):
-            token = parts[i]
-            if token in eval_templates:
-                eval_template = token
-                eval_model = "_".join(parts[i+1:]) if i+1 < len(parts) else None
-                remaining_parts = parts[:i]
-                break
-    if not eval_template:
-        # Fallback: assume last two logical segments
-        eval_template = parts[-2] if len(parts) >= 2 else None
-        eval_model = parts[-1] if len(parts) >= 1 else None
-        remaining_parts = parts[:-2] if len(parts) >= 2 else []
+    document_id = None
+    if len(parts3) == 3:
+        document_id, eval_template, eval_model = parts3
+        result["document_id"] = document_id
+    else:
+        # Fallback: older underscore-only format (best-effort)
+        parts = evaluation_task_id.split("_")
+        if len(parts) >= 2:
+            eval_template = parts[-2]
+            eval_model = parts[-1]
+            document_id = "_".join(parts[:-2])
+            result["document_id"] = document_id
 
-    # Now parse essay_task_id side from remaining_parts
-    # Expect: combo_parts + link_template + generation_model (+ underscores) + essay_template
-    if len(remaining_parts) < 4:  # Need at least combo + link_template + model + essay_template
-        result.update({
-            "evaluation_template": eval_template,
-            "evaluation_model": eval_model,
-        })
-        return result
-
-    # Essay template is last known essay template token from the right
+    # Attempt to parse document_id into essay_task_id-like components
+    combo_id = None
+    link_template_val = None
     essay_template = None
     gen_model = None
-    link_template_val = None
-    combo_parts: List[str] = []
-
-    if essay_templates and link_templates:
-        for i in range(len(remaining_parts)-1, -1, -1):
-            token = remaining_parts[i]
-            if token in essay_templates:
-                essay_template = token
-                # Find last link template before position i
-                l_idx = None
-                for j in range(i-1, -1, -1):
-                    if remaining_parts[j] in link_templates:
-                        l_idx = j
-                        break
-                if l_idx is not None:
-                    link_template_val = remaining_parts[l_idx]
-                    gen_tokens = remaining_parts[l_idx+1:i]
+    if result["document_id"]:
+        doc_parts = result["document_id"].split("_")
+        # Find essay_template by scanning from right among known essay templates
+        if essay_templates and link_templates:
+            for i in range(len(doc_parts)-1, -1, -1):
+                token = doc_parts[i]
+                if token in essay_templates:
+                    essay_template = token
+                    # Find last link template before i
+                    l_idx = None
+                    for j in range(i-1, -1, -1):
+                        if doc_parts[j] in link_templates:
+                            l_idx = j
+                            break
+                    if l_idx is not None:
+                        link_template_val = doc_parts[l_idx]
+                        gen_tokens = doc_parts[l_idx+1:i]
+                        gen_model = "_".join(gen_tokens) if gen_tokens else None
+                        combo_parts = doc_parts[:l_idx]
+                        combo_id = "_".join(combo_parts) if combo_parts else None
+                    break
+        # Draft-as-one-phase case: no essay_template found, but may have link_template + model
+        if essay_template is None and link_templates:
+            for i in range(len(doc_parts)-1, -1, -1):
+                if doc_parts[i] in link_templates:
+                    link_template_val = doc_parts[i]
+                    gen_tokens = doc_parts[i+1:]
                     gen_model = "_".join(gen_tokens) if gen_tokens else None
-                    combo_parts = remaining_parts[:l_idx]
-                break
-
-    combo_id = "_".join(combo_parts) if combo_parts else None
-    essay_task_id = "_".join(remaining_parts) if remaining_parts else None
+                    combo_parts = doc_parts[:i]
+                    combo_id = "_".join(combo_parts) if combo_parts else None
+                    # Treat generation_template as link_template for drafts
+                    essay_template = link_template_val
+                    break
 
     result.update({
-        "essay_task_id": essay_task_id,
+        "essay_task_id": result["document_id"],  # for two-phase this equals essay_task_id; for drafts it’s link_task_id
         "combo_id": combo_id,
         "link_template": link_template_val,
         "generation_template": essay_template,
@@ -314,6 +314,7 @@ def parse_all(
 
     # Order columns for readability if present
     column_order = [
+        "document_id",
         "combo_id",
         "link_template",
         "generation_template",
@@ -360,8 +361,8 @@ def main() -> None:
     parser.add_argument(
         "--output",
         type=Path,
-        default=Path('data/cross_experiment/parsed_scores.csv'),
-        help="Output CSV path; default is data/cross_experiment/parsed_scores.csv",
+        default=Path('data/7_cross_experiment/parsed_scores.csv'),
+        help="Output CSV path; default is data/7_cross_experiment/parsed_scores.csv",
     )
 
     args = parser.parse_args()
