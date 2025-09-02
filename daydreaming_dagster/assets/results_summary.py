@@ -70,9 +70,9 @@ def generation_scores_pivot(context, parsed_scores: pd.DataFrame) -> pd.DataFram
     )
 
     # Build pivot: individual score for each generation across each (template, model) combination
-    # Include link_template in index to distinguish v3 vs v4 template results
+    # Include link_template and stage in index to distinguish modes
     pivot_df = valid_scores.pivot_table(
-        index=['combo_id', 'link_template', 'generation_template', 'generation_model'],
+        index=['combo_id', 'stage', 'link_template', 'generation_template', 'generation_model'],
         columns='eval_template_model',
         values='score',
         aggfunc='first'  # Take first score if duplicates exist (shouldn't happen with proper data)
@@ -82,7 +82,7 @@ def generation_scores_pivot(context, parsed_scores: pd.DataFrame) -> pd.DataFram
     pivot_df = pivot_df.reset_index()
 
     # Get all evaluation columns (excluding the index columns)
-    eval_columns = [col for col in pivot_df.columns if col not in ['combo_id', 'link_template', 'generation_template', 'generation_model']]
+    eval_columns = [col for col in pivot_df.columns if col not in ['combo_id', 'stage', 'link_template', 'generation_template', 'generation_model']]
     
     # Add aggregate column with all scores summed across evaluators
     # NaNs are ignored in the sum; round for readability
@@ -107,22 +107,32 @@ def generation_scores_pivot(context, parsed_scores: pd.DataFrame) -> pd.DataFram
         )
     # link_template is now already included in the pivot index, so no need to merge it back
 
-    # Add path to the generation response file (two-phase file naming)
-    pivot_df['generation_response_path'] = pivot_df.apply(
-        lambda row: get_generation_response_path(
-            row['combo_id'], row.get('link_template'), row['generation_template'], row['generation_model']
-        ),
-        axis=1,
-    )
+    # Attach generation_response_path from parsed_scores when available
+    if 'generation_response_path' in parsed_scores.columns:
+        path_map = parsed_scores[
+            ['combo_id', 'stage', 'link_template', 'generation_template', 'generation_model', 'generation_response_path']
+        ].drop_duplicates()
+        pivot_df = pivot_df.merge(
+            path_map,
+            on=['combo_id', 'stage', 'link_template', 'generation_template', 'generation_model'],
+            how='left'
+        )
+    else:
+        pivot_df['generation_response_path'] = pivot_df.apply(
+            lambda row: get_generation_response_path(
+                row['combo_id'], row.get('link_template'), row['generation_template'], row['generation_model']
+            ),
+            axis=1,
+        )
     
     # Order columns: index columns first, then evaluation columns
-    ordered_cols = ['combo_id', 'link_template', 'generation_template', 'generation_model'] + eval_columns + ['sum_scores', 'generation_response_path']
+    ordered_cols = ['combo_id', 'stage', 'link_template', 'generation_template', 'generation_model'] + eval_columns + ['sum_scores', 'generation_response_path']
     pivot_df = pivot_df[ordered_cols]
 
     # Metadata
     context.add_output_metadata({
         "rows": MetadataValue.int(len(pivot_df)),
-        "unique_generations": MetadataValue.int(pivot_df[['combo_id', 'link_template', 'generation_template', 'generation_model']].drop_duplicates().shape[0]),
+        "unique_generations": MetadataValue.int(pivot_df[['combo_id', 'stage', 'link_template', 'generation_template', 'generation_model']].drop_duplicates().shape[0]),
         "evaluation_combinations": MetadataValue.int(len(eval_columns)),
         "total_active_templates": MetadataValue.int(len(active_templates)),
         "evaluation_columns": MetadataValue.text(", ".join(eval_columns))

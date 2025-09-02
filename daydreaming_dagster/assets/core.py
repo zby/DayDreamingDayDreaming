@@ -25,6 +25,8 @@ from .partitions import (
     essay_tasks_partitions,
 )
 from ..utils.combo_ids import ComboIDManager
+from pathlib import Path as _Path
+from typing import List as _List
 
 @asset(
     group_name="task_definitions",
@@ -266,7 +268,26 @@ def essay_generation_tasks(
                 }
             )
 
-    tasks_df = pd.DataFrame(rows)
+    columns = [
+        "evaluation_task_id",
+        "document_id",
+        "stage",
+        "origin",
+        "file_path",
+        "combo_id",
+        "link_template",
+        "essay_template",
+        "generation_model",
+        "generation_model_name",
+        "link_task_id",
+        "essay_task_id",
+        "source_asset",
+        "source_dir",
+        "evaluation_template",
+        "evaluation_model",
+        "evaluation_model_name",
+    ]
+    tasks_df = pd.DataFrame(rows, columns=columns)
 
     # Register dynamic partitions for essays
     existing = context.instance.get_dynamic_partitions(essay_tasks_partitions.name)
@@ -287,6 +308,133 @@ def essay_generation_tasks(
 @asset(
     group_name="task_definitions",
     io_manager_key="csv_io_manager",
+    required_resource_keys={"data_root"},
+    automation_condition=AutomationCondition.eager(),
+)
+def document_index(
+    context,
+    link_generation_tasks: pd.DataFrame,
+    essay_generation_tasks: pd.DataFrame,
+) -> pd.DataFrame:
+    """Unified index of documents to evaluate (hybrid document axis).
+
+    Includes:
+    - Drafts as effective one-phase (if draft file exists)
+    - Two-phase essays (if essay file exists)
+    - Legacy one-phase essays (scanned from generation_responses)
+    """
+    data_root = _Path(context.resources.data_root)
+
+    rows: _List[dict] = []
+
+    # Drafts (effective one-phase)
+    draft_dir = data_root / "3_generation" / "links_responses"
+    if not link_generation_tasks.empty and draft_dir.exists():
+        for _, row in link_generation_tasks.iterrows():
+            link_task_id = row["link_task_id"]
+            fp = draft_dir / f"{link_task_id}.txt"
+            if fp.exists():
+                rows.append(
+                    {
+                        "document_id": link_task_id,
+                        "stage": "essay1p",
+                        "origin": "draft",
+                        "file_path": str(fp),
+                        "combo_id": row["combo_id"],
+                        "link_template": row["link_template"],
+                        "essay_template": row["link_template"],
+                        "generation_model_id": row["generation_model"],
+                        "generation_model_name": row["generation_model_name"],
+                        "link_task_id": link_task_id,
+                        "essay_task_id": None,
+                        "source_asset": "links_response",
+                        "source_dir": "links_responses",
+                    }
+                )
+
+    # Two-phase essays
+    essay_dir = data_root / "3_generation" / "essay_responses"
+    if not essay_generation_tasks.empty and essay_dir.exists():
+        for _, row in essay_generation_tasks.iterrows():
+            essay_task_id = row["essay_task_id"]
+            fp = essay_dir / f"{essay_task_id}.txt"
+            if fp.exists():
+                rows.append(
+                    {
+                        "document_id": essay_task_id,
+                        "stage": "essay2p",
+                        "origin": "two_phase",
+                        "file_path": str(fp),
+                        "combo_id": row["combo_id"],
+                        "link_template": row.get("link_template"),
+                        "essay_template": row["essay_template"],
+                        "generation_model_id": row["generation_model"],
+                        "generation_model_name": row["generation_model_name"],
+                        "link_task_id": row["link_task_id"],
+                        "essay_task_id": essay_task_id,
+                        "source_asset": "essay_response",
+                        "source_dir": "essay_responses",
+                    }
+                )
+
+    # Legacy one-phase essays
+    legacy_dir = data_root / "3_generation" / "generation_responses"
+    if legacy_dir.exists():
+        for fp in legacy_dir.glob("*.txt"):
+            stem = fp.stem
+            parts = stem.split("_")
+            if len(parts) < 3:
+                continue
+            model_id = parts[-1]
+            essay_template = parts[-2]
+            combo_id = "_".join(parts[:-2])
+            rows.append(
+                {
+                    "document_id": stem,
+                    "stage": "essay1p",
+                    "origin": "legacy",
+                    "file_path": str(fp),
+                    "combo_id": combo_id,
+                    "link_template": None,
+                    "essay_template": essay_template,
+                    "generation_model_id": model_id,
+                    "generation_model_name": model_id,
+                    "link_task_id": None,
+                    "essay_task_id": None,
+                    "source_asset": "legacy_generation_response",
+                    "source_dir": "generation_responses",
+                }
+            )
+
+    columns = [
+        "document_id",
+        "stage",
+        "origin",
+        "file_path",
+        "combo_id",
+        "link_template",
+        "essay_template",
+        "generation_model_id",
+        "generation_model_name",
+        "link_task_id",
+        "essay_task_id",
+        "source_asset",
+        "source_dir",
+    ]
+    df = pd.DataFrame(rows, columns=columns)
+
+    context.add_output_metadata(
+        {
+            "documents": MetadataValue.int(len(df)),
+            "by_stage": MetadataValue.text(str(df["stage"].value_counts().to_dict() if not df.empty else {})),
+            "by_origin": MetadataValue.text(str(df["origin"].value_counts().to_dict() if not df.empty else {})),
+        }
+    )
+    return df
+
+@asset(
+    group_name="task_definitions",
+    io_manager_key="csv_io_manager",
     required_resource_keys={"experiment_config", "data_root"},
     automation_condition=AutomationCondition.eager(),
     deps={LLM_MODELS_KEY, EVALUATION_TEMPLATES_KEY},
@@ -294,8 +442,9 @@ def essay_generation_tasks(
 def evaluation_tasks(
     context,
     link_generation_tasks: pd.DataFrame,
+    essay_generation_tasks: pd.DataFrame,
 ) -> pd.DataFrame:
-    """Create evaluation tasks referencing link_task_id (evaluate drafts directly)."""
+    """Create evaluation tasks (document × evaluation_template × evaluation_model)."""
     data_root = context.resources.data_root
     models_df = read_llm_models(Path(data_root))
     evaluation_models = models_df[models_df["for_evaluation"] == True]
@@ -305,18 +454,113 @@ def evaluation_tasks(
         evaluation_templates_df = evaluation_templates_df[evaluation_templates_df["active"] == True]
     eval_templates = list(evaluation_templates_df["template_id"].tolist())
 
+    # Build an internal document view (avoid requiring document_index asset in all callers)
+    data_root_path = _Path(data_root)
+    docs: List[dict] = []
+
+    # Drafts (effective one-phase) — plan tasks regardless of file existence
+    draft_dir = data_root_path / "3_generation" / "links_responses"
+    if not link_generation_tasks.empty:
+        for _, row in link_generation_tasks.iterrows():
+            link_task_id = row["link_task_id"]
+            fp = draft_dir / f"{link_task_id}.txt"
+            docs.append(
+                {
+                    "document_id": link_task_id,
+                    "stage": "essay1p",
+                    "origin": "draft",
+                    "file_path": str(fp),
+                    "combo_id": row["combo_id"],
+                    "link_template": row["link_template"],
+                    "essay_template": row["link_template"],
+                    "generation_model_id": row["generation_model"],
+                    "generation_model_name": row["generation_model_name"],
+                    "link_task_id": link_task_id,
+                    "essay_task_id": None,
+                    "source_asset": "links_response",
+                    "source_dir": "links_responses",
+                }
+            )
+
+    # Two-phase essays
+    essay_dir = data_root_path / "3_generation" / "essay_responses"
+    if not essay_generation_tasks.empty:
+        for _, row in essay_generation_tasks.iterrows():
+            essay_task_id = row["essay_task_id"]
+            fp = essay_dir / f"{essay_task_id}.txt"
+            docs.append(
+                {
+                    "document_id": essay_task_id,
+                    "stage": "essay2p",
+                    "origin": "two_phase",
+                    "file_path": str(fp),
+                    "combo_id": row["combo_id"],
+                    "link_template": row.get("link_template"),
+                    "essay_template": row["essay_template"],
+                    "generation_model_id": row["generation_model"],
+                    "generation_model_name": row["generation_model_name"],
+                    "link_task_id": row["link_task_id"],
+                    "essay_task_id": essay_task_id,
+                    "source_asset": "essay_response",
+                    "source_dir": "essay_responses",
+                }
+            )
+
+    # Legacy one-phase essays
+    legacy_dir = data_root_path / "3_generation" / "generation_responses"
+    if legacy_dir.exists():
+        for fp in legacy_dir.glob("*.txt"):
+            stem = fp.stem
+            parts = stem.split("_")
+            if len(parts) < 3:
+                continue
+            model_id = parts[-1]
+            essay_template = parts[-2]
+            combo_id = "_".join(parts[:-2])
+            docs.append(
+                {
+                    "document_id": stem,
+                    "stage": "essay1p",
+                    "origin": "legacy",
+                    "file_path": str(fp),
+                    "combo_id": combo_id,
+                    "link_template": None,
+                    "essay_template": essay_template,
+                    "generation_model_id": model_id,
+                    "generation_model_name": model_id,
+                    "link_task_id": None,
+                    "essay_task_id": None,
+                    "source_asset": "legacy_generation_response",
+                    "source_dir": "generation_responses",
+                }
+            )
+
+    document_index = pd.DataFrame(docs)
+
     rows: List[dict] = []
-    for _, link_row in link_generation_tasks.iterrows():
-        link_task_id = link_row["link_task_id"]
+    for _, doc in document_index.iterrows():
+        document_id = doc["document_id"]
         for _, eval_model_row in evaluation_models.iterrows():
             eval_model_id = eval_model_row["id"]
             eval_model_name = eval_model_row["model"]
             for eval_template_id in eval_templates:
-                evaluation_task_id = f"{link_task_id}_{eval_template_id}_{eval_model_id}"
+                evaluation_task_id = f"{document_id}__{eval_template_id}__{eval_model_id}"
                 rows.append(
                     {
                         "evaluation_task_id": evaluation_task_id,
-                        "link_task_id": link_task_id,
+                        "document_id": document_id,
+                        "stage": doc.get("stage"),
+                        "origin": doc.get("origin"),
+                        "file_path": doc.get("file_path"),
+                        "combo_id": doc.get("combo_id"),
+                        "link_template": doc.get("link_template"),
+                        "essay_template": doc.get("essay_template"),
+                        "generation_model": doc.get("generation_model_id"),
+                        "generation_model_name": doc.get("generation_model_name"),
+                        "link_task_id": doc.get("link_task_id"),
+                        "essay_task_id": doc.get("essay_task_id"),
+                        "source_asset": doc.get("source_asset"),
+                        "source_dir": doc.get("source_dir"),
                         "evaluation_template": eval_template_id,
                         "evaluation_model": eval_model_id,
                         "evaluation_model_name": eval_model_name,
@@ -330,16 +574,17 @@ def evaluation_tasks(
     if existing:
         for p in existing:
             context.instance.delete_dynamic_partition(evaluation_tasks_partitions.name, p)
-    context.instance.add_dynamic_partitions(
-        evaluation_tasks_partitions.name, tasks_df["evaluation_task_id"].tolist()
-    )
+    if not tasks_df.empty:
+        context.instance.add_dynamic_partitions(
+            evaluation_tasks_partitions.name, tasks_df["evaluation_task_id"].tolist()
+        )
 
     context.add_output_metadata(
         {
             "task_count": MetadataValue.int(len(tasks_df)),
-            "unique_links": MetadataValue.int(tasks_df["link_task_id"].nunique()),
-            "unique_eval_templates": MetadataValue.int(tasks_df["evaluation_template"].nunique()),
-            "unique_eval_models": MetadataValue.int(tasks_df["evaluation_model"].nunique()),
+            "unique_documents": MetadataValue.int(tasks_df["document_id"].nunique() if not tasks_df.empty else 0),
+            "unique_eval_templates": MetadataValue.int(tasks_df["evaluation_template"].nunique() if not tasks_df.empty else 0),
+            "unique_eval_models": MetadataValue.int(tasks_df["evaluation_model"].nunique() if not tasks_df.empty else 0),
         }
     )
     return tasks_df

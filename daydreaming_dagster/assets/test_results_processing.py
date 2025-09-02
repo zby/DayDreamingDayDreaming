@@ -221,3 +221,65 @@ class TestDataFrameJoins:
         assert combo_001_row['combo_id'] == 'combo_001'
         assert combo_001_row['generation_template'] == 'systematic-analytical-v2'
         assert combo_001_row['generation_model'] == 'deepseek_r1_f'
+
+
+class TestParsedScoresEnrichment:
+    """Test enrichment shape used in parsed_scores asset."""
+
+    def test_enrichment_includes_source_metadata_and_paths(self):
+        # Simulate parsed responses
+        parsed_df = pd.DataFrame([
+            {"evaluation_task_id": "docA__evaltpl__evalmodel", "score": 9.0, "error": None}
+        ])
+
+        # Simulate evaluation tasks with denormalized metadata
+        eval_tasks = pd.DataFrame([
+            {
+                "evaluation_task_id": "docA__evaltpl__evalmodel",
+                "document_id": "docA",
+                "stage": "essay1p",
+                "origin": "draft",
+                "file_path": "data/3_generation/links_responses/docA.txt",
+                "combo_id": "combo_001",
+                "link_template": "links-v4",
+                "essay_template": "links-v4",
+                "generation_model": "deepseek_r1_f",
+                "generation_model_name": "deepseek/deepseek-r1:free",
+                "evaluation_template": "evaltpl",
+                "evaluation_model": "evalmodel",
+                "source_asset": "links_response",
+                "source_dir": "links_responses",
+            }
+        ])
+
+        # Emulate the enrichment logic from parsed_scores
+        enriched_df = parsed_df.merge(
+            eval_tasks[[
+                "evaluation_task_id",
+                "document_id",
+                "stage",
+                "origin",
+                "file_path",
+                "combo_id",
+                "link_template",
+                "essay_template",
+                "generation_model",
+                "generation_model_name",
+                "evaluation_template",
+                "evaluation_model",
+                "source_asset",
+                "source_dir",
+            ]],
+            on="evaluation_task_id",
+            how="left",
+        )
+        # Construct response paths
+        enriched_df["evaluation_response_path"] = enriched_df["evaluation_task_id"].apply(
+            lambda tid: f"data/4_evaluation/evaluation_responses/{tid}.txt"
+        )
+        enriched_df["generation_response_path"] = enriched_df["file_path"]
+
+        # Assertions
+        assert enriched_df.iloc[0]["generation_response_path"] == "data/3_generation/links_responses/docA.txt"
+        assert enriched_df.iloc[0]["source_asset"] == "links_response"
+        assert enriched_df.iloc[0]["source_dir"] == "links_responses"

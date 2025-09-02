@@ -4,6 +4,26 @@ import pandas as pd
 from dagster import Failure, MetadataValue
 
 
+def is_valid_evaluation_task_id(task_id: str) -> bool:
+    """Validate evaluation_task_id format: {document_id}__{evaluation_template}__{evaluation_model_id}.
+
+    Rules:
+    - Exactly two double-underscore separators ('__'), yielding three non-empty parts
+    - No whitespace characters
+    - Parts are non-empty strings
+    """
+    if not isinstance(task_id, str):
+        return False
+    if any(ch.isspace() for ch in task_id):
+        return False
+    parts = task_id.split("__")
+    if len(parts) != 3:
+        return False
+    if any(len(p) == 0 for p in parts):
+        return False
+    return True
+
+
 def get_task_row(df: pd.DataFrame, task_id_col: str, task_id: str, context, asset_name: str) -> pd.Series:
     """Get single task row with standardized error handling.
     

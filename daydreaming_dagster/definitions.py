@@ -30,6 +30,7 @@ from daydreaming_dagster.assets.core import (
     content_combinations_csv,
     link_generation_tasks,
     essay_generation_tasks,
+    document_index,
     evaluation_tasks
 )
 from daydreaming_dagster.assets.cross_experiment import (
@@ -58,6 +59,7 @@ defs = Definitions(
         content_combinations_csv,
         link_generation_tasks,
         essay_generation_tasks,
+        document_index,
         evaluation_tasks,
         
         # Two-phase generation assets

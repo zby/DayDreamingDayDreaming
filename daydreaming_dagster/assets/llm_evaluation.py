@@ -5,7 +5,6 @@ import pandas as pd
 import logging
 from jinja2 import Environment
 from ..utils.dataframe_helpers import get_task_row
-from ..utils.shared_context import MockLoadContext
 from ..utils.raw_readers import read_evaluation_templates
 from .raw_data import EVALUATION_TEMPLATES_KEY
 
@@ -62,7 +61,7 @@ def generate_evaluation_prompts(
     partitions_def=evaluation_tasks_partitions,
     group_name="evaluation",
     io_manager_key="evaluation_prompt_io_manager",
-    required_resource_keys={"links_response_io_manager", "data_root"},
+    required_resource_keys={"data_root"},
     deps={EVALUATION_TEMPLATES_KEY},
 )
 def evaluation_prompt(context, evaluation_tasks) -> str:
@@ -114,70 +113,32 @@ def evaluation_prompt(context, evaluation_tasks) -> str:
     """
     task_id = context.partition_key
 
-    # Get the specific task for this partition with debugging
+    # Get the specific task for this partition
     task_row = get_task_row(evaluation_tasks, "evaluation_task_id", task_id, context, "evaluation_tasks")
-    link_task_id = task_row["link_task_id"]
-
-    # Log the foreign key relationship for debugging
-    context.log.info(f"Loading draft response for FK relationship: {task_id} -> {link_task_id}")
-
-    # Load the draft response from the correct partition using I/O manager
-    # This uses the MockLoadContext pattern to load data from a different partition
-    draft_io_manager = context.resources.links_response_io_manager
-
-    # Validate that the referenced link_task_id looks valid
-    if not link_task_id or link_task_id.strip() == "":
+    file_path = task_row.get("file_path")
+    if not isinstance(file_path, str) or not len(file_path):
         raise Failure(
-            description=f"Invalid link_task_id referenced by evaluation task '{task_id}'",
+            description=f"Missing or invalid file_path for evaluation task '{task_id}'",
             metadata={
                 "evaluation_task_id": MetadataValue.text(task_id),
-                "link_task_id": MetadataValue.text(str(link_task_id)),
-                "resolution_1": MetadataValue.text("Check evaluation_tasks CSV for data corruption"),
-                "resolution_2": MetadataValue.text("Re-materialize evaluation_tasks asset"),
-                "fk_validation_failed": MetadataValue.text("link_task_id is empty or invalid")
+                "file_path": MetadataValue.text(str(file_path)),
             }
         )
 
-    # Create a mock context for the generation partition (documented pattern)
-    mock_context = MockLoadContext(link_task_id)
-
-    # Check if the file exists before attempting to load (better error context)
-    expected_path = draft_io_manager.base_path / f"{link_task_id}.txt"
-
+    expected_path = Path(file_path)
     try:
-        # Load the draft content directly from the link responses
-        draft_content = draft_io_manager.load_input(mock_context)
-
+        draft_content = expected_path.read_text(encoding="utf-8")
         if not draft_content:
-            raise ValueError(f"Empty draft content loaded for {link_task_id}")
-
-        context.log.info(f"Successfully loaded draft content: {len(draft_content)} characters from {link_task_id}")
-
+            raise ValueError(f"Empty document content loaded for {file_path}")
+        context.log.info(f"Loaded document content for {task_id}: {len(draft_content)} chars from {file_path}")
     except FileNotFoundError as e:
-        # Enhanced error with more debugging context
-        available_files = list(draft_io_manager.base_path.glob("*.txt")) if draft_io_manager.base_path.exists() else []
-        available_partitions = [f.stem for f in available_files[:10]]  # Show first 10
-
-        context.log.error(f"Draft response not found for partition {link_task_id}")
-        context.log.error(f"Expected path: {expected_path}")
-        context.log.error(f"Base directory exists: {draft_io_manager.base_path.exists()}")
-        context.log.error(f"Available partitions (first 10): {available_partitions}")
-
         raise Failure(
-            description=f"Missing draft response required for evaluation task '{task_id}' (FK: {link_task_id})",
+            description=f"Missing document for evaluation task '{task_id}'",
             metadata={
                 "evaluation_task_id": MetadataValue.text(task_id),
-                "link_task_id": MetadataValue.text(link_task_id),
                 "expected_file_path": MetadataValue.path(str(expected_path)),
-                "base_directory_exists": MetadataValue.text(str(draft_io_manager.base_path.exists())),
-                "available_partitions_sample": MetadataValue.text(str(available_partitions)),
-                "total_available_files": MetadataValue.int(len(available_files)),
-                "fk_relationship": MetadataValue.text(f"evaluation_task '{task_id}' references link_task '{link_task_id}'"),
-                "resolution_1": MetadataValue.text(f"Check if links_response was materialized for partition: {link_task_id}"),
-                "resolution_2": MetadataValue.text(f"Run: dagster asset materialize --select links_response --partition {link_task_id}"),
-                "resolution_3": MetadataValue.text("Or materialize all drafts: dagster asset materialize --select links_response"),
-                "resolution_4": MetadataValue.text("Verify link_generation_tasks asset was materialized before evaluation_tasks"),
-                "original_error": MetadataValue.text(str(e))
+                "source_asset": MetadataValue.text(str(task_row.get("source_asset"))),
+                "source_dir": MetadataValue.text(str(task_row.get("source_dir"))),
             }
         ) from e
 
@@ -199,25 +160,22 @@ def evaluation_prompt(context, evaluation_tasks) -> str:
             except FileNotFoundError:
                 context.log.warning(f"Evaluation template file not found: {fp}")
     
-    # Generate evaluation prompt using existing logic
-    response_dict = {link_task_id: draft_content}
-    eval_prompts_dict = generate_evaluation_prompts(
-        response_dict,
-        evaluation_tasks.iloc[[task_row.name]],  # Single task
-        evaluation_templates_dict
-    )
-    eval_prompt = eval_prompts_dict[task_id]
-    context.log.info(f"Generated evaluation prompt for task {task_id}, using draft content from {link_task_id}")
+    # Render evaluation template directly for this task
+    template_id = task_row["evaluation_template"]
+    template_content = evaluation_templates_dict[template_id]
+    env = Environment()
+    template = env.from_string(template_content)
+    eval_prompt = template.render(response=draft_content)
+    context.log.info(f"Generated evaluation prompt for task {task_id}")
     
     # Add output metadata for debugging and monitoring
     context.add_output_metadata({
         "evaluation_task_id": MetadataValue.text(task_id),
-        "source_stage": MetadataValue.text("draft"),
-        "link_task_id_used": MetadataValue.text(link_task_id),
-        "draft_content_length": MetadataValue.int(len(draft_content)),
+        "source_stage": MetadataValue.text(str(task_row.get("stage"))),
+        "document_id": MetadataValue.text(str(task_row.get("document_id"))),
+        "document_content_length": MetadataValue.int(len(draft_content)),
         "evaluation_prompt_length": MetadataValue.int(len(eval_prompt)),
-        "fk_relationship": MetadataValue.text(f"eval:{task_id} -> link:{link_task_id}"),
-        "io_manager_base_path": MetadataValue.path(str(draft_io_manager.base_path)),
+        "target_path": MetadataValue.path(str(expected_path)),
         "template_used": MetadataValue.text(task_row["evaluation_template"]),
         "model_planned": MetadataValue.text(task_row["evaluation_model_name"])
     })
