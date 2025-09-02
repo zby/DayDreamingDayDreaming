@@ -377,35 +377,6 @@ def document_index(
                     }
                 )
 
-    # Legacy one-phase essays
-    legacy_dir = data_root / "3_generation" / "generation_responses"
-    if legacy_dir.exists():
-        for fp in legacy_dir.glob("*.txt"):
-            stem = fp.stem
-            parts = stem.split("_")
-            if len(parts) < 3:
-                continue
-            model_id = parts[-1]
-            essay_template = parts[-2]
-            combo_id = "_".join(parts[:-2])
-            rows.append(
-                {
-                    "document_id": stem,
-                    "stage": "essay1p",
-                    "origin": "legacy",
-                    "file_path": str(fp),
-                    "combo_id": combo_id,
-                    "link_template": None,
-                    "essay_template": essay_template,
-                    "generation_model_id": model_id,
-                    "generation_model_name": model_id,
-                    "link_task_id": None,
-                    "essay_task_id": None,
-                    "source_asset": "legacy_generation_response",
-                    "source_dir": "generation_responses",
-                }
-            )
-
     columns = [
         "document_id",
         "stage",
@@ -503,35 +474,6 @@ def evaluation_tasks(
                     "essay_task_id": essay_task_id,
                     "source_asset": "essay_response",
                     "source_dir": "essay_responses",
-                }
-            )
-
-    # Legacy one-phase essays
-    legacy_dir = data_root_path / "3_generation" / "generation_responses"
-    if legacy_dir.exists():
-        for fp in legacy_dir.glob("*.txt"):
-            stem = fp.stem
-            parts = stem.split("_")
-            if len(parts) < 3:
-                continue
-            model_id = parts[-1]
-            essay_template = parts[-2]
-            combo_id = "_".join(parts[:-2])
-            docs.append(
-                {
-                    "document_id": stem,
-                    "stage": "essay1p",
-                    "origin": "legacy",
-                    "file_path": str(fp),
-                    "combo_id": combo_id,
-                    "link_template": None,
-                    "essay_template": essay_template,
-                    "generation_model_id": model_id,
-                    "generation_model_name": model_id,
-                    "link_task_id": None,
-                    "essay_task_id": None,
-                    "source_asset": "legacy_generation_response",
-                    "source_dir": "generation_responses",
                 }
             )
 
