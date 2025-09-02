@@ -319,6 +319,7 @@ def parse_all(
 
         row: Dict[str, Any] = {
             "evaluation_task_id": evaluation_task_id,
+            "document_id": id_parts.get("document_id"),
             "score": result["score"],
             "error": result["error"],
             "evaluation_template": id_parts.get("evaluation_template"),
