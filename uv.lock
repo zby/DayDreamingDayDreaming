@@ -56,6 +56,21 @@ wheels = [
 ]
 
 [[package]]
+name = "ast-grep-cli"
+version = "0.39.4"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/3f/e7/8be151d8fbffcf9fc622c1688754cfd6ea9bba19b1a7c3d7e0579e60e73c/ast_grep_cli-0.39.4.tar.gz", hash = "sha256:8837d005348c91737a085564c1baf9d9a4b54f9c44be10b468be3afb67586734", size = 208708 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/31/23/59536b75dc83d248f8245a1d6918ebb7639605fda54eb2ad4deb28167eb4/ast_grep_cli-0.39.4-py3-none-macosx_10_12_x86_64.macosx_11_0_arm64.macosx_10_12_universal2.whl", hash = "sha256:de6d9381b7344c39de06f5e7d0a3631d6c1ec5a79244ecdd16f33bfefc41aa1c", size = 13865875 },
+    { url = "https://files.pythonhosted.org/packages/e9/71/39d098c944b6977ccb3fd6db32a9fd13f223561ab231915052243875a3d0/ast_grep_cli-0.39.4-py3-none-macosx_10_12_x86_64.whl", hash = "sha256:b856964143f55bfb9cf6671f0225b53d522d9b67cea0fbbbe889addd29f161f2", size = 6937050 },
+    { url = "https://files.pythonhosted.org/packages/eb/7e/be42b2c233a4396aed11e6c1be2733dffc3ddf7a1ef26f2c093f5d9c1894/ast_grep_cli-0.39.4-py3-none-manylinux_2_28_aarch64.whl", hash = "sha256:c780ad5bf728d0b8af4e1117a321112fc840b9225e573eba8cd0ce8278707941", size = 6762118 },
+    { url = "https://files.pythonhosted.org/packages/8e/85/19f8717fd971bfa1fa0d93ad2a253a1fb13cb48993b1caba9b326c2c51ef/ast_grep_cli-0.39.4-py3-none-manylinux_2_28_x86_64.whl", hash = "sha256:2347c8103494763f7db2e5c884ac6bdd368e64c1f2bea59f8ce36222b607303e", size = 7113897 },
+    { url = "https://files.pythonhosted.org/packages/c9/77/a70a079ca5bfcbd25c94b2138b53129c5b2d5db136a70794e541d027ce87/ast_grep_cli-0.39.4-py3-none-win32.whl", hash = "sha256:3c01f1375bcaab110b95d5ce12e6ed4c5b2e5e68efddba8137d7adb105596a9b", size = 6646327 },
+    { url = "https://files.pythonhosted.org/packages/f8/c6/0aaa68465faf327bee3f0f4581eaa4f61e299610a0062d9f5e432221f669/ast_grep_cli-0.39.4-py3-none-win_amd64.whl", hash = "sha256:4da0ef71d0f7d93ad02b2c279b62fc6e4c826e908b7e51d720afddbf963fd1d6", size = 7019243 },
+    { url = "https://files.pythonhosted.org/packages/ad/0a/1ac5a005aec37190682bc7afe0fda79cd43afcdace7b11c0bdaa9f8c1e81/ast_grep_cli-0.39.4-py3-none-win_arm64.whl", hash = "sha256:01d4d833f4c79be27ecc26ded9ed9a83ebf86731304ef79e23715b804cae83f8", size = 6701827 },
+]
+
+[[package]]
 name = "backoff"
 version = "2.2.1"
 source = { registry = "https://pypi.org/simple" }
@@ -422,6 +437,7 @@ version = "0.0.1"
 source = { editable = "." }
 dependencies = [
     { name = "antlr4-python3-runtime" },
+    { name = "ast-grep-cli" },
     { name = "dagster" },
     { name = "dagster-webserver" },
     { name = "jinja2" },
@@ -450,6 +466,7 @@ test = [
 [package.metadata]
 requires-dist = [
     { name = "antlr4-python3-runtime", specifier = ">=4.13.2" },
+    { name = "ast-grep-cli", specifier = ">=0.39.4" },
     { name = "black", marker = "extra == 'dev'", specifier = ">=25.1.0" },
     { name = "dagster", specifier = ">=1.11.5" },
     { name = "dagster-webserver", specifier = ">=1.11.5" },
