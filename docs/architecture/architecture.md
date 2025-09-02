@@ -17,36 +17,34 @@ The DayDreaming pipeline is built on **Dagster**, a modern data orchestration pl
 ## Architecture Diagram
 
 ```
-┌─────────────────┐    ┌─────────────────┐    ┌─────────────────────────────────┐
-│   Raw Data      │    │  Task Generation │    │      Two-Phase LLM Generation   │
-│   (01_raw/)     │───▶│   (02_tasks/)    │───▶│      (03_generation/)           │
-│                 │    │                  │    │                                 │
-│ • Concepts      │    │ • Combinations   │    │ Phase 1: Links Generation       │
-│ • Templates     │    │ • Generation     │    │ ┌─────────────────────────────┐ │
-│   - links/      │    │   Tasks          │    │ │ links_prompt → links_response│ │
-│   - essay/      │    │ • Evaluation     │    │ │ (6-12 concept connections)  │ │
-│ • Models        │    │   Tasks          │    │ └─────────────┬───────────────┘ │
-└─────────────────┘    └─────────────────┘    │               │                 │
-                                              │ Phase 2: Essay Generation      │
-                              ┌───────────────┤ ┌─────────────▼───────────────┐ │
-                              │ Evaluation    │ │ essay_prompt → essay_response│ │
-                              │ (04_eval/)    │ │ (using links as inspiration) │ │
-                              │               │ └─────────────┬───────────────┘ │
-                              │ • Partitioned │ │             │                 │
-                              │   by Task ID  │ │ canonical_generation_response │
-                              │ • Cached      │ └─────────────┬───────────────┘ │
-                              │   Responses   │               │                 │
-                              └───────────────┘               │                 │
-                                       │                      │                 │
-                              ┌─────────────────┐            │                 │
-                              │ Results         │◀───────────┼─────────────────┘
-                              │ (05_parsing/    │            │
-                              │  06_summary/)   │            │
-                              │                 │            │
-                              │ • Parsed Scores │            │
-                              │ • Final Results │◀───────────┘
-                              └─────────────────┘
+┌──────────────┐
+│ Raw (01_raw) │  concepts, templates, models
+└──────┬───────┘
+       │
+       ▼
+┌──────────────────────────────────────────────────────────────┐
+│ Task Definitions (02_tasks)                                   │
+│ • generation_tasks = combos × gen_templates × gen_models      │
+│ • evaluation_tasks = documents × eval_templates × eval_models │
+└───────────────┬───────────────────────────────┬───────────────┘
+                │                               │
+                ▼                               ▼
+┌───────────────────────────────┐        ┌───────────────────────────────┐
+│ Generation (03_generation)    │ ─────► │ Evaluation (04_evaluation)    │
+│ generation_prompt → response  │        │ evaluation_prompt → response  │
+└──────────────┬────────────────┘        └──────────────┬────────────────┘
+               │                                        ▲
+               └─ documents = generation_responses      │ joined by file_path
+                          ∪ curated historical ─────────┘
+
+┌───────────────────────────────┐
+│ Parsing & Summary (05, 06)    │  score parsing, aggregation
+└───────────────────────────────┘
 ```
+
+Dimensionality (axes)
+- Generation: `combos × generation_templates × generation_models → draft documents`.
+- Evaluation: `documents × evaluation_templates × evaluation_models → evaluator outputs`.
 
 ## Dagster Implementation Structure
 
@@ -58,9 +56,8 @@ daydreaming_dagster/
 │   ├── raw_data.py            # Raw data loading assets (supports selective loading)
 │   ├── core.py                # Core processing assets (combinations, tasks)
 │   ├── partitions.py          # Partition management assets
-│   ├── two_phase_generation.py # Two-phase LLM generation assets (NEW)
-│   ├── llm_generation.py      # Legacy single-phase LLM generation assets
-│   ├── parsed_generation.py   # Canonical interface for generation responses (NEW)
+│   ├── llm_generation.py      # Draft generation (single-phase)
+│   ├── parsed_generation.py   # Canonical interface for generation responses
 │   ├── llm_evaluation.py      # LLM evaluation assets
 │   ├── results_processing.py  # Score parsing and analysis
 │   ├── results_summary.py     # Final aggregated results
@@ -85,10 +82,9 @@ Assets are organized into logical groups for easy selection and understanding:
 
 | Group | Assets | Purpose |
 |-------|--------|---------|
-| **`raw_data`** | concepts, llm_models, link_templates, essay_templates, evaluation_templates | Load external data files |
-| **`task_definitions`** | content_combinations, content_combinations_csv, link_generation_tasks, essay_generation_tasks, evaluation_tasks | Generate LLM task definitions (split by phase) |
-| **`generation_links`** 🚀 | links_prompt, links_response | Phase 1: link generation (partitioned by link_task_id) |
-| **`generation_essays`** 🚀 | essay_prompt, essay_response | Phase 2: essay generation (partitioned by essay_task_id) |
+| **`raw_data`** | concepts, llm_models, generation_templates, evaluation_templates | Load external data files |
+| **`task_definitions`** | content_combinations, content_combinations_csv, generation_tasks, evaluation_tasks | Generate LLM task definitions |
+| **`generation`** 🚀 | generation_prompt, generation_response | Draft generation (partitioned by generation_task_id) |
 | **`evaluation`** | evaluation_prompt, evaluation_response | LLM evaluation (partitioned by evaluation_task_id) |
 | **`results_processing`** | parsed_scores | Parse evaluation scores |
 | **`results_summary`** | final_results, perfect_score_paths, generation_scores_pivot, evaluation_model_template_pivot | Final aggregated results |
@@ -100,7 +96,7 @@ Assets are organized into logical groups for easy selection and understanding:
 
 ### 1. Raw Data Loading (`raw_data.py`)
 
-**Assets**: `concepts`, `llm_models`, `link_templates`, `essay_templates`, `evaluation_templates`
+**Assets**: `concepts`, `llm_models`, `generation_templates`, `evaluation_templates`
 
 **Purpose**: Load and validate external data files from `data/1_raw/`.
 Note: Observable source assets were removed for simplicity during development. When inputs change, re‑materialize the raw loader assets to refresh downstream tasks.
@@ -120,7 +116,7 @@ def concepts(context) -> List[Concept]:
     ...  # load from CSV and description files
 ```
 
-LLM generation assets (links/essays/evaluation) remain manual to avoid surprise API usage/costs.
+LLM generation/evaluation assets remain manual to avoid surprise API usage/costs.
 
 ### 2. Core Processing (`core.py`)
 
@@ -162,56 +158,21 @@ LLM generation assets (links/essays/evaluation) remain manual to avoid surprise 
 - Each LLM task becomes an independent partition for caching and recovery
 - Partitions must be registered before partitioned assets can be materialized
 
-### 4. Two-Phase LLM Generation (`two_phase_generation.py`) 🚀 **NEW**
+### 4. LLM Draft Generation (`llm_generation.py`)
 
-**Assets**: `links_prompt`, `links_response`, `essay_prompt`, `essay_response`, `canonical_generation_response`
+**Assets**: `generation_prompt`, `generation_response`, `parsed_generation_responses`
 
-**Purpose**: Execute LLM generation using a two-phase approach for improved quality and consistency
+**Purpose**: Produce a single coherent draft per task using the active generation template and model. Treat this draft as the canonical output of the generation process.
 
-**Architecture Pattern**: Uses "Manual IO with Foreign Keys" pattern for cross-phase data loading
-
-**Phase 1 - Links Generation**:
-```python
-# links_prompt: Generate brainstorming prompts using links/ templates
-# links_response: Generate 6-12 conceptual connection bullet points
-```
-
-**Phase 2 - Essay Generation**:
-```python
-# essay_prompt: Create essay prompts with links_response as inspiration
-# essay_response: Generate 1500-3000 word essays based on selected links
-# canonical_generation_response: Standardized interface for downstream consumption
-```
-
-**Key Features**:
-- **Separated Concerns**: Creative brainstorming vs. structured composition
-- **Quality Validation**: Phase 2 fails if Phase 1 produces < 3 usable links
-- **Cross-Phase Loading**: Essay prompts access links responses using MockLoadContext pattern
-- **Rich Error Handling**: Comprehensive metadata and resolution steps
-- **Backward Compatibility**: `parsed_generation_responses` provides passthrough interface
+**Notes**:
+- Two-phase generation exists historically but is not documented here. This document treats the current draft as the output of generation.
 
 **Template Structure**:
 ```
 data/1_raw/generation_templates/
-├── links/                    # Phase 1 templates
-│   ├── creative-synthesis-v7.txt
-│   └── systematic-analytical.txt
-└── essay/                    # Phase 2 templates
-    ├── creative-synthesis-v7.txt
-    └── systematic-analytical.txt
+  ├── creative-synthesis-v7.txt
+  └── systematic-analytical.txt
 ```
-
-Active Link Template:
-- `rolling-summary-v1` (file: `data/1_raw/generation_templates/links/rolling-summary-v1.txt`, selectable via `data/1_raw/link_templates.csv`).
-- Approach: Build a readable idea thread. Start from C1 as an initial seed (problem or kernel), then attach each subsequent concept to “Idea So Far — i‑1”. Each step selects exactly one link type via a quick Q1→Q5 probe (stop at first yes; earliest‑leaf default; Q1 preference for Mechanism Composition). Record the decision path and any minimal transformation. Update a ≤2‑line “Idea So Far — i”, with optional micro‑test. Final reflections suggest alternative anchors/order without rewriting earlier steps.
-
-
-**Data Flow**:
-1. `links_prompt` loads `links/template.txt` and renders with concepts
-2. `links_response` generates conceptual connections (6-12 bullets)
-3. `essay_prompt` loads links response + `essay/template.txt`, validates links (≥3)
-4. `essay_response` generates comprehensive essay using links as inspiration
-5. `canonical_generation_response` provides standardized output format
 
 ### 5. Legacy LLM Processing (`llm_generation.py`)
 
@@ -221,7 +182,7 @@ Active Link Template:
 
 **Partitioning Strategy**:
 - **Generation**: Partitioned by `{combo_id}_{template}_{model}`
-- **Evaluation**: Partitioned by `{essay_task_id}_{eval_template}_{eval_model}`
+- **Evaluation**: Partitioned by `{generation_task_id}_{eval_template}_{eval_model}`
 
 **Key Features**:
 - **Individual File Storage**: Each prompt/response stored as separate files
@@ -251,24 +212,21 @@ Active Link Template:
 
 ### 7. Cross-Experiment Tracking (`cross_experiment.py`)
 
-**Assets**: `link_generation_results_append`, `essay_generation_results_append`, `evaluation_results_append`, `filtered_evaluation_results`, `template_version_comparison_pivot`
+**Assets**: `generation_results_append`, `evaluation_results_append`, `filtered_evaluation_results`, `template_version_comparison_pivot`
 
 **Purpose**: Automatic tracking and cross-experiment analysis of all LLM responses
 
 **Auto-Materializing Tracking**:
-- **`link_generation_results_append`**: Automatically appends rows to `link_generation_results.csv` when any `links_response` completes
-- **`essay_generation_results_append`**: Automatically appends rows to `essay_generation_results.csv` when any `essay_response` completes
+- **`generation_results_append`**: Automatically appends rows to `generation_results.csv` when any `generation_response` completes
 - **`evaluation_results_append`**: Automatically appends rows to `evaluation_results.csv` when any `evaluation_response` completes
 - **Thread-safe CSV operations**: Uses file locking to handle concurrent updates
 - **Immediate execution**: Uses `AutomationCondition.eager()` for instant updates
 
 **Tracking Tables**:
-- **Link Generation Results**: Metadata for link generation
-  - Columns: `link_task_id`, `combo_id`, `link_template_id`, `generation_model`, `generation_status`, `generation_timestamp`, `response_file`, `response_size_bytes`
-- **Essay Generation Results**: Metadata for essay generation
-  - Columns: `essay_task_id`, `combo_id`, `essay_template_id`, `generation_model`, `generation_status`, `generation_timestamp`, `response_file`, `response_size_bytes`
-- **Evaluation Results**: Complete evaluation metadata with essay context
-  - Columns: `evaluation_task_id`, `essay_task_id`, `combo_id`, `link_template`, `essay_template`, `generation_model`, `evaluation_template`, `evaluation_model`, `evaluation_status`, `evaluation_timestamp`, `eval_response_file`, `eval_response_size_bytes`
+- **Generation Results**: Metadata for draft generation
+  - Columns: `generation_task_id`, `combo_id`, `generation_template_id`, `generation_model`, `generation_status`, `generation_timestamp`, `response_file`, `response_size_bytes`
+- **Evaluation Results**: Complete evaluation metadata with draft context
+  - Columns: `evaluation_task_id`, `generation_task_id`, `combo_id`, `generation_template`, `generation_model`, `evaluation_template`, `evaluation_model`, `evaluation_status`, `evaluation_timestamp`, `eval_response_file`, `eval_response_size_bytes`
 
 **Cross-Experiment Analysis**:
 - **Template comparison**: Compare different template versions across experiments
@@ -278,14 +236,14 @@ Active Link Template:
 **Implementation Details**:
 ```python
 @asset(
-    partitions_def=link_tasks_partitions,
-    deps=["links_response"],
+    partitions_def=generation_tasks_partitions,
+    deps=["generation_response"],
     automation_condition=AutomationCondition.eager(),
     group_name="cross_experiment_tracking"
 )
-def link_generation_results_append(context, link_generation_tasks):
-    # Automatically appends when links_response completes
-    append_to_results_csv("data/7_cross_experiment/link_generation_results.csv", new_row)
+def generation_results_append(context, generation_tasks):
+    # Automatically appends when a generation_response completes
+    append_to_results_csv("data/7_cross_experiment/generation_results.csv", new_row)
 ```
 
 **Bulk Table Generation**:
@@ -380,7 +338,7 @@ The pipeline uses Dagster's dynamic partitioning to create fine-grained, recover
 - Stable combo IDs follow `combo_v1_<12-hex>` (e.g., `combo_v1_1f3a9c2d7b2c_02_problem_solving_deepseek`).
 - Legacy format `combo_XXX_...` remains supported in older artifacts/tests.
 
-**Evaluation Tasks**: `{essay_task}_{eval_template}_{eval_model}/{eval_model_version}`
+**Evaluation Tasks**: `{generation_task}_{eval_template}_{eval_model}/{eval_model_version}`
 - Example with stable ID: `combo_v1_1f3a9c2d7b2c_02_problem_solving_deepseek_creativity_metrics_deepseek/deepseek-r1:free`
 
 ## Storage Architecture
@@ -393,12 +351,8 @@ data/
 │   ├── concepts/
 │   │   ├── day_dreaming_concepts.json
 │   │   └── descriptions/       # Concept descriptions by level
-│   ├── generation_templates/   # Jinja2 prompt template files
-│   │   ├── links/              # Phase 1 template files
-│   │   └── essay/              # Phase 2 template files
+│   ├── generation_templates/   # Jinja2 prompt template files (single-phase)
 │   ├── evaluation_templates/   # Evaluation prompt templates
-│   ├── link_templates.csv      # Link-phase template metadata and active selection
-│   ├── essay_templates.csv     # Essay-phase template metadata and active selection
 │   ├── generation_models.csv   # Available models with active selection
 │   └── evaluation_models.csv   # Available evaluation models
 ├── 02_tasks/                   # Generated task definitions
@@ -435,7 +389,7 @@ data/
 - Dynamic partitions for tasks are cleared and recreated when `generation_tasks`/`evaluation_tasks` run.
 - Prompts are allowed to overwrite to reflect current templates.
 - Responses are write-once by default; existing response files will not be overwritten. Delete files to regenerate or change the partition key.
-- To enable overwriting responses for reruns, set the environment variable `OVERWRITE_GENERATED_FILES=true` (accepted truthy values: `1`, `true`, `yes`, `y`). This applies to links/essays/evaluations response folders; prompts always overwrite.
+- To enable overwriting responses for reruns, set the environment variable `OVERWRITE_GENERATED_FILES=true` (accepted truthy values: `1`, `true`, `yes`, `y`). This applies to generation/evaluation response folders; prompts always overwrite.
 
 ## Performance and Scalability
 
@@ -500,14 +454,13 @@ The evaluation flow is document-centric and decoupled from cross-partition IO. K
 ### Unified Document Axis (document_index)
 
 Each row is one evaluable document with explicit provenance and lookup fields:
-- `document_id`, `stage` (`draft | essay2p | essay1p`), `origin` (`draft | two_phase | legacy`), `file_path`
-- `combo_id`, `link_template`, `essay_template`, `generation_model_id`, `generation_model_name`
-- `link_task_id`, `essay_task_id`, `source_asset`, `source_dir`
+- `document_id`, `stage` (`draft`), `origin` (`draft | legacy`), `file_path`
+- `combo_id`, `generation_template`, `generation_model_id`, `generation_model_name`
+- `generation_task_id`, `source_asset`, `source_dir`
 
 Sources merged:
-- Drafts-as-one-phase (Phase-1 links) from `data/3_generation/links_responses/` (effective `essay1p` for evaluation)
-- Two-phase essays from `data/3_generation/essay_responses/`
-- Curated historical docs added via standard generation task CSVs and files placed under the canonical folders above (no legacy directory scan).
+- Generated drafts from `data/3_generation/generation_responses/`
+- Curated historical docs emitted via standard generation task CSVs and placed under canonical folders (no legacy directory scan).
 
 ### Evaluation Task Identity
 
@@ -522,16 +475,15 @@ Sources merged:
 
 - `parsed_scores` parses evaluator responses and joins denormalized metadata from `evaluation_tasks`.
 - Normalized outputs include `stage`, `origin`, `generation_response_path` (copied from document `file_path`), `source_asset`, `source_dir`.
-- `generation_scores_pivot` pivots by `combo_id`, `stage`, `link_template`, `generation_template`, `generation_model`.
+- `generation_scores_pivot` pivots by `combo_id`, `stage`, `generation_template`, `generation_model`.
 
-### Legacy One-Phase Support (Updated)
+### Legacy Inputs
 
-- The pipeline no longer scans `data/3_generation/generation_responses/` for evaluation task discovery.
-- To evaluate historical one‑phase documents, use an external script to emit standard `essay_generation_tasks.csv` rows and place/symlink the essay texts under `data/3_generation/essay_responses/` with proper `essay_task_id` stems. Evaluation then proceeds as usual.
+- Two-phase artifacts may exist historically but are out of scope for this document. To include older artifacts, convert them to standard draft entries under `data/3_generation/generation_responses/` and emit matching rows in `generation_tasks.csv`.
 
-### Notes (2025-09 Update)
+### Notes
 
-- This section supersedes the older FK-based prompt loading approach (MockLoadContext). The IO-manager FK pattern remains in limited use for two-phase generation (`essay_prompt` loading `links_response`) but evaluation now reads source documents by path for uniformity across stages/sources.
+- Evaluation reads source documents by path for uniformity across stages/sources.
 - Legacy directory scanning has been removed from evaluation task discovery; curated inclusion is handled by writing standard generation task CSVs and placing files in canonical folders.
 
 ## Migration Benefits from Kedro
