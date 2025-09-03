@@ -17,7 +17,7 @@ def generate_evaluation_prompts(
     evaluation_templates: dict[str, str],
 ) -> dict[str, str]:
     """
-    Generate evaluation prompts from draft (links) responses.
+    Generate evaluation prompts from draft responses.
 
     Args:
         draft_responses: Dict mapping link_task_id to response text
@@ -91,7 +91,6 @@ def evaluation_prompt(context, evaluation_tasks) -> str:
         
     Raises:
         Failure: If evaluation_task_id not found in DataFrame
-        Failure: If referenced link_task_id is invalid/empty
         Failure: If file_path is missing or the document file cannot be found
         
     Dependencies:

@@ -1,6 +1,5 @@
 from dagster import asset, Failure, MetadataValue
 from pathlib import Path
-import pandas as pd
 from jinja2 import Environment
 from .partitions import essay_tasks_partitions, draft_tasks_partitions
 from ..utils.template_loader import load_generation_template
@@ -9,6 +8,59 @@ from ..utils.link_parsers import get_link_parser
 from ..utils.dataframe_helpers import get_task_row
 from ..utils.shared_context import MockLoadContext
 
+
+# Reuse a single Jinja environment
+JINJA = Environment()
+
+def _get_essay_generator_mode(data_root: str | Path, template_id: str) -> str | None:
+    """Lookup essay template generator mode (llm/parser/copy)."""
+    df = read_essay_templates(Path(data_root), filter_active=False)
+    if df.empty or "generator" not in df.columns:
+        return None
+    row = df[df["template_id"] == template_id]
+    if row.empty:
+        return None
+    val = row.iloc[0].get("generator")
+    return str(val) if val else None
+
+def _load_phase1_text(context, link_task_id: str) -> tuple[str, str]:
+    """Load Phase‑1 (draft) text with legacy fallbacks.
+
+    Order:
+      1) draft_response_io_manager
+      2) data/3_generation/draft_responses/{id}.txt
+      3) data/3_generation/links_responses/{id}.txt (legacy)
+    Returns (text, source_label).
+    """
+    # 1) IO manager if available
+    draft_io = getattr(context.resources, "draft_response_io_manager", None)
+    if draft_io is not None:
+        try:
+            return draft_io.load_input(MockLoadContext(link_task_id)), "draft_response"
+        except Exception:
+            pass
+
+    # 2) Direct file under draft_responses
+    draft_fp = Path(context.resources.data_root) / "3_generation" / "draft_responses" / f"{link_task_id}.txt"
+    if draft_fp.exists():
+        return draft_fp.read_text(encoding="utf-8"), "draft_file"
+
+    # 3) Legacy file under links_responses
+    legacy_fp = Path(context.resources.data_root) / "3_generation" / "links_responses" / f"{link_task_id}.txt"
+    if legacy_fp.exists():
+        return legacy_fp.read_text(encoding="utf-8"), "links_file"
+
+    raise Failure(
+        description="Draft response not found",
+        metadata={
+            "link_task_id": MetadataValue.text(link_task_id),
+            "expected_draft_path": MetadataValue.path(draft_fp),
+            "legacy_links_path": MetadataValue.path(legacy_fp),
+            "resolution": MetadataValue.text(
+                "Ensure Phase 1 draft exists under draft_responses or copy legacy file from links_responses"
+            ),
+        },
+    )
 
 
 
@@ -118,8 +170,8 @@ def draft_response(context, draft_prompt, draft_generation_tasks) -> str:
 
 def _essay_prompt_impl(context, essay_generation_tasks) -> str:
     """
-    Generate Phase 2 prompts for essay generation based on Phase 1 links.
-    Links are guaranteed to be valid by the links_response asset.
+    Generate Phase 2 prompts for essay generation based on Phase 1 drafts.
+    The Phase‑1 content is loaded from draft_responses with a legacy fallback to links_responses.
     """
     task_id = context.partition_key
     
@@ -128,59 +180,16 @@ def _essay_prompt_impl(context, essay_generation_tasks) -> str:
     template_name = task_row["essay_template"]
 
     # If this essay template is parser-driven, skip heavy prompt rendering
-    data_root = context.resources.data_root
-    essay_templates_df = read_essay_templates(Path(data_root), filter_active=False)
-    generator_mode = None
-    if not essay_templates_df.empty and "generator" in essay_templates_df.columns:
-        row = essay_templates_df[essay_templates_df["template_id"] == template_name]
-        if not row.empty:
-            generator_mode = str(row.iloc[0].get("generator") or "llm")
+    generator_mode = _get_essay_generator_mode(context.resources.data_root, template_name)
     if generator_mode in ("parser", "copy"):
         context.log.info(
             f"Essay template '{template_name}' uses generator='{generator_mode}'; returning placeholder prompt."
         )
         return "PARSER_MODE: no prompt needed"
 
-    # Load draft/links response using FK to link_task_id (prefer draft if available)
+    # Load Phase‑1 text (draft) using FK to link_task_id (with legacy fallback)
     link_task_id = task_row["link_task_id"]
-    links_content = None
-    used_source = "links_response"
-    # Prefer draft_response_io_manager if present
-    draft_io = getattr(context.resources, "draft_response_io_manager", None)
-    if draft_io is not None:
-        try:
-            links_content = draft_io.load_input(MockLoadContext(link_task_id))
-            used_source = "draft_response"
-        except Exception:
-            links_content = None
-    if links_content is None:
-        # Fallbacks for compatibility without requiring legacy IO manager
-        # 1) Try legacy links_response_io_manager if present
-        links_io = getattr(context.resources, "links_response_io_manager", None)
-        if links_io is not None:
-            try:
-                links_content = links_io.load_input(MockLoadContext(link_task_id))
-                used_source = "links_response"
-            except Exception:
-                links_content = None
-        # 2) Read directly from legacy file path if it exists
-        if links_content is None:
-            legacy_fp = Path(context.resources.data_root) / "3_generation" / "links_responses" / f"{link_task_id}.txt"
-            try:
-                links_content = legacy_fp.read_text(encoding="utf-8")
-                used_source = "links_response"
-            except FileNotFoundError:
-                links_content = None
-        if links_content is None:
-            raise Failure(
-                description="Draft/links response not found for essay prompt",
-                metadata={
-                    "link_task_id": MetadataValue.text(link_task_id),
-                    "resolution": MetadataValue.text(
-                        "Ensure Phase 1 draft exists (data/3_generation/draft_responses) or legacy links response (links_responses)"
-                    ),
-                },
-            )
+    links_content, used_source = _load_phase1_text(context, link_task_id)
     links_lines = [line.strip() for line in links_content.split('\n') if line.strip()]
     context.log.info(f"Using {len(links_lines)} validated links from {used_source} for task {task_id}")
     
@@ -200,14 +209,13 @@ def _essay_prompt_impl(context, essay_generation_tasks) -> str:
         )
     
     # Render essay template with links block
-    env = Environment()
-    template = env.from_string(template_content)
+    template = JINJA.from_string(template_content)
     prompt = template.render(links_block=links_content)
     
     context.log.info(f"Generated essay prompt for task {task_id} with {len(links_lines)} links")
     context.add_output_metadata({
         "links_line_count": MetadataValue.int(len(links_lines)),
-        "fk_relationship": MetadataValue.text(f"essay_prompt:{task_id} -> {used_source}:{task_id}")
+        "fk_relationship": MetadataValue.text(f"essay_prompt:{task_id} -> {used_source}:{link_task_id}")
     })
     
     return prompt
@@ -236,41 +244,14 @@ def _essay_response_impl(context, essay_prompt, essay_generation_tasks) -> str:
     task_row = get_task_row(essay_generation_tasks, "essay_task_id", task_id, context, "essay_generation_tasks")
     
     template_name = task_row["essay_template"]
-    data_root = context.resources.data_root
-    essay_templates_df = read_essay_templates(Path(data_root), filter_active=False)
-    generator_mode = None
-    if not essay_templates_df.empty and "generator" in essay_templates_df.columns:
-        row = essay_templates_df[essay_templates_df["template_id"] == template_name]
-        if not row.empty:
-            generator_mode = str(row.iloc[0].get("generator") or "llm")
+    generator_mode = _get_essay_generator_mode(context.resources.data_root, template_name)
 
     if generator_mode == "parser":
         # Parser mode: read links response, extract final idea, return it
         link_task_id = task_row["link_task_id"]
         link_template = task_row.get("link_template")
 
-        # Prefer draft responses, fallback to links
-        links_content = None
-        draft_io = getattr(context.resources, "draft_response_io_manager", None)
-        if draft_io is not None:
-            try:
-                links_content = draft_io.load_input(MockLoadContext(link_task_id))
-            except Exception:
-                links_content = None
-        if links_content is None:
-            # Fallback: read directly from expected draft file path under data_root
-            draft_fp = Path(context.resources.data_root) / "3_generation" / "draft_responses" / f"{link_task_id}.txt"
-            if draft_fp.exists():
-                links_content = draft_fp.read_text(encoding="utf-8")
-            else:
-                raise Failure(
-                    description="Draft response not available for parser mode",
-                    metadata={
-                        "link_task_id": MetadataValue.text(link_task_id),
-                        "expected_path": MetadataValue.path(draft_fp),
-                        "resolution": MetadataValue.text("Ensure Phase 1 draft file exists for this task"),
-                    },
-                )
+        links_content, _ = _load_phase1_text(context, link_task_id)
 
         # Determine parser from draft_templates.csv (no in-code mapping)
         data_root = context.resources.data_root
@@ -321,7 +302,7 @@ def _essay_response_impl(context, essay_prompt, essay_generation_tasks) -> str:
             parser_fallback = "no_essay_idea_tags"
 
         context.log.info(
-            f"Parsed essay from links for task {task_id} (parser={parser_name}, link_template={link_template})"
+            f"Parsed essay from draft for task {task_id} (parser={parser_name}, link_template={link_template})"
         )
         context.add_output_metadata(
             {
@@ -338,30 +319,10 @@ def _essay_response_impl(context, essay_prompt, essay_generation_tasks) -> str:
     if generator_mode == "copy":
         # Copy mode: read links response and return verbatim
         link_task_id = task_row["link_task_id"]
-        # Prefer draft responses
-        links_content = None
-        draft_io = getattr(context.resources, "draft_response_io_manager", None)
-        if draft_io is not None:
-            try:
-                links_content = draft_io.load_input(MockLoadContext(link_task_id))
-            except Exception:
-                links_content = None
-        if links_content is None:
-            draft_fp = Path(context.resources.data_root) / "3_generation" / "draft_responses" / f"{link_task_id}.txt"
-            if draft_fp.exists():
-                links_content = draft_fp.read_text(encoding="utf-8")
-            else:
-                raise Failure(
-                    description="Draft response not available for copy mode",
-                    metadata={
-                        "link_task_id": MetadataValue.text(link_task_id),
-                        "expected_path": MetadataValue.path(draft_fp),
-                        "resolution": MetadataValue.text("Ensure Phase 1 draft file exists for this task"),
-                    },
-                )
+        links_content, _ = _load_phase1_text(context, link_task_id)
 
         context.log.info(
-            f"Copied essay from links for task {task_id} (mode=copy)"
+            f"Copied essay from draft for task {task_id} (mode=copy)"
         )
         context.add_output_metadata(
             {
