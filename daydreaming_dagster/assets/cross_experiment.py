@@ -284,6 +284,8 @@ def evaluation_results_append(context, evaluation_tasks, essay_generation_tasks)
         "evaluation_task_id": task_id,
         "essay_task_id": essay_task_id,
         "combo_id": essay_row["combo_id"],
+        # Prefer draft_template; keep link_template for backward compatibility
+        "draft_template": essay_row.get("draft_template", essay_row.get("link_template", "unknown")),
         "link_template": essay_row.get("link_template", "unknown"),
         "essay_template": essay_row["essay_template"],
         "generation_model": essay_row["generation_model_name"],
@@ -310,6 +312,7 @@ def evaluation_results_append(context, evaluation_tasks, essay_generation_tasks)
             "combo_id": MetadataValue.text(essay_row["combo_id"]),
             "evaluation_template": MetadataValue.text(eval_task_row["evaluation_template"]),
             "evaluation_model": MetadataValue.text(eval_task_row["evaluation_model_name"]),
+            "draft_template": MetadataValue.text(essay_row.get("draft_template", essay_row.get("link_template", "unknown"))),
             "link_template": MetadataValue.text(essay_row.get("link_template", "unknown")),
             "essay_template": MetadataValue.text(essay_row["essay_template"]),
             "generation_model": MetadataValue.text(essay_row["generation_model_name"]),

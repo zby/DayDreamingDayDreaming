@@ -249,7 +249,8 @@ def _essay_response_impl(context, essay_prompt, essay_generation_tasks) -> str:
     if generator_mode == "parser":
         # Parser mode: read links response, extract final idea, return it
         link_task_id = task_row["link_task_id"]
-        link_template = task_row.get("link_template")
+        # Prefer draft_template; fallback to legacy link_template
+        link_template = task_row.get("draft_template") or task_row.get("link_template")
 
         links_content, _ = _load_phase1_text(context, link_task_id)
 
