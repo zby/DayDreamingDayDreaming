@@ -91,16 +91,16 @@ def main() -> int:
     # Build curated generation task CSVs (essays and drafts)
     models_csv = Path("data/1_raw/llm_models.csv")
     essay_dir = Path("data/3_generation/essay_responses")
-    links_dir = Path("data/3_generation/draft_responses")
-    if not links_dir.exists():
-        links_dir = Path("data/3_generation/links_responses")
+    drafts_dir = Path("data/3_generation/draft_responses")
+    if not drafts_dir.exists():
+        drafts_dir = Path("data/3_generation/links_responses")  # legacy fallback
     essay_out_csv = Path("data/2_tasks/essay_generation_tasks.csv")
     link_out_csv = Path("data/2_tasks/draft_generation_tasks.csv")
-    link_tpl_csv = Path("data/1_raw/draft_templates.csv")
-    if not link_tpl_csv.exists():
-        alt = Path("data/1_raw/link_templates.csv")
+    draft_tpl_csv = Path("data/1_raw/draft_templates.csv")
+    if not draft_tpl_csv.exists():
+        alt = Path("data/1_raw/link_templates.csv")  # legacy fallback
         if alt.exists():
-            link_tpl_csv = alt
+            draft_tpl_csv = alt
     essay_tpl_csv = Path("data/1_raw/essay_templates.csv")
 
     # Load model mapping id -> provider/model name
@@ -114,13 +114,13 @@ def main() -> int:
             print(f"Warning: failed to read model mapping ({e}); will use model ids as names", file=sys.stderr)
 
     # Load known templates to parse IDs robustly
-    link_tpls: set[str] = set()
+    draft_tpls: set[str] = set()
     essay_tpls: set[str] = set()
     try:
-        if link_tpl_csv.exists():
-            ldf = pd.read_csv(link_tpl_csv)
+        if draft_tpl_csv.exists():
+            ldf = pd.read_csv(draft_tpl_csv)
             if "template_id" in ldf.columns:
-                link_tpls = set(ldf["template_id"].astype(str))
+                draft_tpls = set(ldf["template_id"].astype(str))
         if essay_tpl_csv.exists():
             edf = pd.read_csv(essay_tpl_csv)
             if "template_id" in edf.columns:
@@ -129,7 +129,7 @@ def main() -> int:
         print(f"Warning: failed to read template CSVs ({e}); falling back to naive parsing", file=sys.stderr)
 
     essay_rows = []
-    link_rows = []
+    draft_rows = []
     missing_essays = []
     missing_links = []
 
@@ -138,7 +138,7 @@ def main() -> int:
 
         # Try to detect essay vs draft by locating an essay template token
         essay_template = None
-        link_template = None
+        draft_template = None
         generation_model = None
         combo_id = None
 
@@ -150,54 +150,52 @@ def main() -> int:
                     e_idx = i
                     break
         if e_idx is not None:
-            # Essay doc id: find last link template before essay
+            # Essay doc id: find last draft template before essay (legacy: link template)
             l_idx = None
-            if link_tpls:
+            if draft_tpls:
                 for j in range(e_idx - 1, -1, -1):
-                    if parts[j] in link_tpls:
-                        link_template = parts[j]
+                    if parts[j] in draft_tpls:
+                        draft_template = parts[j]
                         l_idx = j
                         break
             if l_idx is None and len(parts) >= 4:
                 # Fallback naive positions
-                link_template = parts[-3]
+                draft_template = parts[-3]
                 l_idx = len(parts) - 3
             gen_tokens = parts[(l_idx + 1) if l_idx is not None else 0 : e_idx]
             generation_model = "_".join(gen_tokens) if gen_tokens else None
             combo_id = "_".join(parts[: (l_idx if l_idx is not None else 0)]) or None
 
-            if not (combo_id and link_template and generation_model and essay_template):
+            if not (combo_id and draft_template and generation_model and essay_template):
                 print(f"Skipping malformed essay id: {doc}", file=sys.stderr)
                 continue
 
-            link_task_id = f"{combo_id}_{link_template}_{generation_model}"
+            draft_task_id = f"{combo_id}_{draft_template}_{generation_model}"
             fp = essay_dir / f"{doc}.txt"
             if not fp.exists():
                 missing_essays.append(str(fp))
             essay_rows.append({
                 "essay_task_id": doc,
-                "draft_task_id": link_task_id,
-                "link_task_id": link_task_id,
+                "draft_task_id": draft_task_id,
                 "combo_id": combo_id,
-                "draft_template": link_template,
-                "link_template": link_template,
+                "draft_template": draft_template,
                 "essay_template": essay_template,
                 "generation_model": generation_model,
                 "generation_model_name": model_map.get(generation_model, generation_model),
             })
         else:
-            # Draft doc id: locate link template and model
+            # Draft doc id: locate draft template and model (legacy: link template)
             l_idx = None
-            if link_tpls:
+            if draft_tpls:
                 for i in range(len(parts)-1, -1, -1):
-                    if parts[i] in link_tpls:
+                    if parts[i] in draft_tpls:
                         l_idx = i
-                        link_template = parts[i]
+                        draft_template = parts[i]
                         break
             if l_idx is None:
-                # Fallback naive for drafts: expect combo + link_template + model
+                # Fallback naive for drafts: expect combo + draft_template + model
                 if len(parts) >= 3:
-                    link_template = parts[-2]
+                    draft_template = parts[-2]
                     generation_model = parts[-1]
                     combo_id = "_".join(parts[:-2])
                 else:
@@ -206,17 +204,17 @@ def main() -> int:
             else:
                 generation_model = "_".join(parts[l_idx+1:]) if l_idx+1 < len(parts) else None
                 combo_id = "_".join(parts[:l_idx]) if l_idx > 0 else None
-            if not (combo_id and link_template and generation_model):
+            if not (combo_id and draft_template and generation_model):
                 print(f"Skipping malformed draft id (parsed): {doc}", file=sys.stderr)
                 continue
-            link_task_id = doc  # For drafts, document_id equals link_task_id
-            fp = links_dir / f"{link_task_id}.txt"
+            draft_task_id = doc  # For drafts, document_id equals draft_task_id
+            fp = drafts_dir / f"{draft_task_id}.txt"
             if not fp.exists():
                 missing_links.append(str(fp))
-            link_rows.append({
-                "draft_task_id": link_task_id,
+            draft_rows.append({
+                "draft_task_id": draft_task_id,
                 "combo_id": combo_id,
-                "draft_template": link_template,
+                "draft_template": draft_template,
                 "generation_model": generation_model,
                 "generation_model_name": model_map.get(generation_model, generation_model),
             })
@@ -225,15 +223,15 @@ def main() -> int:
     essay_out_csv.parent.mkdir(parents=True, exist_ok=True)
     if essay_rows:
         pd.DataFrame(essay_rows, columns=[
-            "essay_task_id","draft_task_id","link_task_id","combo_id","draft_template","link_template",
+            "essay_task_id","draft_task_id","combo_id","draft_template",
             "essay_template","generation_model","generation_model_name"
         ]).drop_duplicates(subset=["essay_task_id"]).to_csv(essay_out_csv, index=False)
         print(f"Wrote {len(essay_rows)} curated essay tasks to {essay_out_csv}")
-    if link_rows:
-        pd.DataFrame(link_rows, columns=[
+    if draft_rows:
+        pd.DataFrame(draft_rows, columns=[
             "draft_task_id","combo_id","draft_template","generation_model","generation_model_name"
         ]).drop_duplicates(subset=["draft_task_id"]).to_csv(link_out_csv, index=False)
-        print(f"Wrote {len(link_rows)} curated draft tasks to {link_out_csv}")
+        print(f"Wrote {len(draft_rows)} curated draft tasks to {link_out_csv}")
 
     if missing_essays:
         print("Warning: missing essay files (evaluation will fail for these if run):", file=sys.stderr)
