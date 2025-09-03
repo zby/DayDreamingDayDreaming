@@ -188,7 +188,7 @@ def _essay_prompt_impl(context, essay_generation_tasks) -> str:
         return "PARSER_MODE: no prompt needed"
 
     # Load Phase‑1 text (draft) using FK to link_task_id (with legacy fallback)
-    link_task_id = task_row["link_task_id"]
+    link_task_id = task_row.get("draft_task_id") or task_row.get("link_task_id")
     links_content, used_source = _load_phase1_text(context, link_task_id)
     links_lines = [line.strip() for line in links_content.split('\n') if line.strip()]
     context.log.info(f"Using {len(links_lines)} validated links from {used_source} for task {task_id}")
@@ -248,7 +248,7 @@ def _essay_response_impl(context, essay_prompt, essay_generation_tasks) -> str:
 
     if generator_mode == "parser":
         # Parser mode: read links response, extract final idea, return it
-        link_task_id = task_row["link_task_id"]
+        link_task_id = task_row.get("draft_task_id") or task_row.get("link_task_id")
         # Prefer draft_template; fallback to legacy link_template
         link_template = task_row.get("draft_template") or task_row.get("link_template")
 
@@ -319,7 +319,7 @@ def _essay_response_impl(context, essay_prompt, essay_generation_tasks) -> str:
 
     if generator_mode == "copy":
         # Copy mode: read links response and return verbatim
-        link_task_id = task_row["link_task_id"]
+        link_task_id = task_row.get("draft_task_id") or task_row.get("link_task_id")
         links_content, _ = _load_phase1_text(context, link_task_id)
 
         context.log.info(
