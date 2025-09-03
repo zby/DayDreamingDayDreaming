@@ -417,6 +417,7 @@ def document_index(
 def evaluation_tasks(
     context,
     essay_generation_tasks: pd.DataFrame,
+    draft_generation_tasks: pd.DataFrame,
 ) -> pd.DataFrame:
     """Create evaluation tasks (document × evaluation_template × evaluation_model)."""
     data_root = context.resources.data_root
@@ -432,7 +433,7 @@ def evaluation_tasks(
     data_root_path = _Path(data_root)
     docs: List[dict] = []
 
-    # Two-phase essays (and drafts as one-phase if included via document_index above)
+    # Two-phase essays
     essay_dir = data_root_path / "3_generation" / "essay_responses"
     if not essay_generation_tasks.empty:
         for _, row in essay_generation_tasks.iterrows():
@@ -454,6 +455,32 @@ def evaluation_tasks(
                     "essay_task_id": essay_task_id,
                     "source_asset": "essay_response",
                     "source_dir": "essay_responses",
+                }
+            )
+
+    # Drafts as one-phase documents (optional)
+    draft_dir = data_root_path / "3_generation" / "draft_responses"
+    if not draft_generation_tasks.empty:
+        for _, row in draft_generation_tasks.iterrows():
+            draft_task_id = row.get("draft_task_id") or row.get("link_task_id")
+            if not isinstance(draft_task_id, str) or not draft_task_id:
+                continue
+            fp = draft_dir / f"{draft_task_id}.txt"
+            docs.append(
+                {
+                    "document_id": draft_task_id,
+                    "stage": "essay1p",
+                    "origin": "draft",
+                    "file_path": str(fp),
+                    "combo_id": row.get("combo_id"),
+                    "draft_template": row.get("draft_template") or row.get("link_template"),
+                    "essay_template": None,
+                    "generation_model_id": row.get("generation_model"),
+                    "generation_model_name": row.get("generation_model_name"),
+                    "draft_task_id": draft_task_id,
+                    "essay_task_id": None,
+                    "source_asset": "draft_response",
+                    "source_dir": "draft_responses",
                 }
             )
 
