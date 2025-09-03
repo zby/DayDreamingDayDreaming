@@ -7,7 +7,7 @@ This note defines the “Active Experiment Cube” (aka current experiment) and 
 - Active Experiment Cube (AEC): The working set of combinations we intend to materialize now.
 - Defined by “active” flags in raw config tables and model capabilities:
   - Concepts: `data/1_raw/concepts_metadata.csv` (column `active`)
-  - Link templates: `data/1_raw/link_templates.csv` (column `active`)
+  - Link templates: `data/1_raw/link_templates.csv` (columns `active`, `parser` for parser-mode essays; parser names are defined in `daydreaming_dagster/utils/link_parsers.py`)
   - Essay templates: `data/1_raw/essay_templates.csv` (column `active`)
   - Evaluation templates: `data/1_raw/evaluation_templates.csv` (column `active`)
   - LLM models: `data/1_raw/llm_models.csv` (columns `for_generation`, `for_evaluation`)

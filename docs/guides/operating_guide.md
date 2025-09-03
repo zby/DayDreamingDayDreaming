@@ -119,15 +119,17 @@ This drives the first pipeline step to regenerate `content_combinations` using o
 Edit the template CSV files to control which templates are active:
 
 **Link Templates** (`data/1_raw/link_templates.csv`):
-- Set desired link-phase templates to `active: true` (set all others to `false`).
-- Active by default in this repo: `rolling-summary-v1` (readable idea-thread recursion with enforced link types and rolling summaries).
+- Columns: `template_id`, `template_name`, `description`, `active`, `parser`.
+- Control which link-phase templates are used by setting `active: true` (set others to `false`).
+- Parser column: if an essay template runs in parser mode, the corresponding link template row must specify a valid `parser` name (e.g., `essay_idea_last`) or essay parsing will fail fast.
+- Parser registry: supported parser names are defined in `daydreaming_dagster/utils/link_parsers.py`. To add a new parser, implement and register it there.
 - To introduce a new link template:
   - Add a file under `data/1_raw/generation_templates/links/<template_id>.txt`.
-  - Add a row to `data/1_raw/link_templates.csv` with the same `template_id` and set `active=true`.
+  - Add a row to `data/1_raw/link_templates.csv` with the same `template_id`, set `active=true`, and (if it will feed parser-mode essays) set `parser` accordingly.
 
 **Essay Templates** (`data/1_raw/essay_templates.csv`):
-- Set desired essay-phase templates to `active: true`  
-- Currently only `creative-synthesis-v10` is available
+- Set desired essay-phase templates to `active: true`.
+- Some essay templates can operate in parser mode (reading Phase 1 outputs). When using parser mode, ensure the link template has a valid `parser` set in `link_templates.csv`.
 
 This limits generation to specific prompt styles for each phase of the two-phase generation process. You can also override the template root by setting `GEN_TEMPLATES_ROOT` (defaults to `data/1_raw/generation_templates`).
 
