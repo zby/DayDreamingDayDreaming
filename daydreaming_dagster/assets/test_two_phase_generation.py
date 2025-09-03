@@ -58,52 +58,52 @@ class TestPromptGeneration:
         assert "• Link 3" in result
 
 
-class TestLinksValidation:
-    """Test links content validation logic - CRITICAL BUSINESS RULE."""
+class TestDraftValidation:
+    """Test draft content validation logic (Phase‑1 lines) - CRITICAL BUSINESS RULE."""
     
-    def validate_links_count(self, links_content: str) -> int:
-        """Extract the actual validation logic from essay_prompt asset."""
-        links_lines = [line.strip() for line in links_content.split('\n') if line.strip()]
-        return len(links_lines)
+    def count_draft_lines(self, draft_text: str) -> int:
+        """Extract the line-count validation logic used by the essay_prompt asset."""
+        draft_lines = [line.strip() for line in draft_text.split('\n') if line.strip()]
+        return len(draft_lines)
     
-    def test_sufficient_links_validation(self):
-        """Test that sufficient links (>=3) pass validation."""
-        links_content = "• Link 1\n• Link 2\n• Link 3\n• Link 4"
-        count = self.validate_links_count(links_content)
+    def test_sufficient_draft_lines_validation(self):
+        """Test that sufficient draft lines (>=3) pass validation."""
+        draft_text = "• Link 1\n• Link 2\n• Link 3\n• Link 4"
+        count = self.count_draft_lines(draft_text)
         
         assert count >= 3
         assert count == 4
     
-    def test_minimum_links_boundary(self):
-        """Test exactly 3 links (boundary condition)."""
-        links_content = "• Link 1\n• Link 2\n• Link 3"
-        count = self.validate_links_count(links_content)
+    def test_minimum_draft_lines_boundary(self):
+        """Test exactly 3 draft lines (boundary condition)."""
+        draft_text = "• Link 1\n• Link 2\n• Link 3"
+        count = self.count_draft_lines(draft_text)
         
         assert count >= 3
         assert count == 3
     
-    def test_insufficient_links_validation(self):
-        """Test that insufficient links (<3) fail validation."""
+    def test_insufficient_draft_lines_validation(self):
+        """Test that insufficient draft lines (<3) fail validation."""
         test_cases = [
             ("• Link 1\n• Link 2", 2),
             ("• Link 1", 1),
         ]
         
-        for links_content, expected_count in test_cases:
-            count = self.validate_links_count(links_content)
+        for draft_text, expected_count in test_cases:
+            count = self.count_draft_lines(draft_text)
             assert count < 3
             assert count == expected_count
     
-    def test_empty_links_validation(self):
-        """Test that empty links fail validation."""
-        links_content = ""
-        count = self.validate_links_count(links_content)
+    def test_empty_draft_lines_validation(self):
+        """Test that empty draft input fails validation."""
+        draft_text = ""
+        count = self.count_draft_lines(draft_text)
         
         assert count == 0
         assert count < 3
     
-    def test_whitespace_only_links_validation(self):
-        """Test that whitespace-only content fails validation."""
+    def test_whitespace_only_draft_lines_validation(self):
+        """Test that whitespace-only draft content fails validation."""
         test_cases = [
             "   \n\n   \n",
             "\t\t\t",
@@ -111,15 +111,15 @@ class TestLinksValidation:
             "\n\n\n",
         ]
         
-        for links_content in test_cases:
-            count = self.validate_links_count(links_content)
+        for draft_text in test_cases:
+            count = self.count_draft_lines(draft_text)
             assert count == 0
             assert count < 3
     
-    def test_mixed_empty_and_valid_lines(self):
-        """Test links with empty lines mixed in."""
-        links_content = "• Link 1\n\n• Link 2\n   \n• Link 3\n\t\n• Link 4"
-        count = self.validate_links_count(links_content)
+    def test_mixed_empty_and_valid_draft_lines(self):
+        """Test draft lines with empty lines mixed in."""
+        draft_text = "• Link 1\n\n• Link 2\n   \n• Link 3\n\t\n• Link 4"
+        count = self.count_draft_lines(draft_text)
         
         assert count >= 3
         assert count == 4  # Should ignore empty/whitespace lines
