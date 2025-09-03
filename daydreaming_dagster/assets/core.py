@@ -393,13 +393,16 @@ def document_index(
 
     rows: _List[dict] = []
 
-    # Drafts (effective one-phase)
-    draft_dir = data_root / "3_generation" / "links_responses"
-    if not link_generation_tasks.empty and draft_dir.exists():
+    # Drafts (effective one-phase) — support both legacy links_responses and new draft_responses
+    legacy_draft_dir = data_root / "3_generation" / "links_responses"
+    new_draft_dir = data_root / "3_generation" / "draft_responses"
+    if not link_generation_tasks.empty and (legacy_draft_dir.exists() or new_draft_dir.exists()):
         for _, row in link_generation_tasks.iterrows():
             link_task_id = row["link_task_id"]
-            fp = draft_dir / f"{link_task_id}.txt"
-            if fp.exists():
+            fp_legacy = legacy_draft_dir / f"{link_task_id}.txt"
+            fp_new = new_draft_dir / f"{link_task_id}.txt"
+            fp = fp_new if fp_new.exists() else fp_legacy
+            if fp and fp.exists():
                 rows.append(
                     {
                         "document_id": link_task_id,
@@ -413,8 +416,8 @@ def document_index(
                         "generation_model_name": row["generation_model_name"],
                         "link_task_id": link_task_id,
                         "essay_task_id": None,
-                        "source_asset": "links_response",
-                        "source_dir": "links_responses",
+                        "source_asset": "draft_response" if fp_new.exists() else "links_response",
+                        "source_dir": "draft_responses" if fp_new.exists() else "links_responses",
                     }
                 )
 

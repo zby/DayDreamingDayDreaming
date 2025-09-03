@@ -63,7 +63,10 @@ def rebuild_two_phase_generation_results() -> int:
     essay_tasks = _safe_read_csv(Path("data/2_tasks/essay_generation_tasks.csv"))
 
     # Links
-    links_dir = Path("data/3_generation/links_responses")
+    # Support both legacy and new draft locations
+    links_dir = Path("data/3_generation/draft_responses")
+    if not links_dir.exists():
+        links_dir = Path("data/3_generation/links_responses")
     if links_dir.exists():
         print(f"🔍 Scanning {links_dir} for link responses...")
         for f in links_dir.glob("*.txt"):
@@ -83,7 +86,7 @@ def rebuild_two_phase_generation_results() -> int:
                 "generation_model": row["generation_model_name"],
                 "generation_status": "success",
                 "generation_timestamp": datetime.fromtimestamp(f.stat().st_mtime).isoformat(),
-                "response_file": f"links_responses/{link_task_id}.txt",
+                "response_file": f"{links_dir.name}/{link_task_id}.txt",
                 "response_size_bytes": f.stat().st_size,
             }
             append_to_results_csv("data/7_cross_experiment/link_generation_results.csv", new_row)
