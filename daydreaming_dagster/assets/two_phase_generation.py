@@ -255,14 +255,24 @@ def _essay_prompt_impl(context, essay_generation_tasks) -> str:
         )
         return "PARSER_MODE: no prompt needed"
 
-    # Load links_response using FK to link_task_id
+    # Load draft/links response using FK to link_task_id (prefer draft if available)
     link_task_id = task_row["link_task_id"]
-    links_io = context.resources.links_response_io_manager
-
-    links_context = MockLoadContext(link_task_id)
-    links_content = links_io.load_input(links_context)
+    links_content = None
+    used_source = "links_response"
+    # Prefer draft_response_io_manager if present
+    draft_io = getattr(context.resources, "draft_response_io_manager", None)
+    if draft_io is not None:
+        try:
+            links_content = draft_io.load_input(MockLoadContext(link_task_id))
+            used_source = "draft_response"
+        except Exception:
+            links_content = None
+    if links_content is None:
+        links_io = context.resources.links_response_io_manager
+        links_content = links_io.load_input(MockLoadContext(link_task_id))
+        used_source = "links_response"
     links_lines = [line.strip() for line in links_content.split('\n') if line.strip()]
-    context.log.info(f"Using {len(links_lines)} validated links from links_response for task {task_id}")
+    context.log.info(f"Using {len(links_lines)} validated links from {used_source} for task {task_id}")
     
     # Load the essay phase template
     try:
@@ -287,7 +297,7 @@ def _essay_prompt_impl(context, essay_generation_tasks) -> str:
     context.log.info(f"Generated essay prompt for task {task_id} with {len(links_lines)} links")
     context.add_output_metadata({
         "links_line_count": MetadataValue.int(len(links_lines)),
-        "fk_relationship": MetadataValue.text(f"essay_prompt:{task_id} -> links_response:{task_id}")
+        "fk_relationship": MetadataValue.text(f"essay_prompt:{task_id} -> {used_source}:{task_id}")
     })
     
     return prompt
@@ -329,9 +339,17 @@ def _essay_response_impl(context, essay_prompt, essay_generation_tasks) -> str:
         link_task_id = task_row["link_task_id"]
         link_template = task_row.get("link_template")
 
-        links_io = context.resources.links_response_io_manager
-        links_context = MockLoadContext(link_task_id)
-        links_content = links_io.load_input(links_context)
+        # Prefer draft responses, fallback to links
+        links_content = None
+        draft_io = getattr(context.resources, "draft_response_io_manager", None)
+        if draft_io is not None:
+            try:
+                links_content = draft_io.load_input(MockLoadContext(link_task_id))
+            except Exception:
+                links_content = None
+        if links_content is None:
+            links_io = context.resources.links_response_io_manager
+            links_content = links_io.load_input(MockLoadContext(link_task_id))
 
         # Determine parser from link_templates.csv (no in-code mapping)
         data_root = context.resources.data_root
@@ -399,9 +417,17 @@ def _essay_response_impl(context, essay_prompt, essay_generation_tasks) -> str:
     if generator_mode == "copy":
         # Copy mode: read links response and return verbatim
         link_task_id = task_row["link_task_id"]
-        links_io = context.resources.links_response_io_manager
-        links_context = MockLoadContext(link_task_id)
-        links_content = links_io.load_input(links_context)
+        # Prefer draft responses
+        links_content = None
+        draft_io = getattr(context.resources, "draft_response_io_manager", None)
+        if draft_io is not None:
+            try:
+                links_content = draft_io.load_input(MockLoadContext(link_task_id))
+            except Exception:
+                links_content = None
+        if links_content is None:
+            links_io = context.resources.links_response_io_manager
+            links_content = links_io.load_input(MockLoadContext(link_task_id))
 
         context.log.info(
             f"Copied essay from links for task {task_id} (mode=copy)"

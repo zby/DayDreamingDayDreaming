@@ -189,6 +189,11 @@ def get_all_current_generations(
     essay_templates_df = pd.read_csv(essay_templates_path)
     active_essay_templates = set(essay_templates_df[essay_templates_df['active'] == True]['template_id'].tolist())
     
+    # Support draft_templates.csv during transition
+    if not os.path.exists(link_templates_path):
+        alt = Path(link_templates_path).parent / "draft_templates.csv"
+        if alt.exists():
+            link_templates_path = str(alt)
     link_templates_df = pd.read_csv(link_templates_path)
     active_link_templates = set(link_templates_df[link_templates_df['active'] == True]['template_id'].tolist())
     
@@ -331,9 +336,9 @@ def get_top_from_big_pivot(
 
 def copy_essays_with_links(essay_paths: List[str], generation_info: List[dict],
                           essay_responses_dir: str = "data/3_generation/essay_responses",
-                          links_responses_dir: str = "data/3_generation/links_responses", 
+                          links_responses_dir: str = "data/3_generation/draft_responses", 
                           essay_templates_dir: str = "data/1_raw/generation_templates/essay",
-                          links_templates_dir: str = "data/1_raw/generation_templates/links",
+                          links_templates_dir: str = "data/1_raw/generation_templates/draft",
                           evaluation_responses_dir: str = "data/4_evaluation/evaluation_responses",
                           evaluation_model_id: str = "sonnet-4",
                           evaluation_output_subdir: str = "evaluations_sonnet",
@@ -357,8 +362,16 @@ def copy_essays_with_links(essay_paths: List[str], generation_info: List[dict],
     # Convert to Path objects for easier manipulation
     essay_responses_path = Path(essay_responses_dir)
     links_responses_path = Path(links_responses_dir)
+    if not links_responses_path.exists():
+        legacy = Path("data/3_generation/links_responses")
+        if legacy.exists():
+            links_responses_path = legacy
     essay_templates_path = Path(essay_templates_dir)
     links_templates_path = Path(links_templates_dir)
+    if not links_templates_path.exists():
+        legacy_tpl = Path("data/1_raw/generation_templates/links")
+        if legacy_tpl.exists():
+            links_templates_path = legacy_tpl
     evaluation_responses_path = Path(evaluation_responses_dir)
     output_path = Path(output_dir)
     eval_output_path = output_path / evaluation_output_subdir

@@ -90,10 +90,16 @@ def main() -> int:
     # Build curated generation task CSVs (essays and drafts)
     models_csv = Path("data/1_raw/llm_models.csv")
     essay_dir = Path("data/3_generation/essay_responses")
-    links_dir = Path("data/3_generation/links_responses")
+    links_dir = Path("data/3_generation/draft_responses")
+    if not links_dir.exists():
+        links_dir = Path("data/3_generation/links_responses")
     essay_out_csv = Path("data/2_tasks/essay_generation_tasks.csv")
     link_out_csv = Path("data/2_tasks/link_generation_tasks.csv")
     link_tpl_csv = Path("data/1_raw/link_templates.csv")
+    if not link_tpl_csv.exists():
+        alt = Path("data/1_raw/draft_templates.csv")
+        if alt.exists():
+            link_tpl_csv = alt
     essay_tpl_csv = Path("data/1_raw/essay_templates.csv")
 
     # Load model mapping id -> provider/model name
