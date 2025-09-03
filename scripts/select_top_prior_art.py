@@ -144,11 +144,11 @@ def main() -> int:
 
         e_idx = None
         if essay_tpls:
-            for i in range(len(parts)-1, -1, -1):
-                if parts[i] in essay_tpls:
-                    essay_template = parts[i]
-                    e_idx = i
-                    break
+            # Consider it an essay doc only if the last token is an essay template
+            last_idx = len(parts) - 1
+            if last_idx >= 0 and parts[last_idx] in essay_tpls:
+                essay_template = parts[last_idx]
+                e_idx = last_idx
         if e_idx is not None:
             # Essay doc id: find last draft template before essay (legacy: link template)
             l_idx = None
