@@ -13,7 +13,7 @@
 - Auto-update upstream assets: start Dagster with the daemon (`export DAGSTER_HOME=$(pwd)/dagster_home && uv run dagster dev -f daydreaming_dagster/definitions.py`). Raw loaders and task definitions auto-rematerialize when `data/1_raw/**/*` changes.
 - Optional seed (once): `uv run dagster asset materialize --select "group:task_definitions" -f daydreaming_dagster/definitions.py`.
 - Two‑phase generation (split tasks):
-  - Drafts: `uv run dagster asset materialize --select "group:generation_draft" --partition <draft_task_id> -f daydreaming_dagster/definitions.py` (legacy: generation_links with link_task_id).
+  - Drafts: `uv run dagster asset materialize --select "group:generation_draft" --partition <draft_task_id> -f daydreaming_dagster/definitions.py` (legacy: `group:generation_links` with `link_task_id`).
   - Essays: `uv run dagster asset materialize --select "group:generation_essays" --partition <essay_task_id> -f daydreaming_dagster/definitions.py`.
 - Tests: `uv run pytest` (unit: `uv run pytest daydreaming_dagster/`, integration: `uv run pytest tests/`).
 - Format/lint: `uv run black .` and `uv run ruff check`.

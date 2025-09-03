@@ -7,7 +7,7 @@ This note defines the “Active Experiment Cube” (aka current experiment) and 
 - Active Experiment Cube (AEC): The working set of combinations we intend to materialize now.
 - Defined by “active” flags in raw config tables and model capabilities:
   - Concepts: `data/1_raw/concepts_metadata.csv` (column `active`)
-  - Link templates: `data/1_raw/link_templates.csv` (columns `active`, `parser` for parser-mode essays; parser names are defined in `daydreaming_dagster/utils/link_parsers.py`)
+  - Draft templates: `data/1_raw/draft_templates.csv` (columns `active`, `parser` for parser-mode essays; parser names are defined in `daydreaming_dagster/utils/link_parsers.py`)
   - Essay templates: `data/1_raw/essay_templates.csv` (column `active`)
   - Evaluation templates: `data/1_raw/evaluation_templates.csv` (column `active`)
   - LLM models: `data/1_raw/llm_models.csv` (columns `for_generation`, `for_evaluation`)
@@ -21,7 +21,7 @@ The cube is a Cartesian product across active subsets of several axes. Keep axes
 
 ### Common Axes
 - Concepts: filtered by `active`, combined into `combo_id` with `k_max` and `description_level`.
-- Per‑stage templates: each stage is its own axis (e.g., `link_templates`, `essay_templates`, `stageN_templates`), each with its own `active` flags.
+- Per‑stage templates: each stage is its own axis (e.g., `draft_templates`, `essay_templates`, `stageN_templates`), each with its own `active` flags.
 - Models: two separate axes — Generation Models and Evaluation Models. We store both in a single CSV with boolean flags (`for_generation`, `for_evaluation`), but they participate in different products.
 - Evaluation templates: scoring prompts with `active` flags.
 
@@ -36,7 +36,7 @@ Note: The evaluation target (which stage’s outputs are evaluated) is not a cub
 Only a subset on each axis is marked active for the current experiment; the cube is the Cartesian product of those subsets.
 
 ### Example: Generation Cube (current design as an example)
-- Axes (example): `content_combinations × link_templates × generation_models` → draft tasks; then `draft_tasks × essay_templates` → essay tasks.
+- Axes (example): `content_combinations × draft_templates × generation_models` → draft tasks; then `draft_tasks × essay_templates` → essay tasks.
 - Example outputs:
 - Draft files: `data/3_generation/draft_responses/{draft_task_id}.txt` (legacy: `links_responses/{link_task_id}.txt`)
   - Essay files: `data/3_generation/essay_responses/{essay_task_id}.txt`
@@ -70,7 +70,7 @@ Recommended patterns:
 
 - combo_id: stable ID produced by `ComboIDManager` based on concept IDs and `k_max`/description level.
 - draft_task_id (legacy link_task_id): `{combo_id}_{draft_template}_{generation_model_id}`
-- essay_task_id (two‑phase): `{link_task_id}_{essay_template}`
+- essay_task_id (two‑phase): `{draft_task_id}_{essay_template}`
 - one‑phase essay stem: `{combo_id}_{essay_template}_{generation_model_id}`
 - evaluation_task_id (document‑centric pattern): typically `{document_id}__{evaluation_template}__{evaluation_model_id}`; stage is tracked as a column, not embedded in the ID
 
@@ -97,7 +97,7 @@ The Cartesian product grows quickly. For reliable iteration and readable stats:
 
 CLI tips:
 - `uv run dagster asset materialize --select group:task_definitions -f daydreaming_dagster/definitions.py`
-- Drafts only: `uv run dagster asset materialize --select group:generation_drafts -f daydreaming_dagster/definitions.py`
+- Drafts only: `uv run dagster asset materialize --select group:generation_draft -f daydreaming_dagster/definitions.py`
 - Two‑phase essays: `uv run dagster asset materialize --select group:generation_essays -f daydreaming_dagster/definitions.py`
 - Evaluate: `uv run dagster asset materialize --select group:evaluation -f daydreaming_dagster/definitions.py`
 
@@ -112,7 +112,7 @@ Optional run tags:
 
 - Add a new generation model for drafts:
   - Mark `for_generation=true` in `llm_models.csv`.
-  - New `link_task_id` rows are added; only those get generated.
+  - New `draft_task_id` rows are added; only those get generated.
 
 - Evaluate only a subset (e.g., drafts with a specific link template):
   - Keep the AEC broad, then select partitions in Dagit/CLI to materialize a slice.

@@ -24,7 +24,7 @@ Use a lightweight script that produces a curated set of documents for evaluation
 - Input: policy-specific selector (e.g., winners from `parsed_scores` for prior-art v1/v2; or an arbitrary list later).
 - Ingestion surface: write standard generation task CSVs and place/symlink chosen documents under the canonical folders (`draft_responses/` for drafts; legacy `links_responses/` supported, `essay_responses/` for essays). Avoid `generation_responses/` — it is not scanned by evaluation.
   - For two-phase essays: source from `essay_responses/{essay_task_id}.txt`; derive `{combo_id, essay_template, model_id}` from metadata if needed.
-  - For drafts-as-one-phase: source from `draft_responses/{draft_task_id}.txt` (or `links_responses/{link_task_id}.txt`); set `essay_template = link_template` for identity in your CSV row.
+  - For drafts-as-one-phase: source from `draft_responses/{draft_task_id}.txt` (legacy fallback: `links_responses/{link_task_id}.txt`); set `essay_template = draft_template` for identity in your CSV row.
   
 
 Operator flow:
@@ -49,7 +49,7 @@ Trade-offs:
 - `evaluation_tasks` consumes selection (when present) and expands only the chosen documents.
 
 2) Manifest-Based Selection
-- Introduce `data/2_tasks/document_manifest.csv` with normalized columns (`document_id, stage, origin, file_path, combo_id, draft_template/link_template, essay_template, generation_model_id/name, draft_task_id/link_task_id, essay_task_id, source_asset, source_dir`).
+- Introduce `data/2_tasks/document_manifest.csv` with normalized columns (`document_id, stage, origin, file_path, combo_id, draft_template (legacy link_template), essay_template, generation_model_id/name, draft_task_id (legacy link_task_id), essay_task_id, source_asset, source_dir`).
 - Include manifest rows in `document_index`; optionally disable the legacy directory scan after migration.
 
 3) Targeted Partition Materialization (operational)
@@ -134,7 +134,7 @@ Curated counts and drafts:
 1. Prepare curated CSVs and files via the script:
 - `data/2_tasks/draft_generation_tasks.csv` (optional)
 - `data/2_tasks/essay_generation_tasks.csv` (optional)
-- Ensure the corresponding text files exist under `draft_responses/` (or `links_responses/`) and/or `essay_responses/`.
+- Ensure the corresponding text files exist under `draft_responses/` (legacy: `links_responses/`) and/or `essay_responses/`.
 
 2. Register evaluation partitions (from your curated tasks only):
 ```bash
