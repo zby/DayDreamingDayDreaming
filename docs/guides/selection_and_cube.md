@@ -81,9 +81,9 @@ In many cases the cleanest solution is to let an external script generate the st
 
 ### What the Script Produces
 
-- `data/2_tasks/link_generation_tasks.csv`
-  - Columns: `link_task_id, combo_id, link_template, generation_model, generation_model_name`
-  - For each row, a file must exist at: `data/3_generation/links_responses/{link_task_id}.txt`
+- `data/2_tasks/draft_generation_tasks.csv`
+  - Columns: `draft_task_id, combo_id, draft_template, generation_model, generation_model_name`
+  - For each row, a file must exist at: `data/3_generation/draft_responses/{draft_task_id}.txt` (or legacy `links_responses/{link_task_id}.txt`)
 
 - `data/2_tasks/essay_generation_tasks.csv`
   - Columns: `essay_task_id, link_task_id, combo_id, link_template, essay_template, generation_model, generation_model_name`
@@ -91,24 +91,27 @@ In many cases the cleanest solution is to let an external script generate the st
 
 Notes:
 - Use the same naming the pipeline already uses:
-  - `link_task_id = {combo_id}_{link_template}_{generation_model_id}`
+  - `draft_task_id = {combo_id}_{draft_template}_{generation_model_id}`
   - `essay_task_id = {link_task_id}_{essay_template}` (i.e., `{combo_id}_{link_template}_{generation_model_id}_{essay_template}`)
 - `generation_model` must be an ID present in `data/1_raw/llm_models.csv`; `generation_model_name` should be the provider/model string (e.g., `deepseek/deepseek-r1:free`).
 - Do not place anything into `data/3_generation/generation_responses/` for this workflow; keep legacy empty.
 
 Curated counts and drafts:
-- `evaluation_tasks` builds from both `link_generation_tasks` (drafts) and `essay_generation_tasks` (essays). If `data/2_tasks/link_generation_tasks.csv` still contains many rows (from the cube), those drafts will be included in the document set and inflate counts.
+- `evaluation_tasks` builds from both `draft_generation_tasks` (drafts) and `essay_generation_tasks` (essays). If `data/2_tasks/draft_generation_tasks.csv` still contains many rows (from the cube), those drafts will be included in the document set and inflate counts.
 - To get exact doc counts, either:
-  - Write an empty `link_generation_tasks.csv` (exclude drafts entirely), or
-  - Derive a curated `link_generation_tasks.csv` from your curated essays to include only matching link tasks.
+  - Write an empty `draft_generation_tasks.csv` (exclude drafts entirely), or
+  - Derive a curated `draft_generation_tasks.csv` from your curated essays to include only matching draft tasks.
     - Quick helper (one-liner):
       ```bash
       uv run python - <<'PY'
       import pandas as pd
       edf = pd.read_csv('data/2_tasks/essay_generation_tasks.csv')
       cols=['link_task_id','combo_id','link_template','generation_model','generation_model_name']
-      pd.DataFrame(edf[cols].drop_duplicates()).to_csv('data/2_tasks/link_generation_tasks.csv', index=False)
-      print('Wrote curated link_generation_tasks.csv')
+      df = pd.DataFrame(edf[cols].drop_duplicates())
+      # Rename to draft_* for the curated draft task table
+      df = df.rename(columns={'link_task_id':'draft_task_id','link_template':'draft_template'})
+      df.to_csv('data/2_tasks/draft_generation_tasks.csv', index=False)
+      print('Wrote curated draft_generation_tasks.csv')
       PY
       ```
 
@@ -119,7 +122,7 @@ Curated counts and drafts:
 - Choose your policy: top-N per doc, threshold (e.g., ≥9.0), union/intersection
 
 2) Resolve each winner to its source text and fields
-- Drafts-as-one-phase: compute `link_task_id`; source file at `links_responses/{link_task_id}.txt`
+- Drafts-as-one-phase: compute `draft_task_id`; source file at `draft_responses/{draft_task_id}.txt` (legacy: `links_responses/{link_task_id}.txt`)
 - Two-phase essays: compute `essay_task_id`; source file at `essay_responses/{essay_task_id}.txt`
 - If the text lives outside this repo, copy or symlink it into the canonical folder above.
 

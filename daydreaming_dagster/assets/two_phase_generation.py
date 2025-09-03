@@ -4,7 +4,7 @@ import pandas as pd
 from jinja2 import Environment
 from .partitions import essay_tasks_partitions, draft_tasks_partitions
 from ..utils.template_loader import load_generation_template
-from ..utils.raw_readers import read_essay_templates, read_link_templates
+from ..utils.raw_readers import read_essay_templates, read_draft_templates
 from ..utils.link_parsers import get_link_parser
 from ..utils.dataframe_helpers import get_task_row
 from ..utils.shared_context import MockLoadContext
@@ -154,9 +154,33 @@ def _essay_prompt_impl(context, essay_generation_tasks) -> str:
         except Exception:
             links_content = None
     if links_content is None:
-        links_io = context.resources.links_response_io_manager
-        links_content = links_io.load_input(MockLoadContext(link_task_id))
-        used_source = "links_response"
+        # Fallbacks for compatibility without requiring legacy IO manager
+        # 1) Try legacy links_response_io_manager if present
+        links_io = getattr(context.resources, "links_response_io_manager", None)
+        if links_io is not None:
+            try:
+                links_content = links_io.load_input(MockLoadContext(link_task_id))
+                used_source = "links_response"
+            except Exception:
+                links_content = None
+        # 2) Read directly from legacy file path if it exists
+        if links_content is None:
+            legacy_fp = Path(context.resources.data_root) / "3_generation" / "links_responses" / f"{link_task_id}.txt"
+            try:
+                links_content = legacy_fp.read_text(encoding="utf-8")
+                used_source = "links_response"
+            except FileNotFoundError:
+                links_content = None
+        if links_content is None:
+            raise Failure(
+                description="Draft/links response not found for essay prompt",
+                metadata={
+                    "link_task_id": MetadataValue.text(link_task_id),
+                    "resolution": MetadataValue.text(
+                        "Ensure Phase 1 draft exists (data/3_generation/draft_responses) or legacy links response (links_responses)"
+                    ),
+                },
+            )
     links_lines = [line.strip() for line in links_content.split('\n') if line.strip()]
     context.log.info(f"Using {len(links_lines)} validated links from {used_source} for task {task_id}")
     
@@ -248,9 +272,9 @@ def _essay_response_impl(context, essay_prompt, essay_generation_tasks) -> str:
                     },
                 )
 
-        # Determine parser from link_templates.csv (no in-code mapping)
+        # Determine parser from draft_templates.csv (no in-code mapping)
         data_root = context.resources.data_root
-        link_templates_df = read_link_templates(Path(data_root), filter_active=False)
+        link_templates_df = read_draft_templates(Path(data_root), filter_active=False)
         parser_name = None
         if not link_templates_df.empty and "parser" in link_templates_df.columns:
             row = link_templates_df[link_templates_df["template_id"] == link_template]
@@ -267,7 +291,7 @@ def _essay_response_impl(context, essay_prompt, essay_generation_tasks) -> str:
                     "link_template": MetadataValue.text(str(link_template)),
                     "csv_column": MetadataValue.text("parser"),
                     "resolution": MetadataValue.text(
-                        "Add a 'parser' value to data/1_raw/link_templates.csv for this template, or switch essay template generator mode."
+                        "Add a 'parser' value to data/1_raw/draft_templates.csv for this template, or switch essay template generator mode."
                     ),
                 },
             )

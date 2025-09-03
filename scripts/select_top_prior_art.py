@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """
 Select top-N documents by prior-art scores (cross-experiment) and write
-curated essay generation tasks to data/2_tasks/essay_generation_tasks.csv.
+curated essay generation tasks to data/2_tasks/essay_generation_tasks.csv and
+curated draft generation tasks to data/2_tasks/draft_generation_tasks.csv.
 
 Defaults:
 - TOP_N = 10
@@ -94,10 +95,10 @@ def main() -> int:
     if not links_dir.exists():
         links_dir = Path("data/3_generation/links_responses")
     essay_out_csv = Path("data/2_tasks/essay_generation_tasks.csv")
-    link_out_csv = Path("data/2_tasks/link_generation_tasks.csv")
-    link_tpl_csv = Path("data/1_raw/link_templates.csv")
+    link_out_csv = Path("data/2_tasks/draft_generation_tasks.csv")
+    link_tpl_csv = Path("data/1_raw/draft_templates.csv")
     if not link_tpl_csv.exists():
-        alt = Path("data/1_raw/draft_templates.csv")
+        alt = Path("data/1_raw/link_templates.csv")
         if alt.exists():
             link_tpl_csv = alt
     essay_tpl_csv = Path("data/1_raw/essay_templates.csv")
@@ -211,9 +212,9 @@ def main() -> int:
             if not fp.exists():
                 missing_links.append(str(fp))
             link_rows.append({
-                "link_task_id": link_task_id,
+                "draft_task_id": link_task_id,
                 "combo_id": combo_id,
-                "link_template": link_template,
+                "draft_template": link_template,
                 "generation_model": generation_model,
                 "generation_model_name": model_map.get(generation_model, generation_model),
             })
@@ -228,9 +229,9 @@ def main() -> int:
         print(f"Wrote {len(essay_rows)} curated essay tasks to {essay_out_csv}")
     if link_rows:
         pd.DataFrame(link_rows, columns=[
-            "link_task_id","combo_id","link_template","generation_model","generation_model_name"
-        ]).drop_duplicates(subset=["link_task_id"]).to_csv(link_out_csv, index=False)
-        print(f"Wrote {len(link_rows)} curated link tasks to {link_out_csv}")
+            "draft_task_id","combo_id","draft_template","generation_model","generation_model_name"
+        ]).drop_duplicates(subset=["draft_task_id"]).to_csv(link_out_csv, index=False)
+        print(f"Wrote {len(link_rows)} curated draft tasks to {link_out_csv}")
 
     if missing_essays:
         print("Warning: missing essay files (evaluation will fail for these if run):", file=sys.stderr)

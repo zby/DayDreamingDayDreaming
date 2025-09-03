@@ -22,13 +22,13 @@ mkdir -p data/7_cross_experiment
 # Remove existing tables
 echo "🧹 Clearing old tables (if any)"
 rm -f \
-  data/7_cross_experiment/link_generation_results.csv \
+  data/7_cross_experiment/draft_generation_results.csv \
   data/7_cross_experiment/essay_generation_results.csv \
   data/7_cross_experiment/generation_results.csv \
   data/7_cross_experiment/evaluation_results.csv || true
 
 # Build generation tables (two-phase preferred, legacy supported)
-echo "📊 Rebuilding generation tables (links + essays, and legacy if present)..."
+echo "📊 Rebuilding generation tables (drafts + essays, and legacy if present)..."
 python scripts/build_generation_results_table.py
 
 # Build evaluation table (two-phase preferred, legacy fallback)

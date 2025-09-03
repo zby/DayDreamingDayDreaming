@@ -15,7 +15,7 @@ The system tests k_max-sized concept combinations to elicit the Day-Dreaming ide
 
 The pipeline uses an innovative two-phase approach to LLM generation:
 
-**Phase 1 - Links Generation**: LLMs brainstorm conceptual connections and combinations between input concepts, producing 6-12 specific bullet points describing how concepts could be integrated.
+**Phase 1 - Draft Generation**: LLMs brainstorm conceptual connections and combinations between input concepts, producing 6-12 specific bullet points describing how concepts could be integrated.
 
 **Phase 2 - Essay Generation**: Using the links from Phase 1 as inspiration, LLMs compose comprehensive essays (1500-3000 words) that develop the most promising conceptual combinations into detailed analyses.
 
@@ -72,14 +72,14 @@ uv run dagster asset materialize --select "group:task_definitions" -f daydreamin
 
 # Step 2: Generate LLM responses using two-phase generation
 # Now you can run individual partitions or use the UI to run all
-# Tip: get a link partition key from the first column of link_generation_tasks.csv
+# Tip: get a draft partition key from the first column of draft_generation_tasks.csv
 # Example (Phase 1):
-# LINK=$(cut -d',' -f1 data/2_tasks/link_generation_tasks.csv | sed -n '2p')
-# uv run dagster asset materialize --select "group:generation_links" --partition "$LINK" -f daydreaming_dagster/definitions.py
+# DRAFT=$(cut -d',' -f1 data/2_tasks/draft_generation_tasks.csv | sed -n '2p')
+# uv run dagster asset materialize --select "group:generation_draft" --partition "$DRAFT" -f daydreaming_dagster/definitions.py
 
-# Then get an essay partition key for that link from essay_generation_tasks.csv
+# Then get an essay partition key for that draft from essay_generation_tasks.csv
 # Example (Phase 2):
-# ESSAY=$(awk -F, -v link="$LINK" 'NR==1{for(i=1;i<=NF;i++)h[$i]=i} NR>1 && $h["link_task_id"]==link {print $h["essay_task_id"]; exit}' data/2_tasks/essay_generation_tasks.csv)
+# ESSAY=$(awk -F, -v link="$DRAFT" 'NR==1{for(i=1;i<=NF;i++)h[$i]=i} NR>1 && $h["link_task_id"]==link {print $h["essay_task_id"]; exit}' data/2_tasks/essay_generation_tasks.csv)
 # uv run dagster asset materialize --select "group:generation_essays" --partition "$ESSAY" -f daydreaming_dagster/definitions.py
 
 # Step 3: Process results (after sufficient generation/evaluation data)
@@ -88,7 +88,7 @@ uv run dagster asset materialize --select "parsed_scores,final_results" -f daydr
 
 **Asset Group Breakdown**:
 - `group:raw_data`: concepts, models, templates (loads from `data/1_raw/`; re‑materialize after edits)
-- `group:task_definitions`: content_combinations, link_generation_tasks, essay_generation_tasks, evaluation_tasks (auto-materialize; creates `data/2_tasks/`)
+- `group:task_definitions`: content_combinations, draft_generation_tasks, essay_generation_tasks, evaluation_tasks (auto-materialize; creates `data/2_tasks/`)
 - `group:generation_draft`: draft_prompt, draft_response (creates `data/3_generation/draft_*`; legacy `links_*` supported for transition)
 - `group:generation_essays`: essay_prompt, essay_response (creates `data/3_generation/essay_*`)
 - `group:evaluation`: evaluation_prompt, evaluation_response (creates `data/4_evaluation/`)
@@ -115,19 +115,11 @@ uv run dagster dev -f daydreaming_dagster/definitions.py
 **Alternative**: CLI loop (sequential, slower)
 ```bash
 # Get all partition names and run them one by one (two-phase generation)
-# Phase 1: run all link partitions
+# Phase 1: run all draft partitions
 cut -d',' -f1 data/2_tasks/draft_generation_tasks.csv 2>/dev/null | tail -n +2 | while read DRAFT; do
   echo "Running draft partition: $DRAFT"
   uv run dagster asset materialize --select "group:generation_draft" --partition "$DRAFT" -f daydreaming_dagster/definitions.py
 done
-# Legacy (links) fallback
-if [ ! -f data/2_tasks/draft_generation_tasks.csv ]; then
-  cut -d',' -f1 data/2_tasks/link_generation_tasks.csv | tail -n +2 | while read LINK; do
-    echo "Running link partition: $LINK"
-    uv run dagster asset materialize --select "group:generation_links" --partition "$LINK" -f daydreaming_dagster/definitions.py
-  done
-fi
-
 # Phase 2: run all essay partitions
 cut -d',' -f1 data/2_tasks/essay_generation_tasks.csv | tail -n +2 | while read ESSAY; do
   echo "Running essay partition: $ESSAY"
@@ -149,7 +141,7 @@ The pipeline now includes automatic cross-experiment tracking:
 ./scripts/rebuild_results.sh
 
 # Outputs (under data/7_cross_experiment/):
-# - link_generation_results.csv
+# - draft_generation_results.csv
 # - essay_generation_results.csv
 # - evaluation_results.csv
 # - parsed_scores.csv
@@ -158,7 +150,7 @@ The pipeline now includes automatic cross-experiment tracking:
 
 **Automatic Materialization**: The pipeline includes auto-materializing assets that automatically trigger when their dependencies are updated:
 
-- `link_generation_results_append`: Automatically adds new rows when `links_response` completes
+- `draft_generation_results_append`: Automatically adds new rows when `draft_response` completes
 - `essay_generation_results_append`: Automatically adds new rows when `essay_response` completes  
 - `evaluation_results_append`: Automatically adds new rows when `evaluation_response` completes
 
@@ -171,7 +163,7 @@ The pipeline now includes automatic cross-experiment tracking:
 
 ### Raw CSV Change Handling (Schedule)
 
-- The project includes a lightweight schedule that scans the five raw CSVs under `data/1_raw/` (concepts_metadata.csv, llm_models.csv, link_templates.csv, essay_templates.csv, evaluation_templates.csv).
+- The project includes a lightweight schedule that scans the raw CSVs under `data/1_raw/` (concepts_metadata.csv, llm_models.csv, draft_templates.csv, link_templates.csv [deprecated], essay_templates.csv, evaluation_templates.csv).
 - On detecting a change, the schedule writes a pending fingerprint and launches a run (run_key = fingerprint) that refreshes the core/task layer (`group:task_definitions`).
 - If the run fails or is canceled, a future tick will retry the same pending fingerprint (same run_key). On success, the schedule promotes the pending fingerprint to last and skips until the next change.
 - This gives at‑least‑once behavior for task updates without auto‑running any LLM assets. Downstream runs still “pull” and rebuild stale upstream as needed.
@@ -325,7 +317,7 @@ Active link templates are controlled in `data/1_raw/link_templates.csv` via the 
    ```
   DagsterUnknownPartitionError: Could not find a partition with key `combo_v1_<hex>_...` (or legacy `combo_001_...`)
    ```
-  **Solution**: Make sure task CSV files exist by running step 1 first. Use `cut -d',' -f1 data/2_tasks/link_generation_tasks.csv | sed -n '2p'` to retrieve a valid link partition key.
+  **Solution**: Make sure task CSV files exist by running step 1 first. Use `cut -d',' -f1 data/2_tasks/draft_generation_tasks.csv | sed -n '2p'` to retrieve a valid draft partition key.
 
 4. **Partitioned Asset Group Error**:
    ```

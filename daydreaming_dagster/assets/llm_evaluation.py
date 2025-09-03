@@ -68,24 +68,18 @@ def evaluation_prompt(context, evaluation_tasks) -> str:
     """
     Generate one evaluation prompt per partition using FK-based data loading.
     
-    This asset demonstrates the "Manual IO with Foreign Keys" pattern documented
-    in docs/evaluation_asset_architecture.md. Key aspects:
+    This asset uses the document_index-provided file_path to read the target
+    document (draft or essay) and render an evaluation prompt.
     
-    1. FK Relationship: Uses link_task_id from evaluation_tasks to load
-       the corresponding draft (links_response) from a different partition
-    
-    2. MockLoadContext Pattern: Creates a temporary context to interface with
-       the IO manager for cross-partition data loading
-    
-    3. Intentional Manual IO: Bypasses normal Dagster input/output pattern
-       to handle complex partition relationships with foreign keys
+    Key aspects:
+    - FK relationship: evaluation_tasks carries document metadata including file_path.
+    - Manual IO: reads file_path directly; no cross-partition IO manager access required.
     
     Data Flow:
-    evaluation_task (partition: eval_001) 
-    -> reads link_task_id FK 
-    -> loads links_response (partition: link_123) via IO manager
-    -> combines with evaluation template 
-    -> generates evaluation prompt
+    evaluation_task (partition: eval_001)
+    -> reads file_path from evaluation_tasks
+    -> reads document text from disk
+    -> renders evaluation template
     
     Args:
         context: Dagster asset context (provides partition_key and resources)
@@ -98,14 +92,10 @@ def evaluation_prompt(context, evaluation_tasks) -> str:
     Raises:
         Failure: If evaluation_task_id not found in DataFrame
         Failure: If referenced link_task_id is invalid/empty
-        Failure: If links_response file not found (FK broken)
-        
-    Resources Required:
-        - links_response_io_manager: To load upstream draft responses
+        Failure: If file_path is missing or the document file cannot be found
         
     Dependencies:
-        - evaluation_tasks: Must be materialized (provides FK relationships)
-        - links_response: Must be materialized for referenced partitions
+        - evaluation_tasks: Must be materialized (provides FK relationships and file_path)
         
     See Also:
         - docs/evaluation_asset_architecture.md: Detailed architecture explanation
