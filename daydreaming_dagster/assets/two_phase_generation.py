@@ -208,9 +208,10 @@ def _essay_prompt_impl(context, essay_generation_tasks) -> str:
             }
         )
     
-    # Render essay template with draft block (passed as links_block for backward compatibility)
+    # Render essay template with both variables for compatibility
+    # New templates should use {{ draft_block }}; legacy templates used {{ links_block }}
     template = JINJA.from_string(template_content)
-    prompt = template.render(links_block=draft_text)
+    prompt = template.render(draft_block=draft_text, links_block=draft_text)
     
     context.log.info(f"Generated essay prompt for task {task_id} with {len(draft_lines)} draft lines")
     context.add_output_metadata({

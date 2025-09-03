@@ -44,18 +44,23 @@ class TestPromptGeneration:
         
         assert result == "Concepts: "
     
-    def test_jinja2_template_with_links_block(self):
-        """Test essay template rendering with links block."""
-        template_content = "Essay based on: {{ links_block }}"
-        links_content = "• Link 1\n• Link 2\n• Link 3"
-        
-        env = Environment()
-        template = env.from_string(template_content)
-        result = template.render(links_block=links_content)
-        
-        assert "• Link 1" in result
-        assert "• Link 2" in result
-        assert "• Link 3" in result
+    def test_jinja2_template_with_draft_and_legacy_links_block(self):
+        """Test essay template rendering with draft_block (preferred) and links_block (legacy)."""
+        draft_text = "• Line 1\n• Line 2\n• Line 3"
+
+        # Preferred: draft_block
+        tpl_draft = Environment().from_string("Essay based on: {{ draft_block }}")
+        res_draft = tpl_draft.render(draft_block=draft_text)
+        assert "• Line 1" in res_draft
+        assert "• Line 2" in res_draft
+        assert "• Line 3" in res_draft
+
+        # Legacy: links_block (still supported by assets for historical templates)
+        tpl_links = Environment().from_string("Essay based on: {{ links_block }}")
+        res_links = tpl_links.render(links_block=draft_text)
+        assert "• Line 1" in res_links
+        assert "• Line 2" in res_links
+        assert "• Line 3" in res_links
 
 
 class TestDraftValidation:

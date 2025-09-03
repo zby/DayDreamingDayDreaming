@@ -27,6 +27,7 @@ from .partitions import (
 )
 from ..utils.combo_ids import ComboIDManager
 from pathlib import Path as _Path
+from ..utils.document_locator import find_document_path
 from typing import List as _List
 
 @asset(
@@ -438,14 +439,15 @@ def evaluation_tasks(
     if not essay_generation_tasks.empty:
         for _, row in essay_generation_tasks.iterrows():
             essay_task_id = row["essay_task_id"]
-            fp = essay_dir / f"{essay_task_id}.txt"
+            # Find the essay anywhere across current/legacy locations
+            fp, src = find_document_path(essay_task_id, data_root_path)
             # Include all planned essays (file may be generated later)
             docs.append(
                 {
                     "document_id": essay_task_id,
                     "stage": "essay2p",
                     "origin": "two_phase",
-                    "file_path": str(fp),
+                    "file_path": str(fp) if fp else str(essay_dir / f"{essay_task_id}.txt"),
                     "combo_id": row["combo_id"],
                     "draft_template": row.get("draft_template") or row.get("link_template"),
                     "essay_template": row["essay_template"],
@@ -454,7 +456,7 @@ def evaluation_tasks(
                     "draft_task_id": row.get("draft_task_id", row.get("link_task_id")),
                     "essay_task_id": essay_task_id,
                     "source_asset": "essay_response",
-                    "source_dir": "essay_responses",
+                    "source_dir": src or "essay_responses",
                 }
             )
 
@@ -465,13 +467,13 @@ def evaluation_tasks(
             draft_task_id = row.get("draft_task_id") or row.get("link_task_id")
             if not isinstance(draft_task_id, str) or not draft_task_id:
                 continue
-            fp = draft_dir / f"{draft_task_id}.txt"
+            fp, src = find_document_path(draft_task_id, data_root_path)
             docs.append(
                 {
                     "document_id": draft_task_id,
                     "stage": "essay1p",
                     "origin": "draft",
-                    "file_path": str(fp),
+                    "file_path": str(fp) if fp else str(draft_dir / f"{draft_task_id}.txt"),
                     "combo_id": row.get("combo_id"),
                     "draft_template": row.get("draft_template") or row.get("link_template"),
                     "essay_template": None,
@@ -480,7 +482,7 @@ def evaluation_tasks(
                     "draft_task_id": draft_task_id,
                     "essay_task_id": None,
                     "source_asset": "draft_response",
-                    "source_dir": "draft_responses",
+                    "source_dir": src or "draft_responses",
                 }
             )
 

@@ -22,14 +22,14 @@ What it does:
 2) Sorts by `sum_scores` and selects top N
 3) Copies to `to_analyse/`:
    - Essay responses from `data/3_generation/essay_responses/`
-   - Draft responses from `data/3_generation/draft_responses/` (falls back to legacy `links_responses/`) as `<name>_links_response.txt`
+   - Draft responses from `data/3_generation/draft_responses/` (falls back to legacy `links_responses/`) as `<name>_draft.txt`
    - Template files from the two-phase generation system:
        * Essay templates: `{essay_template}.txt` from `data/1_raw/generation_templates/essay/`
        * Draft templates: `{draft_template}.txt` from `data/1_raw/generation_templates/draft/`
 
 Notes:
 - Supports the two-phase generation system where drafts and essays use different templates
-- Draft files get a `_links_response` postfix to avoid naming conflicts with essay files
+- Draft files get a `_draft` postfix to avoid naming conflicts with essay files
 - Draft template names are extracted from the draft task ID structure
 - Evaluation responses by Sonnet (`evaluation_model_id='sonnet-4'`) are copied into
   a subdirectory named `evaluations_sonnet/` alongside the other files
@@ -138,11 +138,19 @@ def get_top_scoring_generations(n: int = 5, scores_csv: str = "data/6_summary/ge
     for _, row in top_generations.iterrows():
         filename = os.path.basename(row['generation_response_path'])
         essay_filenames.append(filename)
+        # Derive draft_task_id robustly from combo_id, draft_template, model
+        draft_template = row.get('draft_template')
+        generation_model = row.get('generation_model')
+        combo_id = row.get('combo_id')
+        draft_task_id = None
+        if isinstance(combo_id, str) and isinstance(draft_template, str) and isinstance(generation_model, str):
+            draft_task_id = f"{combo_id}_{draft_template}_{generation_model}"
         generation_info.append({
             'filename': filename,
             'combo_id': row['combo_id'],
             'template': row['generation_template'],  # Essay template
-            'link_template': row['link_template'],   # Links template
+            'draft_template': draft_template,         # Draft template (renamed from legacy link_template)
+            'draft_task_id': draft_task_id,           # For finding corresponding draft response
             'model': row['generation_model'],
             'score': row['sum_scores']
         })
@@ -156,7 +164,7 @@ def get_all_current_generations(
     content_combinations_path: str = "data/2_tasks/content_combinations_csv.csv",
     essay_tasks_path: str = "data/2_tasks/essay_generation_tasks.csv",
     essay_templates_path: str = "data/1_raw/essay_templates.csv",
-    link_templates_path: str = "data/1_raw/link_templates.csv"
+    draft_templates_path: str = "data/1_raw/draft_templates.csv"
 ) -> Tuple[List[str], List[dict]]:
     """
     Get all current generation files from the active cube (active concepts and templates).
@@ -167,7 +175,7 @@ def get_all_current_generations(
         content_combinations_path: Path to content combinations CSV mapping combo_id to concept_id
         essay_tasks_path: Path to essay generation tasks CSV
         essay_templates_path: Path to essay templates CSV with active column
-        link_templates_path: Path to link templates CSV with active column
+        draft_templates_path: Path to draft templates CSV with active column (falls back to legacy link_templates.csv)
         
     Returns:
         Tuple of (essay_filenames, generation_info) where generation_info contains proper names from CSV
@@ -189,17 +197,17 @@ def get_all_current_generations(
     essay_templates_df = pd.read_csv(essay_templates_path)
     active_essay_templates = set(essay_templates_df[essay_templates_df['active'] == True]['template_id'].tolist())
     
-    # Support draft_templates.csv during transition
-    if not os.path.exists(link_templates_path):
-        alt = Path(link_templates_path).parent / "draft_templates.csv"
-        if alt.exists():
-            link_templates_path = str(alt)
-    link_templates_df = pd.read_csv(link_templates_path)
-    active_link_templates = set(link_templates_df[link_templates_df['active'] == True]['template_id'].tolist())
+    # Load draft templates; fall back to legacy link_templates.csv if needed
+    if not os.path.exists(draft_templates_path):
+        legacy = Path(draft_templates_path).parent / "link_templates.csv"
+        if legacy.exists():
+            draft_templates_path = str(legacy)
+    link_templates_df = pd.read_csv(draft_templates_path)
+    active_draft_templates = set(link_templates_df[link_templates_df['active'] == True]['template_id'].tolist())
     
     print(f"Active concepts: {sorted(active_concepts)}")
     print(f"Active essay templates: {sorted(active_essay_templates)}")
-    print(f"Active link templates: {sorted(active_link_templates)}")
+    print(f"Active draft templates: {sorted(active_draft_templates)}")
     
     # Load combo to concept mappings
     combinations_df = pd.read_csv(content_combinations_path)
@@ -227,10 +235,12 @@ def get_all_current_generations(
     essay_tasks_df = pd.read_csv(essay_tasks_path)
     
     # Filter essay tasks to only active combinations and templates
+    # Support both 'draft_template' (canonical) and legacy 'link_template' in tasks
+    draft_tpl_col = 'draft_template' if 'draft_template' in essay_tasks_df.columns else 'link_template'
     active_tasks = essay_tasks_df[
         (essay_tasks_df['combo_id'].isin(active_combo_ids)) &
         (essay_tasks_df['essay_template'].isin(active_essay_templates)) &
-        (essay_tasks_df['link_template'].isin(active_link_templates))
+        (essay_tasks_df[draft_tpl_col].isin(active_draft_templates))
     ]
     
     if active_tasks.empty:
@@ -241,7 +251,7 @@ def get_all_current_generations(
     
     # Create template name mappings
     essay_template_names = dict(zip(essay_templates_df['template_id'], essay_templates_df['template_name']))
-    link_template_names = dict(zip(link_templates_df['template_id'], link_templates_df['template_name']))
+    draft_template_names = dict(zip(link_templates_df['template_id'], link_templates_df['template_name']))
     
     essay_filenames = []
     generation_info = []
@@ -254,14 +264,17 @@ def get_all_current_generations(
         
         if file_path.exists():
             essay_filenames.append(expected_filename)
+            # Prefer canonical draft fields; fall back to legacy link_* when absent
+            draft_tpl = task_row.get('draft_template') if 'draft_template' in task_row else task_row.get('link_template')
+            draft_task_id = task_row.get('draft_task_id') if 'draft_task_id' in task_row else task_row.get('link_task_id')
             generation_info.append({
                 'filename': expected_filename,
                 'combo_id': task_row['combo_id'],
                 'template': task_row['essay_template'],  # Use template ID for file paths
                 'template_name': essay_template_names.get(task_row['essay_template'], task_row['essay_template']),  # Display name
-                'link_template': task_row['link_template'],  # Use template ID for file paths  
-                'link_template_name': link_template_names.get(task_row['link_template'], task_row['link_template']),  # Display name
-                'link_task_id': task_row['link_task_id'],  # For finding corresponding links response
+                'draft_template': draft_tpl,  # Use template ID for file paths
+                'draft_template_name': draft_template_names.get(draft_tpl, draft_tpl),  # Display name
+                'draft_task_id': draft_task_id,  # For finding corresponding draft response
                 'model': task_row['generation_model_name'],
                 'score': 0.0  # No score available when bypassing pivot tables
             })
@@ -322,11 +335,19 @@ def get_top_from_big_pivot(
             continue
         filename = f"{essay_task_id}.txt"
         essay_filenames.append(filename)
+        # Derive draft_task_id when possible
+        draft_template = row.get("draft_template") or row.get("link_template")
+        generation_model = row.get("generation_model")
+        combo_id = row.get("combo_id")
+        draft_task_id = None
+        if isinstance(combo_id, str) and isinstance(draft_template, str) and isinstance(generation_model, str):
+            draft_task_id = f"{combo_id}_{draft_template}_{generation_model}"
         generation_info.append({
             "filename": filename,
             "combo_id": row.get("combo_id"),
             "template": row.get("generation_template"),
-            "link_template": row.get("link_template"),  # May be None for old data
+            "draft_template": draft_template,  # May be None for old data
+            "draft_task_id": draft_task_id,
             "model": row.get("generation_model"),
             "score": row.get("sum_scores", 0.0),
         })
@@ -334,25 +355,28 @@ def get_top_from_big_pivot(
     return essay_filenames, generation_info
 
 
-def copy_essays_with_links(essay_paths: List[str], generation_info: List[dict],
-                          essay_responses_dir: str = "data/3_generation/essay_responses",
-                          links_responses_dir: str = "data/3_generation/draft_responses", 
-                          essay_templates_dir: str = "data/1_raw/generation_templates/essay",
-                          links_templates_dir: str = "data/1_raw/generation_templates/draft",
-                          evaluation_responses_dir: str = "data/4_evaluation/evaluation_responses",
-                          evaluation_model_id: str = "sonnet-4",
-                          evaluation_output_subdir: str = "evaluations_sonnet",
-                          output_dir: str = "to_analyse"):
+def copy_essays_with_drafts(
+    essay_paths: List[str],
+    generation_info: List[dict],
+    essay_responses_dir: str = "data/3_generation/essay_responses",
+    draft_responses_dir: str = "data/3_generation/draft_responses",
+    essay_templates_dir: str = "data/1_raw/generation_templates/essay",
+    draft_templates_dir: str = "data/1_raw/generation_templates/draft",
+    evaluation_responses_dir: str = "data/4_evaluation/evaluation_responses",
+    evaluation_model_id: str = "sonnet-4",
+    evaluation_output_subdir: str = "evaluations_sonnet",
+    output_dir: str = "to_analyse",
+):
     """
-    Copy essays, links responses, and templates to the analysis folder.
-    
+    Copy essays, draft responses, and templates to the analysis folder.
+
     Args:
         essay_paths: List of essay file paths (basenames)
         generation_info: List of generation info dicts containing template names
         essay_responses_dir: Directory containing essay response files
-        links_responses_dir: Directory containing links response files  
+        draft_responses_dir: Directory containing draft response files (falls back to legacy links_responses)
         essay_templates_dir: Directory containing essay template files
-        links_templates_dir: Directory containing links template files
+        draft_templates_dir: Directory containing draft template files (falls back to legacy generation_templates/links)
         output_dir: Output directory to copy files to
     """
     
@@ -361,17 +385,17 @@ def copy_essays_with_links(essay_paths: List[str], generation_info: List[dict],
     
     # Convert to Path objects for easier manipulation
     essay_responses_path = Path(essay_responses_dir)
-    links_responses_path = Path(links_responses_dir)
-    if not links_responses_path.exists():
+    draft_responses_path = Path(draft_responses_dir)
+    if not draft_responses_path.exists():
         legacy = Path("data/3_generation/links_responses")
         if legacy.exists():
-            links_responses_path = legacy
+            draft_responses_path = legacy
     essay_templates_path = Path(essay_templates_dir)
-    links_templates_path = Path(links_templates_dir)
-    if not links_templates_path.exists():
+    draft_templates_path = Path(draft_templates_dir)
+    if not draft_templates_path.exists():
         legacy_tpl = Path("data/1_raw/generation_templates/links")
         if legacy_tpl.exists():
-            links_templates_path = legacy_tpl
+            draft_templates_path = legacy_tpl
     evaluation_responses_path = Path(evaluation_responses_dir)
     output_path = Path(output_dir)
     eval_output_path = output_path / evaluation_output_subdir
@@ -407,37 +431,37 @@ def copy_essays_with_links(essay_paths: List[str], generation_info: List[dict],
             continue
             
         essay_template_name = info['template']
-        links_template_name = info.get('link_template', essay_template_name)  # Use link_template if available
+        draft_template_name = info.get('draft_template', essay_template_name)  # Use draft_template if available
         
         # Define source file paths
         essay_response_src = essay_responses_path / essay_filename
-        # Link responses are saved by link_task_id
-        link_task_id = info.get('link_task_id', '')
-        if link_task_id:
-            links_response_src = links_responses_path / f"{link_task_id}.txt"
+        # Draft responses are saved by draft_task_id (legacy link_task_id)
+        draft_task_id = info.get('draft_task_id') or info.get('link_task_id') or ''
+        if draft_task_id:
+            draft_response_src = draft_responses_path / f"{draft_task_id}.txt"
         else:
-            # Fallback to old logic if link_task_id not available
-            link_filename_stem = essay_filename.stem
+            # Fallback: derive from essay filename by stripping suffix _{essay_template}
+            draft_filename_stem = essay_filename.stem
             suffix_to_remove = f"_{essay_template_name}"
-            if link_filename_stem.endswith(suffix_to_remove):
-                link_filename_stem = link_filename_stem[: -len(suffix_to_remove)]
-            links_response_src = links_responses_path / f"{link_filename_stem}{essay_filename.suffix}"
-        
+            if draft_filename_stem.endswith(suffix_to_remove):
+                draft_filename_stem = draft_filename_stem[: -len(suffix_to_remove)]
+            draft_response_src = draft_responses_path / f"{draft_filename_stem}{essay_filename.suffix}"
+
         essay_template_src = essay_templates_path / f"{essay_template_name}.txt"
-        links_template_src = links_templates_path / f"{links_template_name}.txt"
+        draft_template_src = draft_templates_path / f"{draft_template_name}.txt"
         
         # Define destination file paths with common prefix removed
         clean_essay_filename = remove_common_prefix(str(essay_filename), common_prefix)
         clean_essay_filename_path = Path(clean_essay_filename)
         
-        # Use proper suffixes for generation files: *_essay.txt and *_links.txt
+        # Use proper suffixes for generation files: *_essay.txt and *_draft.txt
         base_name = clean_essay_filename_path.stem
         essay_response_dst = output_path / f"{base_name}_essay{clean_essay_filename_path.suffix}"
-        links_response_dst = output_path / f"{base_name}_links{clean_essay_filename_path.suffix}"
+        draft_response_dst = output_path / f"{base_name}_draft{clean_essay_filename_path.suffix}"
         essay_template_dst = output_path / f"{essay_template_name}_essay_template.txt"
-        links_template_dst = output_path / f"{links_template_name}_links_template.txt"
-        
-        print(f"\nProcessing: {essay_filename} (essay_template: {essay_template_name}, links_template: {links_template_name})")
+        draft_template_dst = output_path / f"{draft_template_name}_draft_template.txt"
+
+        print(f"\nProcessing: {essay_filename} (essay_template: {essay_template_name}, draft_template: {draft_template_name})")
         
         # Copy essay response
         if essay_response_src.exists():
@@ -448,14 +472,14 @@ def copy_essays_with_links(essay_paths: List[str], generation_info: List[dict],
             print(f"  ✗ Essay response not found: {essay_response_src}")
             missing_files.append(str(essay_response_src))
             
-        # Copy links response
-        if links_response_src.exists():
-            shutil.copy2(links_response_src, links_response_dst)
-            print(f"  ✓ Copied links response: {links_response_dst.name}")
-            copied_files.append(str(links_response_dst))
+        # Copy draft response
+        if draft_response_src.exists():
+            shutil.copy2(draft_response_src, draft_response_dst)
+            print(f"  ✓ Copied draft response: {draft_response_dst.name}")
+            copied_files.append(str(draft_response_dst))
         else:
-            print(f"  ✗ Links response not found: {links_response_src}")
-            missing_files.append(str(links_response_src))
+            print(f"  ✗ Draft response not found: {draft_response_src}")
+            missing_files.append(str(draft_response_src))
 
         # Copy evaluation responses by the specified evaluation model (default: sonnet-4)
         # Evaluation files are named: {essay_task_id}_{evaluation_template}_{evaluation_model_id}.txt
@@ -473,8 +497,8 @@ def copy_essays_with_links(essay_paths: List[str], generation_info: List[dict],
             print(f"  - No evaluations by {evaluation_model_id} found for {essay_task_id}")
             
         # Copy templates (only if not already copied)
-        # Use a compound key for both essay and links templates
-        template_key = f"{essay_template_name}+{links_template_name}"
+        # Use a compound key for both essay and draft templates
+        template_key = f"{essay_template_name}+{draft_template_name}"
         if template_key not in copied_templates:
             # Copy essay template
             if essay_template_src.exists():
@@ -485,19 +509,19 @@ def copy_essays_with_links(essay_paths: List[str], generation_info: List[dict],
                 print(f"  ✗ Essay template not found: {essay_template_src}")
                 missing_files.append(str(essay_template_src))
                 
-            # Copy links template
-            if links_template_src.exists():
-                shutil.copy2(links_template_src, links_template_dst)
-                print(f"  ✓ Copied links template: {links_template_dst.name}")
-                copied_files.append(str(links_template_dst))
+            # Copy draft template
+            if draft_template_src.exists():
+                shutil.copy2(draft_template_src, draft_template_dst)
+                print(f"  ✓ Copied draft template: {draft_template_dst.name}")
+                copied_files.append(str(draft_template_dst))
             else:
-                print(f"  ✗ Links template not found: {links_template_src}")
-                missing_files.append(str(links_template_src))
+                print(f"  ✗ Draft template not found: {draft_template_src}")
+                missing_files.append(str(draft_template_src))
             
             # Mark this template combination as copied
             copied_templates.add(template_key)
         else:
-            print(f"  - Templates for '{essay_template_name}' + '{links_template_name}' already copied, skipping")
+            print(f"  - Templates for '{essay_template_name}' + '{draft_template_name}' already copied, skipping")
     
     # Print summary
     print(f"\n{'='*60}")
@@ -516,7 +540,7 @@ def copy_essays_with_links(essay_paths: List[str], generation_info: List[dict],
 
 def main():
     """Main function to handle command line usage."""
-    parser = argparse.ArgumentParser(description="Copy top-scoring essays with links, templates, and evaluations")
+    parser = argparse.ArgumentParser(description="Copy top-scoring essays with drafts, templates, and evaluations")
     parser.add_argument("pos_n", nargs="?", type=int, help="Top N to copy (back-compat positional, ignored with --use-all-generations)")
     parser.add_argument("--n", type=int, default=None, help="Top N to copy (overrides positional, ignored with --use-all-generations)")
     parser.add_argument("--use-big-pivot", action="store_true", help="Use cross-experiment pivot + current eval tasks to compute totals")
@@ -529,7 +553,9 @@ def main():
     parser.add_argument("--content-combinations", type=str, default="data/2_tasks/content_combinations_csv.csv", help="Path to content combinations CSV")
     parser.add_argument("--essay-tasks", type=str, default="data/2_tasks/essay_generation_tasks.csv", help="Path to essay generation tasks CSV")
     parser.add_argument("--essay-templates", type=str, default="data/1_raw/essay_templates.csv", help="Path to essay templates CSV")
-    parser.add_argument("--link-templates", type=str, default="data/1_raw/link_templates.csv", help="Path to link templates CSV")
+    parser.add_argument("--draft-templates", type=str, default="data/1_raw/draft_templates.csv", help="Path to draft templates CSV")
+    # Back-compat (deprecated): allow --link-templates to override if provided
+    parser.add_argument("--link-templates", type=str, default=None, help="[Deprecated] Path to legacy link templates CSV")
     args = parser.parse_args()
 
     # Handle conflicting options
@@ -541,13 +567,14 @@ def main():
     try:
         if args.use_all_generations:
             print("Finding all current generation files from active cube...")
+            draft_templates_csv = args.draft_templates if args.link_templates is None else args.link_templates
             essay_filenames, generation_info = get_all_current_generations(
                 essay_responses_dir=args.essay_responses_dir,
                 concepts_metadata_path=args.concepts_metadata,
                 content_combinations_path=args.content_combinations,
                 essay_tasks_path=args.essay_tasks,
                 essay_templates_path=args.essay_templates,
-                link_templates_path=args.link_templates
+                draft_templates_path=draft_templates_csv,
             )
         else:
             # Resolve N with backward compatibility
@@ -584,19 +611,19 @@ def main():
         print(f"Found {len(essay_filenames)} generation files:")
         for i, info in enumerate(generation_info, 1):
             essay_name = info.get('template_name', info.get('template', 'N/A'))
-            link_name = info.get('link_template_name', info.get('link_template', 'N/A'))
-            print(f"  {i}. {info['model']} | Essay: {essay_name} | Links: {link_name} | {info['combo_id']}")
+            draft_name = info.get('draft_template_name', info.get('draft_template', 'N/A'))
+            print(f"  {i}. {info['model']} | Essay: {essay_name} | Draft: {draft_name} | {info['combo_id']}")
             print(f"     -> {info['filename']}")
     else:
         print(f"Selected {len(essay_filenames)} top scoring generations:")
         for i, info in enumerate(generation_info, 1):
-            link_template = info.get('link_template', 'N/A')
-            print(f"  {i}. {info['model']} | Essay: {info['template']} | Links: {link_template} | Score: {info['score']} | {info['combo_id']}")
+            draft_template = info.get('draft_template', 'N/A')
+            print(f"  {i}. {info['model']} | Essay: {info['template']} | Draft: {draft_template} | Score: {info['score']} | {info['combo_id']}")
             print(f"     -> {info['filename']}")
     
     print(f"\nCopying files...")
     
-    copied_files, missing_files = copy_essays_with_links(essay_filenames, generation_info)
+    copied_files, missing_files = copy_essays_with_drafts(essay_filenames, generation_info)
     
     if missing_files:
         sys.exit(1)  # Exit with error if any files were missing

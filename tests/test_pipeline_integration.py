@@ -26,7 +26,7 @@ def pipeline_data_root_prepared():
     - Clean tests/data_pipeline_test
     - Copy data/1_raw into tests/data_pipeline_test/1_raw
     - Create output dirs (2_tasks, 3_generation/{draft_prompts,draft_responses,essay_prompts,essay_responses})
-    - Limit active rows: concepts (2), link_templates (1), essay_templates (1), evaluation_templates (2), llm_models for_generation (2)
+    - Limit active rows: concepts (2), draft_templates (1), essay_templates (1), evaluation_templates (2), llm_models for_generation (2)
     - Return Path to tests/data_pipeline_test
     """
     repo_root = Path(__file__).resolve().parents[1]
@@ -83,7 +83,7 @@ def pipeline_data_root_prepared():
 
     # Limit active rows in key CSVs
     concepts_csv = pipeline_data_root / "1_raw" / "concepts_metadata.csv"
-    link_templates_csv = pipeline_data_root / "1_raw" / "draft_templates.csv"
+    draft_templates_csv = pipeline_data_root / "1_raw" / "draft_templates.csv"
     essay_templates_csv = pipeline_data_root / "1_raw" / "essay_templates.csv"
     eval_templates_csv = pipeline_data_root / "1_raw" / "evaluation_templates.csv"
     models_csv = pipeline_data_root / "1_raw" / "llm_models.csv"
@@ -98,13 +98,13 @@ def pipeline_data_root_prepared():
 
     # Link and Essay templates: verify creative-synthesis-v10 files exist
     target_template = "creative-synthesis-v10"
-    links_file = pipeline_data_root / "1_raw" / "generation_templates" / "draft" / f"{target_template}.txt"
+    draft_file = pipeline_data_root / "1_raw" / "generation_templates" / "draft" / f"{target_template}.txt"
     essay_file = pipeline_data_root / "1_raw" / "generation_templates" / "essay" / f"{target_template}.txt"
     
-    if links_file.exists() and essay_file.exists():
+    if draft_file.exists() and essay_file.exists():
         print(f"✓ Verified {target_template} template with two-phase structure")
     else:
-        raise RuntimeError(f"Two-phase template files missing for {target_template}: {links_file} or {essay_file}")
+        raise RuntimeError(f"Two-phase template files missing for {target_template}: {draft_file} or {essay_file}")
     
     # Link and essay templates are already correctly configured with creative-synthesis-v10 active
 
@@ -131,7 +131,7 @@ class TestPipelineIntegration:
     def _verify_expected_files(self, test_directory, test_gen_partitions, test_eval_partitions):
         """Comprehensive verification of all expected pipeline output files."""
         
-        # Task definition files (02_tasks/) - link/essay tasks and evaluation tasks
+        # Task definition files (02_tasks/) - draft/essay tasks and evaluation tasks
         task_files = [
             test_directory / "2_tasks" / "draft_generation_tasks.csv",
             test_directory / "2_tasks" / "essay_generation_tasks.csv",
@@ -156,23 +156,23 @@ class TestPipelineIntegration:
                 assert combo_id.startswith("combo_"), f"Invalid combo_id format: {combo_id}"
         
         # Two-phase generation files (3_generation/)
-        links_prompt_dir = test_directory / "3_generation" / "draft_prompts"
-        links_response_dir = test_directory / "3_generation" / "draft_responses"
+        draft_prompt_dir = test_directory / "3_generation" / "draft_prompts"
+        draft_response_dir = test_directory / "3_generation" / "draft_responses"
         essay_prompt_dir = test_directory / "3_generation" / "essay_prompts"
         essay_response_dir = test_directory / "3_generation" / "essay_responses"
         
         for partition in test_gen_partitions:
-            # Verify link-phase files exist
-            links_prompt_file = links_prompt_dir / f"{partition}.txt"
-            links_response_file = links_response_dir / f"{partition}.txt"
+            # Verify draft-phase files exist
+            draft_prompt_file = draft_prompt_dir / f"{partition}.txt"
+            draft_response_file = draft_response_dir / f"{partition}.txt"
             # essay files are keyed by essay_task_id; checked elsewhere
             
-            assert links_prompt_file.exists(), f"Links prompt not created: {links_prompt_file}"
-            assert links_response_file.exists(), f"Links response not created: {links_response_file}"
+            assert draft_prompt_file.exists(), f"Draft prompt not created: {draft_prompt_file}"
+            assert draft_response_file.exists(), f"Draft response not created: {draft_response_file}"
             
             # Verify file sizes
-            assert links_prompt_file.stat().st_size > 0, f"Links prompt is empty: {links_prompt_file}"
-            assert links_response_file.stat().st_size > 0, f"Links response is empty: {links_response_file}"
+            assert draft_prompt_file.stat().st_size > 0, f"Draft prompt is empty: {draft_prompt_file}"
+            assert draft_response_file.stat().st_size > 0, f"Draft response is empty: {draft_response_file}"
             # essay file content checks removed since keys differ
         
         # Evaluation files (4_evaluation/) - Check if they exist but don't require them
@@ -335,9 +335,9 @@ class TestPipelineIntegration:
                 assert "draft_template" in gen_tasks_csv.columns
                 assert "generation_model" in gen_tasks_csv.columns
 
-                link_templates_metadata = pd.read_csv(pipeline_data_root / "1_raw" / "draft_templates.csv")
+                draft_templates_metadata = pd.read_csv(pipeline_data_root / "1_raw" / "draft_templates.csv")
                 expected_active_templates = set(
-                    link_templates_metadata[link_templates_metadata["active"] == True]["template_id"].tolist()
+                    draft_templates_metadata[draft_templates_metadata["active"] == True]["template_id"].tolist()
                 )
                 templates_used = set(gen_tasks_csv["draft_template"].unique())
                 assert templates_used == expected_active_templates
@@ -353,17 +353,17 @@ class TestPipelineIntegration:
                 eval_tasks_csv_path = task_dir / "evaluation_tasks.csv"
                 eval_tasks_csv = pd.read_csv(eval_tasks_csv_path)
                 assert "evaluation_task_id" in eval_tasks_csv.columns
-                assert "link_task_id" in eval_tasks_csv.columns
+                assert "draft_task_id" in eval_tasks_csv.columns
 
                 unique_combos_in_combinations = len(combinations_csv["combo_id"].unique())
                 unique_combos_in_gen_tasks = len(gen_tasks_csv["combo_id"].unique())
                 assert unique_combos_in_combinations == unique_combos_in_gen_tasks
 
                 print(
-                    f"✅ Task verification completed: {actual_link_task_count} link tasks, {len(eval_tasks_csv)} evaluation tasks"
+                    f"✅ Task verification completed: {actual_link_task_count} draft tasks, {len(eval_tasks_csv)} evaluation tasks"
                 )
 
-                # STEP 2: Materialize generation pipeline (links and essays)
+                # STEP 2: Materialize generation pipeline (drafts and essays)
                 print("🔗 Step 2: Materializing generation pipeline...")
                 
                 # Get task IDs for generation
@@ -375,12 +375,12 @@ class TestPipelineIntegration:
                     draft_prompt, draft_response, essay_prompt, essay_response
                 )
                 
-                # Materialize link generation for specific partitions
+                # Materialize draft generation for specific partitions
                 for partition_key in test_gen_partitions:
-                    print(f"  Materializing links for partition: {partition_key}")
+                    print(f"  Materializing drafts for partition: {partition_key}")
                     result = materialize(
                         [
-                            # Core dependencies for links
+                            # Core dependencies for drafts
                             content_combinations,
                             draft_generation_tasks,
                             # Draft generation assets
@@ -391,14 +391,14 @@ class TestPipelineIntegration:
                         partition_key=partition_key
                     )
                     if not result.success:
-                        print(f"  ⚠ Links generation failed for partition {partition_key} - continuing")
+                        print(f"  ⚠ Draft generation failed for partition {partition_key} - continuing")
                         continue
                 
                 # Materialize essay generation for corresponding essay task partitions
                 essay_tasks_df = pd.read_csv(task_dir / "essay_generation_tasks.csv")
                 # Choose essay tasks that correspond to the generated draft partitions
                 test_essay_partitions = essay_tasks_df[
-                    essay_tasks_df["link_task_id"].isin(test_gen_partitions)
+                    essay_tasks_df["draft_task_id"].isin(test_gen_partitions)
                 ]["essay_task_id"].tolist()[:2]
                 
                 for partition_key in test_essay_partitions:
@@ -425,12 +425,12 @@ class TestPipelineIntegration:
                 print("📊 Step 3: Testing evaluation pipeline...")
                 
                 eval_tasks_df = pd.read_csv(task_dir / "evaluation_tasks.csv")
-                # Only test evaluation tasks that reference the generated link drafts
+                # Only test evaluation tasks that reference the generated drafts
                 gen_tasks_df = pd.read_csv(task_dir / "draft_generation_tasks.csv")
-                generated_link_ids = gen_tasks_df["draft_task_id"].tolist()[:2]  # Match generation limit
+                generated_draft_ids = gen_tasks_df["draft_task_id"].tolist()[:2]  # Match generation limit
 
                 test_eval_partitions = eval_tasks_df[
-                    eval_tasks_df["link_task_id"].isin(generated_link_ids)
+                    eval_tasks_df["draft_task_id"].isin(generated_draft_ids)
                 ]["evaluation_task_id"].tolist()[:2]  # Limit to 2 for testing
                 
                 if test_eval_partitions:
@@ -686,5 +686,5 @@ class TestPipelineIntegration:
                 print(f"   Used {len(templates_used)} active templates out of {len(test_gen_templates_metadata)} total")
                 print(f"   Generated {actual_task_count} tasks as expected")
 
-    # Note: Error scenarios (like insufficient links) are covered by comprehensive unit tests
-    # in daydreaming_dagster/assets/test_two_phase_generation.py, specifically TestLinksValidation class
+    # Note: Error scenarios (like insufficient drafts/links) are covered by unit tests
+    # in daydreaming_dagster/assets/test_two_phase_generation.py (see TestLinksValidation)

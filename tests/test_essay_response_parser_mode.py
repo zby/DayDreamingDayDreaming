@@ -46,7 +46,7 @@ def _write_minimal_essay_templates_csv(dir_path: Path):
             {
                 "template_id": "parsed-from-links-v1",
                 "template_name": "Parsed From Links (Final Idea)",
-                "description": "Parse final <essay-idea> from links output; no LLM",
+                "description": "Parse final <essay-idea> from draft output; no LLM",
                 "active": True,
                 "generator": "parser",
             }
@@ -57,16 +57,16 @@ def _write_minimal_essay_templates_csv(dir_path: Path):
     df.to_csv(out, index=False)
 
 
-def test_essay_response_parses_from_links_and_writes_output(tmp_path: Path):
+def test_essay_response_parses_from_draft_and_writes_output(tmp_path: Path):
     # Prepare minimal data_root with essay_templates.csv (parser mode)
     _write_minimal_essay_templates_csv(tmp_path)
 
-    link_task_id = "comboX_deliberate-rolling-thread-v1_sonnet-4"
+    draft_task_id = "comboX_deliberate-rolling-thread-v1_sonnet-4"
     essay_template = "parsed-from-links-v1"
-    essay_task_id = f"{link_task_id}_{essay_template}"
+    essay_task_id = f"{draft_task_id}_{essay_template}"
 
-    # Links content with two essay-idea blocks; parser should pick stage=2 content
-    links_content = (
+    # Draft content with two essay-idea blocks; parser should pick stage=2 content
+    draft_content = (
         "header lines\n"
         "<essay-idea stage=\"1\">\nSeed paragraph.\n</essay-idea>\n\n"
         "<essay-idea stage=\"2\">\nFinal integrated idea.\n</essay-idea>\n"
@@ -77,8 +77,8 @@ def test_essay_response_parses_from_links_and_writes_output(tmp_path: Path):
         [
             {
                 "essay_task_id": essay_task_id,
-                "link_task_id": link_task_id,
-                "link_template": "deliberate-rolling-thread-v1",
+                "draft_task_id": draft_task_id,
+                "draft_template": "deliberate-rolling-thread-v1",
                 "essay_template": essay_template,
                 "generation_model_name": "unused-in-parser",
             }
@@ -88,7 +88,7 @@ def test_essay_response_parses_from_links_and_writes_output(tmp_path: Path):
     ctx = _FakeContext(
         partition_key=essay_task_id,
         data_root=tmp_path,
-        draft_io=_FakeDraftIO(links_content),
+        draft_io=_FakeDraftIO(draft_content),
     )
 
     result = essay_response_impl(ctx, essay_prompt="PARSER_MODE", essay_generation_tasks=tasks)
@@ -97,7 +97,7 @@ def test_essay_response_parses_from_links_and_writes_output(tmp_path: Path):
     # Metadata should be present
     assert (getattr(ctx._meta.get("mode"), "text", ctx._meta.get("mode"))) == "parser"
     assert (getattr(ctx._meta.get("parser"), "text", ctx._meta.get("parser"))) == "essay_idea_last"
-    assert (getattr(ctx._meta.get("source_link_task_id"), "text", ctx._meta.get("source_link_task_id"))) == link_task_id
+    assert (getattr(ctx._meta.get("source_link_task_id"), "text", ctx._meta.get("source_link_task_id"))) == draft_task_id
 
 
 def test_missing_or_unsupported_parser_mapping_fails_partition(tmp_path: Path):
@@ -105,17 +105,17 @@ def test_missing_or_unsupported_parser_mapping_fails_partition(tmp_path: Path):
 
     _write_minimal_essay_templates_csv(tmp_path)
 
-    link_task_id = "comboX_unknown-template_sonnet-4"
+    draft_task_id = "comboX_unknown-template_sonnet-4"
     essay_template = "parsed-from-links-v1"
-    essay_task_id = f"{link_task_id}_{essay_template}"
-    links_content = "<essay-idea>\nIdea\n</essay-idea>\n"
+    essay_task_id = f"{draft_task_id}_{essay_template}"
+    draft_content = "<essay-idea>\nIdea\n</essay-idea>\n"
 
     tasks = pd.DataFrame(
         [
             {
                 "essay_task_id": essay_task_id,
-                "link_task_id": link_task_id,
-                "link_template": "unknown-template",
+                "draft_task_id": draft_task_id,
+                "draft_template": "unknown-template",
                 "essay_template": essay_template,
                 "generation_model_name": "unused",
             }
@@ -125,7 +125,7 @@ def test_missing_or_unsupported_parser_mapping_fails_partition(tmp_path: Path):
     ctx = _FakeContext(
         partition_key=essay_task_id,
         data_root=tmp_path,
-        draft_io=_FakeDraftIO(links_content),
+        draft_io=_FakeDraftIO(draft_content),
     )
 
     with pytest.raises(Failure):
@@ -133,18 +133,18 @@ def test_missing_or_unsupported_parser_mapping_fails_partition(tmp_path: Path):
 
 
 
-def test_essay_response_parses_from_links_and_writes_output(tmp_path):
+def test_essay_response_parses_from_draft_and_writes_output(tmp_path):
     # Pseudocode outline:
     # 1) Given essay_generation_tasks row with:
     #    - essay_template = 'parsed-from-links-v1' (generator=parser)
-    #    - link_task_id = 'comboX_deliberate-rolling-thread-v1_sonnet-4'
-    # 2) links_response_io_manager.load_input returns content containing two <essay-idea> blocks
+    #    - draft_task_id = 'comboX_deliberate-rolling-thread-v1_sonnet-4'
+    # 2) draft_response_io_manager.load_input returns content containing two <essay-idea> blocks
     # 3) essay_response writes the last idea paragraph to essay_responses/<essay_task_id>.txt
     # 4) Metadata includes mode=parser, parser=essay_idea_last, source_link_task_id
     pass
 
 
 def test_missing_or_unsupported_parser_mapping_fails_partition():
-    # If link_template is not mapped to a parser, the asset should raise a Failure
+    # If draft_template is not mapped to a parser, the asset should raise a Failure
     # with a clear resolution hint.
     pass

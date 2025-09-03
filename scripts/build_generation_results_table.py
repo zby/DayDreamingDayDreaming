@@ -133,34 +133,6 @@ def rebuild_two_phase_generation_results() -> int:
                 }
                 append_to_results_csv("data/7_cross_experiment/draft_generation_results.csv", new_row)
                 total_appended += 1
-            row = None
-            # Prefer draft_generation_tasks.csv
-            if draft_tasks is not None:
-                m = draft_tasks[draft_tasks["draft_task_id"] == link_task_id]
-                if not m.empty:
-                    row = m.iloc[0]
-            # Fallback: legacy link_generation_tasks.csv
-            if row is None and link_tasks is not None:
-                m = link_tasks[link_tasks["link_task_id"] == link_task_id]
-                if not m.empty:
-                    row = m.iloc[0]
-            if row is None:
-                print(f"⚠️  No task metadata for draft {link_task_id}; skipping")
-                continue
-            # Map columns for new/legacy task rows
-            tpl_col = "draft_template" if "draft_template" in row else "link_template"
-            new_row = {
-                "draft_task_id": link_task_id,
-                "combo_id": row["combo_id"],
-                "draft_template_id": row[tpl_col],
-                "generation_model": row["generation_model_name"],
-                "generation_status": "success",
-                "generation_timestamp": datetime.fromtimestamp(f.stat().st_mtime).isoformat(),
-                "response_file": f"{links_dir.name}/{link_task_id}.txt",
-                "response_size_bytes": f.stat().st_size,
-            }
-            append_to_results_csv("data/7_cross_experiment/draft_generation_results.csv", new_row)
-            total_appended += 1
 
     # Essays
     essays_dir = Path("data/3_generation/essay_responses")
