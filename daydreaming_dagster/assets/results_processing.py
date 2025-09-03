@@ -56,11 +56,22 @@ def parsed_scores(context, evaluation_tasks: pd.DataFrame) -> pd.DataFrame:
     # Pass through document file path for generation reference
     enriched_df["generation_response_path"] = enriched_df["file_path"]
 
-    # Derive generation_template for analysis: prefer essay_template, else link_template
-    enriched_df["generation_template"] = enriched_df["essay_template"].where(
-        enriched_df["essay_template"].notna() & (enriched_df["essay_template"] != ""),
-        enriched_df["link_template"],
-    )
+    # Derive generation_template for analysis: prefer essay_template, else draft_template (if present), else link_template
+    if "draft_template" in enriched_df.columns:
+        enriched_df["generation_template"] = np.where(
+            enriched_df["essay_template"].notna() & (enriched_df["essay_template"] != ""),
+            enriched_df["essay_template"],
+            np.where(
+                enriched_df["draft_template"].notna() & (enriched_df["draft_template"] != ""),
+                enriched_df["draft_template"],
+                enriched_df.get("link_template"),
+            ),
+        )
+    else:
+        enriched_df["generation_template"] = enriched_df["essay_template"].where(
+            enriched_df["essay_template"].notna() & (enriched_df["essay_template"] != ""),
+            enriched_df["link_template"],
+        )
 
     # Select final columns (include IDs useful for downstream path reconstruction)
     result_df = enriched_df[[
