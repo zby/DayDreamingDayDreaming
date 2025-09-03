@@ -1,21 +1,21 @@
 #!/usr/bin/env python3
 """
-Copy top-scoring essays (and their links + templates) for manual review.
+Copy top-scoring essays (and their drafts + templates) for manual review.
 
 Usage:
-    python scripts/copy_essays_with_links.py [N]
+    python scripts/copy_essays_with_drafts.py [N]
     # Or use cross-experiment pivot and current experiment eval tasks
-    python scripts/copy_essays_with_links.py --use-big-pivot --n 10 \
+    python scripts/copy_essays_with_drafts.py --use-big-pivot --n 10 \
         --big-pivot data/7_cross_experiment/evaluation_scores_by_template_model.csv \
         --evaluation-tasks data/2_tasks/evaluation_tasks.csv
     # Or copy all current generation files (ignores pivot tables)
-    python scripts/copy_essays_with_links.py --use-all-generations
+    python scripts/copy_essays_with_drafts.py --use-all-generations
 
 Examples:
-    python scripts/copy_essays_with_links.py       # top 5 (default)
-    python scripts/copy_essays_with_links.py 3     # top 3
-    python scripts/copy_essays_with_links.py 10    # top 10
-    python scripts/copy_essays_with_links.py --use-all-generations  # all current files
+    python scripts/copy_essays_with_drafts.py       # top 5 (default)
+    python scripts/copy_essays_with_drafts.py 3     # top 3
+    python scripts/copy_essays_with_drafts.py 10    # top 10
+    python scripts/copy_essays_with_drafts.py --use-all-generations  # all current files
 
 What it does:
 1) Reads `data/6_summary/generation_scores_pivot.csv`
@@ -24,13 +24,13 @@ What it does:
    - Essay responses from `data/3_generation/essay_responses/`
    - Draft responses from `data/3_generation/draft_responses/` (falls back to legacy `links_responses/`) as `<name>_links_response.txt`
    - Template files from the two-phase generation system:
-       * Essay templates: `{essay_template}_essay_template.txt` from `data/1_raw/generation_templates/essay/`
-       * Links templates: `{links_template}_links_template.txt` from `data/1_raw/generation_templates/links/`
+       * Essay templates: `{essay_template}.txt` from `data/1_raw/generation_templates/essay/`
+       * Draft templates: `{draft_template}.txt` from `data/1_raw/generation_templates/draft/`
 
 Notes:
-- Supports the two-phase generation system where links and essays use different templates
-- Links files get a `_links_response` postfix to avoid naming conflicts with essay files
-- Links template names are extracted from the link task ID structure
+- Supports the two-phase generation system where drafts and essays use different templates
+- Draft files get a `_links_response` postfix to avoid naming conflicts with essay files
+- Draft template names are extracted from the draft task ID structure
 - Evaluation responses by Sonnet (`evaluation_model_id='sonnet-4'`) are copied into
   a subdirectory named `evaluations_sonnet/` alongside the other files
 """
