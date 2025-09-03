@@ -176,8 +176,10 @@ def main() -> int:
                 missing_essays.append(str(fp))
             essay_rows.append({
                 "essay_task_id": doc,
+                "draft_task_id": link_task_id,
                 "link_task_id": link_task_id,
                 "combo_id": combo_id,
+                "draft_template": link_template,
                 "link_template": link_template,
                 "essay_template": essay_template,
                 "generation_model": generation_model,
@@ -223,7 +225,7 @@ def main() -> int:
     essay_out_csv.parent.mkdir(parents=True, exist_ok=True)
     if essay_rows:
         pd.DataFrame(essay_rows, columns=[
-            "essay_task_id","link_task_id","combo_id","link_template",
+            "essay_task_id","draft_task_id","link_task_id","combo_id","draft_template","link_template",
             "essay_template","generation_model","generation_model_name"
         ]).drop_duplicates(subset=["essay_task_id"]).to_csv(essay_out_csv, index=False)
         print(f"Wrote {len(essay_rows)} curated essay tasks to {essay_out_csv}")

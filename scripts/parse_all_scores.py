@@ -351,6 +351,8 @@ def parse_all(
             "evaluation_model": id_parts.get("evaluation_model"),
             "essay_task_id": id_parts.get("essay_task_id"),
             "combo_id": id_parts.get("combo_id"),
+            # Canonical going forward: draft_template; keep link_template for compatibility
+            "draft_template": id_parts.get("link_template"),
             "link_template": id_parts.get("link_template"),
             "generation_template": id_parts.get("generation_template"),
             "generation_model": id_parts.get("generation_model"),

@@ -29,11 +29,10 @@ def build_pivot(parsed_scores: Path, out_dir: Path) -> None:
 
     df = pd.read_csv(parsed_scores)
 
-    # Ensure required columns exist
+    # Ensure required columns exist (canonical uses draft_template; support legacy link_template)
     required = [
         "essay_task_id",
         "combo_id",
-        "link_template",
         "generation_template",
         "generation_model",
         "evaluation_template",
@@ -44,6 +43,14 @@ def build_pivot(parsed_scores: Path, out_dir: Path) -> None:
     if missing:
         raise ValueError(f"Missing columns in parsed scores: {missing}")
 
+    # Backward-compat: if draft_template missing, populate from link_template when present
+    if "draft_template" not in df.columns:
+        if "link_template" in df.columns:
+            df["draft_template"] = df["link_template"]
+        else:
+            # Keep a column for downstream selection even if empty
+            df["draft_template"] = None
+
     # Compose column key as template__model
     df["evaluation_template_model"] = df["evaluation_template"].astype(str) + "__" + df["evaluation_model"].astype(str)
     # Deterministic order before pivot
@@ -52,7 +59,7 @@ def build_pivot(parsed_scores: Path, out_dir: Path) -> None:
     meta_cols = [
         "essay_task_id",
         "combo_id",
-        "link_template",
+        "draft_template",
         "generation_template",
         "generation_model",
     ]
