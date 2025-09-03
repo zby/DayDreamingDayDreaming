@@ -67,14 +67,23 @@ def load_known_templates(base_data: Path) -> Dict[str, Set[str]]:
         for p in eval_dir.glob("*.txt"):
             eval_templates.add(p.stem)
 
-    # Generation templates (links and essay)
+    # Generation templates (draft/links and essay)
     link_csv = base_data / "1_raw" / "link_templates.csv"
+    draft_csv = base_data / "1_raw" / "draft_templates.csv"
     essay_csv = base_data / "1_raw" / "essay_templates.csv"
     link_dir = base_data / "1_raw" / "generation_templates" / "links"
+    draft_dir = base_data / "1_raw" / "generation_templates" / "draft"
     essay_dir = base_data / "1_raw" / "generation_templates" / "essay"
     if link_csv.exists():
         try:
             df = pd.read_csv(link_csv)
+            if "template_id" in df.columns:
+                link_templates.update(df["template_id"].astype(str).tolist())
+        except Exception:
+            pass
+    if draft_csv.exists():
+        try:
+            df = pd.read_csv(draft_csv)
             if "template_id" in df.columns:
                 link_templates.update(df["template_id"].astype(str).tolist())
         except Exception:
@@ -86,6 +95,9 @@ def load_known_templates(base_data: Path) -> Dict[str, Set[str]]:
                 essay_templates.update(df["template_id"].astype(str).tolist())
         except Exception:
             pass
+    if draft_dir.exists():
+        for p in draft_dir.glob("*.txt"):
+            link_templates.add(p.stem)
     if link_dir.exists():
         for p in link_dir.glob("*.txt"):
             link_templates.add(p.stem)
