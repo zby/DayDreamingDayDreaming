@@ -87,7 +87,7 @@
 - Purpose: Demonstrate that DayDreaming‑style workflows enable pre‑June‑2025 offline LLMs to generate genuinely novel ideas; use DayDreaming LLMs as a falsifiable benchmark while maintaining generality beyond this target.
 - Benchmark strategy: Existence goal over a finite concept‑combination space; fixed inputs stay target‑neutral; derived inputs may include benchmark terms if model‑produced; scaffolding should surface other novel syntheses.
 - Success criteria: Includes all current novel elements, presents a coherent causal justification, is technically plausible and non‑derivative, and meets evaluation thresholds (e.g., ≥7.5/10 avg) with agreement plus binary gates (reinvention yes/no; all novel elements present).
-- Scope: In‑scope idea generation (currently two‑phase links → essay) with evaluation and minimal bookkeeping; out‑of‑scope search/ranking heuristics, retrieval/browsing, or target‑specific hints.
+- Scope: In‑scope idea generation (currently two‑phase drafts → essay) with evaluation and minimal bookkeeping; out‑of‑scope search/ranking heuristics, retrieval/browsing, or target‑specific hints.
 - Design guidance: Templates and concepts must be target‑neutral, parseable, general, stable/versioned; concepts come from a universal pool with traceable metadata distinguishing pool vs. experiment subset.
 - Evaluation: Score across axes (mechanistic completeness, structure, justification, novelty, grounding/coherence, coverage of novel elements) and apply binary gates; track inter‑evaluator variance and rubric versions.
 - DayDreaming checklist: Multi‑stage process with state; feedback signals; memory/externalization/tool use; selection/filters; termination/roll‑over criteria.

@@ -28,24 +28,25 @@ def parsed_scores(context, evaluation_tasks: pd.DataFrame) -> pd.DataFrame:
     parsed_df = parse_evaluation_files(evaluation_tasks, base_path, context=context)
 
     # Join with evaluation task metadata (denormalized)
+    base_cols = [
+        "evaluation_task_id",
+        "document_id",
+        "stage",
+        "origin",
+        "file_path",
+        "combo_id",
+        "draft_template",
+        "essay_template",
+        "generation_model",
+        "generation_model_name",
+        "evaluation_template",
+        "evaluation_model",
+        "source_asset",
+        "source_dir",
+    ]
+    select_cols = [c for c in base_cols if c in evaluation_tasks.columns]
     enriched_df = parsed_df.merge(
-        evaluation_tasks[[
-            "evaluation_task_id",
-            "document_id",
-            "stage",
-            "origin",
-            "file_path",
-            "combo_id",
-            "draft_template",
-            "link_template",
-            "essay_template",
-            "generation_model",
-            "generation_model_name",
-            "evaluation_template",
-            "evaluation_model",
-            "source_asset",
-            "source_dir",
-        ]],
+        evaluation_tasks[select_cols],
         on="evaluation_task_id",
         how="left",
     )

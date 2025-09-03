@@ -242,7 +242,7 @@ def essay_generation_tasks(
     context,
     draft_generation_tasks: pd.DataFrame,
 ) -> pd.DataFrame:
-    """Create essay-generation tasks (FK to link tasks × essay_template)."""
+    """Create essay-generation tasks (FK to draft tasks × essay_template)."""
     data_root = context.resources.data_root
     essay_templates_df = read_essay_templates(Path(data_root), filter_active=True)
     essay_templates = list(essay_templates_df["template_id"].tolist())
@@ -259,11 +259,9 @@ def essay_generation_tasks(
                 {
                     "essay_task_id": essay_task_id,
                     "draft_task_id": link_task_id,
-                    "link_task_id": link_task_id,
                     "combo_id": combo_id,
-                    # Canonical: draft_template; keep legacy link_template for compatibility
+                    # Canonical: draft_template
                     "draft_template": drow["draft_template"],
-                    "link_template": drow["draft_template"],
                     "essay_template": essay_template_id,
                     "generation_model": model_id,
                     "generation_model_name": model_name,
@@ -278,12 +276,10 @@ def essay_generation_tasks(
         "file_path",
         "combo_id",
         "draft_template",
-        "link_template",
         "essay_template",
         "generation_model",
         "generation_model_name",
         "draft_task_id",
-        "link_task_id",
         "essay_task_id",
         "source_asset",
         "source_dir",
@@ -303,7 +299,7 @@ def essay_generation_tasks(
     context.add_output_metadata(
         {
             "task_count": MetadataValue.int(len(tasks_df)),
-            "unique_links": MetadataValue.int(tasks_df["link_task_id"].nunique()),
+            "unique_drafts": MetadataValue.int(tasks_df["draft_task_id"].nunique()),
             "unique_essay_templates": MetadataValue.int(tasks_df["essay_template"].nunique()),
         }
     )
@@ -350,12 +346,10 @@ def document_index(
                         "combo_id": row["combo_id"],
                         # Canonical: draft_template; no essay template at this stage
                         "draft_template": row["draft_template"],
-                        "link_template": row["draft_template"],
                         "essay_template": None,
                         "generation_model_id": row["generation_model"],
                         "generation_model_name": row["generation_model_name"],
                         "draft_task_id": link_task_id,
-                        "link_task_id": link_task_id,
                         "essay_task_id": None,
                         "source_asset": "draft_response" if fp_new.exists() else "links_response",
                         "source_dir": "draft_responses" if fp_new.exists() else "links_responses",
@@ -377,12 +371,10 @@ def document_index(
                         "file_path": str(fp),
                         "combo_id": row["combo_id"],
                         "draft_template": row.get("draft_template") or row.get("link_template"),
-                        "link_template": row.get("link_template"),
                         "essay_template": row["essay_template"],
                         "generation_model_id": row["generation_model"],
                         "generation_model_name": row["generation_model_name"],
                         "draft_task_id": row.get("draft_task_id", row.get("link_task_id")),
-                        "link_task_id": row["link_task_id"],
                         "essay_task_id": essay_task_id,
                         "source_asset": "essay_response",
                         "source_dir": "essay_responses",
@@ -396,12 +388,10 @@ def document_index(
         "file_path",
         "combo_id",
         "draft_template",
-        "link_template",
         "essay_template",
         "generation_model_id",
         "generation_model_name",
         "draft_task_id",
-        "link_task_id",
         "essay_task_id",
         "source_asset",
         "source_dir",
@@ -457,12 +447,10 @@ def evaluation_tasks(
                     "file_path": str(fp),
                     "combo_id": row["combo_id"],
                     "draft_template": row.get("draft_template") or row.get("link_template"),
-                    "link_template": row.get("link_template"),
                     "essay_template": row["essay_template"],
                     "generation_model_id": row["generation_model"],
                     "generation_model_name": row["generation_model_name"],
                     "draft_task_id": row.get("draft_task_id", row.get("link_task_id")),
-                    "link_task_id": row["link_task_id"],
                     "essay_task_id": essay_task_id,
                     "source_asset": "essay_response",
                     "source_dir": "essay_responses",
@@ -488,12 +476,10 @@ def evaluation_tasks(
                         "file_path": doc.get("file_path"),
                         "combo_id": doc.get("combo_id"),
                         "draft_template": doc.get("draft_template"),
-                        "link_template": doc.get("link_template"),
                         "essay_template": doc.get("essay_template"),
                         "generation_model": doc.get("generation_model_id"),
                         "generation_model_name": doc.get("generation_model_name"),
                         "draft_task_id": doc.get("draft_task_id"),
-                        "link_task_id": doc.get("link_task_id"),
                         "essay_task_id": doc.get("essay_task_id"),
                         "source_asset": doc.get("source_asset"),
                         "source_dir": doc.get("source_dir"),

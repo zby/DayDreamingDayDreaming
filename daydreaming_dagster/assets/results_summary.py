@@ -322,12 +322,12 @@ def perfect_score_paths(context, parsed_scores: pd.DataFrame) -> pd.DataFrame:
     paths_data = []
     
     for _, row in perfect_scores.iterrows():
-        # Generation path: prefer direct essay_task_id if available; otherwise, build via helper if link_template is present
+        # Generation path: prefer direct essay_task_id if available; otherwise, build via helper if draft_template is present
         if 'essay_task_id' in row and isinstance(row['essay_task_id'], str) and len(row['essay_task_id']):
             generation_path = f"data/3_generation/essay_responses/{row['essay_task_id']}.txt"
         else:
-            link_tpl = row.get('link_template') if 'link_template' in row else None
-            generation_path = get_generation_response_path(row['combo_id'], link_tpl, row['generation_template'], row['generation_model'])
+            draft_tpl = row.get('draft_template') if 'draft_template' in row else None
+            generation_path = get_generation_response_path(row['combo_id'], draft_tpl, row['generation_template'], row['generation_model'])
 
         # Evaluation path: use parsed column when present
         evaluation_path = row['evaluation_response_path'] if 'evaluation_response_path' in row else f"data/4_evaluation/evaluation_responses/{row['combo_id']}_{row['generation_template']}_{row['generation_model']}_{row.get('evaluation_template', 'daydreaming-verification-v2')}_{row['evaluation_model']}.txt"
