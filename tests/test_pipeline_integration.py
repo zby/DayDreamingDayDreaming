@@ -133,7 +133,7 @@ class TestPipelineIntegration:
         
         # Task definition files (02_tasks/) - link/essay tasks and evaluation tasks
         task_files = [
-            test_directory / "2_tasks" / "link_generation_tasks.csv",
+            test_directory / "2_tasks" / "draft_generation_tasks.csv",
             test_directory / "2_tasks" / "essay_generation_tasks.csv",
             test_directory / "2_tasks" / "evaluation_tasks.csv",
         ]
@@ -143,7 +143,7 @@ class TestPipelineIntegration:
             assert file_path.stat().st_size > 0, f"Task file is empty: {file_path}"
         
         # Verify task file contents
-        gen_tasks_file = test_directory / "2_tasks" / "link_generation_tasks.csv"
+        gen_tasks_file = test_directory / "2_tasks" / "draft_generation_tasks.csv"
         if gen_tasks_file.exists():
             gen_tasks_df = pd.read_csv(gen_tasks_file)
             assert len(gen_tasks_df) > 0, "Generation tasks should not be empty"
@@ -396,7 +396,10 @@ class TestPipelineIntegration:
                 
                 # Materialize essay generation for corresponding essay task partitions
                 essay_tasks_df = pd.read_csv(task_dir / "essay_generation_tasks.csv")
-                test_essay_partitions = essay_tasks_df["essay_task_id"].tolist()[:2]  # Limit to 2 for testing
+                # Choose essay tasks that correspond to the generated draft partitions
+                test_essay_partitions = essay_tasks_df[
+                    essay_tasks_df["link_task_id"].isin(test_gen_partitions)
+                ]["essay_task_id"].tolist()[:2]
                 
                 for partition_key in test_essay_partitions:
                     print(f"  Materializing essays for partition: {partition_key}")
@@ -404,7 +407,7 @@ class TestPipelineIntegration:
                         [
                             # Core dependencies for essays
                             content_combinations,
-                            link_generation_tasks, essay_generation_tasks,
+                            draft_generation_tasks, essay_generation_tasks,
                             # Essay generation assets
                             essay_prompt, essay_response
                         ],

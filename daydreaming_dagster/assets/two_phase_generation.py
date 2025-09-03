@@ -193,7 +193,7 @@ def _essay_prompt_impl(context, essay_generation_tasks) -> str:
     partitions_def=essay_tasks_partitions,
     group_name="generation_essays",
     io_manager_key="essay_prompt_io_manager",
-    required_resource_keys={"links_response_io_manager", "data_root"},
+    required_resource_keys={"data_root"},
 )
 def essay_prompt(
     context,
@@ -234,8 +234,19 @@ def _essay_response_impl(context, essay_prompt, essay_generation_tasks) -> str:
             except Exception:
                 links_content = None
         if links_content is None:
-            links_io = context.resources.links_response_io_manager
-            links_content = links_io.load_input(MockLoadContext(link_task_id))
+            # Fallback: read directly from expected draft file path under data_root
+            draft_fp = Path(context.resources.data_root) / "3_generation" / "draft_responses" / f"{link_task_id}.txt"
+            if draft_fp.exists():
+                links_content = draft_fp.read_text(encoding="utf-8")
+            else:
+                raise Failure(
+                    description="Draft response not available for parser mode",
+                    metadata={
+                        "link_task_id": MetadataValue.text(link_task_id),
+                        "expected_path": MetadataValue.path(draft_fp),
+                        "resolution": MetadataValue.text("Ensure Phase 1 draft file exists for this task"),
+                    },
+                )
 
         # Determine parser from link_templates.csv (no in-code mapping)
         data_root = context.resources.data_root
@@ -312,8 +323,18 @@ def _essay_response_impl(context, essay_prompt, essay_generation_tasks) -> str:
             except Exception:
                 links_content = None
         if links_content is None:
-            links_io = context.resources.links_response_io_manager
-            links_content = links_io.load_input(MockLoadContext(link_task_id))
+            draft_fp = Path(context.resources.data_root) / "3_generation" / "draft_responses" / f"{link_task_id}.txt"
+            if draft_fp.exists():
+                links_content = draft_fp.read_text(encoding="utf-8")
+            else:
+                raise Failure(
+                    description="Draft response not available for copy mode",
+                    metadata={
+                        "link_task_id": MetadataValue.text(link_task_id),
+                        "expected_path": MetadataValue.path(draft_fp),
+                        "resolution": MetadataValue.text("Ensure Phase 1 draft file exists for this task"),
+                    },
+                )
 
         context.log.info(
             f"Copied essay from links for task {task_id} (mode=copy)"
@@ -340,7 +361,7 @@ def _essay_response_impl(context, essay_prompt, essay_generation_tasks) -> str:
     partitions_def=essay_tasks_partitions,
     group_name="generation_essays",
     io_manager_key="essay_response_io_manager",
-    required_resource_keys={"openrouter_client", "links_response_io_manager", "data_root"},
+    required_resource_keys={"openrouter_client", "data_root"},
 )
 def essay_response(context, essay_prompt, essay_generation_tasks) -> str:
     return _essay_response_impl(context, essay_prompt, essay_generation_tasks)
