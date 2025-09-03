@@ -43,9 +43,9 @@ def _write_minimal_essay_templates_csv(dir_path: Path):
     df = pd.DataFrame(
         [
             {
-                "template_id": "copy-from-links-v1",
-                "template_name": "Copy From Links",
-                "description": "Copy links output as essay text (no LLM)",
+                "template_id": "copy-from-drafts-v1",
+                "template_name": "Copy From Drafts",
+                "description": "Copy draft output as essay text (no LLM)",
                 "active": True,
                 "generator": "copy",
             }
@@ -56,21 +56,21 @@ def _write_minimal_essay_templates_csv(dir_path: Path):
     df.to_csv(out, index=False)
 
 
-def test_essay_response_copy_mode_returns_links_content(tmp_path: Path):
+def test_essay_response_copy_mode_returns_draft_content(tmp_path: Path):
     _write_minimal_essay_templates_csv(tmp_path)
 
-    link_task_id = "comboX_deliberate-rolling-thread-v2_sonnet-4"
-    essay_template = "copy-from-links-v1"
-    essay_task_id = f"{link_task_id}_{essay_template}"
+    draft_task_id = "comboX_deliberate-rolling-thread-v2_sonnet-4"
+    essay_template = "copy-from-drafts-v1"
+    essay_task_id = f"{draft_task_id}_{essay_template}"
 
-    links_content = "Line A\nLine B\nLine C\n"
+    draft_content = "Line A\nLine B\nLine C\n"
 
     tasks = pd.DataFrame(
         [
             {
                 "essay_task_id": essay_task_id,
-                "link_task_id": link_task_id,
-                "link_template": "deliberate-rolling-thread-v2",
+                "draft_task_id": draft_task_id,
+                "draft_template": "deliberate-rolling-thread-v2",
                 "essay_template": essay_template,
                 "generation_model_name": "unused",
             }
@@ -80,13 +80,13 @@ def test_essay_response_copy_mode_returns_links_content(tmp_path: Path):
     ctx = _FakeContext(
         partition_key=essay_task_id,
         data_root=tmp_path,
-        draft_io=_FakeDraftIO(links_content),
+        draft_io=_FakeDraftIO(draft_content),
     )
 
     result = essay_response_impl(ctx, essay_prompt="COPY_MODE", essay_generation_tasks=tasks)
 
-    assert result == links_content
+    assert result == draft_content
     mode = ctx._meta.get("mode")
-    src = ctx._meta.get("source_link_task_id")
+    src = ctx._meta.get("source_draft_task_id") or ctx._meta.get("source_link_task_id")
     assert (getattr(mode, "text", mode)) == "copy"
-    assert (getattr(src, "text", src)) == link_task_id
+    assert (getattr(src, "text", src)) == draft_task_id

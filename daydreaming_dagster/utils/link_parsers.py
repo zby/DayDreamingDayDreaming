@@ -54,3 +54,8 @@ def get_link_parser(name: str) -> Optional[Callable[[str], str]]:
     if not isinstance(name, str):
         return None
     return LINK_PARSERS_REGISTRY.get(name.strip())
+
+
+# Canonical alias for draft-phase parser lookup during link→draft migration
+def get_draft_parser(name: str) -> Optional[Callable[[str], str]]:
+    return get_link_parser(name)

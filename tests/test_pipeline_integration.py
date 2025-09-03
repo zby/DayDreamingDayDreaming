@@ -106,7 +106,22 @@ def pipeline_data_root_prepared():
     else:
         raise RuntimeError(f"Two-phase template files missing for {target_template}: {draft_file} or {essay_file}")
     
-    # Link and essay templates are already correctly configured with creative-synthesis-v10 active
+    # Ensure essay templates select an LLM-based template (avoid parser-only during fail-fast refactor)
+    if essay_templates_csv.exists():
+        et_df = pd.read_csv(essay_templates_csv)
+        if "active" in et_df.columns and "template_id" in et_df.columns and "generator" in et_df.columns:
+            # Deactivate all, then activate a known LLM template if present
+            et_df["active"] = False
+            if (et_df["template_id"] == target_template).any():
+                et_df.loc[et_df["template_id"] == target_template, "active"] = True
+                et_df.loc[et_df["template_id"] == target_template, "generator"] = "llm"
+            else:
+                # Fallback: activate the first llm template if available
+                llm_rows = et_df[et_df["generator"] == "llm"]
+                if not llm_rows.empty:
+                    idx = llm_rows.index[0]
+                    et_df.loc[idx, "active"] = True
+            et_df.to_csv(essay_templates_csv, index=False)
 
     # Evaluation templates: keep only first two active
     etdf = pd.read_csv(eval_templates_csv)

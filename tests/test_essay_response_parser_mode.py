@@ -97,7 +97,9 @@ def test_essay_response_parses_from_draft_and_writes_output(tmp_path: Path):
     # Metadata should be present
     assert (getattr(ctx._meta.get("mode"), "text", ctx._meta.get("mode"))) == "parser"
     assert (getattr(ctx._meta.get("parser"), "text", ctx._meta.get("parser"))) == "essay_idea_last"
-    assert (getattr(ctx._meta.get("source_link_task_id"), "text", ctx._meta.get("source_link_task_id"))) == draft_task_id
+    # Prefer new metadata key, but accept legacy during transition
+    src_meta = ctx._meta.get("source_draft_task_id") or ctx._meta.get("source_link_task_id")
+    assert (getattr(src_meta, "text", src_meta)) == draft_task_id
 
 
 def test_missing_or_unsupported_parser_mapping_fails_partition(tmp_path: Path):
