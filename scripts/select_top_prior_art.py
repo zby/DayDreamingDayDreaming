@@ -1,8 +1,11 @@
 #!/usr/bin/env python3
 """
 Select top-N documents by prior-art scores (cross-experiment) and write
-curated essay generation tasks to data/2_tasks/essay_generation_tasks.csv and
-curated draft generation tasks to data/2_tasks/draft_generation_tasks.csv.
+curated essay generation tasks to data/2_tasks/essay_generation_tasks.csv.
+
+Optionally, also write curated draft generation tasks to
+data/2_tasks/draft_generation_tasks.csv with --write-drafts (not required
+for evaluation; evaluation uses essays only).
 
 Defaults:
 - TOP_N = 10
@@ -37,6 +40,11 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--parsed-scores", type=Path, default=Path("data/7_cross_experiment/parsed_scores.csv"), help="Path to cross-experiment parsed_scores.csv")
     p.add_argument("--top-n", type=int, default=10, help="Number of top documents to select")
     p.add_argument("--prior-art-templates", type=str, nargs="*", default=DEFAULT_PRIOR_ART_TEMPLATES, help="Prior-art templates to consider (use whichever are present)")
+    p.add_argument(
+        "--write-drafts",
+        action="store_true",
+        help="Also write curated draft_generation_tasks.csv (evaluation uses essays only)",
+    )
     return p.parse_args()
 
 
@@ -88,7 +96,7 @@ def main() -> int:
 
     top_docs = best.head(args.top_n)["document_id"].tolist()
 
-    # Build curated generation task CSVs (essays and drafts)
+    # Build curated generation task CSVs (essays, and optionally drafts)
     models_csv = Path("data/1_raw/llm_models.csv")
     essay_dir = Path("data/3_generation/essay_responses")
     drafts_dir = Path("data/3_generation/draft_responses")
@@ -207,17 +215,18 @@ def main() -> int:
             if not (combo_id and draft_template and generation_model):
                 print(f"Skipping malformed draft id (parsed): {doc}", file=sys.stderr)
                 continue
-            draft_task_id = doc  # For drafts, document_id equals draft_task_id
-            fp = drafts_dir / f"{draft_task_id}.txt"
-            if not fp.exists():
-                missing_links.append(str(fp))
-            draft_rows.append({
-                "draft_task_id": draft_task_id,
-                "combo_id": combo_id,
-                "draft_template": draft_template,
-                "generation_model": generation_model,
-                "generation_model_name": model_map.get(generation_model, generation_model),
-            })
+            if args.write_drafts:
+                draft_task_id = doc  # For drafts, document_id equals draft_task_id
+                fp = drafts_dir / f"{draft_task_id}.txt"
+                if not fp.exists():
+                    missing_links.append(str(fp))
+                draft_rows.append({
+                    "draft_task_id": draft_task_id,
+                    "combo_id": combo_id,
+                    "draft_template": draft_template,
+                    "generation_model": generation_model,
+                    "generation_model_name": model_map.get(generation_model, generation_model),
+                })
 
     # Write outputs
     essay_out_csv.parent.mkdir(parents=True, exist_ok=True)
@@ -227,7 +236,7 @@ def main() -> int:
             "essay_template","generation_model","generation_model_name"
         ]).drop_duplicates(subset=["essay_task_id"]).to_csv(essay_out_csv, index=False)
         print(f"Wrote {len(essay_rows)} curated essay tasks to {essay_out_csv}")
-    if draft_rows:
+    if args.write_drafts and draft_rows:
         pd.DataFrame(draft_rows, columns=[
             "draft_task_id","combo_id","draft_template","generation_model","generation_model_name"
         ]).drop_duplicates(subset=["draft_task_id"]).to_csv(link_out_csv, index=False)
@@ -239,8 +248,8 @@ def main() -> int:
             print(" -", m, file=sys.stderr)
         if len(missing_essays) > 10:
             print(f" ... {len(missing_essays)-10} more", file=sys.stderr)
-    if missing_links:
-        print("Warning: missing drafts files (evaluation will fail for these if run):", file=sys.stderr)
+    if args.write_drafts and missing_links:
+        print("Warning: missing drafts files (draft backfills will fail):", file=sys.stderr)
         for m in missing_links[:10]:
             print(" -", m, file=sys.stderr)
         if len(missing_links) > 10:
