@@ -10,7 +10,7 @@ import time
 
 from ..utils.evaluation_processing import parse_evaluation_files_cross_experiment, calculate_evaluation_metadata
 from .partitions import (
-    link_tasks_partitions,
+    draft_tasks_partitions,
     essay_tasks_partitions,
     evaluation_tasks_partitions,
 )
@@ -151,50 +151,50 @@ def template_version_comparison_pivot(
 # ============================================================================
 
 @asset(
-    partitions_def=link_tasks_partitions,
-    deps=["links_response"],
+    partitions_def=draft_tasks_partitions,
+    deps=["draft_response"],
     automation_condition=AutomationCondition.eager(),
     group_name="cross_experiment_tracking",
-    description="Automatically appends new row when links_response completes"
+    description="Automatically appends new row when draft_response completes"
 )
-def link_generation_results_append(context, link_generation_tasks):
-    """Automatically appends new row when links_response completes."""
+def draft_generation_results_append(context, draft_generation_tasks):
+    """Automatically appends new row when draft_response completes."""
     task_id = context.partition_key
     
-    task_rows = link_generation_tasks[link_generation_tasks["link_task_id"] == task_id]
+    task_rows = draft_generation_tasks[draft_generation_tasks["draft_task_id"] == task_id]
     if task_rows.empty:
-        context.log.warning(f"No task found for links response {task_id}")
+        context.log.warning(f"No task found for draft response {task_id}")
         return "no_task_found"
     task_row = task_rows.iloc[0]
     
-    response_file = Path(f"data/3_generation/links_responses/{task_id}.txt")
+    response_file = Path(f"data/3_generation/draft_responses/{task_id}.txt")
     response_exists = response_file.exists()
     
     new_row = {
-        "link_task_id": task_id,
+        "draft_task_id": task_id,
         "combo_id": task_row["combo_id"],
-        "link_template_id": task_row["link_template"],
+        "draft_template_id": task_row["draft_template"],
         "generation_model": task_row["generation_model_name"],
         "generation_status": "success" if response_exists else "failed",
         "generation_timestamp": datetime.now().isoformat(),
-        "response_file": f"links_responses/{task_id}.txt"
+        "response_file": f"draft_responses/{task_id}.txt"
     }
     if response_exists:
         new_row["response_size_bytes"] = response_file.stat().st_size
     
     try:
-        append_to_results_csv("data/7_cross_experiment/link_generation_results.csv", new_row)
+        append_to_results_csv("data/7_cross_experiment/draft_generation_results.csv", new_row)
         context.add_output_metadata({
             "task_id": MetadataValue.text(task_id),
             "combo_id": MetadataValue.text(task_row["combo_id"]),
-            "link_template_id": MetadataValue.text(task_row["link_template"]),
+            "draft_template_id": MetadataValue.text(task_row["draft_template"]),
             "generation_model": MetadataValue.text(task_row["generation_model_name"]),
             "response_exists": MetadataValue.bool(response_exists),
-            "table_file": MetadataValue.path("data/7_cross_experiment/link_generation_results.csv"),
+            "table_file": MetadataValue.path("data/7_cross_experiment/draft_generation_results.csv"),
         })
         return "appended"
     except Exception as e:
-        context.log.error(f"Failed to append link generation result for {task_id}: {e}")
+        context.log.error(f"Failed to append draft generation result for {task_id}: {e}")
         raise
 
 

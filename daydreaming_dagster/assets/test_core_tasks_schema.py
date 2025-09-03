@@ -17,7 +17,7 @@ def test_document_index_three_sources_schema():
             "document_id": "comboA_links-v4_deepseek_r1_f",
             "stage": "essay1p",
             "origin": "draft",
-            "file_path": "data/3_generation/links_responses/comboA_links-v4_deepseek_r1_f.txt",
+            "file_path": "data/3_generation/draft_responses/comboA_links-v4_deepseek_r1_f.txt",
             "combo_id": "comboA",
             "link_template": "links-v4",
             "essay_template": "links-v4",
@@ -25,8 +25,8 @@ def test_document_index_three_sources_schema():
             "generation_model_name": "deepseek/deepseek-r1:free",
             "link_task_id": "comboA_links-v4_deepseek_r1_f",
             "essay_task_id": None,
-            "source_asset": "links_response",
-            "source_dir": "links_responses",
+            "source_asset": "draft_response",
+            "source_dir": "draft_responses",
         },
         {
             # Two-phase essay
@@ -86,7 +86,7 @@ def test_document_index_three_sources_schema():
     assert set(df[df.origin == "legacy"]["stage"]) == {"essay1p"}
 
     # Source directory mapping sanity checks
-    assert set(df[df.origin == "draft"]["source_dir"]) == {"links_responses"}
+    assert set(df[df.origin == "draft"]["source_dir"]) == {"draft_responses"}
     assert set(df[df.origin == "two_phase"]["source_dir"]) == {"essay_responses"}
     assert set(df[df.origin == "legacy"]["source_dir"]) == {"generation_responses"}
 
@@ -183,4 +183,3 @@ def test_evaluation_tasks_id_and_columns():
     # Validate ID format
     for tid in evaluation_tasks_df["evaluation_task_id"].unique():
         assert is_valid_evaluation_task_id(tid)
-

@@ -23,7 +23,6 @@ from ..utils.raw_readers import (
 from .partitions import (
     generation_tasks_partitions,
     evaluation_tasks_partitions,
-    link_tasks_partitions,
     draft_tasks_partitions,
     essay_tasks_partitions,
 )
@@ -169,71 +168,6 @@ def content_combinations_csv(
     io_manager_key="csv_io_manager",
     required_resource_keys={"experiment_config", "data_root"},
     automation_condition=AutomationCondition.eager(),
-    deps={LLM_MODELS_KEY, LINK_TEMPLATES_KEY},
-)
-def link_generation_tasks(
-    context,
-    content_combinations: List[ContentCombination],
-) -> pd.DataFrame:
-    """Create link-generation tasks (legacy name; kept during transition)."""
-    data_root = context.resources.data_root
-    models_df = read_llm_models(Path(data_root))
-    generation_models = models_df[models_df["for_generation"] == True]
-
-    templates_df = read_link_templates(Path(data_root), filter_active=True)
-    active_templates = list(templates_df["template_id"].tolist())
-
-    rows: List[dict] = []
-    for combo in content_combinations:
-        for template_id in active_templates:
-            for _, model_row in generation_models.iterrows():
-                model_id = model_row["id"]
-                model_name = model_row["model"]
-                link_task_id = f"{combo.combo_id}_{template_id}_{model_id}"
-                rows.append(
-                    {
-                        "link_task_id": link_task_id,
-                        "combo_id": combo.combo_id,
-                        "link_template": template_id,
-                        "generation_model": model_id,
-                        "generation_model_name": model_name,
-                    }
-                )
-
-    columns = [
-        "link_task_id",
-        "combo_id",
-        "link_template",
-        "generation_model",
-        "generation_model_name",
-    ]
-    tasks_df = pd.DataFrame(rows, columns=columns)
-
-    existing = context.instance.get_dynamic_partitions(link_tasks_partitions.name)
-    if not tasks_df.empty:
-        if existing:
-            for p in existing:
-                context.instance.delete_dynamic_partition(link_tasks_partitions.name, p)
-        context.instance.add_dynamic_partitions(link_tasks_partitions.name, tasks_df["link_task_id"].tolist())
-    else:
-        context.log.warning(
-            "No link-generation tasks produced (check active concepts, k_max, active link templates, generation models). Keeping existing dynamic partitions."
-        )
-
-    context.add_output_metadata(
-        {
-            "task_count": MetadataValue.int(len(tasks_df)),
-            "unique_combinations": MetadataValue.int(tasks_df["combo_id"].nunique() if not tasks_df.empty else 0),
-            "unique_link_templates": MetadataValue.int(tasks_df["link_template"].nunique() if not tasks_df.empty else 0),
-            "unique_models": MetadataValue.int(tasks_df["generation_model"].nunique() if not tasks_df.empty else 0),
-        }
-    )
-    return tasks_df
-@asset(
-    group_name="task_definitions",
-    io_manager_key="csv_io_manager",
-    required_resource_keys={"experiment_config", "data_root"},
-    automation_condition=AutomationCondition.eager(),
     deps={LLM_MODELS_KEY, DRAFT_TEMPLATES_KEY},
 )
 def draft_generation_tasks(
@@ -307,7 +241,7 @@ def draft_generation_tasks(
 )
 def essay_generation_tasks(
     context,
-    link_generation_tasks: pd.DataFrame,
+    draft_generation_tasks: pd.DataFrame,
 ) -> pd.DataFrame:
     """Create essay-generation tasks (FK to link tasks × essay_template)."""
     data_root = context.resources.data_root
@@ -315,11 +249,11 @@ def essay_generation_tasks(
     essay_templates = list(essay_templates_df["template_id"].tolist())
 
     rows: List[dict] = []
-    for _, link_row in link_generation_tasks.iterrows():
-        link_task_id = link_row["link_task_id"]
-        combo_id = link_row["combo_id"]
-        model_id = link_row["generation_model"]
-        model_name = link_row["generation_model_name"]
+    for _, drow in draft_generation_tasks.iterrows():
+        link_task_id = drow["draft_task_id"]
+        combo_id = drow["combo_id"]
+        model_id = drow["generation_model"]
+        model_name = drow["generation_model_name"]
         for essay_template_id in essay_templates:
             essay_task_id = f"{link_task_id}_{essay_template_id}"
             rows.append(
@@ -327,7 +261,7 @@ def essay_generation_tasks(
                     "essay_task_id": essay_task_id,
                     "link_task_id": link_task_id,
                     "combo_id": combo_id,
-                    "link_template": link_row["link_template"],
+                    "link_template": drow["draft_template"],
                     "essay_template": essay_template_id,
                     "generation_model": model_id,
                     "generation_model_name": model_name,
@@ -379,7 +313,7 @@ def essay_generation_tasks(
 )
 def document_index(
     context,
-    link_generation_tasks: pd.DataFrame,
+    draft_generation_tasks: pd.DataFrame,
     essay_generation_tasks: pd.DataFrame,
 ) -> pd.DataFrame:
     """Unified index of documents to evaluate (hybrid document axis).
@@ -396,9 +330,9 @@ def document_index(
     # Drafts (effective one-phase) — support both legacy links_responses and new draft_responses
     legacy_draft_dir = data_root / "3_generation" / "links_responses"
     new_draft_dir = data_root / "3_generation" / "draft_responses"
-    if not link_generation_tasks.empty and (legacy_draft_dir.exists() or new_draft_dir.exists()):
-        for _, row in link_generation_tasks.iterrows():
-            link_task_id = row["link_task_id"]
+    if not draft_generation_tasks.empty and (legacy_draft_dir.exists() or new_draft_dir.exists()):
+        for _, row in draft_generation_tasks.iterrows():
+            link_task_id = row["draft_task_id"]
             fp_legacy = legacy_draft_dir / f"{link_task_id}.txt"
             fp_new = new_draft_dir / f"{link_task_id}.txt"
             fp = fp_new if fp_new.exists() else fp_legacy
@@ -410,7 +344,7 @@ def document_index(
                         "origin": "draft",
                         "file_path": str(fp),
                         "combo_id": row["combo_id"],
-                        "link_template": row["link_template"],
+                        "link_template": row["draft_template"],
                         "essay_template": row["link_template"],
                         "generation_model_id": row["generation_model"],
                         "generation_model_name": row["generation_model_name"],
@@ -481,7 +415,6 @@ def document_index(
 )
 def evaluation_tasks(
     context,
-    link_generation_tasks: pd.DataFrame,
     essay_generation_tasks: pd.DataFrame,
 ) -> pd.DataFrame:
     """Create evaluation tasks (document × evaluation_template × evaluation_model)."""
@@ -498,9 +431,7 @@ def evaluation_tasks(
     data_root_path = _Path(data_root)
     docs: List[dict] = []
 
-    # Drafts (effective one-phase) — excluded to evaluate essays from current experiment cube only
-
-    # Two-phase essays
+    # Two-phase essays (and drafts as one-phase if included via document_index above)
     essay_dir = data_root_path / "3_generation" / "essay_responses"
     if not essay_generation_tasks.empty:
         for _, row in essay_generation_tasks.iterrows():

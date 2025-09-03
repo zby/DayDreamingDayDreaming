@@ -4,7 +4,6 @@ from dagster import DynamicPartitionsDefinition
 generation_tasks_partitions = DynamicPartitionsDefinition(name="generation_tasks")
 evaluation_tasks_partitions = DynamicPartitionsDefinition(name="evaluation_tasks")
 
-# New partitions for simplified two-phase architecture
-link_tasks_partitions = DynamicPartitionsDefinition(name="link_tasks")
+# Two-phase architecture
 essay_tasks_partitions = DynamicPartitionsDefinition(name="essay_tasks")
 draft_tasks_partitions = DynamicPartitionsDefinition(name="draft_tasks")

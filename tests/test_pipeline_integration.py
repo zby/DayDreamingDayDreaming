@@ -25,7 +25,7 @@ def pipeline_data_root_prepared():
     Steps:
     - Clean tests/data_pipeline_test
     - Copy data/1_raw into tests/data_pipeline_test/1_raw
-    - Create output dirs (2_tasks, 3_generation/{links_prompts,links_responses,essay_prompts,essay_responses})
+    - Create output dirs (2_tasks, 3_generation/{draft_prompts,draft_responses,essay_prompts,essay_responses})
     - Limit active rows: concepts (2), link_templates (1), essay_templates (1), evaluation_templates (2), llm_models for_generation (2)
     - Return Path to tests/data_pipeline_test
     """
@@ -40,8 +40,8 @@ def pipeline_data_root_prepared():
     (pipeline_data_root / "2_tasks").mkdir(parents=True)
     # Legacy single-phase dirs no longer needed
     # Two-phase generation directories
-    (pipeline_data_root / "3_generation" / "links_prompts").mkdir(parents=True)
-    (pipeline_data_root / "3_generation" / "links_responses").mkdir(parents=True)
+    (pipeline_data_root / "3_generation" / "draft_prompts").mkdir(parents=True)
+    (pipeline_data_root / "3_generation" / "draft_responses").mkdir(parents=True)
     (pipeline_data_root / "3_generation" / "essay_prompts").mkdir(parents=True)
     (pipeline_data_root / "3_generation" / "essay_responses").mkdir(parents=True)
     (pipeline_data_root / "4_evaluation" / "evaluation_prompts").mkdir(parents=True)
@@ -83,7 +83,7 @@ def pipeline_data_root_prepared():
 
     # Limit active rows in key CSVs
     concepts_csv = pipeline_data_root / "1_raw" / "concepts_metadata.csv"
-    link_templates_csv = pipeline_data_root / "1_raw" / "link_templates.csv"
+    link_templates_csv = pipeline_data_root / "1_raw" / "draft_templates.csv"
     essay_templates_csv = pipeline_data_root / "1_raw" / "essay_templates.csv"
     eval_templates_csv = pipeline_data_root / "1_raw" / "evaluation_templates.csv"
     models_csv = pipeline_data_root / "1_raw" / "llm_models.csv"
@@ -98,7 +98,7 @@ def pipeline_data_root_prepared():
 
     # Link and Essay templates: verify creative-synthesis-v10 files exist
     target_template = "creative-synthesis-v10"
-    links_file = pipeline_data_root / "1_raw" / "generation_templates" / "links" / f"{target_template}.txt"
+    links_file = pipeline_data_root / "1_raw" / "generation_templates" / "draft" / f"{target_template}.txt"
     essay_file = pipeline_data_root / "1_raw" / "generation_templates" / "essay" / f"{target_template}.txt"
     
     if links_file.exists() and essay_file.exists():
@@ -147,7 +147,7 @@ class TestPipelineIntegration:
         if gen_tasks_file.exists():
             gen_tasks_df = pd.read_csv(gen_tasks_file)
             assert len(gen_tasks_df) > 0, "Generation tasks should not be empty"
-            required_columns = ["link_task_id", "combo_id", "link_template", "generation_model"]
+            required_columns = ["draft_task_id", "combo_id", "draft_template", "generation_model"]
             for col in required_columns:
                 assert col in gen_tasks_df.columns, f"Missing required column: {col}"
             
@@ -156,8 +156,8 @@ class TestPipelineIntegration:
                 assert combo_id.startswith("combo_"), f"Invalid combo_id format: {combo_id}"
         
         # Two-phase generation files (3_generation/)
-        links_prompt_dir = test_directory / "3_generation" / "links_prompts"
-        links_response_dir = test_directory / "3_generation" / "links_responses"
+        links_prompt_dir = test_directory / "3_generation" / "draft_prompts"
+        links_response_dir = test_directory / "3_generation" / "draft_responses"
         essay_prompt_dir = test_directory / "3_generation" / "essay_prompts"
         essay_response_dir = test_directory / "3_generation" / "essay_responses"
         
@@ -230,10 +230,10 @@ class TestPipelineIntegration:
                 instance = DagsterInstance.ephemeral(tempdir=str(temp_dagster_home))
 
                 from daydreaming_dagster.assets.core import (
-                    content_combinations, content_combinations_csv, link_generation_tasks, essay_generation_tasks, evaluation_tasks
+                    content_combinations, content_combinations_csv, draft_generation_tasks, essay_generation_tasks, evaluation_tasks
                 )
                 from daydreaming_dagster.assets.two_phase_generation import (
-                    links_prompt, links_response, essay_prompt, essay_response
+                    draft_prompt, draft_response, essay_prompt, essay_response
                 )
                 from daydreaming_dagster.assets.llm_evaluation import (
                     evaluation_prompt, evaluation_response
@@ -248,12 +248,12 @@ class TestPipelineIntegration:
                     "openrouter_client": CannedLLMResource(),
                     "csv_io_manager": CSVIOManager(base_path=pipeline_data_root / "2_tasks"),
                     # Two-phase generation I/O managers
-                    "links_prompt_io_manager": PartitionedTextIOManager(
-                        base_path=pipeline_data_root / "3_generation" / "links_prompts",
+                    "draft_prompt_io_manager": PartitionedTextIOManager(
+                        base_path=pipeline_data_root / "3_generation" / "draft_prompts",
                         overwrite=True
                     ),
-                    "links_response_io_manager": PartitionedTextIOManager(
-                        base_path=pipeline_data_root / "3_generation" / "links_responses",
+                    "draft_response_io_manager": PartitionedTextIOManager(
+                        base_path=pipeline_data_root / "3_generation" / "draft_responses",
                         overwrite=True
                     ),
                     "essay_prompt_io_manager": PartitionedTextIOManager(
@@ -285,7 +285,7 @@ class TestPipelineIntegration:
                 result = materialize(
                     [
                         content_combinations, content_combinations_csv,
-                        link_generation_tasks, essay_generation_tasks, evaluation_tasks,
+                        draft_generation_tasks, essay_generation_tasks, evaluation_tasks,
                     ],
                     resources=resources,
                     instance=instance,
@@ -302,7 +302,7 @@ class TestPipelineIntegration:
                 assert len(empty_files) == 0, f"Empty files should not be created: {empty_files}"
 
                 expected_files = [
-                    "link_generation_tasks.csv",
+                    "draft_generation_tasks.csv",
                     "essay_generation_tasks.csv",
                     "evaluation_tasks.csv",
                     "content_combinations_csv.csv",
@@ -328,18 +328,18 @@ class TestPipelineIntegration:
                 assert actual_concept_ids.issubset(expected_active_concept_ids)
 
                 # Link generation tasks structure and counts vs active templates/models
-                gen_tasks_csv_path = task_dir / "link_generation_tasks.csv"
+                gen_tasks_csv_path = task_dir / "draft_generation_tasks.csv"
                 gen_tasks_csv = pd.read_csv(gen_tasks_csv_path)
-                assert "link_task_id" in gen_tasks_csv.columns
+                assert "draft_task_id" in gen_tasks_csv.columns
                 assert "combo_id" in gen_tasks_csv.columns
-                assert "link_template" in gen_tasks_csv.columns
+                assert "draft_template" in gen_tasks_csv.columns
                 assert "generation_model" in gen_tasks_csv.columns
 
-                link_templates_metadata = pd.read_csv(pipeline_data_root / "1_raw" / "link_templates.csv")
+                link_templates_metadata = pd.read_csv(pipeline_data_root / "1_raw" / "draft_templates.csv")
                 expected_active_templates = set(
                     link_templates_metadata[link_templates_metadata["active"] == True]["template_id"].tolist()
                 )
-                templates_used = set(gen_tasks_csv["link_template"].unique())
+                templates_used = set(gen_tasks_csv["draft_template"].unique())
                 assert templates_used == expected_active_templates
 
                 combinations_count = len(combinations_csv["combo_id"].unique())
@@ -367,12 +367,12 @@ class TestPipelineIntegration:
                 print("🔗 Step 2: Materializing generation pipeline...")
                 
                 # Get task IDs for generation
-                gen_tasks_df = pd.read_csv(task_dir / "link_generation_tasks.csv")
-                test_gen_partitions = gen_tasks_df["link_task_id"].tolist()[:2]  # Limit to 2 for testing
+                gen_tasks_df = pd.read_csv(task_dir / "draft_generation_tasks.csv")
+                test_gen_partitions = gen_tasks_df["draft_task_id"].tolist()[:2]  # Limit to 2 for testing
                 
                 # Materialize a few generation tasks for testing
                 from daydreaming_dagster.assets.two_phase_generation import (
-                    links_prompt, links_response, essay_prompt, essay_response
+                    draft_prompt, draft_response, essay_prompt, essay_response
                 )
                 
                 # Materialize link generation for specific partitions
@@ -382,9 +382,9 @@ class TestPipelineIntegration:
                         [
                             # Core dependencies for links
                             content_combinations,
-                            link_generation_tasks,
-                            # Link generation assets
-                            links_prompt, links_response
+                            draft_generation_tasks,
+                            # Draft generation assets
+                            draft_prompt, draft_response
                         ],
                         resources=resources,
                         instance=instance,
@@ -423,8 +423,8 @@ class TestPipelineIntegration:
                 
                 eval_tasks_df = pd.read_csv(task_dir / "evaluation_tasks.csv")
                 # Only test evaluation tasks that reference the generated link drafts
-                gen_tasks_df = pd.read_csv(task_dir / "link_generation_tasks.csv")
-                generated_link_ids = gen_tasks_df["link_task_id"].tolist()[:2]  # Match generation limit
+                gen_tasks_df = pd.read_csv(task_dir / "draft_generation_tasks.csv")
+                generated_link_ids = gen_tasks_df["draft_task_id"].tolist()[:2]  # Match generation limit
 
                 test_eval_partitions = eval_tasks_df[
                     eval_tasks_df["link_task_id"].isin(generated_link_ids)
@@ -613,23 +613,23 @@ class TestPipelineIntegration:
                 {"template_id": "inactive-template-1", "template_name": "Inactive Template 1", "description": "Test inactive template", "active": False},
                 {"template_id": "inactive-template-2", "template_name": "Inactive Template 2", "description": "Test inactive template", "active": False},
             ])
-            test_gen_templates_metadata.to_csv(raw_data / "link_templates.csv", index=False)
+            test_gen_templates_metadata.to_csv(raw_data / "draft_templates.csv", index=False)
             
             # Create actual template files (all of them, including inactive ones)
-            # For the new architecture, create template files in the links subdirectory
+            # For the new architecture, create template files in the draft subdirectory
             gen_templates_dir = raw_data / "generation_templates"
-            links_dir = gen_templates_dir / "links"
-            links_dir.mkdir(parents=True)
-            links_dir.joinpath("active-template-1.txt").write_text("Active template 1 content")
-            links_dir.joinpath("active-template-2.txt").write_text("Active template 2 content")  
-            links_dir.joinpath("inactive-template-1.txt").write_text("Inactive template 1 content")
-            links_dir.joinpath("inactive-template-2.txt").write_text("Inactive template 2 content")
+            draft_dir = gen_templates_dir / "draft"
+            draft_dir.mkdir(parents=True)
+            draft_dir.joinpath("active-template-1.txt").write_text("Active template 1 content")
+            draft_dir.joinpath("active-template-2.txt").write_text("Active template 2 content")  
+            draft_dir.joinpath("inactive-template-1.txt").write_text("Inactive template 1 content")
+            draft_dir.joinpath("inactive-template-2.txt").write_text("Inactive template 2 content")
             
             with patch.dict(os.environ, {'DAGSTER_HOME': str(temp_dagster_home)}):
                 instance = DagsterInstance.ephemeral(tempdir=str(temp_dagster_home))
                 
                 from daydreaming_dagster.assets.core import (
-                    content_combinations, link_generation_tasks
+                    content_combinations, draft_generation_tasks
                 )
                 from daydreaming_dagster.resources.io_managers import CSVIOManager, PartitionedTextIOManager
                 from daydreaming_dagster.resources.experiment_config import ExperimentConfig
@@ -649,19 +649,19 @@ class TestPipelineIntegration:
                 }
                 
                 result = materialize([
-                    content_combinations, link_generation_tasks
+                    content_combinations, draft_generation_tasks
                 ], resources=resources, instance=instance)
                 
                 assert result.success, "Template filtering test materialization should succeed"
                 
                 # Load results and verify filtering
-                gen_tasks_file = temp_data_dir / "2_tasks" / "link_generation_tasks.csv"
-                assert gen_tasks_file.exists(), "link_generation_tasks.csv should be created"
+                gen_tasks_file = temp_data_dir / "2_tasks" / "draft_generation_tasks.csv"
+                assert gen_tasks_file.exists(), "draft_generation_tasks.csv should be created"
                 
                 gen_tasks_df = pd.read_csv(gen_tasks_file)
                 
                 # Check that only active templates are used
-                templates_used = set(gen_tasks_df["link_template"].unique())
+                templates_used = set(gen_tasks_df["draft_template"].unique())
                 expected_active_templates = {"active-template-1", "active-template-2"}
                 
                 assert templates_used == expected_active_templates, \

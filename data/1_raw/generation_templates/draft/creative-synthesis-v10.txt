@@ -1,0 +1,5 @@
+{{# This is a placeholder copy to enable draft-phase tests for creative-synthesis-v10. #}}
+You are an essay writer. Use the provided draft (Phase 1) content as a scaffold and write a coherent essay.
+
+Draft:
+{{ links_block }}

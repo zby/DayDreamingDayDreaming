@@ -10,7 +10,7 @@ class _FakeLogger:
         pass
 
 
-class _FakeLinksIO:
+class _FakeDraftIO:
     def __init__(self, content: str):
         self._content = content
 
@@ -19,7 +19,7 @@ class _FakeLinksIO:
 
 
 class _FakeContext:
-    def __init__(self, partition_key: str, data_root: Path, links_io):
+    def __init__(self, partition_key: str, data_root: Path, draft_io):
         class _Res:
             pass
 
@@ -28,7 +28,7 @@ class _FakeContext:
         self._meta = {}
         self.resources = _Res()
         self.resources.data_root = str(data_root)
-        self.resources.links_response_io_manager = links_io
+        self.resources.draft_response_io_manager = draft_io
         # openrouter_client is present but unused in parser mode
         class _LLM:
             def generate(self, *_args, **_kwargs):
@@ -88,7 +88,7 @@ def test_essay_response_parses_from_links_and_writes_output(tmp_path: Path):
     ctx = _FakeContext(
         partition_key=essay_task_id,
         data_root=tmp_path,
-        links_io=_FakeLinksIO(links_content),
+        draft_io=_FakeDraftIO(links_content),
     )
 
     result = essay_response_impl(ctx, essay_prompt="PARSER_MODE", essay_generation_tasks=tasks)
@@ -125,7 +125,7 @@ def test_missing_or_unsupported_parser_mapping_fails_partition(tmp_path: Path):
     ctx = _FakeContext(
         partition_key=essay_task_id,
         data_root=tmp_path,
-        links_io=_FakeLinksIO(links_content),
+        draft_io=_FakeDraftIO(links_content),
     )
 
     with pytest.raises(Failure):

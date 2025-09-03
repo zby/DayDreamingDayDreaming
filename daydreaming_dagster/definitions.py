@@ -1,8 +1,6 @@
 from dagster import Definitions, multiprocess_executor
 import os
 from daydreaming_dagster.assets.two_phase_generation import (
-    links_prompt,
-    links_response,
     draft_prompt,
     draft_response,
     essay_prompt,
@@ -30,16 +28,15 @@ from daydreaming_dagster.schedules.raw_schedule import raw_schedule
 from daydreaming_dagster.assets.core import (
     content_combinations,
     content_combinations_csv,
-    link_generation_tasks,
     draft_generation_tasks,
     essay_generation_tasks,
     document_index,
-    evaluation_tasks
+    evaluation_tasks,
 )
 from daydreaming_dagster.assets.cross_experiment import (
     filtered_evaluation_results,
     template_version_comparison_pivot,
-    link_generation_results_append,
+    draft_generation_results_append,
     essay_generation_results_append,
     evaluation_results_append
 )
@@ -60,15 +57,12 @@ defs = Definitions(
         # Core processing assets
         content_combinations,
         content_combinations_csv,
-        link_generation_tasks,
         draft_generation_tasks,
         essay_generation_tasks,
         document_index,
         evaluation_tasks,
         
         # Two-phase generation assets
-        links_prompt,
-        links_response,
         draft_prompt,
         draft_response,
         essay_prompt,
@@ -91,7 +85,7 @@ defs = Definitions(
         template_version_comparison_pivot,
         
         # Auto-materializing results tracking assets
-        link_generation_results_append,
+        draft_generation_results_append,
         essay_generation_results_append,
         evaluation_results_append,
         # Source assets (CSV-only)
@@ -108,10 +102,7 @@ defs = Definitions(
         # Simplified I/O managers - no complex source mappings or filtering
         "csv_io_manager": CSVIOManager(base_path=Path("data") / "2_tasks"),
         
-        # Two-phase generation I/O managers
-        "links_prompt_io_manager": PartitionedTextIOManager(base_path=Path("data") / "3_generation" / "links_prompts", overwrite=True),
-        "links_response_io_manager": PartitionedTextIOManager(base_path=Path("data") / "3_generation" / "links_responses", overwrite=overwrite_generated),
-        # New draft phase I/O managers
+        # Draft phase I/O managers
         "draft_prompt_io_manager": PartitionedTextIOManager(base_path=Path("data") / "3_generation" / "draft_prompts", overwrite=True),
         "draft_response_io_manager": PartitionedTextIOManager(base_path=Path("data") / "3_generation" / "draft_responses", overwrite=overwrite_generated),
         "essay_prompt_io_manager": PartitionedTextIOManager(base_path=Path("data") / "3_generation" / "essay_prompts", overwrite=True),
