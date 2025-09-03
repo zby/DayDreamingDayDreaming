@@ -38,7 +38,7 @@ Only a subset on each axis is marked active for the current experiment; the cube
 ### Example: Generation Cube (current design as an example)
 - Axes (example): `content_combinations × link_templates × generation_models` → draft tasks; then `draft_tasks × essay_templates` → essay tasks.
 - Example outputs:
-  - Draft files: `data/3_generation/essay_draft_responses/{link_task_id}.txt`
+- Draft files: `data/3_generation/draft_responses/{draft_task_id}.txt` (legacy: `links_responses/{link_task_id}.txt`)
   - Essay files: `data/3_generation/essay_responses/{essay_task_id}.txt`
 - Legacy example: one‑phase essays under `data/3_generation/generation_responses/{combo_id}_{essay_template}_{model_id}.txt`.
 
@@ -69,7 +69,7 @@ Recommended patterns:
 ## Identity and Stability
 
 - combo_id: stable ID produced by `ComboIDManager` based on concept IDs and `k_max`/description level.
-- link_task_id: `{combo_id}_{link_template}_{generation_model_id}`
+- draft_task_id (legacy link_task_id): `{combo_id}_{draft_template}_{generation_model_id}`
 - essay_task_id (two‑phase): `{link_task_id}_{essay_template}`
 - one‑phase essay stem: `{combo_id}_{essay_template}_{generation_model_id}`
 - evaluation_task_id (document‑centric pattern): typically `{document_id}__{evaluation_template}__{evaluation_model_id}`; stage is tracked as a column, not embedded in the ID

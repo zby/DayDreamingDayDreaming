@@ -9,17 +9,17 @@ Current Model
 
 Gotchas (and fixes)
 - Registration order: start Dagster with the daemon; raw + task assets auto-update when `data/1_raw/**/*` changes. If needed, seed `group:task_definitions` once before generation/evaluation assets.
-- Key consistency: task IDs are the ground truth. Always use `link_task_id` for links and `essay_task_id` for essays.
+- Key consistency: task IDs are the ground truth. Use `draft_task_id` for drafts (legacy `link_task_id`) and `essay_task_id` for essays.
 - Cross‑phase reads: assets like `essay_prompt` and `evaluation_prompt` read upstream responses by FK using MockLoadContext (utils/shared_context.py). This is expected.
 - Stale CSVs: if a downstream asset expects new columns in `parsed_scores` (e.g., `link_template`) and fails, rematerialize upstream with a clear error. Example: `uv run dagster asset materialize --select parsed_scores -f daydreaming_dagster/definitions.py`.
-- File names: links files are saved by `link_task_id`; essay files by `essay_task_id`. Scripts that pair them must derive link_task_id from essay_task_id.
+- File names: draft files are saved by `draft_task_id` (legacy `link_task_id`); essay files by `essay_task_id`. Scripts that pair them must derive the draft/link id from essay_task_id.
 
 Why not multi‑dimensional partitions?
 - Dagster supports only 2D multi‑partitions; our model has ≥3 dimensions. Encoding them into composite keys adds more complexity than our task tables + dynamic partitions. We’ll revisit if Dagster adds richer partitioning.
 
 Common commands
 - Initialize tasks (optional): `uv run dagster asset materialize --select "group:task_definitions" -f daydreaming_dagster/definitions.py`
-- Run a link: `uv run dagster asset materialize --select "group:generation_links" --partition "$LINK_TASK_ID" -f daydreaming_dagster/definitions.py`
+- Run a draft: `uv run dagster asset materialize --select "group:generation_draft" --partition "$DRAFT_TASK_ID" -f daydreaming_dagster/definitions.py`
 - Run an essay: `uv run dagster asset materialize --select "group:generation_essays" --partition "$ESSAY_TASK_ID" -f daydreaming_dagster/definitions.py`
 - Evaluate an essay: `uv run dagster asset materialize --select "evaluation_prompt,evaluation_response" --partition "$EVALUATION_TASK_ID" -f daydreaming_dagster/definitions.py`
 

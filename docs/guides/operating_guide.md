@@ -85,7 +85,7 @@ uv run dagster asset materialize --select "links_prompt,links_response,essay_pro
 uv run dagster asset materialize --select "links_prompt,links_response,essay_prompt,essay_response,parsed_generation_responses" --partition "TASK_ID" -f daydreaming_dagster/definitions.py
 
 # Or use asset group (if supported)
-uv run dagster asset materialize --select "group:generation_links,group:generation_essays" --partition "TASK_ID" -f daydreaming_dagster/definitions.py
+uv run dagster asset materialize --select "group:generation_draft,group:generation_essays" --partition "TASK_ID" -f daydreaming_dagster/definitions.py
 ```
 
 **Legacy** - Single-phase generation (still supported):
@@ -166,7 +166,7 @@ Optionally stash selection files for traceability:
 2. **Run generation assets:**
    ```bash
    uv run dagster asset materialize -f daydreaming_dagster/definitions.py \
-    --select "group:generation_links,group:generation_essays"
+    --select "group:generation_draft,group:generation_essays"
    ```
 
 3. **Run evaluation assets:**
@@ -214,7 +214,7 @@ This repository now uses a document-centric evaluation flow:
 - `generation_scores_pivot` indexes include `stage` to distinguish generation modes.
 
 Note on legacy directory scan:
-- Evaluation no longer discovers documents by scanning `data/3_generation/generation_responses/`. To evaluate historical outputs, write standard generation task CSVs (link/essay) and place/symlink their texts under `links_responses/` or `essay_responses/`. Then materialize `evaluation_tasks` to register only those curated documents.
+- Evaluation no longer discovers documents by scanning `data/3_generation/generation_responses/`. To evaluate historical outputs, write standard generation task CSVs (draft/essay) and place/symlink their texts under `draft_responses/` (or legacy `links_responses/`) or `essay_responses/`. Then materialize `evaluation_tasks` to register only those curated documents.
 
 ### Targeted Evaluations (No full cube)
 
@@ -230,7 +230,7 @@ To run a specific evaluation (e.g., `novelty`) only on chosen documents (e.g., p
    ```
 4. Re-run `parsed_scores` to ingest the new results.
 
-For cross-experiment winners, place or symlink their generation texts under the canonical folders (`links_responses/`, `essay_responses/`, or `generation_responses/`) so they appear in `document_index`/`evaluation_tasks` without changing CSV actives.
+For cross-experiment winners, place or symlink their generation texts under the canonical folders (`draft_responses/` (or legacy `links_responses/`), `essay_responses/`, or `generation_responses/`) so they appear in `document_index`/`evaluation_tasks` without changing CSV actives.
 
 **Note**: Auto-materialization requires the Dagster daemon to be running. In development, you can manually trigger assets if needed:
 ```bash
@@ -276,7 +276,7 @@ uv run dagster asset materialize -f daydreaming_dagster/definitions.py \
 
 - Generated/evaluated files follow the existing `data/` folder conventions:
   - `data/3_generation/` - Generation prompts and responses
-    - **Two-Phase**: `links_prompts/`, `links_responses/`, `essay_prompts/`, `essay_responses/`
+    - **Two-Phase**: `draft_prompts/`, `draft_responses/`, `essay_prompts/`, `essay_responses/` (legacy links_* supported)
     - **Legacy**: `generation_prompts/`, `generation_responses/`
     - **Canonical Interface**: `parsed_generation_responses/` (works with both)
   - `data/4_evaluation/` - Evaluation prompts and responses
@@ -355,7 +355,7 @@ uv run dagster asset materialize --select "+generation_response" -f daydreaming_
 
 **Prevention:**
 - Always materialize generation assets before evaluation assets
-- Use asset group materialization: `group:generation_links,group:generation_essays` before `group:evaluation`
+- Use asset group materialization: `group:generation_draft,group:generation_essays` before `group:evaluation`
 - Set up monitoring alerts for failed generation partitions
 
 ### 2. Invalid Foreign Key Reference

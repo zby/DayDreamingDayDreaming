@@ -89,7 +89,7 @@ uv run dagster asset materialize --select "parsed_scores,final_results" -f daydr
 **Asset Group Breakdown**:
 - `group:raw_data`: concepts, models, templates (loads from `data/1_raw/`; re‑materialize after edits)
 - `group:task_definitions`: content_combinations, link_generation_tasks, essay_generation_tasks, evaluation_tasks (auto-materialize; creates `data/2_tasks/`)
-- `group:generation_links`: links_prompt, links_response (creates `data/3_generation/links_*`)
+- `group:generation_draft`: draft_prompt, draft_response (creates `data/3_generation/draft_*`; legacy `links_*` supported for transition)
 - `group:generation_essays`: essay_prompt, essay_response (creates `data/3_generation/essay_*`)
 - `group:evaluation`: evaluation_prompt, evaluation_response (creates `data/4_evaluation/`)
 - `group:results_processing`: parsed_scores, analysis, and final_results (creates `data/5_parsing/`, `data/6_summary/`)
@@ -116,10 +116,17 @@ uv run dagster dev -f daydreaming_dagster/definitions.py
 ```bash
 # Get all partition names and run them one by one (two-phase generation)
 # Phase 1: run all link partitions
-cut -d',' -f1 data/2_tasks/link_generation_tasks.csv | tail -n +2 | while read LINK; do
-  echo "Running link partition: $LINK"
-  uv run dagster asset materialize --select "group:generation_links" --partition "$LINK" -f daydreaming_dagster/definitions.py
+cut -d',' -f1 data/2_tasks/draft_generation_tasks.csv 2>/dev/null | tail -n +2 | while read DRAFT; do
+  echo "Running draft partition: $DRAFT"
+  uv run dagster asset materialize --select "group:generation_draft" --partition "$DRAFT" -f daydreaming_dagster/definitions.py
 done
+# Legacy (links) fallback
+if [ ! -f data/2_tasks/draft_generation_tasks.csv ]; then
+  cut -d',' -f1 data/2_tasks/link_generation_tasks.csv | tail -n +2 | while read LINK; do
+    echo "Running link partition: $LINK"
+    uv run dagster asset materialize --select "group:generation_links" --partition "$LINK" -f daydreaming_dagster/definitions.py
+  done
+fi
 
 # Phase 2: run all essay partitions
 cut -d',' -f1 data/2_tasks/essay_generation_tasks.csv | tail -n +2 | while read ESSAY; do
@@ -265,8 +272,8 @@ Active link templates are controlled in `data/1_raw/link_templates.csv` via the 
 
 ### Output Data
 - **Tasks**: `data/2_tasks/` (generated combinations and tasks)
-- **Two-Phase Generation**: `data/3_generation/` (links and essays)
-  - `links_prompts/`, `links_responses/` (Phase 1 outputs)
+- **Two-Phase Generation**: `data/3_generation/` (drafts and essays)
+  - `draft_prompts/`, `draft_responses/` (Phase 1 outputs; legacy `links_*` supported)
   - `essay_prompts/`, `essay_responses/` (Phase 2 outputs)
   - `parsed_generation_responses/` (legacy; two-phase writes directly to `links_*` and `essay_*`)
 - **Legacy Generation**: `data/3_generation/` (single-phase outputs, still supported)
