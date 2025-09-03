@@ -23,7 +23,7 @@ def _get_essay_generator_mode(data_root: str | Path, template_id: str) -> str | 
     val = row.iloc[0].get("generator")
     return str(val) if val else None
 
-def _load_phase1_text(context, link_task_id: str) -> tuple[str, str]:
+def _load_phase1_text(context, draft_task_id: str) -> tuple[str, str]:
     """Load Phase‑1 (draft) text with legacy fallbacks.
 
     Order:
@@ -36,24 +36,24 @@ def _load_phase1_text(context, link_task_id: str) -> tuple[str, str]:
     draft_io = getattr(context.resources, "draft_response_io_manager", None)
     if draft_io is not None:
         try:
-            return draft_io.load_input(MockLoadContext(link_task_id)), "draft_response"
+            return draft_io.load_input(MockLoadContext(draft_task_id)), "draft_response"
         except Exception:
             pass
 
     # 2) Direct file under draft_responses
-    draft_fp = Path(context.resources.data_root) / "3_generation" / "draft_responses" / f"{link_task_id}.txt"
+    draft_fp = Path(context.resources.data_root) / "3_generation" / "draft_responses" / f"{draft_task_id}.txt"
     if draft_fp.exists():
         return draft_fp.read_text(encoding="utf-8"), "draft_file"
 
     # 3) Legacy file under links_responses
-    legacy_fp = Path(context.resources.data_root) / "3_generation" / "links_responses" / f"{link_task_id}.txt"
+    legacy_fp = Path(context.resources.data_root) / "3_generation" / "links_responses" / f"{draft_task_id}.txt"
     if legacy_fp.exists():
         return legacy_fp.read_text(encoding="utf-8"), "links_file"
 
     raise Failure(
         description="Draft response not found",
         metadata={
-            "link_task_id": MetadataValue.text(link_task_id),
+            "draft_task_id": MetadataValue.text(draft_task_id),
             "expected_draft_path": MetadataValue.path(draft_fp),
             "legacy_links_path": MetadataValue.path(legacy_fp),
             "resolution": MetadataValue.text(
@@ -187,11 +187,11 @@ def _essay_prompt_impl(context, essay_generation_tasks) -> str:
         )
         return "PARSER_MODE: no prompt needed"
 
-    # Load Phase‑1 text (draft) using FK to link_task_id (with legacy fallback)
-    link_task_id = task_row.get("draft_task_id") or task_row.get("link_task_id")
-    links_content, used_source = _load_phase1_text(context, link_task_id)
-    links_lines = [line.strip() for line in links_content.split('\n') if line.strip()]
-    context.log.info(f"Using {len(links_lines)} validated links from {used_source} for task {task_id}")
+    # Load Phase‑1 text (draft) using FK to draft_task_id (with legacy fallback)
+    draft_task_id = task_row.get("draft_task_id") or task_row.get("link_task_id")
+    draft_text, used_source = _load_phase1_text(context, draft_task_id)
+    draft_lines = [line.strip() for line in draft_text.split('\n') if line.strip()]
+    context.log.info(f"Using {len(draft_lines)} draft lines from {used_source} for task {task_id}")
     
     # Load the essay phase template
     try:
@@ -208,14 +208,14 @@ def _essay_prompt_impl(context, essay_generation_tasks) -> str:
             }
         )
     
-    # Render essay template with links block
+    # Render essay template with draft block (passed as links_block for backward compatibility)
     template = JINJA.from_string(template_content)
-    prompt = template.render(links_block=links_content)
+    prompt = template.render(links_block=draft_text)
     
-    context.log.info(f"Generated essay prompt for task {task_id} with {len(links_lines)} links")
+    context.log.info(f"Generated essay prompt for task {task_id} with {len(draft_lines)} draft lines")
     context.add_output_metadata({
-        "links_line_count": MetadataValue.int(len(links_lines)),
-        "fk_relationship": MetadataValue.text(f"essay_prompt:{task_id} -> {used_source}:{link_task_id}")
+        "draft_line_count": MetadataValue.int(len(draft_lines)),
+        "fk_relationship": MetadataValue.text(f"essay_prompt:{task_id} -> {used_source}:{draft_task_id}")
     })
     
     return prompt
@@ -247,30 +247,30 @@ def _essay_response_impl(context, essay_prompt, essay_generation_tasks) -> str:
     generator_mode = _get_essay_generator_mode(context.resources.data_root, template_name)
 
     if generator_mode == "parser":
-        # Parser mode: read links response, extract final idea, return it
-        link_task_id = task_row.get("draft_task_id") or task_row.get("link_task_id")
+        # Parser mode: read draft response, extract final idea, return it
+        draft_task_id = task_row.get("draft_task_id") or task_row.get("link_task_id")
         # Prefer draft_template; fallback to legacy link_template
-        link_template = task_row.get("draft_template") or task_row.get("link_template")
+        draft_template = task_row.get("draft_template") or task_row.get("link_template")
 
-        links_content, _ = _load_phase1_text(context, link_task_id)
+        draft_text, _ = _load_phase1_text(context, draft_task_id)
 
         # Determine parser from draft_templates.csv (no in-code mapping)
         data_root = context.resources.data_root
         link_templates_df = read_draft_templates(Path(data_root), filter_active=False)
         parser_name = None
         if not link_templates_df.empty and "parser" in link_templates_df.columns:
-            row = link_templates_df[link_templates_df["template_id"] == link_template]
+            row = link_templates_df[link_templates_df["template_id"] == draft_template]
             if not row.empty:
                 parser_name = str(row.iloc[0].get("parser") or "").strip() or None
 
         if not parser_name:
             raise Failure(
                 description=(
-                    "Parser not specified for link template in CSV (required in parser mode)"
+                    "Parser not specified for draft template in CSV (required in parser mode)"
                 ),
                 metadata={
-                    "link_task_id": MetadataValue.text(link_task_id),
-                    "link_template": MetadataValue.text(str(link_template)),
+                    "draft_task_id": MetadataValue.text(draft_task_id),
+                    "draft_template": MetadataValue.text(str(draft_template)),
                     "csv_column": MetadataValue.text("parser"),
                     "resolution": MetadataValue.text(
                         "Add a 'parser' value to data/1_raw/draft_templates.csv for this template, or switch essay template generator mode."
@@ -285,8 +285,8 @@ def _essay_response_impl(context, essay_prompt, essay_generation_tasks) -> str:
                     f"Parser '{parser_name}' not found in registry (CSV refers to unknown parser)"
                 ),
                 metadata={
-                    "link_task_id": MetadataValue.text(link_task_id),
-                    "link_template": MetadataValue.text(str(link_template)),
+                    "draft_task_id": MetadataValue.text(draft_task_id),
+                    "draft_template": MetadataValue.text(str(draft_template)),
                     "parser": MetadataValue.text(str(parser_name)),
                     "resolution": MetadataValue.text(
                         "Use a supported parser name in CSV or register a new parser in utils/link_parsers.py"
@@ -295,22 +295,22 @@ def _essay_response_impl(context, essay_prompt, essay_generation_tasks) -> str:
             )
 
         try:
-            parsed_text = parser_fn(links_content)
+            parsed_text = parser_fn(draft_text)
             parser_fallback = None
         except ValueError:
             # Graceful fallback for tests or non-compliant outputs
-            parsed_text = links_content.strip()
+            parsed_text = draft_text.strip()
             parser_fallback = "no_essay_idea_tags"
 
         context.log.info(
-            f"Parsed essay from draft for task {task_id} (parser={parser_name}, link_template={link_template})"
+            f"Parsed essay from draft for task {task_id} (parser={parser_name}, draft_template={draft_template})"
         )
         context.add_output_metadata(
             {
                 "mode": MetadataValue.text("parser"),
                 "parser": MetadataValue.text(parser_name or "unknown"),
                 "parser_fallback": MetadataValue.text(parser_fallback or ""),
-                "source_link_task_id": MetadataValue.text(link_task_id),
+                "source_link_task_id": MetadataValue.text(draft_task_id),
                 "chars": MetadataValue.int(len(parsed_text)),
                 "lines": MetadataValue.int(sum(1 for _ in parsed_text.splitlines())),
             }
@@ -318,9 +318,9 @@ def _essay_response_impl(context, essay_prompt, essay_generation_tasks) -> str:
         return parsed_text
 
     if generator_mode == "copy":
-        # Copy mode: read links response and return verbatim
-        link_task_id = task_row.get("draft_task_id") or task_row.get("link_task_id")
-        links_content, _ = _load_phase1_text(context, link_task_id)
+        # Copy mode: read draft response and return verbatim
+        draft_task_id = task_row.get("draft_task_id") or task_row.get("link_task_id")
+        draft_text, _ = _load_phase1_text(context, draft_task_id)
 
         context.log.info(
             f"Copied essay from draft for task {task_id} (mode=copy)"
@@ -328,12 +328,12 @@ def _essay_response_impl(context, essay_prompt, essay_generation_tasks) -> str:
         context.add_output_metadata(
             {
                 "mode": MetadataValue.text("copy"),
-                "source_link_task_id": MetadataValue.text(link_task_id),
-                "chars": MetadataValue.int(len(links_content)),
-                "lines": MetadataValue.int(sum(1 for _ in links_content.splitlines())),
+                "source_link_task_id": MetadataValue.text(draft_task_id),
+                "chars": MetadataValue.int(len(draft_text)),
+                "lines": MetadataValue.int(sum(1 for _ in draft_text.splitlines())),
             }
         )
-        return links_content
+        return draft_text
 
     # Default: LLM generation path
     model_name = task_row["generation_model_name"]
