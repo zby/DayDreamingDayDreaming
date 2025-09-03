@@ -22,7 +22,7 @@ What it does:
 2) Sorts by `sum_scores` and selects top N
 3) Copies to `to_analyse/`:
    - Essay responses from `data/3_generation/essay_responses/`
-   - Links responses from `data/3_generation/links_responses/` (as `<name>_links_response.txt`)
+   - Draft responses from `data/3_generation/draft_responses/` (falls back to legacy `links_responses/`) as `<name>_links_response.txt`
    - Template files from the two-phase generation system:
        * Essay templates: `{essay_template}_essay_template.txt` from `data/1_raw/generation_templates/essay/`
        * Links templates: `{links_template}_links_template.txt` from `data/1_raw/generation_templates/links/`
