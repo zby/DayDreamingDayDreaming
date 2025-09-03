@@ -1,9 +1,9 @@
 # Dagster Dynamic Partitions: Practical Notes
 
-Short, current guidance for our two-phase (links → essay → evaluation) pipeline.
+Short, current guidance for our two-phase (draft → essay → evaluation) pipeline.
 
 Current Model
-- Partitions: `link_tasks`, `essay_tasks`, `evaluation_tasks` (DynamicPartitionsDefinition).
+- Partitions: `draft_tasks`, `essay_tasks`, `evaluation_tasks` (DynamicPartitionsDefinition).
 - Registration: created by assets in `group:task_definitions` and written to `data/2_tasks/`.
 - I/O: PartitionedTextIOManager stores prompts/responses by task IDs; cross‑phase loads use a small helper context.
 
@@ -11,7 +11,7 @@ Gotchas (and fixes)
 - Registration order: start Dagster with the daemon; raw + task assets auto-update when `data/1_raw/**/*` changes. If needed, seed `group:task_definitions` once before generation/evaluation assets.
 - Key consistency: task IDs are the ground truth. Use `draft_task_id` for drafts (legacy `link_task_id`) and `essay_task_id` for essays.
 - Cross‑phase reads: assets like `essay_prompt` and `evaluation_prompt` read upstream responses by FK using MockLoadContext (utils/shared_context.py). This is expected.
-- Stale CSVs: if a downstream asset expects new columns in `parsed_scores` (e.g., `link_template`) and fails, rematerialize upstream with a clear error. Example: `uv run dagster asset materialize --select parsed_scores -f daydreaming_dagster/definitions.py`.
+- Stale CSVs: if a downstream asset expects new columns in `parsed_scores` (e.g., `draft_template`) and fails, rematerialize upstream with a clear error. Example: `uv run dagster asset materialize --select parsed_scores -f daydreaming_dagster/definitions.py`.
 - File names: draft files are saved by `draft_task_id` (legacy `link_task_id`); essay files by `essay_task_id`. Scripts that pair them must derive the draft/link id from essay_task_id.
 
 Why not multi‑dimensional partitions?

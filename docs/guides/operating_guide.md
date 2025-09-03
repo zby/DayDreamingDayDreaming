@@ -235,7 +235,7 @@ For cross-experiment winners, place or symlink their generation texts under the 
 **Note**: Auto-materialization requires the Dagster daemon to be running. In development, you can manually trigger assets if needed:
 ```bash
 # Manually materialize a specific asset
-uv run dagster asset materialize --select "content_combinations,link_generation_tasks,essay_generation_tasks,evaluation_tasks" -f daydreaming_dagster/definitions.py
+uv run dagster asset materialize --select "content_combinations,draft_generation_tasks,essay_generation_tasks,evaluation_tasks" -f daydreaming_dagster/definitions.py
 ```
 
 ### Free vs Paid LLM Runs (Separate Pools)

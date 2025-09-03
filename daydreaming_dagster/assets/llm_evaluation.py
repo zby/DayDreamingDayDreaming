@@ -11,52 +11,6 @@ from .raw_data import EVALUATION_TEMPLATES_KEY
 logger = logging.getLogger(__name__)
 
 
-def generate_evaluation_prompts(
-    draft_responses: dict[str, str],
-    evaluation_tasks: pd.DataFrame,
-    evaluation_templates: dict[str, str],
-) -> dict[str, str]:
-    """
-    Generate evaluation prompts from draft responses.
-
-    Args:
-        draft_responses: Dict mapping link_task_id to response text
-        evaluation_tasks: DataFrame of evaluation tasks
-        evaluation_templates: Dict of template_id -> template_content
-
-    Returns:
-        Dictionary mapping evaluation_task_id to evaluation prompt text
-    """
-    logger.info("Generating evaluation prompts")
-
-    eval_prompts = {}
-    env = Environment()
-
-    for _, task_row in evaluation_tasks.iterrows():
-        evaluation_task_id = task_row["evaluation_task_id"]
-        link_task_id = task_row["link_task_id"]
-        template_id = task_row["evaluation_template"]
-
-        # Get the draft response
-        if link_task_id not in draft_responses:
-            logger.warning(
-                f"No draft response found for {link_task_id}, skipping evaluation task {evaluation_task_id}"
-            )
-            continue
-
-        draft_response = draft_responses[link_task_id]
-
-        # Render evaluation template
-        template_content = evaluation_templates[template_id]
-        template = env.from_string(template_content)
-        eval_prompt = template.render(response=draft_response)
-
-        eval_prompts[evaluation_task_id] = eval_prompt
-
-    logger.info(f"Generated {len(eval_prompts)} evaluation prompts")
-    return eval_prompts
-
-
 @asset(
     partitions_def=evaluation_tasks_partitions,
     group_name="evaluation",
