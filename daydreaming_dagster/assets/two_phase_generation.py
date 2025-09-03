@@ -4,8 +4,8 @@ import pandas as pd
 from jinja2 import Environment
 from .partitions import link_tasks_partitions, essay_tasks_partitions
 from ..utils.template_loader import load_generation_template
-from ..utils.raw_readers import read_essay_templates
-from ..utils.idea_parsers import parse_essay_idea_last
+from ..utils.raw_readers import read_essay_templates, read_link_templates
+from ..utils.link_parsers import get_link_parser
 from ..utils.dataframe_helpers import get_task_row
 from ..utils.shared_context import MockLoadContext
 
@@ -229,30 +229,53 @@ def _essay_response_impl(context, essay_prompt, essay_generation_tasks) -> str:
         links_context = MockLoadContext(link_task_id)
         links_content = links_io.load_input(links_context)
 
-        # Map link_template -> parser function
+        # Determine parser from link_templates.csv (no in-code mapping)
+        data_root = context.resources.data_root
+        link_templates_df = read_link_templates(Path(data_root), filter_active=False)
         parser_name = None
-        if link_template in {"deliberate-rolling-thread-v1", "deliberate-rolling-thread-v2"}:
-            parser_name = "essay_idea_last"
-            try:
-                parsed_text = parse_essay_idea_last(links_content)
-                parser_fallback = None
-            except ValueError:
-                # Graceful fallback for tests or non-compliant outputs
-                parsed_text = links_content.strip()
-                parser_fallback = "no_essay_idea_tags"
-        else:
+        if not link_templates_df.empty and "parser" in link_templates_df.columns:
+            row = link_templates_df[link_templates_df["template_id"] == link_template]
+            if not row.empty:
+                parser_name = str(row.iloc[0].get("parser") or "").strip() or None
+
+        if not parser_name:
             raise Failure(
                 description=(
-                    f"No parser mapping for link_template '{link_template}' in parser mode"
+                    "Parser not specified for link template in CSV (required in parser mode)"
                 ),
                 metadata={
                     "link_task_id": MetadataValue.text(link_task_id),
                     "link_template": MetadataValue.text(str(link_template)),
+                    "csv_column": MetadataValue.text("parser"),
                     "resolution": MetadataValue.text(
-                        "Enable mapping in essay_response for this link_template or switch essay template to an LLM generator."
+                        "Add a 'parser' value to data/1_raw/link_templates.csv for this template, or switch essay template generator mode."
                     ),
                 },
             )
+
+        parser_fn = get_link_parser(parser_name)
+        if parser_fn is None:
+            raise Failure(
+                description=(
+                    f"Parser '{parser_name}' not found in registry (CSV refers to unknown parser)"
+                ),
+                metadata={
+                    "link_task_id": MetadataValue.text(link_task_id),
+                    "link_template": MetadataValue.text(str(link_template)),
+                    "parser": MetadataValue.text(str(parser_name)),
+                    "resolution": MetadataValue.text(
+                        "Use a supported parser name in CSV or register a new parser in utils/link_parsers.py"
+                    ),
+                },
+            )
+
+        try:
+            parsed_text = parser_fn(links_content)
+            parser_fallback = None
+        except ValueError:
+            # Graceful fallback for tests or non-compliant outputs
+            parsed_text = links_content.strip()
+            parser_fallback = "no_essay_idea_tags"
 
         context.log.info(
             f"Parsed essay from links for task {task_id} (parser={parser_name}, link_template={link_template})"
