@@ -43,7 +43,8 @@ def parse_args() -> argparse.Namespace:
     p.add_argument(
         "--write-drafts",
         action="store_true",
-        help="Also write curated draft_generation_tasks.csv (evaluation uses essays only)",
+        default=True,
+        help="Also write curated draft_generation_tasks.csv (default: on)",
     )
     return p.parse_args()
 
@@ -93,7 +94,6 @@ def main() -> int:
             by=["score", "document_id"], ascending=[False, True]
         )
     )
-
     top_docs = best.head(args.top_n)["document_id"].tolist()
 
     # Build curated generation task CSVs (essays, and optionally drafts)
