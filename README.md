@@ -17,11 +17,11 @@ The pipeline uses an innovative two-phase approach to LLM generation:
 
 **Phase 1 - Draft Generation**: LLMs brainstorm conceptual connections and combinations between input concepts, producing 6-12 specific bullet points describing how concepts could be integrated.
 
-**Phase 2 - Essay Generation**: Using the links from Phase 1 as inspiration, LLMs compose comprehensive essays (1500-3000 words) that develop the most promising conceptual combinations into detailed analyses.
+**Phase 2 - Essay Generation**: Using the draft-stage output from Phase 1 as inspiration, LLMs compose comprehensive essays (1500-3000 words) that develop the most promising conceptual combinations into detailed analyses.
 
 **Key Benefits**:
 - **Higher Quality**: Separates creative ideation from structured writing
-- **Robust Validation**: Phase 2 fails if Phase 1 produces insufficient links (< 3)
+- **Robust Validation**: Phase 2 fails if Phase 1 produces insufficient draft items (< 3)
 - **Better Essays**: Phase 2 has rich context from Phase 1 brainstorming
 - **Backward Compatible**: Existing evaluation and analysis assets work unchanged
 
@@ -79,7 +79,7 @@ uv run dagster asset materialize --select "group:task_definitions" -f daydreamin
 
 # Then get an essay partition key for that draft from essay_generation_tasks.csv
 # Example (Phase 2):
-# ESSAY=$(awk -F, -v link="$DRAFT" 'NR==1{for(i=1;i<=NF;i++)h[$i]=i} NR>1 && $h["link_task_id"]==link {print $h["essay_task_id"]; exit}' data/2_tasks/essay_generation_tasks.csv)
+# ESSAY=$(awk -F, -v draft="$DRAFT" 'NR==1{for(i=1;i<=NF;i++)h[$i]=i} NR>1 && $h["draft_task_id"]==draft {print $h["essay_task_id"]; exit}' data/2_tasks/essay_generation_tasks.csv)
 # uv run dagster asset materialize --select "group:generation_essays" --partition "$ESSAY" -f daydreaming_dagster/definitions.py
 
 # Step 3: Process results (after sufficient generation/evaluation data)
@@ -95,11 +95,11 @@ uv run dagster asset materialize --select "parsed_scores,final_results" -f daydr
 - `group:results_processing`: parsed_scores, analysis, and final_results (creates `data/5_parsing/`, `data/6_summary/`)
 
 **Why the specific asset dependencies matter**:
-- `link_templates` and `essay_templates` load their CSVs and template files and determine activeness
+- `draft_templates` and `essay_templates` load their CSVs and template files and determine activeness
 - `evaluation_templates` loads evaluation CSV + files
 - Using asset groups or dependency resolution (`+`) automatically includes these dependencies
 
-**Dynamic Partitioning**: Partitions are created/updated by the task assets. Partition keys are based on `link_task_id` (links) and `essay_task_id` (essays), which include a stable `combo_id` prefix.
+**Dynamic Partitioning**: Partitions are created/updated by the task assets. Partition keys are based on `draft_task_id` (drafts) and `essay_task_id` (essays), which include a stable `combo_id` prefix.
 
 ### Running All LLM Partitions
 
@@ -192,7 +192,7 @@ uv run pytest --cov=daydreaming_dagster
 
 - `OPENROUTER_API_KEY`: OpenRouter API key for LLM access
 - `DAGSTER_HOME`: Dagster metadata storage (set to absolute path of `dagster_home/` directory)
-- `OVERWRITE_GENERATED_FILES`: When set to `1`/`true`/`yes` (case‑insensitive), allows overwriting existing generated response files for links, essays, and evaluations. Defaults to off (write‑once safety). Prompts always overwrite.
+- `OVERWRITE_GENERATED_FILES`: When set to `1`/`true`/`yes` (case‑insensitive), allows overwriting existing generated response files for drafts, essays, and evaluations. Defaults to off (write‑once safety). Prompts always overwrite.
 
 **Important**: Set `DAGSTER_HOME=$(pwd)/dagster_home` to use the project's Dagster configuration, which includes auto-materialization settings. Without this, Dagster uses temporary storage and ignores the project configuration.
 
@@ -232,7 +232,7 @@ Templates are organized in a two-phase structure:
 
 ```
 data/1_raw/generation_templates/
-├── links/                    # Phase 1: Concept link generation
+├── draft/                    # Phase 1: Concept draft generation
 │   ├── creative-synthesis-v7.txt
 │   ├── systematic-analytical.txt
 │   └── ...
@@ -242,17 +242,17 @@ data/1_raw/generation_templates/
     └── ...
 ```
 
-**Phase 1 Templates** (`links/`): 
+**Phase 1 Templates** (`draft/`): 
 - Focus on generating the structure that will drive the essay phase. Multiple styles are supported.
 - Output: Structured Markdown according to the selected template schema.
 - Template variables: `concepts` (list with name, content)
 
-Adding a new link template:
-- Place the template file under `data/1_raw/generation_templates/links/<template_id>.txt`.
-- Register it in `data/1_raw/link_templates.csv` with the same `template_id` and set `active=true` (set others to `false`). If an essay template will consume Phase 1 output in parser mode, set the `parser` column (e.g., `essay_idea_last`). Supported parser names live in `daydreaming_dagster/utils/link_parsers.py`. Missing or unknown parsers cause a hard failure during essay generation.
+Adding a new draft template:
+- Place the template file under `data/1_raw/generation_templates/draft/<template_id>.txt`.
+- Register it in `data/1_raw/draft_templates.csv` with the same `template_id` and set `active=true` (set others to `false`). If an essay template will consume Phase 1 output in parser mode, set the `parser` column (e.g., `essay_idea_last`). Supported parser names live in `daydreaming_dagster/utils/link_parsers.py`. Missing or unknown parsers cause a hard failure during essay generation.
 - Optional: set `GEN_TEMPLATES_ROOT` to point to a different root if you maintain templates outside the repo.
 
-Active link templates are controlled in `data/1_raw/link_templates.csv` via the `active` column. Examples include:
+Active draft templates are controlled in `data/1_raw/draft_templates.csv` via the `active` column. Examples include:
 - `deliberate-rolling-thread-v2` / `-v3` — Tagged rolling idea with per-step `<essay-idea>` blocks designed for downstream parsing.
 - `rolling-summary-v1` — Readable idea-thread recursion with enforced link types and a rolling “Idea So Far — i” summary.
 
@@ -267,7 +267,7 @@ Active link templates are controlled in `data/1_raw/link_templates.csv` via the 
 - **Two-Phase Generation**: `data/3_generation/` (drafts and essays)
   - `draft_prompts/`, `draft_responses/` (Phase 1 outputs; legacy `links_*` supported)
   - `essay_prompts/`, `essay_responses/` (Phase 2 outputs)
-  - `parsed_generation_responses/` (legacy; two-phase writes directly to `links_*` and `essay_*`)
+  - `parsed_generation_responses/` (legacy; two-phase writes directly to `draft_*` and `essay_*`)
 - **Legacy Generation**: `data/3_generation/` (single-phase outputs, still supported)
   - `generation_prompts/`, `generation_responses/`
 - **Results**: `data/5_parsing/` (processed results)
