@@ -27,6 +27,7 @@ import argparse
 from pathlib import Path
 import sys
 import pandas as pd
+from daydreaming_dagster.utils.document_locator import find_document_path
 
 
 DEFAULT_PRIOR_ART_TEMPLATES = [
@@ -98,10 +99,11 @@ def main() -> int:
 
     # Build curated generation task CSVs (essays, and optionally drafts)
     models_csv = Path("data/1_raw/llm_models.csv")
-    essay_dir = Path("data/3_generation/essay_responses")
-    drafts_dir = Path("data/3_generation/draft_responses")
+    data_root = Path("data")
+    essay_dir = data_root / "3_generation" / "essay_responses"
+    drafts_dir = data_root / "3_generation" / "draft_responses"
     if not drafts_dir.exists():
-        drafts_dir = Path("data/3_generation/links_responses")  # legacy fallback
+        drafts_dir = data_root / "3_generation" / "links_responses"  # legacy fallback
     essay_out_csv = Path("data/2_tasks/essay_generation_tasks.csv")
     link_out_csv = Path("data/2_tasks/draft_generation_tasks.csv")
     draft_tpl_csv = Path("data/1_raw/draft_templates.csv")
@@ -179,9 +181,9 @@ def main() -> int:
                 continue
 
             draft_task_id = f"{combo_id}_{draft_template}_{generation_model}"
-            fp = essay_dir / f"{doc}.txt"
-            if not fp.exists():
-                missing_essays.append(str(fp))
+            fp, _ = find_document_path(doc, data_root)
+            if not fp:
+                missing_essays.append(str(essay_dir / f"{doc}.txt"))
             essay_rows.append({
                 "essay_task_id": doc,
                 "draft_task_id": draft_task_id,
@@ -217,9 +219,9 @@ def main() -> int:
                 continue
             if args.write_drafts:
                 draft_task_id = doc  # For drafts, document_id equals draft_task_id
-                fp = drafts_dir / f"{draft_task_id}.txt"
-                if not fp.exists():
-                    missing_links.append(str(fp))
+                fp, _ = find_document_path(draft_task_id, data_root)
+                if not fp:
+                    missing_links.append(str(drafts_dir / f"{draft_task_id}.txt"))
                 draft_rows.append({
                     "draft_task_id": draft_task_id,
                     "combo_id": combo_id,
