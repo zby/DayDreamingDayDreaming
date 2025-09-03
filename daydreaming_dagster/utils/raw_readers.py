@@ -42,13 +42,24 @@ def read_llm_models(data_root: Path) -> pd.DataFrame:
     return pd.read_csv(fp)
 
 
-def read_link_templates(data_root: Path, filter_active: bool = True) -> pd.DataFrame:
+def read_draft_templates(data_root: Path, filter_active: bool = True) -> pd.DataFrame:
     base = Path(data_root) / "1_raw"
-    csv_path = base / "link_templates.csv"
+    # Prefer draft_templates.csv; fall back to link_templates.csv during transition
+    draft_csv = base / "draft_templates.csv"
+    legacy_csv = base / "link_templates.csv"
+    csv_path = draft_csv if draft_csv.exists() else legacy_csv
     df = pd.read_csv(csv_path)
     if filter_active and "active" in df.columns:
         df = df[df["active"] == True]
     return df
+
+
+def read_link_templates(data_root: Path, filter_active: bool = True) -> pd.DataFrame:
+    """Deprecated shim: prefer read_draft_templates.
+
+    Reads draft_templates.csv if present; otherwise reads legacy link_templates.csv.
+    """
+    return read_draft_templates(data_root, filter_active=filter_active)
 
 
 def read_essay_templates(data_root: Path, filter_active: bool = True) -> pd.DataFrame:

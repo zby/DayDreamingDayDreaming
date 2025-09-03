@@ -6,7 +6,8 @@ RAW_BASE = Path("data") / "1_raw"
 # CSV-only SourceAssets (no per-description or per-template .txt assets)
 CONCEPTS_METADATA_KEY = AssetKey(["raw_source", "concepts_metadata_csv"])
 LLM_MODELS_KEY = AssetKey(["raw_source", "llm_models_csv"])
-LINK_TEMPLATES_KEY = AssetKey(["raw_source", "link_templates_csv"])
+LINK_TEMPLATES_KEY = AssetKey(["raw_source", "link_templates_csv"])  # deprecated
+DRAFT_TEMPLATES_KEY = AssetKey(["raw_source", "draft_templates_csv"])
 ESSAY_TEMPLATES_KEY = AssetKey(["raw_source", "essay_templates_csv"])
 EVALUATION_TEMPLATES_KEY = AssetKey(["raw_source", "evaluation_templates_csv"])
 
@@ -25,9 +26,15 @@ RAW_SOURCE_ASSETS = [
     ),
     AssetSpec(
         key=LINK_TEMPLATES_KEY,
-        description=f"External raw CSV: {RAW_BASE / 'link_templates.csv'}",
+        description=f"(Deprecated) External raw CSV: {RAW_BASE / 'link_templates.csv'}",
         group_name="raw_sources",
         metadata={"path": str(RAW_BASE / "link_templates.csv")},
+    ),
+    AssetSpec(
+        key=DRAFT_TEMPLATES_KEY,
+        description=f"External raw CSV: {RAW_BASE / 'draft_templates.csv'}",
+        group_name="raw_sources",
+        metadata={"path": str(RAW_BASE / "draft_templates.csv")},
     ),
     AssetSpec(
         key=ESSAY_TEMPLATES_KEY,

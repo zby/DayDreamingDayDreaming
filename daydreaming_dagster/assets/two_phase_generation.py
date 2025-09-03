@@ -2,7 +2,7 @@ from dagster import asset, Failure, MetadataValue
 from pathlib import Path
 import pandas as pd
 from jinja2 import Environment
-from .partitions import link_tasks_partitions, essay_tasks_partitions
+from .partitions import link_tasks_partitions, essay_tasks_partitions, draft_tasks_partitions
 from ..utils.template_loader import load_generation_template
 from ..utils.raw_readers import read_essay_templates, read_link_templates
 from ..utils.link_parsers import get_link_parser
@@ -123,6 +123,110 @@ def links_response(context, links_prompt, link_generation_tasks) -> str:
         "model_used": MetadataValue.text(model_name),
     })
     
+    return response
+
+
+@asset(
+    partitions_def=draft_tasks_partitions,
+    group_name="generation_draft",
+    io_manager_key="draft_prompt_io_manager",
+)
+def draft_prompt(
+    context,
+    draft_generation_tasks,
+    content_combinations,
+) -> str:
+    """
+    Generate Phase 1 prompts for draft generation (renamed from links).
+    """
+    task_id = context.partition_key
+
+    task_row = get_task_row(draft_generation_tasks, "draft_task_id", task_id, context, "draft_generation_tasks")
+    combo_id = task_row["combo_id"]
+    template_name = task_row["draft_template"]
+
+    # Resolve content combination
+    content_combination = None
+    for combo in content_combinations:
+        if combo.combo_id == combo_id:
+            content_combination = combo
+            break
+    if content_combination is None:
+        available_combos = [combo.combo_id for combo in content_combinations[:5]]
+        context.log.error(f"No ContentCombination found for combo_id: {combo_id}")
+        raise Failure(
+            description=f"Content combination '{combo_id}' not found in combinations database",
+            metadata={
+                "combo_id": MetadataValue.text(combo_id),
+                "available_combinations_sample": MetadataValue.text(str(available_combos)),
+                "total_combinations": MetadataValue.int(len(content_combinations)),
+            },
+        )
+
+    # Load draft template (prefers draft/, falls back to links/ for transition)
+    try:
+        template_content = load_generation_template(template_name, "draft")
+    except FileNotFoundError as e:
+        context.log.error(f"Draft template '{template_name}' not found")
+        raise Failure(
+            description=f"Draft template '{template_name}' not found",
+            metadata={
+                "template_name": MetadataValue.text(template_name),
+                "phase": MetadataValue.text("draft"),
+                "error": MetadataValue.text(str(e)),
+                "resolution": MetadataValue.text(
+                    "Ensure the template exists in data/1_raw/generation_templates/draft/ or links/"
+                ),
+            },
+        )
+
+    env = Environment()
+    template = env.from_string(template_content)
+    prompt = template.render(concepts=content_combination.contents)
+
+    context.log.info(f"Generated draft prompt for task {task_id} using template {template_name}")
+    return prompt
+
+
+@asset(
+    partitions_def=draft_tasks_partitions,
+    group_name="generation_draft",
+    io_manager_key="draft_response_io_manager",
+    required_resource_keys={"openrouter_client", "experiment_config"},
+)
+def draft_response(context, draft_prompt, draft_generation_tasks) -> str:
+    """
+    Generate Phase 1 LLM responses for drafts.
+    """
+    task_id = context.partition_key
+    task_row = get_task_row(draft_generation_tasks, "draft_task_id", task_id, context, "draft_generation_tasks")
+    model_name = task_row["generation_model_name"]
+
+    llm_client = context.resources.openrouter_client
+    experiment_config = context.resources.experiment_config
+    response = llm_client.generate(draft_prompt, model=model_name, max_tokens=experiment_config.link_generation_max_tokens)
+
+    response_lines = [line.strip() for line in response.split("\n") if line.strip()]
+    if len(response_lines) < 3:
+        raise Failure(
+            description=f"Draft response insufficient for task {task_id}",
+            metadata={
+                "task_id": MetadataValue.text(task_id),
+                "model_name": MetadataValue.text(model_name),
+                "response_line_count": MetadataValue.int(len(response_lines)),
+                "minimum_required": MetadataValue.int(3),
+                "response_content_preview": MetadataValue.text(response[:200] + "..." if len(response) > 200 else response),
+                "resolution_1": MetadataValue.text("Check prompt quality or model parameters"),
+                "resolution_2": MetadataValue.text("Consider retrying with different model or prompt"),
+            },
+        )
+
+    context.log.info(
+        f"Generated draft response for task {task_id} using model {model_name} ({len(response_lines)} lines)"
+    )
+    context.add_output_metadata(
+        {"response_line_count": MetadataValue.int(len(response_lines)), "model_used": MetadataValue.text(model_name)}
+    )
     return response
 
 

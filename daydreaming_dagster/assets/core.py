@@ -8,6 +8,7 @@ from .raw_data import (
     CONCEPTS_METADATA_KEY,
     LLM_MODELS_KEY,
     LINK_TEMPLATES_KEY,
+    DRAFT_TEMPLATES_KEY,
     ESSAY_TEMPLATES_KEY,
     EVALUATION_TEMPLATES_KEY,
 )
@@ -15,6 +16,7 @@ from ..utils.raw_readers import (
     read_concepts,
     read_llm_models,
     read_link_templates,
+    read_draft_templates,
     read_essay_templates,
     read_evaluation_templates,
 )
@@ -22,6 +24,7 @@ from .partitions import (
     generation_tasks_partitions,
     evaluation_tasks_partitions,
     link_tasks_partitions,
+    draft_tasks_partitions,
     essay_tasks_partitions,
 )
 from ..utils.combo_ids import ComboIDManager
@@ -172,7 +175,7 @@ def link_generation_tasks(
     context,
     content_combinations: List[ContentCombination],
 ) -> pd.DataFrame:
-    """Create link-generation tasks (combo × link_template × model)."""
+    """Create link-generation tasks (legacy name; kept during transition)."""
     data_root = context.resources.data_root
     models_df = read_llm_models(Path(data_root))
     generation_models = models_df[models_df["for_generation"] == True]
@@ -197,7 +200,6 @@ def link_generation_tasks(
                     }
                 )
 
-    # Build DataFrame with stable schema even if there are no rows
     columns = [
         "link_task_id",
         "combo_id",
@@ -207,16 +209,13 @@ def link_generation_tasks(
     ]
     tasks_df = pd.DataFrame(rows, columns=columns)
 
-    # Register dynamic partitions for links (guard empty)
     existing = context.instance.get_dynamic_partitions(link_tasks_partitions.name)
     if not tasks_df.empty:
-        # Replace partitions atomically: clear then add
         if existing:
             for p in existing:
                 context.instance.delete_dynamic_partition(link_tasks_partitions.name, p)
         context.instance.add_dynamic_partitions(link_tasks_partitions.name, tasks_df["link_task_id"].tolist())
     else:
-        # Keep existing partitions if no new tasks are produced in this run
         context.log.warning(
             "No link-generation tasks produced (check active concepts, k_max, active link templates, generation models). Keeping existing dynamic partitions."
         )
@@ -226,6 +225,73 @@ def link_generation_tasks(
             "task_count": MetadataValue.int(len(tasks_df)),
             "unique_combinations": MetadataValue.int(tasks_df["combo_id"].nunique() if not tasks_df.empty else 0),
             "unique_link_templates": MetadataValue.int(tasks_df["link_template"].nunique() if not tasks_df.empty else 0),
+            "unique_models": MetadataValue.int(tasks_df["generation_model"].nunique() if not tasks_df.empty else 0),
+        }
+    )
+    return tasks_df
+@asset(
+    group_name="task_definitions",
+    io_manager_key="csv_io_manager",
+    required_resource_keys={"experiment_config", "data_root"},
+    automation_condition=AutomationCondition.eager(),
+    deps={LLM_MODELS_KEY, DRAFT_TEMPLATES_KEY},
+)
+def draft_generation_tasks(
+    context,
+    content_combinations: List[ContentCombination],
+) -> pd.DataFrame:
+    """Create draft-generation tasks (combo × draft_template × model)."""
+    data_root = context.resources.data_root
+    models_df = read_llm_models(Path(data_root))
+    generation_models = models_df[models_df["for_generation"] == True]
+
+    templates_df = read_draft_templates(Path(data_root), filter_active=True)
+    active_templates = list(templates_df["template_id"].tolist())
+
+    rows: List[dict] = []
+    for combo in content_combinations:
+        for template_id in active_templates:
+            for _, model_row in generation_models.iterrows():
+                model_id = model_row["id"]
+                model_name = model_row["model"]
+                draft_task_id = f"{combo.combo_id}_{template_id}_{model_id}"
+                rows.append(
+                    {
+                        "draft_task_id": draft_task_id,
+                        "combo_id": combo.combo_id,
+                        "draft_template": template_id,
+                        "generation_model": model_id,
+                        "generation_model_name": model_name,
+                    }
+                )
+
+    # Build DataFrame with stable schema even if there are no rows
+    columns = [
+        "draft_task_id",
+        "combo_id",
+        "draft_template",
+        "generation_model",
+        "generation_model_name",
+    ]
+    tasks_df = pd.DataFrame(rows, columns=columns)
+
+    # Register dynamic partitions for drafts (guard empty)
+    existing = context.instance.get_dynamic_partitions(draft_tasks_partitions.name)
+    if not tasks_df.empty:
+        if existing:
+            for p in existing:
+                context.instance.delete_dynamic_partition(draft_tasks_partitions.name, p)
+        context.instance.add_dynamic_partitions(draft_tasks_partitions.name, tasks_df["draft_task_id"].tolist())
+    else:
+        context.log.warning(
+            "No draft-generation tasks produced (check active concepts, k_max, active draft templates, generation models). Keeping existing dynamic partitions."
+        )
+
+    context.add_output_metadata(
+        {
+            "task_count": MetadataValue.int(len(tasks_df)),
+            "unique_combinations": MetadataValue.int(tasks_df["combo_id"].nunique() if not tasks_df.empty else 0),
+            "unique_draft_templates": MetadataValue.int(tasks_df["draft_template"].nunique() if not tasks_df.empty else 0),
             "unique_models": MetadataValue.int(tasks_df["generation_model"].nunique() if not tasks_df.empty else 0),
         }
     )
