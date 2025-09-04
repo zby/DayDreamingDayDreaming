@@ -1,5 +1,8 @@
 template_id,template_name,description,active,parser
-creative-synthesis-v10,Creative Synthesis V10,Enhanced two-phase generation - Links Phase,false,
+creative-synthesis-v10,Creative Synthesis V10,Enhanced two-phase generation - Links Phase,false,essay_block
+creative-synthesis-v6,Creative Synthesis V6 (as draft),Legacy essay template reused for Phase-1 draft,false,essay_block
+creative-synthesis-v5,Creative Synthesis V5 (as draft),Legacy essay template reused for Phase-1 draft,false,essay_block
+creative-synthesis-v4,Creative Synthesis V4 (as draft),Legacy essay template reused for Phase-1 draft,false,essay_block
 pair-explorer,Pair Explorer,Explore and generate links between pairs of concepts,false,
 pair-explorer-recursive,Pair Explorer Recursive,Enhanced pair exploration with recursive mechanism linking,false,
 pair-explorer-recursive-v1,Pair Explorer Recursive V1,Advanced link exploration with mechanism lifting,false,
@@ -20,3 +23,19 @@ connective-thread-simplified-v1,Connective Thread Simplified V1,Single-thread in
 deliberate-rolling-thread-v1,Deliberate Rolling Thread V1,Tagged rolling idea with deliberate options and per-step <essay-idea>,false,essay_idea_last
 deliberate-rolling-thread-v2,Deliberate Rolling Thread V2,Tagged rolling idea (free-form thinking) with per-step <essay-idea>,true,essay_idea_last
 deliberate-rolling-thread-v3,Deliberate Rolling Thread V3,Tagged rolling idea (free-form thinking) with per-step <essay-idea>,true,essay_idea_last
+creative-synthesis-v7,Creative Synthesis V7 (as draft),Legacy essay template reused for Phase-1 draft,True,essay_block
+creative-synthesis,Creative Synthesis (as draft),Legacy essay template reused for Phase-1 draft,False,essay_block
+creative-synthesis-v2,Creative Synthesis V2 (as draft),Legacy essay template reused for Phase-1 draft,False,essay_block
+creative-synthesis-v3,Creative Synthesis V3 (as draft),Legacy essay template reused for Phase-1 draft,False,essay_block
+application-implementation,Application Implementation (as draft),Legacy essay template reused for Phase-1 draft,False,essay_block
+application-implementation-v2,Application Implementation V2 (as draft),Legacy essay template reused for Phase-1 draft,False,essay_block
+essay-inventive-synthesis,Essay Inventive Synthesis (as draft),Legacy essay template reused for Phase-1 draft,False,essay_block
+essay-inventive-synthesis-v3,Essay Inventive Synthesis V3 (as draft),Legacy essay template reused for Phase-1 draft,False,essay_block
+gwern_original,Gwern Original (as draft),Legacy essay template reused for Phase-1 draft,False,essay_block
+problem-solving,Problem Solving (as draft),Legacy essay template reused for Phase-1 draft,False,essay_block
+problem-solving-v2,Problem Solving V2 (as draft),Legacy essay template reused for Phase-1 draft,False,essay_block
+research-discovery,Research Discovery (as draft),Legacy essay template reused for Phase-1 draft,False,essay_block
+research-discovery-v2,Research Discovery V2 (as draft),Legacy essay template reused for Phase-1 draft,False,essay_block
+research-discovery-v3,Research Discovery V3 (as draft),Legacy essay template reused for Phase-1 draft,False,essay_block
+systematic-analytical,Systematic Analytical (as draft),Legacy essay template reused for Phase-1 draft,False,essay_block
+systematic-analytical-v2,Systematic Analytical V2 (as draft),Legacy essay template reused for Phase-1 draft,False,essay_block
