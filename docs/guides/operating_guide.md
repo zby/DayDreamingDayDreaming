@@ -244,7 +244,7 @@ What it does
 - Writes curated rows into:
   - `data/2_tasks/draft_generation_tasks.csv` (optional; disable `--no-write-drafts`)
   - `data/2_tasks/essay_generation_tasks.csv`
-- Creates `data/2_tasks/selected_combo_mappings.csv` by filtering `data/combo_mappings.csv` to the selected `combo_id`s. The `content_combinations` asset reads this subset so Phase‑1 prompts render independent of current `k_max`.
+- Creates `data/2_tasks/selected_combo_mappings.csv` by filtering `data/combo_mappings.csv` to the selected `combo_id`s. The `content_combinations` asset consumes the `selected_combo_mappings` DataFrame in‑graph (include it in the same materialize call) so Phase‑1 prompts render independent of current `k_max`.
 - Registers dynamic partitions (reset by default) for `draft_tasks`, `essay_tasks`, and `evaluation_tasks` (active templates × evaluation models). Use `--no-reset-partitions` for additive registration.
 - Cleans `data/2_tasks` by default (use `--no-clean-2-tasks` to skip) and writes only curated task CSVs. The `selected_generations` list (txt/csv) is preserved.
 
