@@ -199,6 +199,30 @@ def selected_combo_mappings(context) -> pd.DataFrame:
     )
     return selected
 
+
+@asset(
+    group_name="task_definitions",
+    io_manager_key="in_memory_io_manager",
+    required_resource_keys={"data_root"},
+    automation_condition=AutomationCondition.eager(),
+)
+def selected_combo_mappings_df(context) -> pd.DataFrame:
+    """Loader asset: read selected_combo_mappings.csv into a DataFrame with validation.
+
+    Keeps curated and generated flows symmetric while enabling in-graph DataFrame wiring
+    when composed via jobs/Definitions. Does not write to disk (in-memory IO manager).
+    """
+    data_root = Path(context.resources.data_root)
+    df = read_selected_combo_mappings(data_root)
+    superset_path = data_root / "combo_mappings.csv"
+    if superset_path.exists():
+        validate_selected_is_subset(df, superset_path)
+    context.add_output_metadata({
+        "rows": MetadataValue.int(len(df)),
+        "unique_combos": MetadataValue.int(df["combo_id"].nunique() if not df.empty else 0),
+    })
+    return df
+
     # (content_combinations_csv asset removed — normalized CSV export no longer used)
 
 @asset(

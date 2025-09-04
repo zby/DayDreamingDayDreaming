@@ -375,7 +375,8 @@ class TestPipelineIntegration:
                 assert "evaluation_task_id" in eval_tasks_csv.columns
                 assert "draft_task_id" in eval_tasks_csv.columns
 
-                unique_combos_in_combinations = len(combinations_csv["combo_id"].unique())
+                # Match number of combos between superset (restricted to used combos) and generation tasks
+                unique_combos_in_combinations = len(mappings_df[mappings_df["combo_id"].isin(used_combo_ids)]["combo_id"].unique())
                 unique_combos_in_gen_tasks = len(gen_tasks_csv["combo_id"].unique())
                 assert unique_combos_in_combinations == unique_combos_in_gen_tasks
 
@@ -523,8 +524,8 @@ class TestPipelineIntegration:
             with patch.dict(os.environ, {'DAGSTER_HOME': str(temp_dagster_home)}):
                 instance = DagsterInstance.ephemeral(tempdir=str(temp_dagster_home))
                 
-                # Import and test just the content_combinations asset (fallback to k_max generation)
-                from daydreaming_dagster.assets.core import content_combinations
+                # Import selection generator and content_combinations (no fallback)
+                from daydreaming_dagster.assets.core import selected_combo_mappings, content_combinations
                 from daydreaming_dagster.resources.io_managers import CSVIOManager
                 from daydreaming_dagster.resources.experiment_config import ExperimentConfig
                 
@@ -536,6 +537,10 @@ class TestPipelineIntegration:
                     "experiment_config": ExperimentConfig(k_max=2, description_level="paragraph")
                 }
                 
+                # First generate selection from active concepts and k_max
+                _sel = materialize([selected_combo_mappings], resources=resources, instance=instance)
+                assert _sel.success
+
                 result = materialize([content_combinations], resources=resources, instance=instance)
                 
                 assert result.success, "Content combinations materialization should succeed"

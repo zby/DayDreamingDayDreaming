@@ -166,3 +166,24 @@ class VersionedTextIOManager(IOManager):
         raise FileNotFoundError(
             f"No text found for partition '{partition_key}' under {self.base_path}"
         )
+
+
+class InMemoryIOManager(IOManager):
+    """
+    Simple in-memory IO manager for tests/ephemeral data passing.
+    Stores objects per-asset (and partition if present) within a single process/run.
+    """
+
+    def __init__(self):
+        self._store = {}
+
+    def handle_output(self, context: OutputContext, obj):
+        key = (tuple(context.asset_key.path), context.partition_key)
+        self._store[key] = obj
+
+    def load_input(self, context: InputContext):
+        upstream = context.upstream_output
+        key = (tuple(upstream.asset_key.path), upstream.partition_key)
+        if key not in self._store:
+            raise KeyError(f"InMemoryIOManager: no object stored for {key}")
+        return self._store[key]

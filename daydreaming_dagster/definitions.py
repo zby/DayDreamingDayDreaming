@@ -46,6 +46,7 @@ from daydreaming_dagster.resources.io_managers import (
     PartitionedTextIOManager,
     CSVIOManager,
     VersionedTextIOManager,
+    InMemoryIOManager,
 )
 from daydreaming_dagster.resources.cross_experiment_io_manager import CrossExperimentIOManager
 from pathlib import Path
@@ -103,6 +104,7 @@ defs = Definitions(
         
         # Simplified I/O managers - no complex source mappings or filtering
         "csv_io_manager": CSVIOManager(base_path=Path("data") / "2_tasks"),
+        "in_memory_io_manager": InMemoryIOManager(),
         
         # Versioned I/O managers for prompts and responses (non-destructive)
         "draft_prompt_io_manager": VersionedTextIOManager(base_path=Path("data") / "3_generation" / "draft_prompts"),
