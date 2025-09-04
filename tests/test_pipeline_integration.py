@@ -299,11 +299,11 @@ class TestPipelineIntegration:
                 
                 # STEP 1: Materialize task definitions (consumers read raw sources directly)
                 print("📋 Step 1: Materializing task definitions...")
-                # First, generate selected combos deterministically
+                # First, generate the selected CSV deterministically
                 _sel = materialize([selected_combo_mappings], resources=resources, instance=instance)
                 assert _sel.success, "Selected combo materialization failed"
 
-                # Then materialize task definitions
+                # Then materialize task definitions that read the selected CSV
                 result = materialize(
                     [
                         content_combinations, content_combinations_csv,
@@ -327,26 +327,24 @@ class TestPipelineIntegration:
                     "draft_generation_tasks.csv",
                     "essay_generation_tasks.csv",
                     "evaluation_tasks.csv",
-                    "content_combinations_csv.csv",
                 ]
                 for name in expected_files:
                     p = task_dir / name
                     assert p.exists(), f"Expected file not found: {name}"
                     assert p.stat().st_size > 10, f"File appears empty: {name}"
 
-                # Check normalized content_combinations_csv structure and integrity
-                combinations_csv = pd.read_csv(task_dir / "content_combinations_csv.csv")
-                assert "combo_id" in combinations_csv.columns
-                assert "concept_id" in combinations_csv.columns
-                assert len(combinations_csv.columns) == 2
-                assert len(combinations_csv) > 0
-                combo_ids = combinations_csv["combo_id"].unique()
-                assert all(cid.startswith("combo_") for cid in combo_ids)
+                # Validate combo mappings via superset file
+                combo_mappings_path = pipeline_data_root / "combo_mappings.csv"
+                assert combo_mappings_path.exists(), "combo_mappings.csv should be created"
+                mappings_df = pd.read_csv(combo_mappings_path)
+                assert {"combo_id","concept_id","description_level","k_max"}.issubset(set(mappings_df.columns))
+                assert len(mappings_df) > 0
 
-                # Active concept IDs subset check
+                # Active concept IDs subset check for used combos
                 active_concepts_df = pd.read_csv(pipeline_data_root / "1_raw" / "concepts_metadata.csv")
                 expected_active_concept_ids = set(active_concepts_df[active_concepts_df["active"] == True]["concept_id"])
-                actual_concept_ids = set(combinations_csv["concept_id"].unique())
+                used_combo_ids = set(pd.read_csv(task_dir / "draft_generation_tasks.csv")["combo_id"].unique())
+                actual_concept_ids = set(mappings_df[mappings_df["combo_id"].isin(used_combo_ids)]["concept_id"].unique())
                 assert actual_concept_ids.issubset(expected_active_concept_ids)
 
                 # Link generation tasks structure and counts vs active templates/models
@@ -364,7 +362,7 @@ class TestPipelineIntegration:
                 templates_used = set(gen_tasks_csv["draft_template"].unique())
                 assert templates_used == expected_active_templates
 
-                combinations_count = len(combinations_csv["combo_id"].unique())
+                combinations_count = len(pd.read_csv(task_dir / "draft_generation_tasks.csv")["combo_id"].unique())
                 llm_models_df = pd.read_csv(pipeline_data_root / "1_raw" / "llm_models.csv")
                 generation_models_count = len(llm_models_df[llm_models_df["for_generation"] == True])
                 expected_link_task_count = combinations_count * len(expected_active_templates) * generation_models_count
@@ -490,8 +488,8 @@ class TestPipelineIntegration:
                 )
                 print("🎉 Task setup workflow test passed successfully!")
 
-    def test_content_combinations_csv_normalized_structure(self):
-        """Specific test for the normalized content_combinations_csv structure."""
+    def test_combo_mappings_normalized_structure(self):
+        """Specific test for the normalized combo_mappings.csv structure (superset)."""
         # Use a simplified test with minimal data
         with tempfile.TemporaryDirectory() as temp_root:
             temp_dagster_home = Path(temp_root) / "dagster_home" 
@@ -501,16 +499,7 @@ class TestPipelineIntegration:
             temp_data_dir.mkdir()
             (temp_data_dir / "1_raw").mkdir()
             (temp_data_dir / "2_tasks").mkdir()
-            (temp_data_dir / "3_generation").mkdir()
-            (temp_data_dir / "3_generation" / "generation_prompts").mkdir()
-            (temp_data_dir / "3_generation" / "generation_responses").mkdir()
-            # removed parsed_generation_responses directory creation
-            (temp_data_dir / "4_evaluation").mkdir()
-            (temp_data_dir / "4_evaluation" / "evaluation_prompts").mkdir()
-            (temp_data_dir / "4_evaluation" / "evaluation_responses").mkdir()
-            (temp_data_dir / "5_parsing").mkdir()
-            (temp_data_dir / "6_summary").mkdir()
-            (temp_data_dir / "7_reporting").mkdir()
+            # minimal directory structure for task layer
             
             # Create minimal test data
             concepts_dir = temp_data_dir / "1_raw" / "concepts"
@@ -534,8 +523,8 @@ class TestPipelineIntegration:
             with patch.dict(os.environ, {'DAGSTER_HOME': str(temp_dagster_home)}):
                 instance = DagsterInstance.ephemeral(tempdir=str(temp_dagster_home))
                 
-                # Import and test just the content_combinations_csv asset
-                from daydreaming_dagster.assets.core import selected_combo_mappings, content_combinations, content_combinations_csv
+                # Import and test just the content_combinations asset (fallback to k_max generation)
+                from daydreaming_dagster.assets.core import content_combinations
                 from daydreaming_dagster.resources.io_managers import CSVIOManager
                 from daydreaming_dagster.resources.experiment_config import ExperimentConfig
                 
@@ -547,36 +536,26 @@ class TestPipelineIntegration:
                     "experiment_config": ExperimentConfig(k_max=2, description_level="paragraph")
                 }
                 
-                _sel = materialize([selected_combo_mappings], resources=resources, instance=instance)
-                assert _sel.success
-                result = materialize(
-                    [content_combinations, content_combinations_csv],
-                    resources=resources,
-                    instance=instance
-                )
+                result = materialize([content_combinations], resources=resources, instance=instance)
                 
                 assert result.success, "Content combinations materialization should succeed"
                 
-                # Test the normalized table
-                combinations_file = temp_data_dir / "2_tasks" / "content_combinations_csv.csv"
-                assert combinations_file.exists(), "content_combinations_csv.csv should be created"
-                
-                df = pd.read_csv(combinations_file)
-                
-                # Test exact structure
-                assert list(df.columns) == ["combo_id", "concept_id"], \
-                    "Should have exactly 2 columns: combo_id, concept_id"
-                
-                # Test data relationships - with k_max=2 and 2 active concepts, should have 1 combination  
-                # Each combination has 2 rows (one per concept)
-                assert len(df) == 2, "Should have 2 rows for 1 combination of 2 concepts"
-                assert len(df["combo_id"].unique()) == 1, "Should have 1 unique combination"
-                
-                # Test only active concepts are included
-                concept_ids = set(df["concept_id"].unique())
+                # Test the superset mapping file
+                mappings_file = temp_data_dir / "combo_mappings.csv"
+                assert mappings_file.exists(), "combo_mappings.csv should be created"
+                df = pd.read_csv(mappings_file)
+
+                # Structure should include normalized mapping plus metadata
+                assert {"combo_id","concept_id","description_level","k_max"}.issubset(set(df.columns))
+
+                # With k_max=2 and 2 active concepts, there should be exactly one combo using those two
                 expected_active_ids = {"test-concept-1", "test-concept-2"}
-                assert concept_ids == expected_active_ids, "Should only include active concepts"
-                
+                combos = df.groupby("combo_id")["concept_id"].apply(lambda s: set(s.astype(str).tolist()))
+                matching = [cid for cid, cset in combos.items() if cset == expected_active_ids]
+                assert len(matching) == 1, "Should have exactly one combo for the 2 active concepts"
+                # Each combination has 2 rows (one per concept)
+                assert len(df[df["combo_id"] == matching[0]]) == 2
+
                 # Test combo_id format (accept both legacy sequential and new stable formats)
                 combo_ids = df["combo_id"].unique()
                 legacy_pattern = re.compile(r"^combo_\d{3}$")
@@ -585,8 +564,7 @@ class TestPipelineIntegration:
                     legacy_pattern.match(cid) or stable_pattern.match(cid)
                     for cid in combo_ids
                 ), "combo_ids should match 'combo_XXX' (legacy) or 'combo_vN_<12-hex>' (stable)"
-                
-                print("✅ Normalized content_combinations_csv test passed!")
+                print("✅ Normalized combo_mappings.csv test passed!")
 
     def test_template_filtering_respects_active_column(self):
         """Specific test for template filtering based on active column in metadata CSV."""

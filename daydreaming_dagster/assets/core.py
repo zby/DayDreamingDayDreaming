@@ -36,8 +36,6 @@ from typing import List as _List
     group_name="task_definitions",
     required_resource_keys={"data_root"},
     automation_condition=AutomationCondition.eager(),
-    # Soft dependency on the selected CSV; file must exist
-    deps={AssetKey(["task_sources", "selected_combo_mappings_csv"])},
 )
 def content_combinations(
     context,
@@ -46,9 +44,14 @@ def content_combinations(
 
     Contract: data/2_tasks/selected_combo_mappings.csv must exist and be a strict
     row-subset of data/combo_mappings.csv (identical schema). No k-max fallback.
+
+    Note: We intentionally read from the CSV contract here rather than taking the
+    selected_combo_mappings DataFrame as an input, due to ephemeral test job wiring
+    constraints. See docs/notes/content_combinations_input_mode.md for details and
+    the plan to switch to an in-graph DataFrame input once tests run via Definitions.
     """
     data_root = Path(context.resources.data_root)
-    # Load selected mapping (strict subset of superset). No fallback.
+    # Load selected mapping from file (single-source contract). No fallback.
     try:
         selected_df = read_selected_combo_mappings(data_root)
     except FileNotFoundError as e:
