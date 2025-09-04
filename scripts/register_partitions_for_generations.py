@@ -58,6 +58,8 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--eval-models", nargs="*", default=None, help="Evaluation model ids to register (override active for_evaluation)")
     p.add_argument("--dry-run", action="store_true", help="Compute and print what would be written/registered, but make no changes")
     p.add_argument("--write-keys-dir", type=Path, default=None, help="If set, write draft/essay/evaluation partition keys into this directory as text files")
+    p.add_argument("--refresh", dest="refresh", action="store_true", default=True, help="After writing CSVs/partitions, refresh Dagster assets so generations can run immediately (default: on)")
+    p.add_argument("--no-refresh", dest="refresh", action="store_false", help="Skip refreshing Dagster assets")
     return p.parse_args()
 
 
@@ -485,6 +487,38 @@ def main() -> int:
             print(f"DAGSTER_HOME={os.environ.get('DAGSTER_HOME','(unset)')}")
         except Exception as e:
             print(f"Warning: could not register Dagster partitions automatically: {e}", file=sys.stderr)
+
+    # Refresh upstream assets so generations can run immediately
+    if args.refresh and not args.dry_run:
+        try:
+            from dagster import materialize, DagsterInstance
+            from daydreaming_dagster.assets.groups.group_task_definitions import (
+                selected_combo_mappings as _sel_asset,
+                content_combinations as _comb_asset,
+                draft_generation_tasks as _draft_tasks_asset,
+                essay_generation_tasks as _essay_tasks_asset,
+                evaluation_tasks as _eval_tasks_asset,
+            )
+            from daydreaming_dagster.resources.io_managers import CSVIOManager
+            from daydreaming_dagster.resources.experiment_config import ExperimentConfig
+
+            resources = {
+                "data_root": str(data_root),
+                "csv_io_manager": CSVIOManager(base_path=data_root / "2_tasks"),
+                "experiment_config": ExperimentConfig(),
+            }
+            print("Refreshing assets: selected_combo_mappings → content_combinations → tasks …")
+            res = materialize(
+                [_sel_asset, _comb_asset, _draft_tasks_asset, _essay_tasks_asset, _eval_tasks_asset],
+                resources=resources,
+                instance=DagsterInstance.get(),
+            )
+            if not res.success:
+                print("Warning: refresh materialization did not succeed; check Dagster logs", file=sys.stderr)
+            else:
+                print("Assets refreshed; generations ready to run.")
+        except Exception as e:
+            print(f"Warning: failed to refresh assets automatically: {e}", file=sys.stderr)
 
     if not args.dry_run and not (added_essays or added_drafts):
         print("No new rows were added (all selected items already present)")
