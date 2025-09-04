@@ -199,51 +199,7 @@ def selected_combo_mappings(context) -> pd.DataFrame:
     )
     return selected
 
-@asset(
-    group_name="task_definitions",
-    io_manager_key="csv_io_manager",
-    automation_condition=AutomationCondition.eager(),
-)
-def content_combinations_csv(
-    context,
-    content_combinations: List[ContentCombination],
-) -> pd.DataFrame:
-    """Export content combinations as normalized relational table with combo_id and concept_id columns."""
-    # Fail fast if no combinations are available
-    if not content_combinations:
-        raise Failure(
-            description=(
-                "Content combinations input is empty. Upstream generation did not create any combinations."
-            ),
-            metadata={
-                "resolution_1": MetadataValue.text(
-                    "Check active concepts and k_max in ExperimentConfig"
-                ),
-                "resolution_2": MetadataValue.text(
-                    "Ensure data/1_raw/concepts_metadata.csv has enough active concepts"
-                ),
-            },
-        )
-    # Create normalized rows: one row per concept in each combination
-    rows = []
-    for combo in content_combinations:
-        for concept_id in combo.concept_ids:
-            rows.append({
-                "combo_id": combo.combo_id,
-                "concept_id": concept_id
-            })
-    
-    # Ensure a stable schema even when there are no rows
-    df = pd.DataFrame(rows, columns=["combo_id", "concept_id"]) if rows else pd.DataFrame(columns=["combo_id", "concept_id"])
-    
-    context.add_output_metadata({
-        "total_rows": MetadataValue.int(len(df)),
-        "unique_combinations": MetadataValue.int(len(content_combinations)),
-        "unique_concepts": MetadataValue.int(df["concept_id"].nunique() if not df.empty else 0),
-        "sample_rows": MetadataValue.text(str(df.head(5).to_dict("records")))
-    })
-
-    return df
+    # (content_combinations_csv asset removed — normalized CSV export no longer used)
 
 @asset(
     group_name="task_definitions",

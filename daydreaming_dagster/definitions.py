@@ -28,7 +28,6 @@ from daydreaming_dagster.schedules.raw_schedule import raw_schedule
 from daydreaming_dagster.assets.core import (
     selected_combo_mappings,
     content_combinations,
-    content_combinations_csv,
     draft_generation_tasks,
     essay_generation_tasks,
     document_index,
@@ -59,7 +58,6 @@ defs = Definitions(
         # Core processing assets
         selected_combo_mappings,
         content_combinations,
-        content_combinations_csv,
         draft_generation_tasks,
         essay_generation_tasks,
         document_index,

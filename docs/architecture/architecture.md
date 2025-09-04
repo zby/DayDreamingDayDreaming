@@ -83,7 +83,7 @@ Assets are organized into logical groups for easy selection and understanding:
 | Group | Assets | Purpose |
 |-------|--------|---------|
 | **`raw_data`** | concepts, llm_models, generation_templates, evaluation_templates | Load external data files |
-| **`task_definitions`** | content_combinations, content_combinations_csv, generation_tasks, evaluation_tasks | Generate LLM task definitions |
+| **`task_definitions`** | content_combinations, generation_tasks, evaluation_tasks | Generate LLM task definitions |
 | **`generation`** 🚀 | generation_prompt, generation_response | Draft generation (partitioned by generation_task_id) |
 | **`evaluation`** | evaluation_prompt, evaluation_response | LLM evaluation (partitioned by evaluation_task_id) |
 | **`results_processing`** | parsed_scores | Parse evaluation scores |

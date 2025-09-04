@@ -282,12 +282,12 @@ Then materialize generation in two steps:
 ```bash
 # Free-tier generation (serialized globally)
 uv run dagster asset materialize -f daydreaming_dagster/definitions.py \
-  --select "content_combinations,content_combinations_csv,generation_tasks,generation_prompt,generation_response_free" \
+  --select "content_combinations,generation_tasks,generation_prompt,generation_response_free" \
   --tag experiment_id=exp_free_vs_paid
 
 # Paid generation (parallel per pool)
 uv run dagster asset materialize -f daydreaming_dagster/definitions.py \
-  --select "content_combinations,content_combinations_csv,generation_tasks,generation_prompt,generation_response_paid" \
+  --select "content_combinations,generation_tasks,generation_prompt,generation_response_paid" \
   --tag experiment_id=exp_free_vs_paid
 ```
 

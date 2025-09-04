@@ -161,7 +161,7 @@ def get_top_scoring_generations(n: int = 5, scores_csv: str = "data/6_summary/ge
 def get_all_current_generations(
     essay_responses_dir: str = "data/3_generation/essay_responses",
     concepts_metadata_path: str = "data/1_raw/concepts_metadata.csv",
-    content_combinations_path: str = "data/2_tasks/content_combinations_csv.csv",
+    content_combinations_path: str = "data/2_tasks/selected_combo_mappings.csv",
     essay_tasks_path: str = "data/2_tasks/essay_generation_tasks.csv",
     essay_templates_path: str = "data/1_raw/essay_templates.csv",
     draft_templates_path: str = "data/1_raw/draft_templates.csv"
@@ -209,8 +209,22 @@ def get_all_current_generations(
     print(f"Active essay templates: {sorted(active_essay_templates)}")
     print(f"Active draft templates: {sorted(active_draft_templates)}")
     
-    # Load combo to concept mappings
-    combinations_df = pd.read_csv(content_combinations_path)
+    # Load combo to concept mappings (curated or superset or deprecated export)
+    if Path(content_combinations_path).exists():
+        combinations_df = pd.read_csv(content_combinations_path)
+    else:
+        superset = Path("data") / "combo_mappings.csv"
+        deprecated = Path("data") / "2_tasks" / "content_combinations_csv.csv"
+        if superset.exists():
+            print(f"Using superset mapping: {superset}")
+            combinations_df = pd.read_csv(superset)
+        elif deprecated.exists():
+            print(f"Deprecated: reading {deprecated}; prefer selected_combo_mappings.csv or combo_mappings.csv")
+            combinations_df = pd.read_csv(deprecated)
+        else:
+            raise FileNotFoundError(
+                f"No combinations mapping found. Provide curated 'data/2_tasks/selected_combo_mappings.csv' or ensure 'data/combo_mappings.csv' exists."
+            )
     
     # Find combo_ids that contain only active concepts
     active_combo_ids = set()
@@ -550,7 +564,11 @@ def main():
     parser.add_argument("--evaluation-tasks", type=str, default="data/2_tasks/evaluation_tasks.csv", help="Path to evaluation_tasks.csv (to select eval template+model columns)")
     parser.add_argument("--essay-responses-dir", type=str, default="data/3_generation/essay_responses", help="Directory containing essay response files")
     parser.add_argument("--concepts-metadata", type=str, default="data/1_raw/concepts_metadata.csv", help="Path to concepts metadata CSV")
-    parser.add_argument("--content-combinations", type=str, default="data/2_tasks/content_combinations_csv.csv", help="Path to content combinations CSV")
+    parser.add_argument(
+        "--content-combinations",
+        type=str,
+        default="data/2_tasks/selected_combo_mappings.csv",
+        help="Path to curated combinations CSV (selected_combo_mappings.csv). Falls back to data/combo_mappings.csv; legacy content_combinations_csv.csv supported with warning.")
     parser.add_argument("--essay-tasks", type=str, default="data/2_tasks/essay_generation_tasks.csv", help="Path to essay generation tasks CSV")
     parser.add_argument("--essay-templates", type=str, default="data/1_raw/essay_templates.csv", help="Path to essay templates CSV")
     parser.add_argument("--draft-templates", type=str, default="data/1_raw/draft_templates.csv", help="Path to draft templates CSV")
