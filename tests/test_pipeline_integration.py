@@ -62,12 +62,14 @@ def pipeline_data_root_prepared():
     gen_templates_dir = pipeline_data_root / "1_raw" / "generation_templates"
     eval_templates_dir = pipeline_data_root / "1_raw" / "evaluation_templates"
     
-    # Verify template files exist
+    # Verify template files exist (two-phase layout: draft/ and essay/)
     if gen_templates_dir.exists():
-        gen_files = list(gen_templates_dir.glob("*.txt"))
-        print(f"✓ Copied {len(gen_files)} generation template files")
-        if len(gen_files) == 0:
-            raise RuntimeError("No generation template files found after copy")
+        gen_draft_files = list((gen_templates_dir / "draft").glob("*.txt"))
+        gen_essay_files = list((gen_templates_dir / "essay").glob("*.txt"))
+        total_gen_files = len(gen_draft_files) + len(gen_essay_files)
+        print(f"✓ Copied {total_gen_files} generation template files (draft={len(gen_draft_files)}, essay={len(gen_essay_files)})")
+        if total_gen_files == 0:
+            raise RuntimeError("No generation template files found after copy (expected under draft/ and essay/)")
     
     if eval_templates_dir.exists():
         eval_files = list(eval_templates_dir.glob("*.txt"))
