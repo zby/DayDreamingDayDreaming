@@ -83,7 +83,7 @@ Assets are organized into logical groups for easy selection and understanding:
 | Group | Assets | Purpose |
 |-------|--------|---------|
 | **`raw_data`** | concepts, llm_models, generation_templates, evaluation_templates | Load external data files |
-| **`task_definitions`** | content_combinations, generation_tasks, evaluation_tasks | Generate LLM task definitions |
+| **`task_definitions`** | content_combinations, generation_tasks, evaluation_tasks | Generate LLM task definitions. `content_combinations` consumes `selected_combo_mappings` DataFrame. |
 | **`generation`** 🚀 | generation_prompt, generation_response | Draft generation (partitioned by generation_task_id) |
 | **`evaluation`** | evaluation_prompt, evaluation_response | LLM evaluation (partitioned by evaluation_task_id) |
 | **`results_processing`** | parsed_scores | Parse evaluation scores |
@@ -125,7 +125,7 @@ LLM generation/evaluation assets remain manual to avoid surprise API usage/costs
 **Purpose**: Generate experiment structure and task definitions
 
 **Data Flow**:
-1. **Concept Combinations**: Generate k_max-sized combinations from concepts
+1. **Concept Combinations**: Generate k_max-sized combinations from concepts or consume a `selected_combo_mappings` DataFrame.
 2. **Generation Tasks**: Cross-product combinations with templates and models
 3. **Evaluation Tasks**: Cross-product generation tasks with evaluation templates and models
 
