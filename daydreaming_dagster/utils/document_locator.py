@@ -1,7 +1,40 @@
 from __future__ import annotations
 
 from pathlib import Path
+import os
+import re
 from typing import Tuple
+
+
+_V_RE = re.compile(r"^(?P<stem>.+)_v(?P<ver>\d+)\.txt$")
+
+
+def _latest_versioned_in_dir(dir_path: Path, stem: str) -> Path | None:
+    """Return latest `{stem}_vN.txt` under dir_path, or None if none exist."""
+    try:
+        names = os.listdir(dir_path)
+    except Exception:
+        return None
+    best_ver = -1
+    best_name = None
+    prefix = stem + "_v"
+    for name in names:
+        if not name.startswith(prefix) or not name.endswith(".txt"):
+            continue
+        m = _V_RE.match(name)
+        if not m or m.group("stem") != stem:
+            continue
+        try:
+            ver = int(m.group("ver"))
+        except Exception:
+            continue
+        if ver > best_ver:
+            best_ver = ver
+            best_name = name
+    if best_name is None:
+        return None
+    p = dir_path / best_name
+    return p if p.exists() else None
 
 
 def find_document_path(document_id: str, data_root: Path) -> Tuple[Path | None, str]:
@@ -18,9 +51,20 @@ def find_document_path(document_id: str, data_root: Path) -> Tuple[Path | None, 
     Returns (Path or None, label) where label is the directory name used.
     """
     base = Path(data_root)
+    # Prefer versioned file in essay/draft directories
+    essay_dir = base / "3_generation" / "essay_responses"
+    draft_dir = base / "3_generation" / "draft_responses"
+    latest_essay = _latest_versioned_in_dir(essay_dir, document_id)
+    if latest_essay is not None:
+        return latest_essay, "essay_responses"
+    latest_draft = _latest_versioned_in_dir(draft_dir, document_id)
+    if latest_draft is not None:
+        return latest_draft, "draft_responses"
+
+    # Fall back to unversioned across known locations
     candidates = [
-        (base / "3_generation" / "essay_responses" / f"{document_id}.txt", "essay_responses"),
-        (base / "3_generation" / "draft_responses" / f"{document_id}.txt", "draft_responses"),
+        (essay_dir / f"{document_id}.txt", "essay_responses"),
+        (draft_dir / f"{document_id}.txt", "draft_responses"),
         (base / "3_generation" / "links_responses" / f"{document_id}.txt", "links_responses"),
         (base / "3_generation" / "generation_responses" / f"{document_id}.txt", "generation_responses"),
         (base / "3_generation" / "parsed_generation_responses" / f"{document_id}.txt", "parsed_generation_responses"),
@@ -32,4 +76,3 @@ def find_document_path(document_id: str, data_root: Path) -> Tuple[Path | None, 
         except Exception:
             continue
     return None, ""
-

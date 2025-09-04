@@ -40,10 +40,35 @@ def _load_phase1_text(context, draft_task_id: str) -> tuple[str, str]:
         except Exception:
             pass
 
-    # 2) Direct file under draft_responses
-    draft_fp = Path(context.resources.data_root) / "3_generation" / "draft_responses" / f"{draft_task_id}.txt"
-    if draft_fp.exists():
-        return draft_fp.read_text(encoding="utf-8").replace("\r\n", "\n"), "draft_file"
+    # 2) Direct file under draft_responses (prefer versioned)
+    draft_dir = Path(context.resources.data_root) / "3_generation" / "draft_responses"
+    # Scan for versioned files first
+    try:
+        import os, re
+        _V_RE = re.compile(rf"^{re.escape(draft_task_id)}_v(\d+)\.txt$")
+        best_ver = -1
+        best_name = None
+        for name in os.listdir(draft_dir):
+            m = _V_RE.match(name)
+            if not m:
+                continue
+            try:
+                v = int(m.group(1))
+            except Exception:
+                continue
+            if v > best_ver:
+                best_ver = v
+                best_name = name
+        if best_name:
+            draft_fp = draft_dir / best_name
+            if draft_fp.exists():
+                return draft_fp.read_text(encoding="utf-8").replace("\r\n", "\n"), "draft_file_v"
+    except Exception:
+        pass
+    # Fallback to legacy unversioned file
+    draft_fp_legacy = draft_dir / f"{draft_task_id}.txt"
+    if draft_fp_legacy.exists():
+        return draft_fp_legacy.read_text(encoding="utf-8").replace("\r\n", "\n"), "draft_file"
 
     raise Failure(
         description="Draft response not found (no legacy fallbacks)",

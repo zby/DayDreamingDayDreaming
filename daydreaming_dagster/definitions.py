@@ -44,13 +44,14 @@ from daydreaming_dagster.resources.llm_client import LLMClientResource
 from daydreaming_dagster.resources.experiment_config import ExperimentConfig
 from daydreaming_dagster.resources.io_managers import (
     PartitionedTextIOManager,
-    CSVIOManager
+    CSVIOManager,
+    VersionedTextIOManager,
 )
 from daydreaming_dagster.resources.cross_experiment_io_manager import CrossExperimentIOManager
 from pathlib import Path
 
 
-overwrite_generated = os.getenv("OVERWRITE_GENERATED_FILES", "false").lower() in ("1", "true", "yes", "y")
+# Responses and prompts are versioned; overwrite flags are not used.
 
 defs = Definitions(
     assets=[
@@ -103,14 +104,13 @@ defs = Definitions(
         # Simplified I/O managers - no complex source mappings or filtering
         "csv_io_manager": CSVIOManager(base_path=Path("data") / "2_tasks"),
         
-        # Draft phase I/O managers
-        "draft_prompt_io_manager": PartitionedTextIOManager(base_path=Path("data") / "3_generation" / "draft_prompts", overwrite=True),
-        "draft_response_io_manager": PartitionedTextIOManager(base_path=Path("data") / "3_generation" / "draft_responses", overwrite=overwrite_generated),
-        "essay_prompt_io_manager": PartitionedTextIOManager(base_path=Path("data") / "3_generation" / "essay_prompts", overwrite=True),
-        "essay_response_io_manager": PartitionedTextIOManager(base_path=Path("data") / "3_generation" / "essay_responses", overwrite=overwrite_generated),
-        "evaluation_prompt_io_manager": PartitionedTextIOManager(base_path=Path("data") / "4_evaluation" / "evaluation_prompts", overwrite=True),
-        # Evaluations are outputs; keep overwrite disabled for safety
-        "evaluation_response_io_manager": PartitionedTextIOManager(base_path=Path("data") / "4_evaluation" / "evaluation_responses", overwrite=overwrite_generated),
+        # Versioned I/O managers for prompts and responses (non-destructive)
+        "draft_prompt_io_manager": VersionedTextIOManager(base_path=Path("data") / "3_generation" / "draft_prompts"),
+        "draft_response_io_manager": VersionedTextIOManager(base_path=Path("data") / "3_generation" / "draft_responses"),
+        "essay_prompt_io_manager": VersionedTextIOManager(base_path=Path("data") / "3_generation" / "essay_prompts"),
+        "essay_response_io_manager": VersionedTextIOManager(base_path=Path("data") / "3_generation" / "essay_responses"),
+        "evaluation_prompt_io_manager": VersionedTextIOManager(base_path=Path("data") / "4_evaluation" / "evaluation_prompts"),
+        "evaluation_response_io_manager": VersionedTextIOManager(base_path=Path("data") / "4_evaluation" / "evaluation_responses"),
         "error_log_io_manager": CSVIOManager(base_path=Path("data") / "7_reporting"),
         "parsing_results_io_manager": CSVIOManager(base_path=Path("data") / "5_parsing"),
         "summary_results_io_manager": CSVIOManager(base_path=Path("data") / "6_summary"),

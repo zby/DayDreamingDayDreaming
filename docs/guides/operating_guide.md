@@ -42,7 +42,7 @@ This comprehensive guide covers everything you need to know to set up, run, and 
 By default, generated responses (links/essays/evaluations) are write‑once for safety: existing files are not overwritten. To allow overwriting during reruns (useful for experimentation):
 
 ```bash
-export OVERWRITE_GENERATED_FILES=true   # accepts: 1/true/yes/y (case‑insensitive)
+# Artifacts are versioned automatically as {id}_vN.txt; no overwrite flag needed
 uv run dagster dev -f daydreaming_dagster/definitions.py
 ```
 

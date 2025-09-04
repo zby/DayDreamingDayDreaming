@@ -120,7 +120,7 @@ Optional run tags:
 ## Data Hygiene and Overwrite Rules
 
 - Prompts overwrite is allowed (reflect latest templates).
-- Responses overwrite is disabled by default (safety); to re‑generate, set `OVERWRITE_GENERATED_FILES=true` or delete the specific file.
+- Responses are versioned by default; each rerun writes `{id}_vN.txt` and readers pick the latest. No need to delete files or set flags.
 - This ensures historical experiments remain intact while allowing iterative prompt/template tweaks.
 
 ## Naming: “Active Experiment Cube” vs Alternatives

@@ -217,7 +217,7 @@ uv run pytest --cov=daydreaming_dagster
 
 - `OPENROUTER_API_KEY`: OpenRouter API key for LLM access
 - `DAGSTER_HOME`: Dagster metadata storage (set to absolute path of `dagster_home/` directory)
-- `OVERWRITE_GENERATED_FILES`: When set to `1`/`true`/`yes` (case‑insensitive), allows overwriting existing generated response files for drafts, essays, and evaluations. Defaults to off (write‑once safety). Prompts always overwrite.
+- Versioned artifacts: Draft/essay/evaluation prompts and responses are written as `{id}_vN.txt`. Reads automatically pick the highest version; legacy `{id}.txt` is used only if no versions exist.
 
 **Important**: Set `DAGSTER_HOME=$(pwd)/dagster_home` to use the project's Dagster configuration, which includes auto-materialization settings. Without this, Dagster uses temporary storage and ignores the project configuration.
 
