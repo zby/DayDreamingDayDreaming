@@ -1,7 +1,7 @@
 import pandas as pd
 from pathlib import Path
 
-from daydreaming_dagster.assets.two_phase_generation import _essay_response_impl as essay_response_impl
+from daydreaming_dagster.assets.groups.group_generation_essays import _essay_response_impl as essay_response_impl
 
 
 class _FakeLogger:

@@ -11,8 +11,8 @@ try:
     HAS_MULTI = True
 except Exception:
     HAS_MULTI = False
-from daydreaming_dagster.assets.llm_evaluation import evaluation_prompt
-from daydreaming_dagster.assets.two_phase_generation import essay_response as gen_response_asset
+from daydreaming_dagster.assets.groups.group_evaluation import evaluation_prompt
+from daydreaming_dagster.assets.groups.group_generation_essays import essay_response as gen_response_asset
 
 
 def test_evaluation_multi_partitions_definition():
@@ -45,4 +45,3 @@ def test_evaluation_prompt_uses_multi_partitions_and_mapping():
     assert (
         getattr(mapping, "partition_dimension_name", None) == "generation_tasks"
     ), "Mapping should be on 'generation_tasks' dimension"
-
