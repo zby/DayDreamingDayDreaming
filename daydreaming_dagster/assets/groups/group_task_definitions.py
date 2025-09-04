@@ -40,8 +40,48 @@ from ...utils.document_locator import find_document_path
     automation_condition=AutomationCondition.eager(),
 )
 def selected_combo_mappings(context) -> pd.DataFrame:
-    """Generate selected combo mappings from active concepts (k_max) and write CSV."""
+    """Provide the selected combo subset as a DataFrame.
+
+    Behavior:
+    - If a curated file exists at data/2_tasks/selected_combo_mappings.csv, load and validate it
+      as a strict subset of data/combo_mappings.csv.
+    - Otherwise, generate the selection deterministically from active concepts and k_max, and
+      return that DataFrame (also written to CSV by the IO manager).
+    """
     data_root = Path(context.resources.data_root)
+    curated_path = data_root / "2_tasks" / "selected_combo_mappings.csv"
+    superset_path = data_root / "combo_mappings.csv"
+
+    # Curated selection path (preferred when present)
+    if curated_path.exists():
+        try:
+            df = pd.read_csv(curated_path)
+        except Exception as e:
+            raise Failure(
+                description="Failed to read curated selected_combo_mappings.csv",
+                metadata={
+                    "path": MetadataValue.path(str(curated_path)),
+                    "error": MetadataValue.text(str(e)),
+                },
+            )
+        if df.empty:
+            raise Failure(
+                description="Curated selected_combo_mappings.csv is empty",
+                metadata={"path": MetadataValue.path(str(curated_path))},
+            )
+        if superset_path.exists():
+            from ...utils.selected_combos import validate_selected_is_subset as _validate
+            _validate(df, superset_path)
+        context.add_output_metadata(
+            {
+                "mode": MetadataValue.text("curated_file"),
+                "rows": MetadataValue.int(len(df)),
+                "unique_combos": MetadataValue.int(df["combo_id"].nunique()),
+            }
+        )
+        return df
+
+    # Generated selection (fallback when no curated file present)
     exp_cfg = context.resources.experiment_config
     k_max = int(getattr(exp_cfg, "k_max", 2))
     desc_level = str(getattr(exp_cfg, "description_level", "paragraph"))
@@ -58,7 +98,7 @@ def selected_combo_mappings(context) -> pd.DataFrame:
 
     ordered = sorted(concepts, key=lambda c: c.concept_id)
     ids: List[str] = []
-    manager = ComboIDManager(mappings_path=str(data_root / "combo_mappings.csv"))
+    manager = ComboIDManager(mappings_path=str(superset_path))
     for group in combinations(ordered, k_max):
         cid_list = [c.concept_id for c in group]
         combo_id = manager.get_or_create_combo_id(cid_list, desc_level, k_max)
@@ -68,6 +108,7 @@ def selected_combo_mappings(context) -> pd.DataFrame:
     selected = superset[superset["combo_id"].astype(str).isin(set(map(str, ids)))].copy()
     context.add_output_metadata(
         {
+            "mode": MetadataValue.text("generated"),
             "k_max": MetadataValue.int(k_max),
             "description_level": MetadataValue.text(desc_level),
             "selected_combos": MetadataValue.int(len(set(ids))),
@@ -426,4 +467,3 @@ def evaluation_tasks(
         )
     context.add_output_metadata({"task_count": MetadataValue.int(len(tasks_df))})
     return tasks_df
-
