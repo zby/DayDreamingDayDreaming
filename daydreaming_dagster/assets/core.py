@@ -1,14 +1,12 @@
-from dagster import asset, MetadataValue, AutomationCondition, Failure, AssetKey
-from typing import Dict, Tuple, List
+from dagster import asset, MetadataValue, AutomationCondition, Failure
+from typing import List
 from pathlib import Path
 import pandas as pd
 from itertools import combinations
 from ..models import ContentCombination
 import pandas as pd
 from .raw_data import (
-    CONCEPTS_METADATA_KEY,
     LLM_MODELS_KEY,
-    LINK_TEMPLATES_KEY,
     DRAFT_TEMPLATES_KEY,
     ESSAY_TEMPLATES_KEY,
     EVALUATION_TEMPLATES_KEY,
@@ -21,16 +19,13 @@ from ..utils.raw_readers import (
     read_evaluation_templates,
 )
 from .partitions import (
-    generation_tasks_partitions,
     evaluation_tasks_partitions,
     draft_tasks_partitions,
     essay_tasks_partitions,
 )
 from ..utils.combo_ids import ComboIDManager
 from ..utils.selected_combos import validate_selected_is_subset
-from pathlib import Path as _Path
 from ..utils.document_locator import find_document_path
-from typing import List as _List
 
 @asset(
     group_name="task_definitions",
@@ -41,15 +36,10 @@ def content_combinations(
     context,
     selected_combo_mappings: pd.DataFrame,
 ) -> List[ContentCombination]:
-    """Build ContentCombination objects from a single source: selected CSV.
+    """Build ContentCombination objects from selected subset mappings.
 
-    Contract: data/2_tasks/selected_combo_mappings.csv must exist and be a strict
-    row-subset of data/combo_mappings.csv (identical schema). No k-max fallback.
-
-    Note: We intentionally read from the CSV contract here rather than taking the
-    selected_combo_mappings DataFrame as an input, due to ephemeral test job wiring
-    constraints. See docs/notes/content_combinations_input_mode.md for details and
-    the plan to switch to an in-graph DataFrame input once tests run via Definitions.
+    Contract: `data/2_tasks/selected_combo_mappings.csv` is a strict row-subset of
+    `data/combo_mappings.csv` (identical schema). No k-max fallback.
     """
     data_root = Path(context.resources.data_root)
     selected_df = selected_combo_mappings.copy()
@@ -187,7 +177,7 @@ def selected_combo_mappings(context) -> pd.DataFrame:
     )
     return selected
 
-    # (content_combinations_csv asset removed — normalized CSV export no longer used)
+    # (Normalized CSV export no longer used)
 
 @asset(
     group_name="task_definitions",
@@ -295,33 +285,31 @@ def essay_generation_tasks(
                 }
             )
 
+    # Keep schema minimal and relevant to essays
     columns = [
-        "evaluation_task_id",
-        "document_id",
-        "stage",
-        "origin",
-        "file_path",
+        "essay_task_id",
+        "draft_task_id",
         "combo_id",
         "draft_template",
         "essay_template",
         "generation_model",
         "generation_model_name",
-        "draft_task_id",
-        "essay_task_id",
-        "source_asset",
-        "source_dir",
-        "evaluation_template",
-        "evaluation_model",
-        "evaluation_model_name",
     ]
     tasks_df = pd.DataFrame(rows, columns=columns)
 
-    # Register dynamic partitions for essays
+    # Register dynamic partitions for essays (guard empty, mirror draft behavior)
     existing = context.instance.get_dynamic_partitions(essay_tasks_partitions.name)
-    if existing:
-        for p in existing:
-            context.instance.delete_dynamic_partition(essay_tasks_partitions.name, p)
-    context.instance.add_dynamic_partitions(essay_tasks_partitions.name, tasks_df["essay_task_id"].tolist())
+    if not tasks_df.empty:
+        if existing:
+            for p in existing:
+                context.instance.delete_dynamic_partition(essay_tasks_partitions.name, p)
+        context.instance.add_dynamic_partitions(
+            essay_tasks_partitions.name, tasks_df["essay_task_id"].tolist()
+        )
+    else:
+        context.log.warning(
+            "No essay-generation tasks produced (check draft tasks and active essay templates). Keeping existing dynamic partitions."
+        )
 
     context.add_output_metadata(
         {
@@ -350,9 +338,9 @@ def document_index(
     - Two-phase essays (if essay file exists)
     - Curated historical docs are supported by writing standard generation task CSVs and placing files under canonical folders (no legacy scanning)
     """
-    data_root = _Path(context.resources.data_root)
+    data_root = Path(context.resources.data_root)
 
-    rows: _List[dict] = []
+    rows: List[dict] = []
 
     # Drafts (effective one-phase) — support both legacy links_responses and new draft_responses
     legacy_draft_dir = data_root / "3_generation" / "links_responses"
@@ -457,7 +445,7 @@ def evaluation_tasks(
     eval_templates = list(evaluation_templates_df["template_id"].tolist())
 
     # Build an internal document view (avoid requiring document_index asset in all callers)
-    data_root_path = _Path(data_root)
+    data_root_path = Path(data_root)
     docs: List[dict] = []
 
     # Two-phase essays
