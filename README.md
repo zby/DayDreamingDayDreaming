@@ -127,6 +127,30 @@ cut -d',' -f1 data/2_tasks/essay_generation_tasks.csv | tail -n +2 | while read 
 done
 ```
 
+### Selective / Curated Runs (Top‑N or Manual List)
+
+Run only a curated set of drafts/essays/evaluations without expanding the full cube:
+
+```bash
+# 1) Find top‑N and write an editable list of document_ids
+uv run python scripts/find_top_prior_art.py --top-n 30
+
+# 2) Register curated tasks, curated combos, and partitions
+export DAGSTER_HOME="$(pwd)/dagster_home"
+uv run python scripts/register_partitions_for_generations.py \
+  --input data/2_tasks/selected_generations.txt
+
+# Optional knobs (register script):
+#   --no-reset-partitions       # additive registration; default resets dynamic partitions
+#   --eval-templates novelty    # restrict evaluation templates
+#   --eval-models sonnet-4      # restrict evaluation models
+#   --write-keys-dir data/2_tasks/keys  # write partition key lists
+```
+
+This cleans `data/2_tasks` by default (preserving `selected_generations.txt`/`.csv`; use `--no-clean-2-tasks` to skip), writes curated task CSVs and `data/2_tasks/curated_combo_mappings.csv` so
+`content_combinations` includes those combos in‑memory (independent of current
+`k_max`). Then trigger only those partitions in the UI or via CLI.
+
 ### Automatic Results Tracking **NEW**
 
 The pipeline now includes automatic cross-experiment tracking:

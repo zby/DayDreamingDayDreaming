@@ -41,6 +41,49 @@ Pros:
 Trade-offs:
 - Requires a small amount of glue logic in the script to derive IDs and ensure files are present in canonical folders.
 
+## Curated Selection (Split Scripts, Non‑Cube)
+
+To make targeted runs simpler and editable, the selection flow is split into two scripts:
+
+1) Find top‑N and write an editable list
+- `scripts/find_top_prior_art.py` reads `data/7_cross_experiment/parsed_scores.csv`, filters prior‑art templates, and writes the best `document_id`s to a simple text file you can tweak by hand.
+- Usage:
+  - `uv run python scripts/find_top_prior_art.py --top-n 25`
+  - Outputs: `data/2_tasks/selected_generations.txt` (one id per line)
+  - Optional CSV: `--csv-output data/2_tasks/selected_generations.csv`
+
+2) Register curated tasks and partitions (drafts, essays, evaluations)
+- `scripts/register_partitions_for_generations.py` takes the list (txt or CSV) and:
+  - Merges curated rows into `data/2_tasks/draft_generation_tasks.csv` and `data/2_tasks/essay_generation_tasks.csv` (de‑duped by task id).
+  - Registers dynamic partitions (add‑only by default; can reset first) for:
+    - `draft_tasks` (Phase‑1)
+    - `essay_tasks` (Phase‑2)
+    - `evaluation_tasks` for all active evaluation templates × evaluation‑capable models
+- Usage examples:
+  - `export DAGSTER_HOME=$(pwd)/dagster_home`
+  - `uv run python scripts/register_partitions_for_generations.py --input data/2_tasks/selected_generations.txt`
+  - Flags:
+    - `--no-write-drafts` to only curate essays
+    - `--no-register` to only update CSVs (skip partition registration)
+    - `--no-reset-partitions` for additive partition registration; default is reset (non‑cube curated set)
+    - `--no-clean-2-tasks` to avoid clearing `data/2_tasks`; by default, the script cleans that directory and writes only curated task CSVs. The selected list (`selected_generations.txt` / `.csv`) is preserved.
+
+3) Run from the Dagster UI (or CLI)
+- After registration, refresh the UI and materialize only the selected partitions:
+  - Drafts: `draft_prompt,draft_response` for each `draft_task_id`
+  - Essays: `essay_prompt,essay_response` for each `essay_task_id`
+  - Evaluations: `evaluation_prompt,evaluation_response` for each selected `evaluation_task_id`
+
+Why this works without k_max tweaks
+- A curated target might have been built with a different `k_max` than your current experiment. The `content_combinations` asset augments the in‑memory set by reading `data/2_tasks/curated_combo_mappings.csv` (written by the register script by filtering `data/combo_mappings.csv`). That injects the exact `concept_id`s and `description_level` for each curated `combo_id`, independent of the current `k_max`.
+- Prerequisites:
+  - `data/combo_mappings.csv` contains the `combo_id` (created when the combo was first generated)
+  - `data/1_raw/concepts_metadata.csv` contains the listed `concept_id`s and the level’s description files exist (e.g., `descriptions-paragraph/`)
+
+Exact recovery vs regeneration
+- If a legacy single‑phase file exists (e.g., `data/3_generation/generation_responses/<id>.txt`), you can backfill the two‑phase draft by copying it to `data/3_generation/draft_responses/{draft_task_id}.txt`. The parser/copy essay modes then work without LLM calls.
+- If you need to regenerate, run the draft partition with your configured LLM resource after registering the partitions.
+
 ## Selective Evaluation: In-Pipeline Options (Future Work)
 
 1) Score-Filtered Selection asset

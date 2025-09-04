@@ -78,7 +78,7 @@ def draft_prompt(
     combo_id = task_row["combo_id"]
     template_name = task_row["draft_template"]
 
-    # Resolve content combination
+    # Resolve content combination; curated combos are injected via content_combinations asset.
     content_combination = None
     for combo in content_combinations:
         if combo.combo_id == combo_id:

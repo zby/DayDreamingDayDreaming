@@ -232,6 +232,41 @@ To run a specific evaluation (e.g., `novelty`) only on chosen documents (e.g., p
 
 For cross-experiment winners, place or symlink their generation texts under the canonical folders (`draft_responses/` (or legacy `links_responses/`), `essay_responses/`, or `generation_responses/`) so they appear in `document_index`/`evaluation_tasks` without changing CSV actives.
 
+### Curated Selection Quick Start (Drafts, Essays, Evaluations)
+
+Use split scripts to select targets, then register only those partitions (no need to change `k_max`):
+
+1) Find top‑N (editable list)
+```bash
+uv run python scripts/find_top_prior_art.py --top-n 30
+# Edit data/2_tasks/selected_generations.txt if needed
+```
+
+2) Register curated tasks, curated combos, and partitions
+```bash
+export DAGSTER_HOME="$(pwd)/dagster_home"
+uv run python scripts/register_partitions_for_generations.py \
+  --input data/2_tasks/selected_generations.txt
+```
+
+What it does:
+- Writes curated rows into:
+  - `data/2_tasks/draft_generation_tasks.csv` (optional; disable `--no-write-drafts`)
+  - `data/2_tasks/essay_generation_tasks.csv`
+- Creates `data/2_tasks/curated_combo_mappings.csv` by filtering `data/combo_mappings.csv` to the selected `combo_id`s. The `content_combinations` asset loads these so phase‑1 prompts can render without matching the current `k_max`.
+- Registers dynamic partitions (default reset) for `draft_tasks`, `essay_tasks`, and `evaluation_tasks` (active templates × for_evaluation models). Use `--no-reset-partitions` for additive registration.
+- Cleans `data/2_tasks` by default (use `--no-clean-2-tasks` to skip) and writes only curated task CSVs for a non‑cube selection. The selected list file `data/2_tasks/selected_generations.txt` (or `.csv`) is preserved during cleaning.
+
+3) Run from the Dagster UI
+- Drafts: materialize `draft_prompt,draft_response` for your selected `draft_task_id`s
+- Essays: materialize `essay_prompt,essay_response` for your selected `essay_task_id`s
+- Evaluations: materialize `evaluation_prompt,evaluation_response` for your selected `evaluation_task_id`s
+
+Tips:
+- `--eval-templates` and `--eval-models` in the register script can restrict evaluation axes without editing raw CSVs.
+- `--write-keys-dir <dir>` writes partition keys to files (easy copy‑paste into CLI/UI).
+- Use `--dry-run` to preview changes.
+
 **Note**: Auto-materialization requires the Dagster daemon to be running. In development, you can manually trigger assets if needed:
 ```bash
 # Manually materialize a specific asset

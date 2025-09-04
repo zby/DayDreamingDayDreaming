@@ -59,3 +59,26 @@ def get_link_parser(name: str) -> Optional[Callable[[str], str]]:
 # Canonical alias for draft-phase parser lookup during link→draft migration
 def get_draft_parser(name: str) -> Optional[Callable[[str], str]]:
     return get_link_parser(name)
+
+
+# New parser: extract the content of the first <essay>...</essay> block
+ESSAY_BLOCK_RE = re.compile(r"<essay>([\s\S]*?)</essay>", re.MULTILINE)
+
+
+def parse_essay_block(text: str) -> str:
+    """Extract the first <essay>...</essay> block.
+
+    Raises ValueError if no block found.
+    """
+    m = ESSAY_BLOCK_RE.search(text)
+    if m:
+        return m.group(1).strip()
+    # Fallback: if no closing tag, capture from the first <essay> to EOF
+    start = text.find("<essay>")
+    if start != -1:
+        return text[start + len("<essay>"):].strip()
+    raise ValueError("No <essay> block found")
+
+
+# Register under a simple name referenced by draft_templates.csv
+LINK_PARSERS_REGISTRY["essay_block"] = parse_essay_block

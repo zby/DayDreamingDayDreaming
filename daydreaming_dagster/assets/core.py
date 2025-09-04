@@ -4,6 +4,7 @@ from pathlib import Path
 import pandas as pd
 from itertools import combinations
 from ..models import ContentCombination
+import pandas as pd
 from .raw_data import (
     CONCEPTS_METADATA_KEY,
     LLM_MODELS_KEY,
@@ -87,7 +88,38 @@ def content_combinations(
         )
         content_combos.append(content_combo)
     
-    context.log.info(f"Generated {len(content_combos)} content combinations")
+    # Curated combinations: include any explicitly requested combos from 2_tasks/curated_combo_mappings.csv
+    curated_path = Path(data_root) / "2_tasks" / "curated_combo_mappings.csv"
+    added_curated = 0
+    if curated_path.exists():
+        try:
+            df = pd.read_csv(curated_path)
+            if {"combo_id", "concept_id"}.issubset(df.columns):
+                # Build lookup for concepts
+                all_concepts = read_concepts(Path(data_root), filter_active=False)
+                by_id = {c.concept_id: c for c in all_concepts}
+                existing_ids = set(c.combo_id for c in content_combos)
+
+                for combo_id, grp in df.groupby("combo_id"):
+                    if combo_id in existing_ids:
+                        continue
+                    # Use description_level if provided; default to experiment_config level
+                    desc_level = str(grp.iloc[0].get("description_level", description_level))
+                    concept_ids = grp["concept_id"].astype(str).tolist()
+                    ordered_concepts = [by_id[cid] for cid in concept_ids if cid in by_id]
+                    missing = [cid for cid in concept_ids if cid not in by_id]
+                    if missing:
+                        context.log.warning(
+                            f"Skipping curated combo {combo_id}: missing concepts {missing[:3]}{'...' if len(missing)>3 else ''}"
+                        )
+                        continue
+                    combo = ContentCombination.from_concepts(ordered_concepts, desc_level, combo_id=str(combo_id))
+                    content_combos.append(combo)
+                    added_curated += 1
+        except Exception as e:
+            context.log.warning(f"Failed to load curated combos from {curated_path}: {e}")
+
+    context.log.info(f"Generated {len(content_combos)} content combinations (curated add: {added_curated})")
     
     if not content_combos:
         # Defensive check: combinations() yielded zero results for the given inputs

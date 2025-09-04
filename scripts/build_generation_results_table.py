@@ -86,15 +86,25 @@ def rebuild_two_phase_generation_results() -> int:
                     if not m.empty:
                         row = m.iloc[0]
                 if row is None:
-                    print(f"⚠️  No task metadata for draft {link_task_id}; skipping")
-                    continue
-                # Map columns for new/legacy task rows
-                tpl_col = "draft_template" if "draft_template" in row else "link_template"
+                    # Last-resort: parse filename heuristically to recover metadata
+                    from scripts.filename_parser import parse_generation_filename
+                    parsed = parse_generation_filename(f.name)
+                    if parsed is None:
+                        print(f"⚠️  No task metadata for draft {link_task_id} and filename parse failed; skipping")
+                        continue
+                    combo_id = parsed.get("combo_id")
+                    draft_template = parsed.get("generation_template")
+                    generation_model = parsed.get("generation_model")
+                else:
+                    combo_id = row["combo_id"]
+                    draft_template = row["draft_template"] if "draft_template" in row else row.get("link_template")
+                    generation_model = row.get("generation_model_name") or row.get("generation_model")
+
                 new_row = {
                     "draft_task_id": link_task_id,
-                    "combo_id": row["combo_id"],
-                    "draft_template_id": row[tpl_col],
-                    "generation_model": row["generation_model_name"],
+                    "combo_id": combo_id,
+                    "draft_template_id": draft_template,
+                    "generation_model": generation_model,
                     "generation_status": "success",
                     "generation_timestamp": datetime.fromtimestamp(f.stat().st_mtime).isoformat(),
                     "response_file": f"{draft_dir.name}/{link_task_id}.txt",
@@ -118,14 +128,23 @@ def rebuild_two_phase_generation_results() -> int:
                     if not m.empty:
                         row = m.iloc[0]
                 if row is None:
-                    print(f"⚠️  No task metadata for legacy draft {link_task_id}; skipping")
-                    continue
-                tpl_col = "draft_template" if "draft_template" in row else "link_template"
+                    from scripts.filename_parser import parse_generation_filename
+                    parsed = parse_generation_filename(f.name)
+                    if parsed is None:
+                        print(f"⚠️  No task metadata for legacy draft {link_task_id} and filename parse failed; skipping")
+                        continue
+                    combo_id = parsed.get("combo_id")
+                    draft_template = parsed.get("generation_template")
+                    generation_model = parsed.get("generation_model")
+                else:
+                    combo_id = row["combo_id"]
+                    draft_template = row["draft_template"] if "draft_template" in row else row.get("link_template")
+                    generation_model = row.get("generation_model_name") or row.get("generation_model")
                 new_row = {
                     "draft_task_id": link_task_id,
-                    "combo_id": row["combo_id"],
-                    "draft_template_id": row[tpl_col],
-                    "generation_model": row["generation_model_name"],
+                    "combo_id": combo_id,
+                    "draft_template_id": draft_template,
+                    "generation_model": generation_model,
                     "generation_status": "success",
                     "generation_timestamp": datetime.fromtimestamp(f.stat().st_mtime).isoformat(),
                     "response_file": f"{legacy_dir.name}/{link_task_id}.txt",
