@@ -6,7 +6,8 @@ Asset definitions for the draft (Phase‑1) generation stage.
 
 from dagster import asset, Failure, MetadataValue
 from pathlib import Path
-from jinja2 import Environment
+from jinja2 import Environment, TemplateSyntaxError
+import os
 from ..partitions import draft_tasks_partitions
 from ...utils.template_loader import load_generation_template
 from ...utils.dataframe_helpers import get_task_row
@@ -63,7 +64,26 @@ def draft_prompt(
             },
         )
 
-    template = JINJA.from_string(template_content)
+    # Compile template with explicit error reporting
+    try:
+        template = JINJA.from_string(template_content)
+    except TemplateSyntaxError as e:
+        # Reconstruct expected template path for better diagnostics
+        templates_root = Path(os.environ.get("GEN_TEMPLATES_ROOT", "data/1_raw/generation_templates"))
+        template_path = templates_root / "draft" / f"{template_name}.txt"
+        preview = template_content[:300]
+        raise Failure(
+            description=f"Jinja template syntax error in draft template '{template_name}'",
+            metadata={
+                "template_name": MetadataValue.text(template_name),
+                "phase": MetadataValue.text("draft"),
+                "template_path": MetadataValue.path(str(template_path)),
+                "jinja_message": MetadataValue.text(str(e)),
+                "error_line": MetadataValue.int(getattr(e, "lineno", 0) or 0),
+                "template_preview": MetadataValue.text(preview),
+            },
+        ) from e
+
     prompt = template.render(concepts=content_combination.contents)
 
     context.log.info(f"Generated draft prompt for task {task_id} using template {template_name}")
@@ -118,4 +138,3 @@ def draft_response(context, draft_prompt, draft_generation_tasks) -> str:
         }
     )
     return normalized
-
