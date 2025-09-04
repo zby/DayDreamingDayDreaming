@@ -132,10 +132,11 @@ done
 Run only a curated set of drafts/essays/evaluations without expanding the full cube:
 
 ```bash
-# 1) Find top‑N and write an editable list of document_ids
-uv run python scripts/find_top_prior_art.py --top-n 30
+# 1) Select top‑N prior‑art winners and write curated CSVs
+uv run python scripts/select_top_prior_art.py --top-n 30
+# Optionally skip auto-registration: --no-register-partitions
 
-# 2) Register curated tasks and partitions
+# 2) Register curated tasks and partitions (if you edited the list or want eval partitions)
 export DAGSTER_HOME="$(pwd)/dagster_home"
 uv run python scripts/register_partitions_for_generations.py \
   --input data/2_tasks/selected_generations.txt

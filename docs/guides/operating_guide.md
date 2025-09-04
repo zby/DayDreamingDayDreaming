@@ -52,18 +52,18 @@ Notes:
 
 ### Two-Phase Generation System 🚀
 
-The pipeline uses an innovative two-phase generation approach for improved quality:
+The pipeline uses a two‑phase generation approach for quality and control:
 
-**Phase 1 - Links Generation**: LLMs brainstorm 6-12 conceptual connections between input concepts.
+**Phase 1 — Draft Generation**: LLMs brainstorm structured notes/points based on the concept combination.
 
-**Phase 2 - Essay Generation**: LLMs compose comprehensive essays (1500-3000 words) using the links as inspiration.
+**Phase 2 — Essay Generation**: LLMs compose an essay using the draft as the source block.
 
 #### Template Structure
 
 Templates are organized by phase:
 ```
 data/1_raw/generation_templates/
-├── links/                    # Phase 1: Brainstorming templates
+├── draft/                    # Phase 1: Draft templates
 │   ├── creative-synthesis-v7.txt
 │   └── systematic-analytical.txt
 └── essay/                    # Phase 2: Essay composition templates
@@ -73,25 +73,19 @@ data/1_raw/generation_templates/
 
 #### Running Two-Phase Generation
 
-**Recommended** - Use the new two-phase assets:
+**Recommended** — Use the two‑phase assets:
 ```bash
 # Generate a single partition (replace TASK_ID)
-uv run dagster asset materialize --select "links_prompt,links_response,essay_prompt,essay_response" --partition "TASK_ID" -f daydreaming_dagster/definitions.py
+uv run dagster asset materialize -f daydreaming_dagster/definitions.py \
+  --select "draft_prompt,draft_response,essay_prompt,essay_response" \
+  --partition "TASK_ID"
 
-# The parsed_generation_responses will auto-materialize when essay_response completes 
-# (if Dagster daemon is running)
-
-# Or manually ensure the full chain:
-uv run dagster asset materialize --select "links_prompt,links_response,essay_prompt,essay_response,parsed_generation_responses" --partition "TASK_ID" -f daydreaming_dagster/definitions.py
-
-# Or use asset group (if supported)
-uv run dagster asset materialize --select "group:generation_draft,group:generation_essays" --partition "TASK_ID" -f daydreaming_dagster/definitions.py
+# Or run by asset group
+uv run dagster asset materialize -f daydreaming_dagster/definitions.py \
+  --select "group:generation_draft,group:generation_essays" \
+  --partition "TASK_ID"
 ```
 
-**Legacy** - Single-phase generation (still supported):
-```bash
-uv run dagster asset materialize --select "generation_prompt,generation_response,parsed_generation_responses" --partition "TASK_ID" -f daydreaming_dagster/definitions.py
-```
 
 #### Quality Validation
 
@@ -193,9 +187,6 @@ The pipeline includes several auto-materializing assets that provide automatic d
 - **`generation_results_append`**: Automatically appends a row to `generation_results.csv` when any generation completes (works with both two-phase and legacy generation)
 - **`evaluation_results_append`**: Automatically appends a row to `evaluation_results.csv` when any `evaluation_response` completes
 
-#### Backward Compatibility (Two-Phase Generation)
-- **`parsed_generation_responses`**: Automatically materializes when `essay_response` completes, ensuring evaluation assets can access the essay content in the expected format
-
 These assets use Dagster's eager auto-materialization policy to run automatically without manual intervention. The auto-materialization ensures that:
 - Two-phase generation results are immediately available to evaluation assets
 - Cross-experiment tracking tables are always up-to-date
@@ -234,12 +225,12 @@ For cross-experiment winners, place or symlink their generation texts under the 
 
 ### Curated Selection Quick Start (Drafts, Essays, Evaluations)
 
-Use split scripts to select targets, then register only those partitions (no need to change `k_max`):
+Use two scripts to select targets, then register only those partitions (no need to change `k_max`). If `data/7_cross_experiment/parsed_scores.csv` is missing, rebuild cross‑experiment tables (including `parsed_scores.csv`) with `./scripts/rebuild_results.sh` first.
 
-1) Find top‑N (editable list)
+1) Select top‑N prior‑art winners (editable list)
 ```bash
-uv run python scripts/find_top_prior_art.py --top-n 30
-# Edit data/2_tasks/selected_generations.txt if needed
+uv run python scripts/select_top_prior_art.py --top-n 30
+# Edit data/2_tasks/essay_generation_tasks.csv or write a list to data/2_tasks/selected_generations.txt
 ```
 
 2) Register curated tasks and partitions
@@ -249,22 +240,22 @@ uv run python scripts/register_partitions_for_generations.py \
   --input data/2_tasks/selected_generations.txt
 ```
 
-What it does:
+What it does
 - Writes curated rows into:
   - `data/2_tasks/draft_generation_tasks.csv` (optional; disable `--no-write-drafts`)
   - `data/2_tasks/essay_generation_tasks.csv`
-- Creates `data/2_tasks/selected_combo_mappings.csv` by filtering `data/combo_mappings.csv` to the selected `combo_id`s. The `content_combinations` asset reads this file (strict subset) so phase‑1 prompts render independent of the current `k_max`.
-- Registers dynamic partitions (default reset) for `draft_tasks`, `essay_tasks`, and `evaluation_tasks` (active templates × for_evaluation models). Use `--no-reset-partitions` for additive registration.
-- Cleans `data/2_tasks` by default (use `--no-clean-2-tasks` to skip) and writes only curated task CSVs for a non‑cube selection. The selected list file `data/2_tasks/selected_generations.txt` (or `.csv`) is preserved during cleaning.
+- Creates `data/2_tasks/selected_combo_mappings.csv` by filtering `data/combo_mappings.csv` to the selected `combo_id`s. The `content_combinations` asset reads this subset so Phase‑1 prompts render independent of current `k_max`.
+- Registers dynamic partitions (reset by default) for `draft_tasks`, `essay_tasks`, and `evaluation_tasks` (active templates × evaluation models). Use `--no-reset-partitions` for additive registration.
+- Cleans `data/2_tasks` by default (use `--no-clean-2-tasks` to skip) and writes only curated task CSVs. The `selected_generations` list (txt/csv) is preserved.
 
-3) Run from the Dagster UI
-- Drafts: materialize `draft_prompt,draft_response` for your selected `draft_task_id`s
-- Essays: materialize `essay_prompt,essay_response` for your selected `essay_task_id`s
-- Evaluations: materialize `evaluation_prompt,evaluation_response` for your selected `evaluation_task_id`s
+3) Run in Dagster
+- Drafts: materialize `draft_prompt,draft_response` for selected `draft_task_id`s
+- Essays: materialize `essay_prompt,essay_response` for selected `essay_task_id`s
+- Evaluations: materialize `evaluation_prompt,evaluation_response` for selected `evaluation_task_id`s
 
-Tips:
-- `--eval-templates` and `--eval-models` in the register script can restrict evaluation axes without editing raw CSVs.
-- `--write-keys-dir <dir>` writes partition keys to files (easy copy‑paste into CLI/UI).
+Tips
+- `--eval-templates` and `--eval-models` restrict evaluation axes without editing raw CSVs.
+- `--write-keys-dir <dir>` writes partition keys to files for copy‑paste.
 - Use `--dry-run` to preview changes.
 
 **Note**: Auto-materialization requires the Dagster daemon to be running. In development, you can manually trigger assets if needed:
@@ -311,9 +302,9 @@ uv run dagster asset materialize -f daydreaming_dagster/definitions.py \
 
 - Generated/evaluated files follow the existing `data/` folder conventions:
   - `data/3_generation/` - Generation prompts and responses
-    - **Two-Phase**: `draft_prompts/`, `draft_responses/`, `essay_prompts/`, `essay_responses/` (legacy links_* supported)
-    - **Legacy**: `generation_prompts/`, `generation_responses/`
-    - **Canonical Interface**: `parsed_generation_responses/` (works with both)
+    - **Two‑Phase**: `draft_prompts/`, `draft_responses/`, `essay_prompts/`, `essay_responses/`
+    - **Legacy**: `generation_prompts/`, `generation_responses/` (deprecated)
+    - **Legacy interface**: `parsed_generation_responses/` (historical; two‑phase writes directly to draft_/essay_)
   - `data/4_evaluation/` - Evaluation prompts and responses
   - `data/5_parsing/` - Parsed evaluation scores
   - `data/6_summary/` - Final aggregated results
