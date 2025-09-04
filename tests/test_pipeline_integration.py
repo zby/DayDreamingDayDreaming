@@ -247,7 +247,7 @@ class TestPipelineIntegration:
                 instance = DagsterInstance.ephemeral(tempdir=str(temp_dagster_home))
 
                 from daydreaming_dagster.assets.core import (
-                    selected_combo_mappings, content_combinations, content_combinations_csv, draft_generation_tasks, essay_generation_tasks, evaluation_tasks
+                    selected_combo_mappings, content_combinations, draft_generation_tasks, essay_generation_tasks, evaluation_tasks
                 )
                 from daydreaming_dagster.assets.two_phase_generation import (
                     draft_prompt, draft_response, essay_prompt, essay_response
@@ -306,7 +306,7 @@ class TestPipelineIntegration:
                 # Then materialize task definitions that read the selected CSV
                 result = materialize(
                     [
-                        content_combinations, content_combinations_csv,
+                        content_combinations,
                         draft_generation_tasks, essay_generation_tasks, evaluation_tasks,
                     ],
                     resources=resources,
