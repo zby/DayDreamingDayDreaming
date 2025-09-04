@@ -242,7 +242,7 @@ uv run python scripts/find_top_prior_art.py --top-n 30
 # Edit data/2_tasks/selected_generations.txt if needed
 ```
 
-2) Register curated tasks, curated combos, and partitions
+2) Register curated tasks and partitions
 ```bash
 export DAGSTER_HOME="$(pwd)/dagster_home"
 uv run python scripts/register_partitions_for_generations.py \
@@ -253,7 +253,7 @@ What it does:
 - Writes curated rows into:
   - `data/2_tasks/draft_generation_tasks.csv` (optional; disable `--no-write-drafts`)
   - `data/2_tasks/essay_generation_tasks.csv`
-- Creates `data/2_tasks/curated_combo_mappings.csv` by filtering `data/combo_mappings.csv` to the selected `combo_id`s. The `content_combinations` asset loads these so phase‑1 prompts can render without matching the current `k_max`.
+- Creates `data/2_tasks/selected_combo_mappings.csv` by filtering `data/combo_mappings.csv` to the selected `combo_id`s. The `content_combinations` asset reads this file (strict subset) so phase‑1 prompts render independent of the current `k_max`.
 - Registers dynamic partitions (default reset) for `draft_tasks`, `essay_tasks`, and `evaluation_tasks` (active templates × for_evaluation models). Use `--no-reset-partitions` for additive registration.
 - Cleans `data/2_tasks` by default (use `--no-clean-2-tasks` to skip) and writes only curated task CSVs for a non‑cube selection. The selected list file `data/2_tasks/selected_generations.txt` (or `.csv`) is preserved during cleaning.
 

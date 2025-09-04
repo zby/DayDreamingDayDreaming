@@ -75,7 +75,7 @@ To make targeted runs simpler and editable, the selection flow is split into two
   - Evaluations: `evaluation_prompt,evaluation_response` for each selected `evaluation_task_id`
 
 Why this works without k_max tweaks
-- A curated target might have been built with a different `k_max` than your current experiment. The `content_combinations` asset augments the in‑memory set by reading `data/2_tasks/curated_combo_mappings.csv` (written by the register script by filtering `data/combo_mappings.csv`). That injects the exact `concept_id`s and `description_level` for each curated `combo_id`, independent of the current `k_max`.
+- A curated target might have been built with a different `k_max` than your current experiment. The `content_combinations` asset reads `data/2_tasks/selected_combo_mappings.csv` (written by the register script by filtering `data/combo_mappings.csv`). That injects the exact `concept_id`s and `description_level` for each curated `combo_id`, independent of the current `k_max`.
 - Prerequisites:
   - `data/combo_mappings.csv` contains the `combo_id` (created when the combo was first generated)
   - `data/1_raw/concepts_metadata.csv` contains the listed `concept_id`s and the level’s description files exist (e.g., `descriptions-paragraph/`)

@@ -135,7 +135,7 @@ Run only a curated set of drafts/essays/evaluations without expanding the full c
 # 1) Find top‑N and write an editable list of document_ids
 uv run python scripts/find_top_prior_art.py --top-n 30
 
-# 2) Register curated tasks, curated combos, and partitions
+# 2) Register curated tasks and partitions
 export DAGSTER_HOME="$(pwd)/dagster_home"
 uv run python scripts/register_partitions_for_generations.py \
   --input data/2_tasks/selected_generations.txt
@@ -147,9 +147,9 @@ uv run python scripts/register_partitions_for_generations.py \
 #   --write-keys-dir data/2_tasks/keys  # write partition key lists
 ```
 
-This cleans `data/2_tasks` by default (preserving `selected_generations.txt`/`.csv`; use `--no-clean-2-tasks` to skip), writes curated task CSVs and `data/2_tasks/curated_combo_mappings.csv` so
-`content_combinations` includes those combos in‑memory (independent of current
-`k_max`). Then trigger only those partitions in the UI or via CLI.
+This cleans `data/2_tasks` by default (preserving `selected_generations.txt`/`.csv`; use `--no-clean-2-tasks` to skip) and writes curated task CSVs.
+Drafts use `data/2_tasks/selected_combo_mappings.csv` (strict subset of `data/combo_mappings.csv`) as the single source of content combinations.
+Then trigger only those partitions in the UI or via CLI.
 
 ### Automatic Results Tracking **NEW**
 
