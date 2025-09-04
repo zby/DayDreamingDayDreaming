@@ -250,16 +250,16 @@ def essay_generation_tasks(
 
     rows: List[dict] = []
     for _, drow in draft_generation_tasks.iterrows():
-        link_task_id = drow["draft_task_id"]
+        draft_task_id = drow["draft_task_id"]
         combo_id = drow["combo_id"]
         model_id = drow["generation_model"]
         model_name = drow["generation_model_name"]
         for essay_template_id in essay_templates:
-            essay_task_id = f"{link_task_id}_{essay_template_id}"
+            essay_task_id = f"{draft_task_id}_{essay_template_id}"
             rows.append(
                 {
                     "essay_task_id": essay_task_id,
-                    "draft_task_id": link_task_id,
+                    "draft_task_id": draft_task_id,
                     "combo_id": combo_id,
                     # Canonical: draft_template
                     "draft_template": drow["draft_template"],
@@ -333,14 +333,14 @@ def document_index(
     new_draft_dir = data_root / "3_generation" / "draft_responses"
     if not draft_generation_tasks.empty and (legacy_draft_dir.exists() or new_draft_dir.exists()):
         for _, row in draft_generation_tasks.iterrows():
-            link_task_id = row["draft_task_id"]
-            fp_legacy = legacy_draft_dir / f"{link_task_id}.txt"
-            fp_new = new_draft_dir / f"{link_task_id}.txt"
+            draft_task_id = row["draft_task_id"]
+            fp_legacy = legacy_draft_dir / f"{draft_task_id}.txt"
+            fp_new = new_draft_dir / f"{draft_task_id}.txt"
             fp = fp_new if fp_new.exists() else fp_legacy
             if fp and fp.exists():
                 rows.append(
                     {
-                        "document_id": link_task_id,
+                        "document_id": draft_task_id,
                         "stage": "essay1p",
                         "origin": "draft",
                         "file_path": str(fp),
@@ -350,7 +350,7 @@ def document_index(
                         "essay_template": None,
                         "generation_model_id": row["generation_model"],
                         "generation_model_name": row["generation_model_name"],
-                        "draft_task_id": link_task_id,
+                        "draft_task_id": draft_task_id,
                         "essay_task_id": None,
                         "source_asset": "draft_response" if fp_new.exists() else "links_response",
                         "source_dir": "draft_responses" if fp_new.exists() else "links_responses",
@@ -371,11 +371,11 @@ def document_index(
                         "origin": "two_phase",
                         "file_path": str(fp),
                         "combo_id": row["combo_id"],
-                        "draft_template": row.get("draft_template") or row.get("link_template"),
+                        "draft_template": row.get("draft_template"),
                         "essay_template": row["essay_template"],
                         "generation_model_id": row["generation_model"],
                         "generation_model_name": row["generation_model_name"],
-                        "draft_task_id": row.get("draft_task_id", row.get("link_task_id")),
+                        "draft_task_id": row.get("draft_task_id"),
                         "essay_task_id": essay_task_id,
                         "source_asset": "essay_response",
                         "source_dir": "essay_responses",

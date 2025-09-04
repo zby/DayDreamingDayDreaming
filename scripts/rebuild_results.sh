@@ -39,6 +39,10 @@ python scripts/build_evaluation_results_table.py
 echo "🧮 Parsing evaluation scores (cross-experiment)..."
 python scripts/parse_all_scores.py --output data/7_cross_experiment/parsed_scores.csv
 
+# Ensure canonical draft_* columns exist in generated tables
+echo "🧭 Normalizing columns to draft_* schema..."
+python scripts/migrate_generated_tables_to_draft_schema.py || true
+
 # Build pivot tables from parsed scores
 echo "📈 Building pivot tables..."
 python scripts/build_pivot_tables.py --parsed-scores data/7_cross_experiment/parsed_scores.csv
