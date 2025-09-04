@@ -30,6 +30,24 @@
 - Structure: fast unit tests colocated with code; integration tests in `tests/` may read from `data/` but must not hit real APIs (mock LLM calls).
 - Conventions: functions `test_*`, files `test_*.py`; use fixtures in `tests/fixtures/` where possible.
 
+### Test Early, Test Often (Plan–Execute–Validate)
+- Always test immediately when it is possible to test; do not accumulate untested changes.
+- Keep iterations small: make one focused change, run the narrowest relevant tests, then proceed.
+- Prefer the fastest checks first:
+  - Unit scope: `uv run pytest daydreaming_dagster/utils/test_foo.py::TestFoo::test_bar` or `-k "bar and TestFoo"`.
+  - Asset scope: materialize only the changed asset/partition with the Dagster CLI, not the whole graph.
+  - Lint/format: `ruff`/`black --check` for style-only edits.
+- Encode validation into plans: after each implementation step, include a concrete “Run tests for X” step and execute it before moving on.
+- Use dry-runs and subsets for expensive paths: prefer `--dry-run`, single-partition materializations, or filtered test sets over full runs.
+- Approvals/sandboxing awareness:
+  - Interactive modes: propose the exact test command and run it as soon as approved.
+  - Non-interactive modes (e.g., never/on-failure): run minimal tests proactively to validate your change.
+- Examples of immediate testing:
+  - Edited a pure function or parser with existing unit tests → run those tests now.
+  - Modified one asset → materialize that asset for one representative partition.
+  - Adjusted a script argument → run the script with a tiny fixture input.
+  - Docs-only edits → no tests required; optionally run link or linter checks if configured.
+
 ## Commit & Pull Request Guidelines
 - Commits: imperative mood, concise subject (≤72 chars), include scope when helpful (e.g., "assets: two‑phase generation").
  - Separation policy: if a change includes both logic and formatting, split into two commits (logic first, then style). This keeps review diffs readable and aligns with our LLM workflow.
