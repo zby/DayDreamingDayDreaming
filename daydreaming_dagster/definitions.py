@@ -50,7 +50,6 @@ from daydreaming_dagster.resources.io_managers import (
     VersionedTextIOManager,
     InMemoryIOManager,
 )
-from daydreaming_dagster.resources.cross_experiment_io_manager import CrossExperimentIOManager
 from pathlib import Path
 
 
@@ -118,7 +117,7 @@ defs = Definitions(
         "error_log_io_manager": CSVIOManager(base_path=Path("data") / "7_reporting"),
         "parsing_results_io_manager": CSVIOManager(base_path=Path("data") / "5_parsing"),
         "summary_results_io_manager": CSVIOManager(base_path=Path("data") / "6_summary"),
-        "cross_experiment_io_manager": CrossExperimentIOManager()
+        "cross_experiment_io_manager": CSVIOManager(base_path=Path("data") / "7_cross_experiment")
     },
     executor=multiprocess_executor.configured({"max_concurrent": 10})
     # Note: Pool concurrency is configured via dagster_home/dagster.yaml

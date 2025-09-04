@@ -1,7 +1,6 @@
 from dagster import IOManager, InputContext, OutputContext
 from pathlib import Path
 import pandas as pd
-import json
 import os
 import re
 from typing import Optional
@@ -20,13 +19,13 @@ class PartitionedTextIOManager(IOManager):
         self.overwrite = overwrite
     
     def handle_output(self, context: OutputContext, obj: str):
-        """Save partition response as individual file"""
+        """Save partition response as individual file (atomic write, optional overwrite)."""
         partition_key = context.partition_key
         file_path = self.base_path / f"{partition_key}.txt"
-        
+
         # Ensure directory exists
         file_path.parent.mkdir(parents=True, exist_ok=True)
-        
+
         # Guard against accidental overwrite unless explicitly enabled
         if file_path.exists() and not self.overwrite:
             raise FileExistsError(
@@ -35,19 +34,51 @@ class PartitionedTextIOManager(IOManager):
                 "or configure the IO manager with overwrite=True."
             )
 
-        # Save response
-        file_path.write_text(obj)
+        # Atomic-ish write via temp then replace
+        tmp = file_path.with_suffix(".txt.tmp")
+        tmp.write_text(obj, encoding="utf-8")
+        os.replace(tmp, file_path)
         context.log.info(f"Saved response to {file_path}")
     
     def load_input(self, context: InputContext) -> str:
-        """Load partition response from file"""
+        """Load partition response from file.
+
+        Prefer a versioned file `{pk}_vN.txt` in the same directory if present; otherwise
+        fall back to the unversioned `{pk}.txt`. This makes reads resilient when files
+        have been versioned by other tools.
+        """
         partition_key = context.partition_key
+        # Prefer versioned if available
+        try:
+            names = os.listdir(self.base_path)
+            best_ver = -1
+            best_name = None
+            prefix = f"{partition_key}_v"
+            for name in names:
+                if not name.startswith(prefix) or not name.endswith(".txt"):
+                    continue
+                m = re.match(rf"^(?P<stem>{re.escape(partition_key)})_v(?P<ver>\d+)\.txt$", name)
+                if not m:
+                    continue
+                try:
+                    ver = int(m.group("ver"))
+                except Exception:
+                    continue
+                if ver > best_ver:
+                    best_ver = ver
+                    best_name = name
+            if best_name is not None:
+                p = self.base_path / best_name
+                if p.exists():
+                    return p.read_text(encoding="utf-8")
+        except FileNotFoundError:
+            pass
+
+        # Fallback to unversioned file
         file_path = self.base_path / f"{partition_key}.txt"
-        
         if not file_path.exists():
             raise FileNotFoundError(f"Response file not found: {file_path}")
-            
-        return file_path.read_text()
+        return file_path.read_text(encoding="utf-8")
 
 # Factory functions removed - use direct class instantiation in definitions.py
 
