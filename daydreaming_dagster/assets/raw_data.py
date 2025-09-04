@@ -49,3 +49,15 @@ RAW_SOURCE_ASSETS = [
         metadata={"path": str(RAW_BASE / "evaluation_templates.csv")},
     ),
 ]
+
+# Task-selected subset of combinations (strict subset of data/combo_mappings.csv)
+SELECTED_COMBO_MAPPINGS_KEY = AssetKey(["task_sources", "selected_combo_mappings_csv"])
+
+TASK_SOURCE_ASSETS = [
+    AssetSpec(
+        key=SELECTED_COMBO_MAPPINGS_KEY,
+        description="External selected subset CSV: data/2_tasks/selected_combo_mappings.csv",
+        group_name="task_sources",
+        metadata={"path": str(Path("data") / "2_tasks" / "selected_combo_mappings.csv")},
+    )
+]

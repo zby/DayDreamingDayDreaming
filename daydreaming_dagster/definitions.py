@@ -23,7 +23,7 @@ from daydreaming_dagster.assets.results_summary import (
     generation_scores_pivot,
     evaluation_model_template_pivot
 )
-from daydreaming_dagster.assets.raw_data import RAW_SOURCE_ASSETS
+from daydreaming_dagster.assets.raw_data import RAW_SOURCE_ASSETS, TASK_SOURCE_ASSETS
 from daydreaming_dagster.schedules.raw_schedule import raw_schedule
 from daydreaming_dagster.assets.core import (
     content_combinations,
@@ -90,6 +90,7 @@ defs = Definitions(
         evaluation_results_append,
         # Source assets (CSV-only)
         *RAW_SOURCE_ASSETS,
+        *TASK_SOURCE_ASSETS,
     ],
     schedules=[raw_schedule],
     resources={

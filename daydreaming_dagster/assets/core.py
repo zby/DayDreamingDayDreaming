@@ -27,127 +27,104 @@ from .partitions import (
     essay_tasks_partitions,
 )
 from ..utils.combo_ids import ComboIDManager
+from ..utils.selected_combos import read_selected_combo_mappings, validate_selected_is_subset
 from pathlib import Path as _Path
 from ..utils.document_locator import find_document_path
 from typing import List as _List
 
 @asset(
     group_name="task_definitions",
-    required_resource_keys={"experiment_config", "data_root"},
+    required_resource_keys={"data_root"},
     automation_condition=AutomationCondition.eager(),
-    deps={CONCEPTS_METADATA_KEY},
+    # Depend on concepts CSV so changes rematerialize combinations
+    deps={CONCEPTS_METADATA_KEY, AssetKey(["task_sources", "selected_combo_mappings_csv"])},
 )
 def content_combinations(
     context,
 ) -> List[ContentCombination]:
-    """Generate k-max combinations of concepts with resolved content using ContentCombination."""
-    # Read concepts directly from raw CSV + descriptions; filter active
-    data_root = context.resources.data_root
-    concepts = read_concepts(Path(data_root), filter_active=True)
-    experiment_config = context.resources.experiment_config
-    k_max = experiment_config.k_max
-    
-    context.log.info(f"Generating content combinations with k_max={k_max}")
-    
-    # Fail fast when there aren't enough active concepts to form any combination
-    if len(concepts) < k_max:
+    """Build ContentCombination objects from selected_combo_mappings.csv.
+
+    Contract:
+      - data/2_tasks/selected_combo_mappings.csv must exist and have the same schema
+        as data/combo_mappings.csv (subset of rows).
+      - Every selected row must be present in data/combo_mappings.csv (fail fast otherwise).
+    """
+    data_root = Path(context.resources.data_root)
+
+    # Load and validate selected subset against the global mapping
+    selected_df = read_selected_combo_mappings(data_root)
+    superset_path = data_root / "combo_mappings.csv"
+    try:
+        validate_selected_is_subset(selected_df, superset_path)
+    except Exception as e:
         raise Failure(
-            description=(
-                "Insufficient active concepts to generate content combinations. "
-                "Increase active concepts or lower k_max."
-            ),
+            description="Selected combo mappings are invalid (not a strict subset of data/combo_mappings.csv)",
             metadata={
-                "active_concepts": MetadataValue.int(len(concepts)),
-                "k_max": MetadataValue.int(k_max),
-                "additional_needed": MetadataValue.int(max(0, k_max - len(concepts))),
-                "resolution_1": MetadataValue.text(
-                "Activate more concepts in data/1_raw/concepts_metadata.csv"
-                ),
-                "resolution_2": MetadataValue.text(
-                    "Or lower k_max via ExperimentConfig in the Dagster Launchpad"
-                ),
-            },
-        )
-    
-    # Generate all k-max combinations and create ContentCombination objects
-    content_combos: List[ContentCombination] = []
-    description_level = experiment_config.description_level
-    manager = ComboIDManager()
-
-    for combo in combinations(concepts, k_max):
-        concept_ids = [c.concept_id for c in combo]
-        stable_id = manager.get_or_create_combo_id(
-            concept_ids, description_level, k_max
-        )
-
-        # Create ContentCombination with resolved content and stable combo_id
-        content_combo = ContentCombination.from_concepts(
-            list(combo),
-            description_level,
-            combo_id=stable_id,
-        )
-        content_combos.append(content_combo)
-    
-    # Curated combinations: include any explicitly requested combos from 2_tasks/curated_combo_mappings.csv
-    curated_path = Path(data_root) / "2_tasks" / "curated_combo_mappings.csv"
-    added_curated = 0
-    if curated_path.exists():
-        try:
-            df = pd.read_csv(curated_path)
-            if {"combo_id", "concept_id"}.issubset(df.columns):
-                # Build lookup for concepts
-                all_concepts = read_concepts(Path(data_root), filter_active=False)
-                by_id = {c.concept_id: c for c in all_concepts}
-                existing_ids = set(c.combo_id for c in content_combos)
-
-                for combo_id, grp in df.groupby("combo_id"):
-                    if combo_id in existing_ids:
-                        continue
-                    # Use description_level if provided; default to experiment_config level
-                    desc_level = str(grp.iloc[0].get("description_level", description_level))
-                    concept_ids = grp["concept_id"].astype(str).tolist()
-                    ordered_concepts = [by_id[cid] for cid in concept_ids if cid in by_id]
-                    missing = [cid for cid in concept_ids if cid not in by_id]
-                    if missing:
-                        context.log.warning(
-                            f"Skipping curated combo {combo_id}: missing concepts {missing[:3]}{'...' if len(missing)>3 else ''}"
-                        )
-                        continue
-                    combo = ContentCombination.from_concepts(ordered_concepts, desc_level, combo_id=str(combo_id))
-                    content_combos.append(combo)
-                    added_curated += 1
-        except Exception as e:
-            context.log.warning(f"Failed to load curated combos from {curated_path}: {e}")
-
-    context.log.info(f"Generated {len(content_combos)} content combinations (curated add: {added_curated})")
-    
-    if not content_combos:
-        # Defensive check: combinations() yielded zero results for the given inputs
-        raise Failure(
-            description=(
-                "No content combinations were generated. This typically occurs when "
-                "k_max is too large for the number of active concepts."
-            ),
-            metadata={
-                "active_concepts": MetadataValue.int(len(concepts)),
-                "k_max": MetadataValue.int(k_max),
-                "description_level": MetadataValue.text(description_level),
+                "error": MetadataValue.text(str(e)),
+                "selected_path": MetadataValue.path(data_root / "2_tasks" / "selected_combo_mappings.csv"),
+                "superset_path": MetadataValue.path(superset_path),
                 "resolution": MetadataValue.text(
-                    "Increase active concepts or lower k_max in ExperimentConfig"
+                    "Ensure selected file is created by filtering rows from data/combo_mappings.csv"
                 ),
             },
         )
-    
-    # Add output metadata
-    context.add_output_metadata({
-        "combination_count": MetadataValue.int(len(content_combos)),
-        "k_max_used": MetadataValue.int(k_max),
-        "source_concepts": MetadataValue.int(len(concepts)),
-        "description_level": MetadataValue.text(description_level),
-        "stable_id_format": MetadataValue.text("combo_v1_<12-hex>"),
-    })
-    
-    return content_combos
+
+    if selected_df.empty:
+        raise Failure(
+            description="No selected combinations found (selected_combo_mappings.csv is empty)",
+            metadata={
+                "selected_path": MetadataValue.path(data_root / "2_tasks" / "selected_combo_mappings.csv"),
+                "resolution": MetadataValue.text(
+                    "Populate selected_combo_mappings.csv with a subset of rows from data/combo_mappings.csv"
+                ),
+            },
+        )
+
+    # Build lookup for concepts (allow inactive concepts as curated selections may include them)
+    all_concepts = read_concepts(data_root, filter_active=False)
+    by_id = {c.concept_id: c for c in all_concepts}
+
+    # Convert selected rows to ContentCombination objects
+    required = {"combo_id", "concept_id", "description_level"}
+    if not required.issubset(set(selected_df.columns)):
+        missing = sorted(required - set(selected_df.columns))
+        raise Failure(
+            description="selected_combo_mappings.csv missing required columns",
+            metadata={
+                "missing": MetadataValue.text(", ".join(missing)),
+                "required": MetadataValue.text(", ".join(sorted(required))),
+            },
+        )
+
+    combos: List[ContentCombination] = []
+    for combo_id, grp in selected_df.groupby("combo_id"):
+        # Enforce consistent description_level per combo
+        levels = [str(x) for x in grp["description_level"].dropna().astype(str).unique().tolist()]
+        desc_level = levels[0] if levels else str(context.resources.get("experiment_config").description_level) if hasattr(context.resources, "experiment_config") else "paragraph"
+        # Deterministic order: sort concept IDs
+        concept_ids = sorted(grp["concept_id"].astype(str).unique().tolist())
+        missing = [cid for cid in concept_ids if cid not in by_id]
+        if missing:
+            raise Failure(
+                description=f"Missing concept(s) for combo {combo_id}",
+                metadata={
+                    "combo_id": MetadataValue.text(str(combo_id)),
+                    "missing_concepts": MetadataValue.text(", ".join(missing[:10]) + ("..." if len(missing) > 10 else "")),
+                    "resolution": MetadataValue.text("Ensure all concept_ids exist in data/1_raw/concepts_metadata.csv"),
+                },
+            )
+        ordered_concepts = [by_id[cid] for cid in concept_ids]
+        combos.append(ContentCombination.from_concepts(ordered_concepts, desc_level, combo_id=str(combo_id)))
+
+    context.add_output_metadata(
+        {
+            "combination_count": MetadataValue.int(len(combos)),
+            "stable_id_format": MetadataValue.text("combo_v1_<12-hex>"),
+            "selection_source": MetadataValue.path(data_root / "2_tasks" / "selected_combo_mappings.csv"),
+        }
+    )
+
+    return combos
 
 @asset(
     group_name="task_definitions",

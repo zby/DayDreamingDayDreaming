@@ -191,14 +191,15 @@ def _extract_combo_prefix(doc: str) -> str | None:
             return None
     return None
 
-def _write_curated_combo_mappings(data_root: Path, combo_ids: List[str], dry_run: bool = False) -> int:
-    """Filter data/combo_mappings.csv to selected combo_ids and write curated file under 2_tasks.
+def _write_selected_combo_mappings(data_root: Path, combo_ids: List[str], dry_run: bool = False) -> int:
+    """Filter data/combo_mappings.csv to selected combo_ids and write selected file under 2_tasks.
 
     Returns number of rows written (or that would be written in dry-run).
+    Output path: data/2_tasks/selected_combo_mappings.csv
     """
     mapping_csv = data_root / "combo_mappings.csv"
     if not mapping_csv.exists():
-        print(f"Warning: {mapping_csv} not found; cannot write curated combo mappings", file=sys.stderr)
+        print(f"Warning: {mapping_csv} not found; cannot write selected_combo_mappings.csv", file=sys.stderr)
         return 0
     try:
         mdf = pd.read_csv(mapping_csv)
@@ -220,17 +221,16 @@ def _write_curated_combo_mappings(data_root: Path, combo_ids: List[str], dry_run
     if missing:
         print(f"Warning: missing {len(missing)} combo_ids in combo_mappings.csv (first 5): {missing[:5]}", file=sys.stderr)
 
-    # Keep minimal columns expected by the content_combinations asset
-    cols = [c for c in ["combo_id", "description_level", "concept_id"] if c in subset.columns]
-    curated = subset[cols].copy()
+    # Keep full schema from superset to preserve parity
+    curated = subset.copy()
 
-    out = data_root / "2_tasks" / "curated_combo_mappings.csv"
+    out = data_root / "2_tasks" / "selected_combo_mappings.csv"
     if dry_run:
-        print(f"[dry-run] Would write {len(curated)} curated combo-mapping rows to {out}")
+        print(f"[dry-run] Would write {len(curated)} selected combo-mapping rows to {out}")
         return len(curated)
     out.parent.mkdir(parents=True, exist_ok=True)
     curated.to_csv(out, index=False)
-    print(f"Wrote curated combo mappings: {out} ({len(curated)} rows)")
+    print(f"Wrote selected combo mappings: {out} ({len(curated)} rows)")
     return len(curated)
 
 def _load_active_evaluation_axes(data_root: Path) -> tuple[list[str], list[str]]:
@@ -377,8 +377,8 @@ def main() -> int:
     elif args.clean_2_tasks and args.dry_run:
         print("[dry-run] Would clean data/2_tasks (remove existing files)")
 
-    # Write curated combo mappings for selected combinations
-    _write_curated_combo_mappings(data_root, sorted(combo_ids), dry_run=args.dry_run)
+    # Write selected combo mappings for chosen combinations
+    _write_selected_combo_mappings(data_root, sorted(combo_ids), dry_run=args.dry_run)
 
     added_essays = 0
     added_drafts = 0
@@ -394,7 +394,7 @@ def main() -> int:
             dry_run=args.dry_run,
         )
         if not args.dry_run:
-            print(f"Wrote curated {essay_out_csv} ({added_essays} rows)")
+            print(f"Wrote {essay_out_csv} ({added_essays} rows)")
 
     if args.write_drafts and draft_rows:
         added_drafts = _write_table(
@@ -407,7 +407,7 @@ def main() -> int:
             dry_run=args.dry_run,
         )
         if not args.dry_run:
-            print(f"Wrote curated {link_out_csv} ({added_drafts} rows)")
+            print(f"Wrote {link_out_csv} ({added_drafts} rows)")
 
     # Note: Do not write cross-experiment task tables here; cross-experiment tracking is driven by results appenders
 
