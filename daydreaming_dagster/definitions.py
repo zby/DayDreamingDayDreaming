@@ -26,6 +26,7 @@ from daydreaming_dagster.assets.results_summary import (
 from daydreaming_dagster.assets.raw_data import RAW_SOURCE_ASSETS, TASK_SOURCE_ASSETS
 from daydreaming_dagster.schedules.raw_schedule import raw_schedule
 from daydreaming_dagster.assets.core import (
+    selected_combo_mappings,
     content_combinations,
     content_combinations_csv,
     draft_generation_tasks,
@@ -56,6 +57,7 @@ from pathlib import Path
 defs = Definitions(
     assets=[
         # Core processing assets
+        selected_combo_mappings,
         content_combinations,
         content_combinations_csv,
         draft_generation_tasks,

@@ -247,7 +247,7 @@ class TestPipelineIntegration:
                 instance = DagsterInstance.ephemeral(tempdir=str(temp_dagster_home))
 
                 from daydreaming_dagster.assets.core import (
-                    content_combinations, content_combinations_csv, draft_generation_tasks, essay_generation_tasks, evaluation_tasks
+                    selected_combo_mappings, content_combinations, content_combinations_csv, draft_generation_tasks, essay_generation_tasks, evaluation_tasks
                 )
                 from daydreaming_dagster.assets.two_phase_generation import (
                     draft_prompt, draft_response, essay_prompt, essay_response
@@ -299,6 +299,11 @@ class TestPipelineIntegration:
                 
                 # STEP 1: Materialize task definitions (consumers read raw sources directly)
                 print("📋 Step 1: Materializing task definitions...")
+                # First, generate selected combos deterministically
+                _sel = materialize([selected_combo_mappings], resources=resources, instance=instance)
+                assert _sel.success, "Selected combo materialization failed"
+
+                # Then materialize task definitions
                 result = materialize(
                     [
                         content_combinations, content_combinations_csv,
@@ -530,7 +535,7 @@ class TestPipelineIntegration:
                 instance = DagsterInstance.ephemeral(tempdir=str(temp_dagster_home))
                 
                 # Import and test just the content_combinations_csv asset
-                from daydreaming_dagster.assets.core import content_combinations, content_combinations_csv
+                from daydreaming_dagster.assets.core import selected_combo_mappings, content_combinations, content_combinations_csv
                 from daydreaming_dagster.resources.io_managers import CSVIOManager
                 from daydreaming_dagster.resources.experiment_config import ExperimentConfig
                 
@@ -542,6 +547,8 @@ class TestPipelineIntegration:
                     "experiment_config": ExperimentConfig(k_max=2, description_level="paragraph")
                 }
                 
+                _sel = materialize([selected_combo_mappings], resources=resources, instance=instance)
+                assert _sel.success
                 result = materialize(
                     [content_combinations, content_combinations_csv],
                     resources=resources,
@@ -649,7 +656,7 @@ class TestPipelineIntegration:
                 instance = DagsterInstance.ephemeral(tempdir=str(temp_dagster_home))
                 
                 from daydreaming_dagster.assets.core import (
-                    content_combinations, draft_generation_tasks
+                    selected_combo_mappings, content_combinations, draft_generation_tasks
                 )
                 from daydreaming_dagster.resources.io_managers import CSVIOManager, PartitionedTextIOManager
                 from daydreaming_dagster.resources.experiment_config import ExperimentConfig
@@ -668,6 +675,8 @@ class TestPipelineIntegration:
                     "experiment_config": ExperimentConfig(k_max=2, description_level="paragraph")
                 }
                 
+                _sel = materialize([selected_combo_mappings], resources=resources, instance=instance)
+                assert _sel.success
                 result = materialize([
                     content_combinations, draft_generation_tasks
                 ], resources=resources, instance=instance)
