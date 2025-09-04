@@ -2,10 +2,10 @@
 
 # Import all assets from their respective modules
 from .raw_data import *
-from .core import *
-# Note: legacy llm_generation module has been replaced by two_phase_generation
-from .two_phase_generation import *
-from .llm_evaluation import *
-from .results_processing import *
+from .groups.group_task_definitions import *
+from .groups.group_generation_draft import *
+from .groups.group_generation_essays import *
+from .groups.group_evaluation import *
+from .groups.group_results_processing import *
 from .results_analysis import *
-from .results_summary import *
+from .groups.group_results_summary import *

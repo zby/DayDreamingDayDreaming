@@ -246,7 +246,7 @@ class TestPipelineIntegration:
             with patch.dict(os.environ, {"DAGSTER_HOME": str(temp_dagster_home)}):
                 instance = DagsterInstance.ephemeral(tempdir=str(temp_dagster_home))
 
-                from daydreaming_dagster.assets.core import (
+                from daydreaming_dagster.assets.groups.group_task_definitions import (
                     selected_combo_mappings, content_combinations, draft_generation_tasks, essay_generation_tasks, evaluation_tasks
                 )
                 from daydreaming_dagster.assets.groups.group_generation_draft import (
@@ -430,7 +430,7 @@ class TestPipelineIntegration:
                 instance = DagsterInstance.ephemeral(tempdir=str(temp_dagster_home))
                 
                 # Import selection generator and content_combinations (no fallback)
-                from daydreaming_dagster.assets.core import selected_combo_mappings, content_combinations
+                from daydreaming_dagster.assets.groups.group_task_definitions import selected_combo_mappings, content_combinations
                 from daydreaming_dagster.resources.io_managers import CSVIOManager
                 from daydreaming_dagster.resources.experiment_config import ExperimentConfig
                 
@@ -544,7 +544,7 @@ class TestPipelineIntegration:
             with patch.dict(os.environ, {'DAGSTER_HOME': str(temp_dagster_home)}):
                 instance = DagsterInstance.ephemeral(tempdir=str(temp_dagster_home))
                 
-                from daydreaming_dagster.assets.core import (
+                from daydreaming_dagster.assets.groups.group_task_definitions import (
                     selected_combo_mappings, content_combinations, draft_generation_tasks
                 )
                 from daydreaming_dagster.resources.io_managers import CSVIOManager, PartitionedTextIOManager
