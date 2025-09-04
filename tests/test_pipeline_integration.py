@@ -11,7 +11,7 @@ import re
 import shutil
 import os
 from unittest.mock import patch, Mock
-from dagster import materialize, DagsterInstance
+from dagster import materialize, DagsterInstance, define_asset_job
 from tests.helpers.llm_stubs import CannedLLMResource
 
 # Markers
@@ -297,21 +297,19 @@ class TestPipelineIntegration:
 
                 print("🚀 Starting complete pipeline workflow...")
                 
-                # STEP 1: Materialize task definitions (consumers read raw sources directly)
-                print("📋 Step 1: Materializing task definitions...")
-                # First, generate the selected CSV deterministically
-                _sel = materialize([selected_combo_mappings], resources=resources, instance=instance)
-                assert _sel.success, "Selected combo materialization failed"
-
-                # Then materialize task definitions that read the selected CSV
-                result = materialize(
-                    [
-                        content_combinations,
-                        draft_generation_tasks, essay_generation_tasks, evaluation_tasks,
+                # STEP 1: Materialize selected -> combinations -> tasks in one in-memory job
+                print("📋 Step 1: Materializing task definitions via job...")
+                asset_job = define_asset_job(
+                    "test_task_defs",
+                    selection=[
+                        "selected_combo_mappings",
+                        "content_combinations",
+                        "draft_generation_tasks",
+                        "essay_generation_tasks",
+                        "evaluation_tasks",
                     ],
-                    resources=resources,
-                    instance=instance,
                 )
+                result = asset_job.execute_in_process(resources=resources, instance=instance)
                 assert result.success, "Task materialization failed"
                 print("✅ Task materialization completed successfully")
 
@@ -537,11 +535,12 @@ class TestPipelineIntegration:
                     "experiment_config": ExperimentConfig(k_max=2, description_level="paragraph")
                 }
                 
-                # First generate selection from active concepts and k_max
-                _sel = materialize([selected_combo_mappings], resources=resources, instance=instance)
-                assert _sel.success
-
-                result = materialize([content_combinations], resources=resources, instance=instance)
+                # Generate selection and combinations in one job
+                asset_job = define_asset_job(
+                    "test_combomap",
+                    selection=["selected_combo_mappings", "content_combinations"],
+                )
+                result = asset_job.execute_in_process(resources=resources, instance=instance)
                 
                 assert result.success, "Content combinations materialization should succeed"
                 

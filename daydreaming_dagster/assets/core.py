@@ -27,7 +27,7 @@ from .partitions import (
     essay_tasks_partitions,
 )
 from ..utils.combo_ids import ComboIDManager
-from ..utils.selected_combos import read_selected_combo_mappings, validate_selected_is_subset
+from ..utils.selected_combos import validate_selected_is_subset
 from pathlib import Path as _Path
 from ..utils.document_locator import find_document_path
 from typing import List as _List
@@ -39,6 +39,7 @@ from typing import List as _List
 )
 def content_combinations(
     context,
+    selected_combo_mappings: pd.DataFrame,
 ) -> List[ContentCombination]:
     """Build ContentCombination objects from a single source: selected CSV.
 
@@ -51,22 +52,9 @@ def content_combinations(
     the plan to switch to an in-graph DataFrame input once tests run via Definitions.
     """
     data_root = Path(context.resources.data_root)
-    # Load selected mapping from file (single-source contract). No fallback.
-    try:
-        selected_df = read_selected_combo_mappings(data_root)
-    except FileNotFoundError as e:
-        raise Failure(
-            description="Selected combo mappings file not found",
-            metadata={
-                "error": MetadataValue.text(str(e)),
-                "selected_path": MetadataValue.path(data_root / "2_tasks" / "selected_combo_mappings.csv"),
-                "resolution": MetadataValue.text(
-                    "Create selected_combo_mappings.csv (subset of data/combo_mappings.csv) via curated scripts or the optional asset."
-                ),
-            },
-        )
+    selected_df = selected_combo_mappings.copy()
     superset_path = data_root / "combo_mappings.csv"
-    if superset_path.exists():
+    if superset_path.exists() and not selected_df.empty:
         try:
             validate_selected_is_subset(selected_df, superset_path)
         except Exception as e:
@@ -198,30 +186,6 @@ def selected_combo_mappings(context) -> pd.DataFrame:
         }
     )
     return selected
-
-
-@asset(
-    group_name="task_definitions",
-    io_manager_key="in_memory_io_manager",
-    required_resource_keys={"data_root"},
-    automation_condition=AutomationCondition.eager(),
-)
-def selected_combo_mappings_df(context) -> pd.DataFrame:
-    """Loader asset: read selected_combo_mappings.csv into a DataFrame with validation.
-
-    Keeps curated and generated flows symmetric while enabling in-graph DataFrame wiring
-    when composed via jobs/Definitions. Does not write to disk (in-memory IO manager).
-    """
-    data_root = Path(context.resources.data_root)
-    df = read_selected_combo_mappings(data_root)
-    superset_path = data_root / "combo_mappings.csv"
-    if superset_path.exists():
-        validate_selected_is_subset(df, superset_path)
-    context.add_output_metadata({
-        "rows": MetadataValue.int(len(df)),
-        "unique_combos": MetadataValue.int(df["combo_id"].nunique() if not df.empty else 0),
-    })
-    return df
 
     # (content_combinations_csv asset removed — normalized CSV export no longer used)
 
