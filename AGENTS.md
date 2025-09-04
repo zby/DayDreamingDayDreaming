@@ -69,6 +69,11 @@
 ## Agent‑Specific Notes
 - Follow TDD: write/adjust tests before implementation; keep unit vs. integration boundaries. See `CLAUDE.md` for deeper conventions and patterns.
 
+### Plans (Do Not Commit by Default)
+- Do not commit files under `plans/` unless explicitly requested. Plans are working notes and should typically stay local.
+- If a plan is useful to persist, ask for approval first and commit it in a docs-only change.
+- Prefer the `update_plan` tool for live task plans and progress tracking instead of writing/committing plan files.
+
 ### Using ast-grep (sg) for Code Search/Edits
 - Install tools: `uv sync --dev` (sg binary is provided by the `ast-grep-cli` dev dependency). Run with `uv run sg ...`.
 - Quick snippet search (example‑driven):
