@@ -129,9 +129,29 @@ class LLMClientResource(ConfigurableResource):
             if response_text is None:
                 response_text = ""
             finish_reason = getattr(choice, "finish_reason", None)
-            truncated = str(finish_reason).lower() == "length"
+            # Robust truncation detection: prefer finish_reason=="length", but also examine usage.completion_tokens
+            completion_tokens = None
+            try:
+                usage = getattr(response, "usage", None)
+                if usage is not None:
+                    completion_tokens = getattr(usage, "completion_tokens", None)
+            except Exception:
+                completion_tokens = None
+            truncated = False
+            if isinstance(finish_reason, str) and finish_reason.lower() == "length":
+                truncated = True
+            elif isinstance(completion_tokens, int) and isinstance(max_tokens, int) and completion_tokens >= max_tokens:
+                truncated = True
             logger.info(f"API call successful, response length: {len(response_text)} chars")
-            return {"text": response_text.strip(), "finish_reason": finish_reason, "truncated": truncated}
+            return {
+                "text": response_text.strip(),
+                "finish_reason": finish_reason,
+                "truncated": truncated,
+                "usage": {
+                    "completion_tokens": int(completion_tokens) if isinstance(completion_tokens, int) else None,
+                    "max_tokens": int(max_tokens) if isinstance(max_tokens, int) else None,
+                },
+            }
 
         except Exception as e:
             # Record the time even for failed calls to maintain delay
