@@ -274,7 +274,7 @@ data/1_raw/generation_templates/
 
 Adding a new draft template:
 - Place the template file under `data/1_raw/generation_templates/draft/<template_id>.txt`.
-- Register it in `data/1_raw/draft_templates.csv` with the same `template_id` and set `active=true` (set others to `false`). If an essay template will consume Phase 1 output in parser mode, set the `parser` column (e.g., `essay_idea_last`). Supported parser names live in `daydreaming_dagster/utils/link_parsers.py`. Missing or unknown parsers cause a hard failure during essay generation.
+- Register it in `data/1_raw/draft_templates.csv` with the same `template_id` and set `active=true` (set others to `false`). If the draft output requires extraction into an essay‑ready fragment, set the `parser` column (e.g., `essay_idea_last`). Supported parser names live in `daydreaming_dagster/utils/link_parsers.py`. Missing or unknown parsers cause a hard failure during draft generation (Phase‑1), and the RAW draft is still saved for debugging.
 - Optional: set `GEN_TEMPLATES_ROOT` to point to a different root if you maintain templates outside the repo.
 
 Active draft templates are controlled in `data/1_raw/draft_templates.csv` via the `active` column. Examples include:
@@ -282,15 +282,16 @@ Active draft templates are controlled in `data/1_raw/draft_templates.csv` via th
 - `rolling-summary-v1` — Readable idea-thread recursion with enforced link types and a rolling “Idea So Far — i” summary.
 
 **Phase 2 Templates** (`essay/`):
-- Focus on structured essay composition
-- Input: `links_block` (raw output from Phase 1)
-- Output: 1500-3000 word essays developing the best combinations
-- Built-in validation: Phase 2 fails if Phase 1 produces < 3 usable links
+- Focus on structured essay composition.
+- Input: `links_block` / `draft_block` (parsed output from Phase‑1).
+- Output: essays developing the best combinations.
+- Built-in validation: depends on template; Phase‑1 parsing and minimum‑lines validation happen earlier.
 
 ### Output Data
 - **Tasks**: `data/2_tasks/` (generated combinations and tasks)
 - **Two-Phase Generation**: `data/3_generation/` (drafts and essays)
   - `draft_prompts/`, `draft_responses/` (Phase 1 outputs; legacy `links_*` supported)
+  - `draft_responses_raw/` (RAW LLM outputs for Phase‑1; saved with versioning; useful when parsing fails)
   - `essay_prompts/`, `essay_responses/` (Phase 2 outputs)
   - `parsed_generation_responses/` (legacy; two-phase writes directly to `draft_*` and `essay_*`)
 - **Legacy Generation**: `data/3_generation/` (single-phase outputs, still supported)

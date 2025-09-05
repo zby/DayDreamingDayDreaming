@@ -10,25 +10,23 @@ This guide shows the current, simple flow to run curated drafts/essays/evaluatio
 
 ## Step 1: Select Top Prior-Art Winners
 
-Use `scripts/select_top_prior_art.py` to pick the top‑N by prior‑art scores and write curated task CSVs.
+Use `scripts/select_top_prior_art.py` to pick the top‑N by prior‑art scores and optionally write the curated essay tasks CSV.
 
 What it does
 - Reads cross‑experiment scores, considers prior‑art templates (`gemini-prior-art-eval`, `gemini-prior-art-eval-v2` by default), and selects top‑N `document_id`s.
-- Writes `data/2_tasks/essay_generation_tasks.csv` (always) and `data/2_tasks/draft_generation_tasks.csv` (default on).
-- Registers dynamic partitions for `draft_tasks` and `essay_tasks` by default so you can run them immediately in Dagster.
+- Writes `data/2_tasks/essay_generation_tasks.csv` by default; pass `--no-write-drafts` for a dry run that writes nothing.
 
 Usage
 ```bash
 uv run python scripts/select_top_prior_art.py \
   --top-n 25 \
   --parsed-scores data/7_cross_experiment/parsed_scores.csv \
-  # optional: --no-register-partitions  # skip Dagster registration
+  # optional: --no-write-drafts  # dry run (do not write CSV)
   # optional: --prior-art-templates gemini-prior-art-eval gemini-prior-art-eval-v2
 ```
 
 Notes
-- Draft writing is enabled by default; disable with `--no-write-drafts` if you only want essays.
-- If any referenced generation files are missing under `data/3_generation/essay_responses/` or `data/3_generation/draft_responses/` (or legacy `links_responses/`), the script will warn.
+- Writing is enabled by default; use `--no-write-drafts` to preview selection without writing.
 
 ## Step 2: Register Curated Partitions (and Evaluations)
 
