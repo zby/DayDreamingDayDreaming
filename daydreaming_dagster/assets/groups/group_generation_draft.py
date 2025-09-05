@@ -8,8 +8,11 @@ from dagster import asset, Failure, MetadataValue
 from pathlib import Path
 from jinja2 import Environment, TemplateSyntaxError
 import os
+import re
 from ..partitions import draft_tasks_partitions
 from ...utils.template_loader import load_generation_template
+from ...utils.raw_readers import read_draft_templates
+from ...utils.link_parsers import get_draft_parser
 from ...utils.dataframe_helpers import get_task_row
 
 # Reuse a single Jinja environment
@@ -90,14 +93,8 @@ def draft_prompt(
     return prompt
 
 
-@asset(
-    partitions_def=draft_tasks_partitions,
-    group_name="generation_draft",
-    io_manager_key="draft_response_io_manager",
-    required_resource_keys={"openrouter_client", "experiment_config"},
-)
-def draft_response(context, draft_prompt, draft_generation_tasks) -> str:
-    """Generate Phase 1 LLM responses for drafts."""
+def _draft_response_impl(context, draft_prompt, draft_generation_tasks) -> str:
+    """Generate Phase 1 LLM responses for drafts (core implementation)."""
     task_id = context.partition_key
     task_row = get_task_row(draft_generation_tasks, "draft_task_id", task_id, context, "draft_generation_tasks")
     model_name = task_row["generation_model_name"]
@@ -126,15 +123,115 @@ def draft_response(context, draft_prompt, draft_generation_tasks) -> str:
             },
         )
 
+    # Side-write RAW response with versioning (opt-out via experiment_config)
+    save_raw = bool(getattr(experiment_config, "save_raw_draft_enabled", True))
+    raw_dir_override = getattr(experiment_config, "raw_draft_dir_override", None)
+    data_root = Path(getattr(context.resources, "data_root", "data"))
+    raw_dir = Path(raw_dir_override) if raw_dir_override else data_root / "3_generation" / "draft_responses_raw"
+    raw_path_str = None
+    if save_raw:
+        try:
+            raw_dir.mkdir(parents=True, exist_ok=True)
+            pattern = re.compile(rf"^{re.escape(task_id)}_v(\d+)\.txt$")
+            current = 0
+            for name in os.listdir(raw_dir):
+                m = pattern.match(name)
+                if m:
+                    try:
+                        v = int(m.group(1))
+                        if v > current:
+                            current = v
+                    except Exception:
+                        pass
+            next_v = current + 1
+            raw_path = raw_dir / f"{task_id}_v{next_v}.txt"
+            raw_path.write_text(normalized, encoding="utf-8")
+            raw_path_str = str(raw_path)
+        except Exception as e:
+            context.log.info(f"Failed to save RAW draft for {task_id}: {e}")
+
+    # Parse RAW response according to draft template's parser (identity if unspecified)
+    draft_template = task_row.get("draft_template")
+    parser_name = None
+    try:
+        df = read_draft_templates(Path(data_root), filter_active=False)
+        if not df.empty and "parser" in df.columns and isinstance(draft_template, str):
+            row = df[df["template_id"] == draft_template]
+            if not row.empty:
+                val = row.iloc[0].get("parser")
+                if val is not None:
+                    parser_name = str(val).strip() or None
+    except Exception:
+        parser_name = None
+
+    parsed_text = normalized
+    parser_used = parser_name or "identity"
+    if parser_name:
+        parser_fn = get_draft_parser(parser_name)
+        if parser_fn is None:
+            raise Failure(
+                description=(f"Parser '{parser_name}' not found in registry for draft template"),
+                metadata={
+                    "function": MetadataValue.text("draft_response"),
+                    "draft_task_id": MetadataValue.text(task_id),
+                    "draft_template": MetadataValue.text(str(draft_template)),
+                    "parser": MetadataValue.text(str(parser_name)),
+                    "resolution": MetadataValue.text("Use a registered parser name in data/1_raw/draft_templates.csv or leave blank for identity."),
+                },
+            )
+        try:
+            parsed_text = parser_fn(normalized)
+        except Exception as e:
+            raise Failure(
+                description="Parser raised an exception while processing RAW draft",
+                metadata={
+                    "function": MetadataValue.text("draft_response"),
+                    "draft_task_id": MetadataValue.text(task_id),
+                    "draft_template": MetadataValue.text(str(draft_template)),
+                    "parser": MetadataValue.text(str(parser_name)),
+                    "error": MetadataValue.text(str(e)),
+                },
+            ) from e
+        if not isinstance(parsed_text, str) or not parsed_text.strip():
+            raise Failure(
+                description="Parser returned empty/invalid text",
+                metadata={
+                    "function": MetadataValue.text("draft_response"),
+                    "draft_task_id": MetadataValue.text(task_id),
+                    "draft_template": MetadataValue.text(str(draft_template)),
+                    "parser": MetadataValue.text(str(parser_name)),
+                },
+            )
+
+    # Final metadata and output
     context.log.info(
-        f"Generated draft response for task {task_id} using model {model_name} ({len(response_lines)} lines)"
+        f"Generated draft response for task {task_id} using model {model_name} ({len(response_lines)} raw lines); parser={parser_used}"
     )
-    context.add_output_metadata(
-        {
-            "function": MetadataValue.text("draft_response"),
-            "response_line_count": MetadataValue.int(len(response_lines)),
-            "model_used": MetadataValue.text(model_name),
-            "max_tokens": MetadataValue.int(int(max_tokens) if isinstance(max_tokens, (int, float)) else 0),
-        }
-    )
-    return normalized
+    meta = {
+        "function": MetadataValue.text("draft_response"),
+        "raw_line_count": MetadataValue.int(len(response_lines)),
+        "model_used": MetadataValue.text(model_name),
+        "max_tokens": MetadataValue.int(int(max_tokens) if isinstance(max_tokens, (int, float)) else 0),
+        "parser": MetadataValue.text(parser_used),
+        "parsed_chars": MetadataValue.int(len(parsed_text)),
+    }
+    if raw_path_str:
+        meta.update(
+            {
+                "raw_chars": MetadataValue.int(len(normalized)),
+                "raw_path": MetadataValue.path(raw_path_str),
+            }
+        )
+    context.add_output_metadata(meta)
+    return parsed_text
+
+
+@asset(
+    partitions_def=draft_tasks_partitions,
+    group_name="generation_draft",
+    io_manager_key="draft_response_io_manager",
+    required_resource_keys={"openrouter_client", "experiment_config", "data_root"},
+)
+def draft_response(context, draft_prompt, draft_generation_tasks) -> str:
+    """Generate Phase 1 LLM responses for drafts."""
+    return _draft_response_impl(context, draft_prompt, draft_generation_tasks)
