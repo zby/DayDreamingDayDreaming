@@ -255,7 +255,71 @@ def _essay_response_impl(context, essay_prompt, essay_generation_tasks) -> str:
     model_name = task_row["generation_model_name"]
     llm_client = context.resources.openrouter_client
     max_tokens = getattr(getattr(context.resources, "experiment_config", None), "essay_generation_max_tokens", None) or 4096
-    response = llm_client.generate(essay_prompt, model=model_name, max_tokens=max_tokens)
+    # Generate with info if available
+    if hasattr(llm_client, "generate_with_info"):
+        text, info = llm_client.generate_with_info(essay_prompt, model=model_name, max_tokens=max_tokens)
+    else:
+        text = llm_client.generate(essay_prompt, model=model_name, max_tokens=max_tokens)
+        info = {"finish_reason": "stop", "truncated": False}
+
+    normalized = str(text).replace("\r\n", "\n")
+
+    # Side-write RAW response (opt-out via experiment_config attribute)
+    experiment_config = getattr(context.resources, "experiment_config", None)
+    save_raw = bool(getattr(experiment_config, "save_raw_essay_enabled", True))
+    raw_dir_override = getattr(experiment_config, "raw_essay_dir_override", None)
+    data_root = Path(getattr(context.resources, "data_root", "data"))
+    raw_dir = Path(raw_dir_override) if raw_dir_override else data_root / "3_generation" / "essay_responses_raw"
+    raw_path_str = None
+    if save_raw:
+        try:
+            raw_dir.mkdir(parents=True, exist_ok=True)
+            import os, re
+            pattern = re.compile(rf"^{re.escape(task_id)}_v(\\d+)\\.txt$")
+            current = 0
+            for name in os.listdir(raw_dir):
+                m = pattern.match(name)
+                if m:
+                    try:
+                        v = int(m.group(1))
+                        if v > current:
+                            current = v
+                    except Exception:
+                        pass
+            next_v = current + 1
+            raw_path = raw_dir / f"{task_id}_v{next_v}.txt"
+            raw_path.write_text(normalized, encoding="utf-8")
+            raw_path_str = str(raw_path)
+        except Exception as e:
+            context.log.info(f"Failed to save RAW essay for {task_id}: {e}")
+
+    # Truncation detection identical to drafts: finish_reason==length or usage tokens hit cap
+    finish_reason = (info or {}).get("finish_reason") if isinstance(info, dict) else None
+    was_truncated = bool((info or {}).get("truncated") if isinstance(info, dict) else False)
+    usage = (info or {}).get("usage") if isinstance(info, dict) else None
+    completion_tokens = None
+    requested_max = None
+    if isinstance(usage, dict):
+        completion_tokens = usage.get("completion_tokens")
+        requested_max = usage.get("max_tokens")
+    if was_truncated or str(finish_reason).lower() == "length":
+        meta = {
+            "mode": MetadataValue.text("llm"),
+            "function": MetadataValue.text("essay_response"),
+            "model_used": MetadataValue.text(model_name),
+            "max_tokens": MetadataValue.int(int(max_tokens) if isinstance(max_tokens, (int, float)) else 0),
+            "finish_reason": MetadataValue.text(str(finish_reason)),
+            "truncated": MetadataValue.bool(True),
+        }
+        if isinstance(completion_tokens, int):
+            meta["completion_tokens"] = MetadataValue.int(int(completion_tokens))
+        if isinstance(requested_max, int):
+            meta["requested_max_tokens"] = MetadataValue.int(int(requested_max))
+        if raw_path_str:
+            meta["raw_path"] = MetadataValue.path(raw_path_str)
+            meta["raw_chars"] = MetadataValue.int(len(normalized))
+        raise Failure(description=f"Essay response truncated for task {task_id}", metadata=meta)
+
     context.add_output_metadata(
         {
             "mode": MetadataValue.text("llm"),
@@ -264,7 +328,7 @@ def _essay_response_impl(context, essay_prompt, essay_generation_tasks) -> str:
             "max_tokens": MetadataValue.int(int(max_tokens) if isinstance(max_tokens, (int, float)) else 0),
         }
     )
-    return response
+    return normalized
 
 
 @asset(
@@ -275,4 +339,3 @@ def _essay_response_impl(context, essay_prompt, essay_generation_tasks) -> str:
 )
 def essay_response(context, essay_prompt, essay_generation_tasks) -> str:
     return _essay_response_impl(context, essay_prompt, essay_generation_tasks)
-
