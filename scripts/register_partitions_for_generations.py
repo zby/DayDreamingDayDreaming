@@ -32,6 +32,7 @@ from typing import List
 
 import pandas as pd
 import re
+from daydreaming_dagster.utils.document_locator import find_document_path
 
 
 def parse_args() -> argparse.Namespace:
@@ -242,8 +243,13 @@ def main() -> int:
     # Build evaluation tasks from essays only (current design)
     evaluation_rows: List[dict] = []
     if essay_rows and eval_tpls and eval_models:
+        # Map evaluation model id -> display name
+        model_name_map = _load_models_map(data_root)
         for r in essay_rows:
             essay_task_id = r["essay_task_id"]
+            # Locate source document path (prefer essay responses if present)
+            fp, src = find_document_path(essay_task_id, data_root)
+            file_path = str(fp) if fp else ""
             for tpl in eval_tpls:
                 for model in eval_models:
                     evaluation_rows.append({
@@ -258,6 +264,10 @@ def main() -> int:
                         "generation_model_name": r.get("generation_model_name"),
                         "evaluation_template": tpl,
                         "evaluation_model": model,
+                        "evaluation_model_name": model_name_map.get(model, model),
+                        "file_path": file_path,
+                        "source_dir": src,
+                        "source_asset": "essay_response",
                     })
     # Write evaluation tasks CSV
     eval_out_csv = data_root / "2_tasks" / "evaluation_tasks.csv"
@@ -270,7 +280,7 @@ def main() -> int:
             columns=[
                 "evaluation_task_id","document_id","essay_task_id","draft_task_id","combo_id",
                 "draft_template","essay_template","generation_model","generation_model_name",
-                "evaluation_template","evaluation_model",
+                "evaluation_template","evaluation_model","evaluation_model_name","file_path","source_dir","source_asset",
             ],
             dry_run=args.dry_run,
         )
