@@ -5,6 +5,7 @@ Asset definitions for the draft (Phase‑1) generation stage.
 """
 
 from dagster import asset, Failure, MetadataValue
+import pandas as pd
 from pathlib import Path
 from jinja2 import Environment, TemplateSyntaxError
 import os
@@ -181,9 +182,9 @@ def _draft_response_impl(context, draft_prompt, draft_generation_tasks) -> str:
             row = df[df["template_id"] == draft_template]
             if not row.empty:
                 val = row.iloc[0].get("parser")
-                if val is not None:
-                    s = str(val).strip()
-                    if s and s.lower() not in {"nan", "none", "null"}:
+                if val is not None and not pd.isna(val):
+                    s = val.strip() if isinstance(val, str) else str(val).strip()
+                    if s:
                         parser_name = s
     except Exception:
         parser_name = None
