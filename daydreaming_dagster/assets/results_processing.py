@@ -67,7 +67,7 @@ def parsed_scores(context, evaluation_tasks: pd.DataFrame) -> pd.DataFrame:
     )
 
     # Select final columns (include IDs useful for downstream path reconstruction)
-    result_df = enriched_df[[
+    desired_cols = [
         "document_id",
         "stage",
         "origin",
@@ -85,7 +85,12 @@ def parsed_scores(context, evaluation_tasks: pd.DataFrame) -> pd.DataFrame:
         "error",
         "generation_response_path",
         "evaluation_response_path",
-    ]]
+    ]
+    for col, default in ("stage", "unknown"), ("origin", "unknown"), ("source_asset", "unknown"), ("source_dir", "unknown"):
+        if col not in enriched_df.columns:
+            enriched_df[col] = default
+    present_cols = [c for c in desired_cols if c in enriched_df.columns]
+    result_df = enriched_df[present_cols]
     
     # Calculate metadata using evaluation processing utility
     metadata = calculate_evaluation_metadata(result_df)
