@@ -182,7 +182,9 @@ def _draft_response_impl(context, draft_prompt, draft_generation_tasks) -> str:
             if not row.empty:
                 val = row.iloc[0].get("parser")
                 if val is not None:
-                    parser_name = str(val).strip() or None
+                    s = str(val).strip()
+                    if s and s.lower() not in {"nan", "none", "null"}:
+                        parser_name = s
     except Exception:
         parser_name = None
 
