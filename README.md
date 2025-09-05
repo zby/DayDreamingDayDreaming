@@ -21,8 +21,8 @@ The pipeline uses an innovative two-phase approach to LLM generation:
 
 **Key Benefits**:
 - **Higher Quality**: Separates creative ideation from structured writing
-- **Robust Validation**: Phase 2 fails if Phase 1 produces insufficient draft items (< 3)
-- **Better Essays**: Phase 2 has rich context from Phase 1 brainstorming
+- **Robust Validation**: Draft phase enforces minimum quality (e.g., >=3 lines) and applies parsing before essays
+- **Better Essays**: Phase 2 has rich context from Phase 1 brainstorming (parsed draft)
 - **Backward Compatible**: Existing evaluation and analysis assets work unchanged
 
 ## Quick Start

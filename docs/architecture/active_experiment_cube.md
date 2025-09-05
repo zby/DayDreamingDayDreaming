@@ -7,7 +7,7 @@ This note defines the “Active Experiment Cube” (aka current experiment) and 
 - Active Experiment Cube (AEC): The working set of combinations we intend to materialize now.
 - Defined by “active” flags in raw config tables and model capabilities:
   - Concepts: `data/1_raw/concepts_metadata.csv` (column `active`)
-  - Draft templates: `data/1_raw/draft_templates.csv` (columns `active`, `parser` for parser-mode essays; parser names are defined in `daydreaming_dagster/utils/link_parsers.py`)
+  - Draft templates: `data/1_raw/draft_templates.csv` (columns `active`, `parser` for Phase‑1 extraction; parser names are defined in `daydreaming_dagster/utils/link_parsers.py`)
   - Essay templates: `data/1_raw/essay_templates.csv` (column `active`)
   - Evaluation templates: `data/1_raw/evaluation_templates.csv` (column `active`)
   - LLM models: `data/1_raw/llm_models.csv` (columns `for_generation`, `for_evaluation`)
@@ -39,6 +39,7 @@ Only a subset on each axis is marked active for the current experiment; the cube
 - Axes (example): `content_combinations × draft_templates × generation_models` → draft tasks; then `draft_tasks × essay_templates` → essay tasks.
 - Example outputs:
 - Draft files: `data/3_generation/draft_responses/{draft_task_id}.txt` (legacy: `links_responses/{link_task_id}.txt`)
+  - RAW (saved on every run): `data/3_generation/draft_responses_raw/{draft_task_id}_vN.txt` (useful when Phase‑1 parsing fails)
   - Essay files: `data/3_generation/essay_responses/{essay_task_id}.txt`
 - Legacy example: one‑phase essays under `data/3_generation/generation_responses/{combo_id}_{essay_template}_{model_id}.txt`.
 

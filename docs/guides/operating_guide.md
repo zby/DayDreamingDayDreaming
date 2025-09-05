@@ -89,9 +89,9 @@ uv run dagster asset materialize -f daydreaming_dagster/definitions.py \
 
 #### Quality Validation
 
-The two-phase system includes automatic quality validation:
-- Phase 2 **fails hard** if Phase 1 produces fewer than 3 usable links
-- Rich error messages with resolution steps
+The two‑phase system includes automatic quality validation:
+- Phase‑1 (drafts) enforces minimum content (e.g., >= 3 non‑empty lines) and applies parser extraction when configured
+- Clear error messages with resolution steps; RAW drafts are still saved on parse errors
 - Individual phase caching allows efficient recovery
 
 ### Experiment Configuration (No-Code Workflow)
@@ -133,7 +133,7 @@ Use a Dagster run tag to label the run, e.g. `experiment_id=exp_default_mode_onl
 
 Optionally stash selection files for traceability:
 - `data/experiments/exp_default_mode_only/active_concepts.csv`
-- `data/experiments/exp_default_mode_only/active_link_templates.csv`
+- `data/experiments/exp_default_mode_only/active_draft_templates.csv`
 - `data/experiments/exp_default_mode_only/active_essay_templates.csv`
 - `data/experiments/exp_default_mode_only/active_evaluation_templates.csv`
 
@@ -447,7 +447,7 @@ uv run dagster asset materialize --select "group:task_definitions" -f daydreamin
 # Option 2: Check for underlying data issues
 # Inspect concepts, templates, and models for corruption
 head data/1_raw/concepts_metadata.csv
-head data/1_raw/link_templates.csv
+head data/1_raw/draft_templates.csv
 head data/1_raw/essay_templates.csv
 head data/1_raw/llm_models.csv
 

@@ -53,27 +53,31 @@ Dimensionality (axes)
 ```
 daydreaming_dagster/
 ├── assets/                     # Dagster assets (data pipeline components)
-│   ├── raw_data.py            # Raw data loading assets (supports selective loading)
-│   ├── core.py                # Core processing assets (combinations, tasks)
-│   ├── partitions.py          # Partition management assets
-│   ├── llm_generation.py      # Draft generation (single-phase)
-│   ├── parsed_generation.py   # Canonical interface for generation responses
-│   ├── llm_evaluation.py      # LLM evaluation assets
-│   ├── results_processing.py  # Score parsing and analysis
-│   ├── results_summary.py     # Final aggregated results
-│   ├── results_analysis.py    # Statistical analysis assets
-│   └── cross_experiment.py    # Cross-experiment tracking
+│   ├── raw_data.py             # Raw data loading assets
+│   ├── partitions.py           # Partition management assets
+│   ├── results_processing.py   # Score parsing and analysis
+│   ├── results_summary.py      # Final aggregated results
+│   ├── results_analysis.py     # Statistical analysis assets
+│   ├── cross_experiment.py     # Cross-experiment tracking
+│   └── groups/                 # Grouped assets by domain
+│       ├── group_task_definitions.py
+│       ├── group_generation_draft.py
+│       ├── group_generation_essays.py
+│       ├── group_evaluation.py
+│       ├── group_results_processing.py
+│       ├── group_results_summary.py
+│       └── group_cross_experiment.py
 ├── utils/                      # Utility modules
-│   ├── template_loader.py     # Phase-aware template loading (NEW)
+│   ├── template_loader.py      # Phase-aware template loading
+│   ├── link_parsers.py         # Parser registry for Phase‑1 extraction
 │   ├── eval_response_parser.py # Evaluation response parsing
-│   └── generation_response_parser.py # Generation response parsing
+│   └── dataframe_helpers.py    # Small helpers for DataFrame lookups
 ├── resources/                  # Dagster resources
-│   ├── llm_client.py          # LLM API client resource
-│   ├── experiment_config.py   # Experiment configuration resource (with filtering)
-│   ├── io_managers.py         # Custom I/O managers for different file types
-│   └── cross_experiment_io_manager.py # Cross-experiment I/O manager
-├── definitions.py             # Single Dagster definitions file
-└── __init__.py                # Package initialization
+│   ├── llm_client.py           # LLM API client resource
+│   ├── experiment_config.py    # Experiment configuration resource
+│   └── io_managers.py          # Custom I/O managers
+├── definitions.py              # Dagster Definitions (entrypoint)
+└── __init__.py                 # Package initialization
 ```
 
 ### Asset Groups
@@ -82,9 +86,10 @@ Assets are organized into logical groups for easy selection and understanding:
 
 | Group | Assets | Purpose |
 |-------|--------|---------|
-| **`raw_data`** | concepts, llm_models, generation_templates, evaluation_templates | Load external data files |
-| **`task_definitions`** | content_combinations, generation_tasks, evaluation_tasks | Generate LLM task definitions. `content_combinations` consumes `selected_combo_mappings` DataFrame. |
-| **`generation`** 🚀 | generation_prompt, generation_response | Draft generation (partitioned by generation_task_id) |
+| **`raw_data`** | concepts, llm_models, draft/essay/evaluation templates | Load external data files |
+| **`task_definitions`** | content_combinations, draft_generation_tasks, essay_generation_tasks, evaluation_tasks | Build partitioned tasks from active CSVs |
+| **`generation_draft`** 🚀 | draft_prompt, draft_response | Phase‑1 generation; applies parser (if configured) and saves RAW + parsed outputs |
+| **`generation_essays`** | essay_prompt, essay_response | Phase‑2 generation; modes: `llm` (default) and `copy` (parsed draft passthrough) |
 | **`evaluation`** | evaluation_prompt, evaluation_response | LLM evaluation (partitioned by evaluation_task_id) |
 | **`results_processing`** | parsed_scores | Parse evaluation scores |
 | **`results_summary`** | final_results, perfect_score_paths, generation_scores_pivot, evaluation_model_template_pivot | Final aggregated results |
@@ -158,37 +163,26 @@ LLM generation/evaluation assets remain manual to avoid surprise API usage/costs
 - Each LLM task becomes an independent partition for caching and recovery
 - Partitions must be registered before partitioned assets can be materialized
 
-### 4. LLM Draft Generation (`llm_generation.py`)
+### 4. Two‑Phase LLM Generation
 
-**Assets**: `generation_prompt`, `generation_response`, `parsed_generation_responses`
+Two assets groups implement the two‑phase flow:
 
-**Purpose**: Produce a single coherent draft per task using the active generation template and model. Treat this draft as the canonical output of the generation process.
+1) Phase‑1 — Draft Generation (`group_generation_draft.py`)
+   - Assets: `draft_prompt`, `draft_response` (partitioned by `draft_task_id`).
+   - Behavior: Calls the LLM, saves RAW draft under `data/3_generation/draft_responses_raw/{draft_task_id}_vN.txt`, then applies a parser configured in `data/1_raw/draft_templates.csv` (column `parser`). If no parser is set, identity is used. On parser failure, the asset fails with a clear error, and the RAW draft remains saved for debugging.
+   - Parsed output is materialized to `data/3_generation/draft_responses/{draft_task_id}_vN.txt` via the IO manager.
 
-**Notes**:
-- Two-phase generation exists historically but is not documented here. This document treats the current draft as the output of generation.
+2) Phase‑2 — Essay Generation (`group_generation_essays.py`)
+   - Assets: `essay_prompt`, `essay_response` (partitioned by `essay_task_id`).
+   - Modes: `llm` (default; uses parsed draft as input) and `copy` (returns parsed draft verbatim). Essay‑level parser mode is deprecated after parser‑first.
+   - Essay templates live under `data/1_raw/generation_templates/essay/` and typically include a placeholder like `{{ links_block }}` / `{{ draft_block }}` to include the Phase‑1 text in prompts.
 
 **Template Structure**:
 ```
 data/1_raw/generation_templates/
-  ├── creative-synthesis-v7.txt
-  └── systematic-analytical.txt
+├── draft/   # Phase‑1 templates
+└── essay/   # Phase‑2 templates
 ```
-
-### 5. Legacy LLM Processing (`llm_generation.py`)
-
-**Assets**: `generation_prompt`, `generation_response`, `parsed_generation_responses`
-
-**Purpose**: Single-phase LLM generation (maintained for backward compatibility)
-
-**Partitioning Strategy**:
-- **Generation**: Partitioned by `{combo_id}_{template}_{model}`
-- **Evaluation**: Partitioned by `{generation_task_id}_{eval_template}_{eval_model}`
-
-**Key Features**:
-- **Individual File Storage**: Each prompt/response stored as separate files
-- **Automatic Caching**: Failed tasks can be rerun without affecting completed ones
-- **API Error Handling**: Structured error logging and recovery
-- **Rate Limiting**: Built-in throttling for API calls
 
 ### 6. Results Processing (`results_processing.py`)
 
@@ -347,32 +341,35 @@ The pipeline uses Dagster's dynamic partitioning to create fine-grained, recover
 
 ```
 data/
-├── 01_raw/                    # External inputs only
+├── 1_raw/                      # External inputs only
 │   ├── concepts/
-│   │   ├── day_dreaming_concepts.json
-│   │   └── descriptions/       # Concept descriptions by level
-│   ├── generation_templates/   # Jinja2 prompt template files (single-phase)
-│   ├── evaluation_templates/   # Evaluation prompt templates
-│   ├── generation_models.csv   # Available models with active selection
-│   └── evaluation_models.csv   # Available evaluation models
-├── 02_tasks/                   # Generated task definitions
-│   ├── concept_combinations_combinations.csv
-│   ├── concept_combinations_relationships.csv
-│   ├── generation_tasks.csv
-│   ├── evaluation_tasks.csv
-│   └── concept_contents/       # Individual concept content files
-├── 03_generation/              # LLM generation results
-│   ├── generation_prompts/     # Prompts sent to generator LLM
-│   └── generation_responses/   # Raw generator responses
-├── 04_evaluation/              # LLM evaluation results
-│   ├── evaluation_prompts/     # Prompts sent to evaluator LLM
-│   └── evaluation_responses/   # Raw evaluator responses
-├── 05_parsing/                 # Parsed evaluation scores
-│   └── parsed_scores.csv       # Extracted scores with metadata
-├── 06_summary/                 # Final aggregated results
-│   └── final_results.csv       # Final aggregated results
-├── combo_mappings.csv          # Global append-only mapping of stable combo IDs to concepts
-└── 07_reporting/               # Error logs and reporting
+│   ├── concepts_metadata.csv
+│   ├── generation_templates/
+│   │   ├── draft/              # Phase‑1 draft Jinja templates
+│   │   └── essay/              # Phase‑2 essay Jinja templates
+│   ├── draft_templates.csv     # Active draft templates (+ optional parser)
+│   ├── essay_templates.csv     # Active essay templates (+ generator: llm|copy)
+│   ├── evaluation_templates.csv
+│   └── llm_models.csv          # Available models with flags: for_generation|for_evaluation
+├── 2_tasks/                    # Generated task definitions
+│   ├── content_combinations.csv
+│   ├── draft_generation_tasks.csv
+│   ├── essay_generation_tasks.csv
+│   └── evaluation_tasks.csv
+├── 3_generation/               # LLM generation results (two‑phase)
+│   ├── draft_prompts/          # Phase‑1 prompts
+│   ├── draft_responses/        # Phase‑1 parsed outputs ({draft_task_id}_vN.txt)
+│   ├── draft_responses_raw/    # Phase‑1 RAW LLM outputs (always saved)
+│   ├── essay_prompts/          # Phase‑2 prompts
+│   └── essay_responses/        # Phase‑2 outputs
+├── 4_evaluation/               # LLM evaluation results
+│   ├── evaluation_prompts/
+│   └── evaluation_responses/
+├── 5_parsing/                  # Parsed evaluation scores
+│   └── parsed_scores.csv
+├── 6_summary/                  # Final aggregated results
+│   └── final_results.csv
+└── combo_mappings.csv          # Mapping of stable combo IDs to concept components
 ```
 
 ### Storage Design Principles
@@ -386,7 +383,7 @@ data/
 ### Overwrite and Retention Policy
 
 - Task CSVs in `data/2_tasks/` are rewritten by their assets on materialization.
-- Dynamic partitions for tasks are cleared and recreated when `generation_tasks`/`evaluation_tasks` run.
+- Dynamic partitions for tasks are managed by the task definition assets (`draft_generation_tasks`, `essay_generation_tasks`, `evaluation_tasks`).
 - Prompts are allowed to overwrite to reflect current templates.
 - Responses are write-once by default; existing response files will not be overwritten. Delete files to regenerate or change the partition key.
 - Reruns write `{id}_vN.txt` (N increments); readers pick the latest version automatically. No overwrite flags are required.
@@ -479,7 +476,7 @@ Sources merged:
 
 ### Legacy Inputs
 
-- Two-phase artifacts may exist historically but are out of scope for this document. To include older artifacts, convert them to standard draft entries under `data/3_generation/generation_responses/` and emit matching rows in `generation_tasks.csv`.
+- Historical single‑phase artifacts may exist under `data/3_generation/generation_responses/`. The `document_index`/`evaluation_tasks` flow can incorporate them as one‑phase documents when building evaluation sets.
 
 ### Notes
 
