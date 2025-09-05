@@ -1,29 +1,21 @@
 #!/usr/bin/env python3
 """
-Create curated generation task rows and register Dagster dynamic partitions
-for a provided list of generation document IDs (drafts and essays). Also
-register evaluation partitions for all active evaluation templates and
-evaluation-capable models.
+Create draft tasks and register Dagster dynamic partitions from a curated
+essay_generation_tasks.csv. Also generates evaluation tasks for all active
+evaluation templates and evaluation-capable models.
 
-Input formats:
-- Line-delimited text file (one document_id per line)
-- CSV with a 'document_id' column (or 'essay_task_id'/'draft_task_id')
+Input:
+- data/2_tasks/essay_generation_tasks.csv (source of truth)
 
 Outputs:
-- data/2_tasks/draft_generation_tasks.csv (merged; deduped by draft_task_id)
-- data/2_tasks/essay_generation_tasks.csv (merged; deduped by essay_task_id)
-- Registers dynamic partitions add-only (does not remove existing)
-- Registers evaluation partitions for selected documents across active
-  evaluation templates and models
+- data/2_tasks/draft_generation_tasks.csv (deduped by draft_task_id)
+- data/2_tasks/selected_combo_mappings.csv (filtered from combo_mappings.csv)
+- data/2_tasks/evaluation_tasks.csv (deduped by evaluation_task_id)
+- Registers dynamic partitions (draft, essay, evaluation); by default resets before adding
 
-Usage examples:
-  # Use the output of scripts/find_top_prior_art.py
+Usage example:
   uv run python scripts/register_partitions_for_generations.py \
-    --input data/2_tasks/selected_generations.txt
-
-  # CSV input with document_id
-  uv run python scripts/register_partitions_for_generations.py \
-    --input data/2_tasks/selected_generations.csv
+    --input data/2_tasks/essay_generation_tasks.csv
 
 Flags:
 - --no-write-drafts: do not write draft_generation_tasks.csv (essays only)
@@ -36,7 +28,7 @@ import argparse
 import os
 from pathlib import Path
 import sys
-from typing import Iterable, List, Tuple
+from typing import List
 
 import pandas as pd
 import re
@@ -44,63 +36,19 @@ import re
 
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    p.add_argument("--input", type=Path, default=Path("data/2_tasks/selected_generations.txt"), help="Path to list/CSV of document IDs")
+    # Source of truth for curated generations
+    p.add_argument("--input", type=Path, default=Path("data/2_tasks/essay_generation_tasks.csv"), help="Path to essay_generation_tasks.csv")
     p.add_argument("--data-root", type=Path, default=Path("data"), help="Project data root (default: data)")
-    p.add_argument("--write-drafts", dest="write_drafts", action="store_true", default=True, help="Write draft_generation_tasks rows (default: on)")
-    p.add_argument("--no-write-drafts", dest="write_drafts", action="store_false", help="Do not write draft_generation_tasks rows")
-    p.add_argument("--register", dest="register", action="store_true", default=True, help="Register dynamic partitions in Dagster (default: on)")
-    p.add_argument("--no-register", dest="register", action="store_false", help="Do not register dynamic partitions")
-    # Default to resetting partitions to match current usage pattern
-    p.add_argument("--reset-partitions", dest="reset_partitions", action="store_true", default=True, help="Reset (clear) existing dynamic partitions before adding new ones (default: on)")
-    p.add_argument("--no-reset-partitions", dest="reset_partitions", action="store_false", help="Do not clear existing dynamic partitions (add-only)")
-    p.add_argument("--clean-2-tasks", dest="clean_2_tasks", action="store_true", default=True, help="Clean data/2_tasks before writing curated CSVs (default: on)")
-    p.add_argument("--no-clean-2-tasks", dest="clean_2_tasks", action="store_false", help="Do not clean data/2_tasks (write only curated files)")
-    p.add_argument("--eval-templates", nargs="*", default=None, help="Evaluation templates to register (override active)")
-    p.add_argument("--eval-models", nargs="*", default=None, help="Evaluation model ids to register (override active for_evaluation)")
-    p.add_argument("--dry-run", action="store_true", help="Compute and print what would be written/registered, but make no changes")
-    p.add_argument("--write-keys-dir", type=Path, default=None, help="If set, write draft/essay/evaluation partition keys into this directory as text files")
-    p.add_argument("--refresh", dest="refresh", action="store_true", default=True, help="After writing CSVs/partitions, refresh Dagster assets so generations can run immediately (default: on)")
-    p.add_argument("--no-refresh", dest="refresh", action="store_false", help="Skip refreshing Dagster assets")
+    p.add_argument("--dry-run", action="store_true", help="Compute and print actions but make no changes")
+    # Reset by default; use --add-only to avoid clearing existing partitions
+    p.add_argument("--add-only", action="store_true", help="Do not clear existing dynamic partitions (add-only mode)")
     return p.parse_args()
 
 
-def _read_list(path: Path) -> List[str]:
-    if not path.exists():
-        raise FileNotFoundError(f"Input not found: {path}")
-    if path.suffix.lower() == ".csv":
-        df = pd.read_csv(path)
-        for col in ("document_id", "essay_task_id", "draft_task_id"):
-            if col in df.columns:
-                vals = df[col].dropna().astype(str).tolist()
-                if vals:
-                    return vals
-        raise ValueError("CSV must include one of: document_id, essay_task_id, draft_task_id")
-    # Treat as line-delimited
-    return [line.strip() for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
+# Legacy input helpers removed; script now requires essay_generation_tasks.csv
 
 
-def _load_templates(data_root: Path) -> Tuple[set[str], set[str]]:
-    draft_tpls: set[str] = set()
-    essay_tpls: set[str] = set()
-    d_csv = data_root / "1_raw" / "draft_templates.csv"
-    l_csv = data_root / "1_raw" / "link_templates.csv"
-    e_csv = data_root / "1_raw" / "essay_templates.csv"
-    try:
-        if d_csv.exists():
-            df = pd.read_csv(d_csv)
-            if "template_id" in df.columns:
-                draft_tpls = set(df["template_id"].astype(str))
-        elif l_csv.exists():
-            df = pd.read_csv(l_csv)
-            if "template_id" in df.columns:
-                draft_tpls = set(df["template_id"].astype(str))
-        if e_csv.exists():
-            df = pd.read_csv(e_csv)
-            if "template_id" in df.columns:
-                essay_tpls = set(df["template_id"].astype(str))
-    except Exception as e:
-        print(f"Warning: failed to read template CSVs ({e}); falling back to naive parsing", file=sys.stderr)
-    return draft_tpls, essay_tpls
+# Legacy template/model parsing removed; rely on curated essay_generation_tasks.csv
 
 
 def _load_models_map(data_root: Path) -> dict:
@@ -127,72 +75,9 @@ def _load_model_ids(data_root: Path) -> set[str]:
             print(f"Warning: failed to read models CSV ({e}); model-id parsing may be less accurate", file=sys.stderr)
     return ids
 
-def _parse_draft_tokens(doc: str, draft_tpls: set[str], model_ids: set[str]) -> tuple[str|None, str|None, str|None]:
-    """Parse combo_id, draft_template, generation_model from a draft-like id.
+# Legacy draft id parsing removed; derive from curated CSV only
 
-    Robust to underscores in model ids by matching known model ids as a suffix first,
-    then matching a known draft template as the next suffix.
-    """
-    # 1) Match model id by longest-suffix
-    gen_model = None
-    if model_ids:
-        for mid in sorted(model_ids, key=len, reverse=True):
-            suffix = "_" + mid
-            if doc.endswith(suffix):
-                gen_model = mid
-                base = doc[: -len(suffix)]
-                break
-        else:
-            base = doc
-    else:
-        base = doc
-
-    # 2) Match draft template as suffix
-    draft_template = None
-    combo_id = None
-    if draft_tpls:
-        for tpl in sorted(draft_tpls, key=len, reverse=True):
-            suffix = "_" + tpl
-            if base.endswith(suffix):
-                draft_template = tpl
-                combo_id = base[: -len(suffix)]
-                break
-
-    # Fallback naive parsing if sets unavailable
-    if combo_id is None or draft_template is None or gen_model is None:
-        parts = doc.split("_")
-        if len(parts) >= 3:
-            draft_template = draft_template or parts[-2]
-            gen_model = gen_model or parts[-1]
-            combo_id = combo_id or "_".join(parts[:-2])
-        else:
-            return None, None, None
-    # Validate against known ids/templates when available; if invalid, force parse failure
-    if model_ids and gen_model not in model_ids:
-        gen_model = None
-    if draft_tpls and draft_template not in draft_tpls:
-        draft_template = None
-    if combo_id and draft_template and gen_model:
-        return combo_id, draft_template, gen_model
-    return None, None, None
-
-_COMBO_PREFIX_RE = re.compile(r"^combo_v\d+_[0-9a-f]{12}")
-
-def _extract_combo_prefix(doc: str) -> str | None:
-    """Extract stable combo_id prefix (combo_vN_<12-hex>) from any doc string."""
-    m = _COMBO_PREFIX_RE.match(doc)
-    if m:
-        return m.group(0)
-    # Fallback token check: first three underscore-separated tokens
-    parts = doc.split("_")
-    if len(parts) >= 3 and parts[0] == "combo" and parts[1].startswith("v") and len(parts[2]) == 12:
-        # ensure hex
-        try:
-            int(parts[2], 16)
-            return "_".join([parts[0], parts[1], parts[2]])
-        except Exception:
-            return None
-    return None
+_COMBO_PREFIX_RE = re.compile(r"^combo_v\d+_[0-9a-f]{12}")  # retained for sanity checks if needed
 
 def _write_selected_combo_mappings(data_root: Path, combo_ids: List[str], dry_run: bool = False) -> int:
     """Filter data/combo_mappings.csv to selected combo_ids and write selected file under 2_tasks.
@@ -277,85 +162,46 @@ def _write_table(out_csv: Path, rows: List[dict], key: str, columns: List[str], 
 def main() -> int:
     args = parse_args()
     data_root = args.data_root
-    input_ids = _read_list(args.input)
-    if not input_ids:
-        print("No document IDs to process.")
-        return 0
-
-    draft_tpls, essay_tpls = _load_templates(data_root)
-    model_map = _load_models_map(data_root)
-    model_ids = _load_model_ids(data_root)
-
+    # New mode: derive everything from existing essay_generation_tasks.csv
     essay_rows: List[dict] = []
     draft_rows: List[dict] = []
     combo_ids: set[str] = set()
 
-    for doc in input_ids:
-        essay_template = None
-        draft_template = None
-        generation_model = None
-        combo_id = None
-
-        # Essay doc if endswith _<essay_template>
-        matched_essay = None
-        if essay_tpls:
-            for tpl in sorted(essay_tpls, key=len, reverse=True):
-                if doc.endswith("_" + tpl):
-                    matched_essay = tpl
-                    break
-
-        if matched_essay is not None:
-            essay_template = matched_essay
-            draft_task_id = doc[: -(len(essay_template) + 1)]
-            combo_id, draft_template, generation_model = _parse_draft_tokens(draft_task_id, draft_tpls, model_ids)
-            if not (combo_id and draft_template and generation_model):
-                # Attempt to salvage combo_id from prefix only; allow curated combos to be written even if templates/models are unknown
-                combo_id = _extract_combo_prefix(doc)
-                if not combo_id:
-                    print(f"Skipping malformed essay id (unable to parse draft part): {doc}", file=sys.stderr)
-                    continue
-                # Do not append task rows if we cannot parse draft side reliably; rely on curated combos
-                combo_ids.add(combo_id)
-                continue
-            combo_ids.add(combo_id)
-            essay_rows.append({
-                "essay_task_id": doc,
-                "draft_task_id": draft_task_id,
-                "combo_id": combo_id,
-                "draft_template": draft_template,
-                "essay_template": essay_template,
-                "generation_model": generation_model,
-                "generation_model_name": model_map.get(generation_model, generation_model),
+    # Require curated essay_generation_tasks.csv
+    if args.input.suffix.lower() != ".csv":
+        print(f"Expected a CSV input (essay_generation_tasks.csv). Got: {args.input}", file=sys.stderr)
+        return 1
+    try:
+        df = pd.read_csv(args.input)
+    except Exception as e:
+        print(f"Failed to read {args.input}: {e}", file=sys.stderr)
+        return 1
+    required = {"essay_task_id", "draft_task_id", "combo_id", "draft_template", "generation_model"}
+    missing = sorted(list(required - set(df.columns)))
+    if missing:
+        print(f"Input CSV does not look like essay_generation_tasks.csv (missing columns: {missing}).", file=sys.stderr)
+        return 1
+    # Use the curated essay tasks directly
+    model_map = _load_models_map(data_root)
+    for _, r in df.iterrows():
+        essay_rows.append({
+            "essay_task_id": str(r["essay_task_id"]),
+            "draft_task_id": str(r["draft_task_id"]),
+            "combo_id": str(r["combo_id"]),
+            "draft_template": str(r["draft_template"]),
+            "essay_template": str(r.get("essay_template", "")) if "essay_template" in df.columns else "",
+            "generation_model": str(r["generation_model"]),
+            "generation_model_name": model_map.get(str(r["generation_model"]), str(r["generation_model"]))
+        })
+        if args.write_drafts:
+            draft_rows.append({
+                "draft_task_id": str(r["draft_task_id"]),
+                "combo_id": str(r["combo_id"]),
+                "draft_template": str(r["draft_template"]),
+                "generation_model": str(r["generation_model"]),
+                "generation_model_name": model_map.get(str(r["generation_model"]), str(r["generation_model"]))
             })
-            # Also ensure draft task exists when requested
-            if args.write_drafts:
-                draft_rows.append({
-                    "draft_task_id": draft_task_id,
-                    "combo_id": combo_id,
-                    "draft_template": draft_template,
-                    "generation_model": generation_model,
-                    "generation_model_name": model_map.get(generation_model, generation_model),
-                })
-        else:
-            # Treat as a draft document id (or legacy single-phase id without essay template suffix)
-            combo_id, draft_template, generation_model = _parse_draft_tokens(doc, draft_tpls, model_ids)
-            if not (combo_id and draft_template and generation_model):
-                # Salvage combo from prefix
-                prefix = _extract_combo_prefix(doc)
-                if prefix:
-                    combo_ids.add(prefix)
-                else:
-                    print(f"Skipping malformed draft id (parsed): {doc}", file=sys.stderr)
-                continue
-            if args.write_drafts:
-                draft_rows.append({
-                    "draft_task_id": doc,
-                    "combo_id": combo_id,
-                    "draft_template": draft_template,
-                    "generation_model": generation_model,
-                    "generation_model_name": model_map.get(generation_model, generation_model),
-                })
-            combo_ids.add(combo_id)
+        combo_ids.add(str(r["combo_id"]))
 
     # Write/merge outputs
     essay_out_csv = data_root / "2_tasks" / "essay_generation_tasks.csv"
@@ -366,7 +212,7 @@ def main() -> int:
     if args.clean_2_tasks and not args.dry_run:
         if two_tasks.exists():
             removed = 0
-            preserve = {"selected_generations.txt", "selected_generations.csv"}
+            preserve = {"selected_generations.txt", "selected_generations.csv", "essay_generation_tasks.csv"}
             for p in two_tasks.iterdir():
                 if p.is_file() and p.name not in preserve:
                     try:
@@ -385,21 +231,9 @@ def main() -> int:
 
     added_essays = 0
     added_drafts = 0
-    if essay_rows:
-        added_essays = _write_table(
-            essay_out_csv,
-            essay_rows,
-            key="essay_task_id",
-            columns=[
-                "essay_task_id","draft_task_id","combo_id","draft_template",
-                "essay_template","generation_model","generation_model_name",
-            ],
-            dry_run=args.dry_run,
-        )
-        if not args.dry_run:
-            print(f"Wrote {essay_out_csv} ({added_essays} rows)")
+    # Do not write essay_generation_tasks.csv here; treat it as source of truth
 
-    if args.write_drafts and draft_rows:
+    if draft_rows:
         added_drafts = _write_table(
             link_out_csv,
             draft_rows,
@@ -416,7 +250,7 @@ def main() -> int:
 
     # Register dynamic partitions (add-only)
     # Prepare partition keys
-    draft_ids = [r["draft_task_id"] for r in draft_rows] if args.write_drafts and draft_rows else []
+    draft_ids = [r["draft_task_id"] for r in draft_rows] if draft_rows else []
     essay_ids = [r["essay_task_id"] for r in essay_rows] if essay_rows else []
 
     # Evaluation axes (with optional overrides)
@@ -425,23 +259,54 @@ def main() -> int:
         eval_tpls = list(args.eval_templates)
     if args.eval_models is not None:
         eval_models = list(args.eval_models)
-    eval_docs = []
-    if essay_rows:
-        eval_docs.extend([r["essay_task_id"] for r in essay_rows])
-    if args.write_drafts and draft_rows:
-        eval_docs.extend([r["draft_task_id"] for r in draft_rows])
-    eval_docs = list({d for d in eval_docs if isinstance(d, str) and d})
-    eval_ids = [f"{doc}__{tpl}__{model}" for doc in eval_docs for tpl in eval_tpls for model in eval_models] if (eval_docs and eval_tpls and eval_models) else []
+    # Build evaluation tasks from essays only (current design)
+    evaluation_rows: List[dict] = []
+    if essay_rows and eval_tpls and eval_models:
+        for r in essay_rows:
+            essay_task_id = r["essay_task_id"]
+            for tpl in eval_tpls:
+                for model in eval_models:
+                    evaluation_rows.append({
+                        "evaluation_task_id": f"{essay_task_id}__{tpl}__{model}",
+                        "document_id": essay_task_id,
+                        "essay_task_id": essay_task_id,
+                        "draft_task_id": r.get("draft_task_id"),
+                        "combo_id": r.get("combo_id"),
+                        "draft_template": r.get("draft_template"),
+                        "essay_template": r.get("essay_template"),
+                        "generation_model": r.get("generation_model"),
+                        "generation_model_name": r.get("generation_model_name"),
+                        "evaluation_template": tpl,
+                        "evaluation_model": model,
+                    })
+    # Write evaluation tasks CSV
+    eval_out_csv = data_root / "2_tasks" / "evaluation_tasks.csv"
+    added_evals = 0
+    if evaluation_rows:
+        added_evals = _write_table(
+            eval_out_csv,
+            evaluation_rows,
+            key="evaluation_task_id",
+            columns=[
+                "evaluation_task_id","document_id","essay_task_id","draft_task_id","combo_id",
+                "draft_template","essay_template","generation_model","generation_model_name",
+                "evaluation_template","evaluation_model",
+            ],
+            dry_run=args.dry_run,
+        )
+        if not args.dry_run:
+            print(f"Wrote {eval_out_csv} ({added_evals} rows)")
+    else:
+        if not args.dry_run:
+            print("No evaluation rows to write (check active evaluation templates/models)")
+
+    # Partition keys for evaluation
+    eval_ids = [row["evaluation_task_id"] for row in evaluation_rows] if evaluation_rows else []
 
     # Optionally write partition lists
-    if args.write_keys_dir:
-        args.write_keys_dir.mkdir(parents=True, exist_ok=True)
-        (args.write_keys_dir / "draft_partitions.txt").write_text("\n".join(draft_ids), encoding="utf-8")
-        (args.write_keys_dir / "essay_partitions.txt").write_text("\n".join(essay_ids), encoding="utf-8")
-        (args.write_keys_dir / "evaluation_partitions.txt").write_text("\n".join(eval_ids), encoding="utf-8")
-        print(f"Wrote partition key lists under {args.write_keys_dir}")
+    # No key-list outputs in simplified mode
 
-    if args.register and not args.dry_run:
+    if not args.dry_run:
         try:
             from dagster import DagsterInstance
             instance = DagsterInstance.get()
@@ -453,8 +318,8 @@ def main() -> int:
                         seen.add(v); out.append(v)
                 return out
 
-            # Optionally clear existing partitions first (non-cube curated selection)
-            if args.reset_partitions:
+            # Optionally clear existing partitions first
+            if not args.add_only:
                 for name in ("draft_tasks", "essay_tasks", "evaluation_tasks"):
                     existing = list(instance.get_dynamic_partitions(name))
                     for p in existing:
@@ -489,39 +354,12 @@ def main() -> int:
         except Exception as e:
             print(f"Warning: could not register Dagster partitions automatically: {e}", file=sys.stderr)
 
-    # Refresh minimal upstream assets so generations can run immediately
-    if args.refresh and not args.dry_run:
-        try:
-            from dagster import materialize, DagsterInstance
-            from daydreaming_dagster.assets.groups.group_task_definitions import (
-                selected_combo_mappings as _sel_asset,
-                content_combinations as _comb_asset,
-            )
-            from daydreaming_dagster.resources.io_managers import CSVIOManager
-            from daydreaming_dagster.resources.experiment_config import ExperimentConfig
+    # Simplified mode: no auto-refresh of assets here
 
-            resources = {
-                "data_root": str(data_root),
-                "csv_io_manager": CSVIOManager(base_path=data_root / "2_tasks"),
-                "experiment_config": ExperimentConfig(),
-            }
-            print("Refreshing assets: selected_combo_mappings → content_combinations …")
-            res = materialize(
-                [_sel_asset, _comb_asset],
-                resources=resources,
-                instance=DagsterInstance.get(),
-            )
-            if not res.success:
-                print("Warning: refresh materialization did not succeed; check Dagster logs", file=sys.stderr)
-            else:
-                print("Assets refreshed; generations ready to run. (Task CSVs are used as sources.)")
-        except Exception as e:
-            print(f"Warning: failed to refresh assets automatically: {e}", file=sys.stderr)
-
-    if not args.dry_run and not (added_essays or added_drafts):
-        print("No new rows were added (all selected items already present)")
     if args.dry_run:
-        print(f"[dry-run] Drafts: {len(draft_ids)}, Essays: {len(essay_ids)}, Evaluations: {len(eval_ids)}")
+        print(f"[dry-run] Would write drafts={len(draft_rows)}, evals={len(evaluation_rows)}; register draft={len(draft_ids)}, essay={len(essay_ids)}, eval={len(eval_ids)} (add_only={args.add_only})")
+    else:
+        print(f"Done. drafts={added_drafts}, evals={added_evals}; registered draft={len(draft_ids)}, essay={len(essay_ids)}, eval={len(eval_ids)}")
     return 0
 
 
