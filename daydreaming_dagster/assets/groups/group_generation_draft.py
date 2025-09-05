@@ -102,7 +102,12 @@ def _draft_response_impl(context, draft_prompt, draft_generation_tasks) -> str:
     llm_client = context.resources.openrouter_client
     experiment_config = context.resources.experiment_config
     max_tokens = getattr(experiment_config, "draft_generation_max_tokens", None) or 20480
-    text, info = llm_client.generate_with_info(draft_prompt, model=model_name, max_tokens=max_tokens)
+    # Support both new (generate_with_info) and legacy (generate) client interfaces
+    if hasattr(llm_client, "generate_with_info"):
+        text, info = llm_client.generate_with_info(draft_prompt, model=model_name, max_tokens=max_tokens)
+    else:
+        text = llm_client.generate(draft_prompt, model=model_name, max_tokens=max_tokens)
+        info = {"finish_reason": "stop", "truncated": False}
 
     # Normalize newlines and validate minimum lines
     normalized = str(text).replace("\r\n", "\n")
