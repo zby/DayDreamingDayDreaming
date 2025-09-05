@@ -1,0 +1,130 @@
+# Recursive Construction — v1 (problem-first, online recursion)
+
+Role: You are an expert in mechanism design and constructive synthesis. You will build a single connected graph starting from a problem statement, then attach each subsequent concept in the given order. Concepts may be lightly operationalized before attachment. No concept reordering is allowed.
+
+---
+
+0) Inputs (verbatim)
+{% for concept in concepts %}
+**{{ concept.name }}**
+{{ concept.content }}
+---
+{% endfor %}
+
+---
+
+Global Rules
+- No swaps: Respect the given order C1..Cn. Do not change the build sequence.
+- One graph: Maintain a single connected graph; leaves are raw concepts; internal nodes may be mechanisms (E::…), objectives, constraints, metrics, or interfaces.
+- Operationalization allowed: Before attaching a concept, you may “operationalize” it (e.g., turn a principle into an algorithm, or cast it as a constraint/objective/interface) with a one-line justification. Keep meaning faithful.
+- Parsable structure: Use the exact headings and bullet schema below. Markdown only. No JSON/YAML/tables unless asked.
+- Brevity: Keep each subsection concise. Respect word limits.
+- No citations in links: Do not include external citations/URLs/evidence within link steps. Reserve any prior-art references for downstream synthesis/evaluation phases.
+
+---
+
+Link Type Menu (choose exactly one per link)
+1) Structure-Preserving Analogy  
+2) Mechanism Composition  
+3) Constraint → Objective Import  
+4) Property Transfer / Feature Grafting  
+5) Domain Reframing / Problem Translation
+
+Decision Tree (record the path for each link)
+Q1. New capability by coupling? → Yes → Type 2; No → Q2  
+Q2. Importing a rule/goal? → Yes → Type 3; No → Q3  
+Q3. Attaching a property? → Yes → Type 4; No → Q4  
+Q4. Same structure, different surface? → Yes → Type 1; No → Q5  
+Q5. Changing the problem representation? → Yes → Type 5; No → Q6  
+Q6. Fallback: pick the least‑wrong type and note why.
+
+Node Roles (use as needed)
+- Problem, Concept, Mechanism (E::…), Objective/Goal, Constraint/Brake, Metric/Scorekeeper, Interface/Controller, Memory/Store, Data Source
+
+---
+
+1) Normalized Problem (from C1)
+- One-line problem statement (derived from C1; rephrase allowed, no change in meaning).
+
+---
+
+2) Build Steps (i = 2..n)
+For each concept Ci, output exactly the following schema.
+
+### Step i: Concept Ci
+
+#### 2.1 Transformation Gate
+- Raw: "Ci: …"
+- Operationalization: type = {mechanism|constraint|objective|interface|property|data|memory}, name, 1‑line justification
+
+#### 2.2 Anchor Choice
+- Anchor: {Problem | E::… | Cj}
+- Rationale (≤1 line): why this anchor maximizes causal effect
+
+#### 2.3 Link (single primary link for this step)
+- Decision path: Q… → … → Type k
+- Link type: {1|2|3|4|5}
+- Roles: Ci (role=…) → Anchor (role=…)
+- Mechanism (3–5 sentences): how Ci acts on/with the anchor to produce a causal effect
+- Mappings:
+  - State(s): …
+  - Operator(s): …
+  - Signal(s) / Feedback: …
+  - Constraint(s): …
+  - Metric / Objective: …
+  - Invariant preserved: …
+- Micro‑test:
+  - Setup: …
+  - Measure: …
+  - Pass if: (single numeric threshold or event)
+
+
+#### 2.4 Node‑Introduction Gate
+- new_node: yes/no
+- If yes:
+  - E::handle: `E::[short-handle]`
+  - Definition (≤2 sentences): what new capability exists only in this coupling
+  - State / Operators / Signals: …
+  - Objective / Metric: …
+  - Rewire (bullets): list edges added/updated (e.g., `Ck → E::X`, `E::X → Problem`)
+
+#### 2.5 Adjacency Delta (ASCII, ≤5 lines)
+```
+NodeA —(Type k)→ NodeB
+…
+```
+
+---
+
+3) Link Selection Summary (≤150 words)
+- Name the 2–3 most valuable attachments (including any E:: nodes) and why they are keystones for mechanism clarity and extensibility.
+- Optional order note (≤1 sentence): neutrally state why the observed sequence is reasonable in this construction (e.g., mechanism → constraint → amplification to reduce wasted exploration), without implying it is the only valid order.
+
+---
+
+4) Gate Report (hard checks)
+- Coverage (types): ≥3 distinct link types used overall = yes/no
+- Role diversity: ≥3 distinct roles used overall = yes/no
+- Decision paths: present for every step = yes/no
+- Micro‑tests: present for every step = yes/no
+- Transformations: each concept has exactly one recorded operationalization = yes/no
+- E:: nodes: only when Q1=Yes and with unique state/operator = yes/no
+- No swaps: build order C1..Cn preserved = yes/no
+- Adjacency deltas: present for every step = yes/no
+- No external evidence cited inside link steps = yes/no
+
+---
+
+5) Reflections (no edits to the graph)
+- Better order (≤3 bullets): where a different sequence might have yielded cleaner attachments (hypothetical; do not change the graph)
+- Missed anchors (≤3 bullets): plausible alternative anchors for specific steps
+- Future E:: candidates (≤2 bullets): mechanisms that could emerge with additional concepts
+- Order rationale (≤2 sentences, optional): briefly and neutrally explain the trade‑off of the chosen sequence versus a credible alternative (e.g., engine → constraint → amplification for constraint‑aware design vs. constraint‑first to front‑load feasibility), without recommending changes.
+
+---
+
+Output Rules (strict)
+- Markdown only. Keep headings and subheadings exactly as specified.
+- Keep each section concise and within the described limits.
+- Do not expose internal prompt mechanics or discuss being an AI.
+- Do not add "Evidence", "Prior art", citations, or URLs within link steps; keep mechanisms self‑contained here.
