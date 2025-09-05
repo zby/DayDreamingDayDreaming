@@ -339,30 +339,39 @@ class TestPipelineIntegration:
                 )
                 
                 # Materialize draft generation for specific partitions
+                succeeded_gen_partitions = []
+                failed_gen_partitions = []
                 for partition_key in test_gen_partitions:
                     print(f"  Materializing drafts for partition: {partition_key}")
-                    result = materialize(
-                        [
-                            # Core dependencies for drafts
-                            selected_combo_mappings,
-                            content_combinations,
-                            draft_generation_tasks,
-                            # Draft generation assets
-                            draft_prompt, draft_response
-                        ],
-                        resources=resources,
-                        instance=instance,
-                        partition_key=partition_key
-                    )
-                    if not result.success:
-                        print(f"  ⚠ Draft generation failed for partition {partition_key} - continuing")
+                    try:
+                        result = materialize(
+                            [
+                                # Core dependencies for drafts
+                                selected_combo_mappings,
+                                content_combinations,
+                                draft_generation_tasks,
+                                # Draft generation assets
+                                draft_prompt, draft_response
+                            ],
+                            resources=resources,
+                            instance=instance,
+                            partition_key=partition_key
+                        )
+                        if not result.success:
+                            print(f"  ⚠ Draft generation failed for partition {partition_key} - continuing")
+                            failed_gen_partitions.append(partition_key)
+                            continue
+                        succeeded_gen_partitions.append(partition_key)
+                    except Exception as e:
+                        print(f"  ⚠ Draft generation raised for partition {partition_key}: {e}")
+                        failed_gen_partitions.append(partition_key)
                         continue
                 
                 # Materialize essay generation for corresponding essay task partitions
                 essay_tasks_df = pd.read_csv(task_dir / "essay_generation_tasks.csv")
-                # Choose essay tasks that correspond to the generated draft partitions
+                # Choose essay tasks that correspond to the successfully generated draft partitions
                 test_essay_partitions = essay_tasks_df[
-                    essay_tasks_df["draft_task_id"].isin(test_gen_partitions)
+                    essay_tasks_df["draft_task_id"].isin(succeeded_gen_partitions)
                 ]["essay_task_id"].tolist()[:2]
                 
                 for partition_key in test_essay_partitions:
@@ -389,9 +398,19 @@ class TestPipelineIntegration:
                 # Final verification including generated files
                 self._verify_expected_files(
                     pipeline_data_root,
-                    test_gen_partitions,
+                    succeeded_gen_partitions,
                     [],
                 )
+
+                # Additionally verify that for any failed draft partitions, RAW outputs were saved
+                if failed_gen_partitions:
+                    raw_dir = pipeline_data_root / "3_generation" / "draft_responses_raw"
+                    assert raw_dir.exists(), "RAW draft directory should exist when drafts fail"
+                    existing = {p.name for p in raw_dir.glob("*.txt")}
+                    for pk in failed_gen_partitions:
+                        # Any version suffix is acceptable, ensure at least one raw file exists for this partition
+                        matches = [name for name in existing if name.startswith(f"{pk}_v") and name.endswith(".txt")]
+                        assert matches, f"RAW draft not saved for failed partition: {pk}"
                 print("🎉 Task setup workflow test passed successfully!")
 
     def test_combo_mappings_normalized_structure(self):

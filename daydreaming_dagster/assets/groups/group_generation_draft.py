@@ -102,10 +102,10 @@ def _draft_response_impl(context, draft_prompt, draft_generation_tasks) -> str:
     llm_client = context.resources.openrouter_client
     experiment_config = context.resources.experiment_config
     max_tokens = getattr(experiment_config, "draft_generation_max_tokens", None) or 20480
-    response = llm_client.generate(draft_prompt, model=model_name, max_tokens=max_tokens)
+    text, info = llm_client.generate_with_info(draft_prompt, model=model_name, max_tokens=max_tokens)
 
     # Normalize newlines and validate minimum lines
-    normalized = str(response).replace("\r\n", "\n")
+    normalized = str(text).replace("\r\n", "\n")
     response_lines = [line.strip() for line in normalized.split("\n") if line.strip()]
     min_lines = getattr(experiment_config, "min_draft_lines", 3)
     if len(response_lines) < int(min_lines):
@@ -149,6 +149,23 @@ def _draft_response_impl(context, draft_prompt, draft_generation_tasks) -> str:
             raw_path_str = str(raw_path)
         except Exception as e:
             context.log.info(f"Failed to save RAW draft for {task_id}: {e}")
+
+    # If the response was truncated (e.g., hit token limit), mark as failure after saving RAW
+    finish_reason = (info or {}).get("finish_reason") if isinstance(info, dict) else None
+    was_truncated = bool((info or {}).get("truncated") if isinstance(info, dict) else False)
+    if was_truncated or str(finish_reason).lower() == "length":
+        raise Failure(
+            description=f"Draft response truncated for task {task_id}",
+            metadata={
+                "function": MetadataValue.text("draft_response"),
+                "task_id": MetadataValue.text(task_id),
+                "model_name": MetadataValue.text(model_name),
+                "finish_reason": MetadataValue.text(str(finish_reason)),
+                "truncated": MetadataValue.bool(True),
+                "raw_chars": MetadataValue.int(len(normalized)),
+                **({"raw_path": MetadataValue.path(raw_path_str)} if raw_path_str else {}),
+            },
+        )
 
     # Parse RAW response according to draft template's parser (identity if unspecified)
     draft_template = task_row.get("draft_template")
