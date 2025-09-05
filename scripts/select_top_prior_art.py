@@ -98,6 +98,18 @@ def main() -> int:
         & df.get("score").notna()
         & df["document_id"].notna()
     ].copy()
+
+    # Exclude evaluations run by Gemini models (empirically noisy for prior-art)
+    try:
+        name_col = (filt.get("evaluation_model_name") or filt.get("model_name"))
+        id_col = (filt.get("evaluation_model") or filt.get("model"))
+        name_is_gemini = name_col.fillna("").str.contains("gemini", case=False) if name_col is not None else False
+        id_is_gemini = id_col.fillna("").str.contains("gemini", case=False) if id_col is not None else False
+        mask = ~(name_is_gemini | id_is_gemini)
+        filt = filt[mask]
+    except Exception:
+        # If columns missing/unexpected, proceed without the exclusion
+        pass
     if filt.empty:
         print("No successful prior-art scores found to select from.", file=sys.stderr)
         return 1
