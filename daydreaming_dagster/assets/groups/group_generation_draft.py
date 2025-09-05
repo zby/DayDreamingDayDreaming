@@ -160,6 +160,12 @@ def _draft_response_impl(context, draft_prompt, draft_generation_tasks) -> str:
     finish_reason = (info or {}).get("finish_reason") if isinstance(info, dict) else None
     was_truncated = bool((info or {}).get("truncated") if isinstance(info, dict) else False)
     if was_truncated or str(finish_reason).lower() == "length":
+        usage = (info or {}).get("usage") if isinstance(info, dict) else None
+        completion_tokens = None
+        requested_max = None
+        if isinstance(usage, dict):
+            completion_tokens = usage.get("completion_tokens")
+            requested_max = usage.get("max_tokens")
         raise Failure(
             description=f"Draft response truncated for task {task_id}",
             metadata={
@@ -169,6 +175,8 @@ def _draft_response_impl(context, draft_prompt, draft_generation_tasks) -> str:
                 "finish_reason": MetadataValue.text(str(finish_reason)),
                 "truncated": MetadataValue.bool(True),
                 "raw_chars": MetadataValue.int(len(normalized)),
+                **({"completion_tokens": MetadataValue.int(int(completion_tokens))} if isinstance(completion_tokens, int) else {}),
+                **({"requested_max_tokens": MetadataValue.int(int(requested_max))} if isinstance(requested_max, int) else {}),
                 **({"raw_path": MetadataValue.path(raw_path_str)} if raw_path_str else {}),
             },
         )
