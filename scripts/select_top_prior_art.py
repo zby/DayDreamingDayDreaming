@@ -3,13 +3,9 @@
 Select top-N documents by prior-art scores (cross-experiment) and write
 curated essay generation tasks to data/2_tasks/essay_generation_tasks.csv.
 
-Additionally (default), register dynamic partitions in Dagster for the
-selected drafts/essays so you can run them from the Dagster UI immediately
-without changing k_max or DAGSTER_HOME setup.
-
-Optionally, also write curated draft generation tasks to
-data/2_tasks/draft_generation_tasks.csv with --write-drafts (not required
-for evaluation; evaluation uses essays only).
+Optionally control writing the curated output via --write-drafts.
+When set to false, the script performs selection but does not write
+the curated tasks CSV.
 
 Defaults:
 - TOP_N = 10
@@ -24,8 +20,8 @@ Usage examples:
   # Override target template or N
   uv run python scripts/select_top_prior_art.py --top-n 25
 
-  # Disable partition registration (only write curated CSVs)
-  uv run python scripts/select_top_prior_art.py --no-register-partitions
+  # Do not write the curated tasks CSV (dry run)
+  uv run python scripts/select_top_prior_art.py --no-write-drafts
 """
 
 from __future__ import annotations
@@ -48,26 +44,20 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--parsed-scores", type=Path, default=Path("data/7_cross_experiment/parsed_scores.csv"), help="Path to cross-experiment parsed_scores.csv")
     p.add_argument("--top-n", type=int, default=10, help="Number of top documents to select")
     p.add_argument("--prior-art-templates", type=str, nargs="*", default=DEFAULT_PRIOR_ART_TEMPLATES, help="Prior-art templates to consider (use whichever are present)")
-    p.add_argument(
+    drafts_group = p.add_mutually_exclusive_group()
+    drafts_group.add_argument(
         "--write-drafts",
+        dest="write_drafts",
         action="store_true",
-        default=True,
-        help="Also write curated draft_generation_tasks.csv (default: on)",
+        help="Write curated essay_generation_tasks.csv (default: on)",
     )
-    reg = p.add_mutually_exclusive_group()
-    reg.add_argument(
-        "--register-partitions",
-        dest="register_partitions",
-        action="store_true",
-        help="Register dynamic partitions for selected drafts/essays in the active DAGSTER_HOME",
-    )
-    reg.add_argument(
-        "--no-register-partitions",
-        dest="register_partitions",
+    drafts_group.add_argument(
+        "--no-write-drafts",
+        dest="write_drafts",
         action="store_false",
-        help="Do not register dynamic partitions (CSV only)",
+        help="Do not write curated essay_generation_tasks.csv (dry run)",
     )
-    p.set_defaults(register_partitions=True)
+    p.set_defaults(write_drafts=True)
     return p.parse_args()
 
 
@@ -160,9 +150,7 @@ def main() -> int:
         print(f"Warning: failed to read template CSVs ({e}); falling back to naive parsing", file=sys.stderr)
 
     essay_rows = []
-    draft_rows = []
     missing_essays = []
-    missing_links = []
 
     for doc in top_docs:
         parts = doc.split("_")
@@ -215,88 +203,22 @@ def main() -> int:
                 "generation_model_name": model_map.get(generation_model, generation_model),
             })
         else:
-            # Draft doc id: locate draft template and model (legacy: link template)
-            l_idx = None
-            if draft_tpls:
-                for i in range(len(parts)-1, -1, -1):
-                    if parts[i] in draft_tpls:
-                        l_idx = i
-                        draft_template = parts[i]
-                        break
-            if l_idx is None:
-                # Fallback naive for drafts: expect combo + draft_template + model
-                if len(parts) >= 3:
-                    draft_template = parts[-2]
-                    generation_model = parts[-1]
-                    combo_id = "_".join(parts[:-2])
-                else:
-                    print(f"Skipping malformed draft id: {doc}", file=sys.stderr)
-                    continue
-            else:
-                generation_model = "_".join(parts[l_idx+1:]) if l_idx+1 < len(parts) else None
-                combo_id = "_".join(parts[:l_idx]) if l_idx > 0 else None
-            if not (combo_id and draft_template and generation_model):
-                print(f"Skipping malformed draft id (parsed): {doc}", file=sys.stderr)
-                continue
-            if args.write_drafts:
-                draft_task_id = doc  # For drafts, document_id equals draft_task_id
-                fp, _ = find_document_path(draft_task_id, data_root)
-                if not fp:
-                    missing_links.append(str(drafts_dir / f"{draft_task_id}.txt"))
-                draft_rows.append({
-                    "draft_task_id": draft_task_id,
-                    "combo_id": combo_id,
-                    "draft_template": draft_template,
-                    "generation_model": generation_model,
-                    "generation_model_name": model_map.get(generation_model, generation_model),
-                })
+            # Ignore draft documents for curated essay selection
+            continue
 
-    # Write outputs
-    essay_out_csv.parent.mkdir(parents=True, exist_ok=True)
-    if essay_rows:
-        pd.DataFrame(essay_rows, columns=[
-            "essay_task_id","draft_task_id","combo_id","draft_template",
-            "essay_template","generation_model","generation_model_name"
-        ]).drop_duplicates(subset=["essay_task_id"]).to_csv(essay_out_csv, index=False)
-        print(f"Wrote {len(essay_rows)} curated essay tasks to {essay_out_csv}")
-    if args.write_drafts and draft_rows:
-        pd.DataFrame(draft_rows, columns=[
-            "draft_task_id","combo_id","draft_template","generation_model","generation_model_name"
-        ]).drop_duplicates(subset=["draft_task_id"]).to_csv(link_out_csv, index=False)
-        print(f"Wrote {len(draft_rows)} curated draft tasks to {link_out_csv}")
+    # Write output (essay tasks only)
+    if args.write_drafts:
+        essay_out_csv.parent.mkdir(parents=True, exist_ok=True)
+        if essay_rows:
+            pd.DataFrame(essay_rows, columns=[
+                "essay_task_id","draft_task_id","combo_id","draft_template",
+                "essay_template","generation_model","generation_model_name"
+            ]).drop_duplicates(subset=["essay_task_id"]).to_csv(essay_out_csv, index=False)
+            print(f"Wrote {len(essay_rows)} curated essay tasks to {essay_out_csv}")
+    else:
+        print(f"Dry run: selected {len(essay_rows)} essay tasks; no file written")
 
-    # Optional: register dynamic partitions so selected items are runnable in Dagster UI
-    if args.register_partitions:
-        try:
-            from dagster import DagsterInstance
-            import os as _os
-
-            def _unique_str(values):
-                seen, out = set(), []
-                for v in values or []:
-                    if isinstance(v, str) and v and v not in seen:
-                        seen.add(v); out.append(v)
-                return out
-
-            draft_ids = _unique_str([row.get("draft_task_id") for row in draft_rows]) if draft_rows else []
-            essay_ids = _unique_str([row.get("essay_task_id") for row in essay_rows]) if essay_rows else []
-
-            instance = DagsterInstance.get()
-            if draft_ids:
-                existing = set(instance.get_dynamic_partitions("draft_tasks"))
-                new = [k for k in draft_ids if k not in existing]
-                if new:
-                    instance.add_dynamic_partitions("draft_tasks", new)
-                print(f"Registered draft partitions: +{len(new)} (total ~{len(existing)+len(new)})")
-            if essay_ids:
-                existing = set(instance.get_dynamic_partitions("essay_tasks"))
-                new = [k for k in essay_ids if k not in existing]
-                if new:
-                    instance.add_dynamic_partitions("essay_tasks", new)
-                print(f"Registered essay partitions: +{len(new)} (total ~{len(existing)+len(new)})")
-            print(f"DAGSTER_HOME={_os.environ.get('DAGSTER_HOME','(unset)')}")
-        except Exception as e:
-            print(f"Warning: could not register Dagster partitions automatically: {e}", file=sys.stderr)
+    # Note: Partition registration removed; this script only writes curated CSVs now.
 
     if missing_essays:
         print("Warning: missing essay files (evaluation will fail for these if run):", file=sys.stderr)
@@ -304,12 +226,7 @@ def main() -> int:
             print(" -", m, file=sys.stderr)
         if len(missing_essays) > 10:
             print(f" ... {len(missing_essays)-10} more", file=sys.stderr)
-    if args.write_drafts and missing_links:
-        print("Warning: missing drafts files (draft backfills will fail):", file=sys.stderr)
-        for m in missing_links[:10]:
-            print(" -", m, file=sys.stderr)
-        if len(missing_links) > 10:
-            print(f" ... {len(missing_links)-10} more", file=sys.stderr)
+    # Note: Draft backfill checks removed; selection focuses on essays only.
     return 0
 
 
