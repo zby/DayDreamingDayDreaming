@@ -50,6 +50,7 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--no-write-drafts", dest="write_drafts", action="store_false", help="Do not write draft_generation_tasks rows")
     p.add_argument("--register", dest="register", action="store_true", default=True, help="Register dynamic partitions in Dagster (default: on)")
     p.add_argument("--no-register", dest="register", action="store_false", help="Do not register dynamic partitions")
+    # Default to resetting partitions to match current usage pattern
     p.add_argument("--reset-partitions", dest="reset_partitions", action="store_true", default=True, help="Reset (clear) existing dynamic partitions before adding new ones (default: on)")
     p.add_argument("--no-reset-partitions", dest="reset_partitions", action="store_false", help="Do not clear existing dynamic partitions (add-only)")
     p.add_argument("--clean-2-tasks", dest="clean_2_tasks", action="store_true", default=True, help="Clean data/2_tasks before writing curated CSVs (default: on)")
