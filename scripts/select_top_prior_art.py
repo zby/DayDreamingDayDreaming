@@ -144,20 +144,14 @@ def main() -> int:
         except Exception as e:
             print(f"Warning: failed to read model mapping ({e}); will use model ids as names", file=sys.stderr)
 
-    # Load known templates to parse IDs robustly and read draft parser mapping
+    # Load known templates to parse IDs robustly
     draft_tpls: set[str] = set()
     essay_tpls: set[str] = set()
-    draft_parser_map: dict[str, str] = {}
     try:
         if draft_tpl_csv.exists():
             ldf = pd.read_csv(draft_tpl_csv)
             if "template_id" in ldf.columns:
                 draft_tpls = set(ldf["template_id"].astype(str))
-            if {"template_id", "parser"}.issubset(ldf.columns):
-                draft_parser_map = {
-                    str(tid): (str(par) if isinstance(par, str) else "")
-                    for tid, par in zip(ldf["template_id"], ldf["parser"])
-                }
         if essay_tpl_csv.exists():
             edf = pd.read_csv(essay_tpl_csv)
             if "template_id" in edf.columns:
@@ -207,29 +201,16 @@ def main() -> int:
                 print(f"Skipping malformed essay id: {doc}", file=sys.stderr)
                 continue
 
-            # If draft template declares a parser like 'essay_block', correct essay template to parser-mode template
-            corrected_essay_template = essay_template
-            parser_name = draft_parser_map.get(draft_template, "").strip()
-            if parser_name == "essay_block":
-                corrected_essay_template = "parsed-from-links-v1"
-                if essay_tpls and corrected_essay_template not in essay_tpls:
-                    print(
-                        f"Warning: '{corrected_essay_template}' not found in essay_templates.csv; leaving as '{essay_template}'",
-                        file=sys.stderr,
-                    )
-                    corrected_essay_template = essay_template
-
             draft_task_id = f"{combo_id}_{draft_template}_{generation_model}"
-            corrected_essay_task_id = f"{draft_task_id}_{corrected_essay_template}"
-            fp, _ = find_document_path(corrected_essay_task_id, data_root)
+            fp, _ = find_document_path(doc, data_root)
             if not fp:
-                missing_essays.append(str(essay_dir / f"{corrected_essay_task_id}.txt"))
+                missing_essays.append(str(essay_dir / f"{doc}.txt"))
             essay_rows.append({
-                "essay_task_id": corrected_essay_task_id,
+                "essay_task_id": doc,
                 "draft_task_id": draft_task_id,
                 "combo_id": combo_id,
                 "draft_template": draft_template,
-                "essay_template": corrected_essay_template,
+                "essay_template": essay_template,
                 "generation_model": generation_model,
                 "generation_model_name": model_map.get(generation_model, generation_model),
             })
