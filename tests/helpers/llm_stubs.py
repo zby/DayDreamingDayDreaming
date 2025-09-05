@@ -32,6 +32,12 @@ class CannedLLMResource(ConfigurableResource):
         else:
             return self._get_essay_response(model, prompt)
 
+    # New helper to mimic real client metadata for truncation handling
+    def generate_with_info(self, prompt: str, model: str, temperature: float = 0.7, max_tokens: int = None):
+        text = self.generate(prompt, model, temperature, max_tokens)
+        # Simulate never-truncated in tests; real client sets finish_reason
+        return text, {"finish_reason": "stop", "truncated": False}
+
     def get_client(self):
         return self
 

@@ -63,10 +63,21 @@ class LLMClientResource(ConfigurableResource):
         effective_max_tokens = max_tokens or self.default_max_tokens
         
         # Call the decorated method that handles rate limiting and retries
-        return self._make_api_call(prompt, model, temperature, effective_max_tokens)
+        info = self._make_api_call_info(prompt, model, temperature, effective_max_tokens)
+        return info.get("text", "")
 
-    def _make_api_call(self, prompt: str, model: str, temperature: float, max_tokens: int) -> str:
-        """Make the actual API call with rate limiting and retry logic using tenacity and ratelimit."""
+    def generate_with_info(self, prompt: str, model: str, temperature: float = 0.7, max_tokens: Optional[int] = None) -> tuple[str, dict]:
+        """Generate content and return (text, info dict).
+
+        Info includes keys like 'finish_reason' and 'truncated' (True if finish_reason == 'length').
+        """
+        self._ensure_initialized()
+        effective_max_tokens = max_tokens or self.default_max_tokens
+        info = self._make_api_call_info(prompt, model, temperature, effective_max_tokens)
+        return info.get("text", ""), info
+
+    def _make_api_call_info(self, prompt: str, model: str, temperature: float, max_tokens: int) -> dict:
+        """Make the actual API call with rate limiting and retry logic and return info dict."""
         
         # Create dynamic decorators based on instance configuration
         def create_decorated_call():
@@ -82,7 +93,7 @@ class LLMClientResource(ConfigurableResource):
                 )
             )
             def decorated_api_call():
-                return self._raw_api_call(prompt, model, temperature, max_tokens)
+                return self._raw_api_call_info(prompt, model, temperature, max_tokens)
             
             return decorated_api_call
         
@@ -90,8 +101,8 @@ class LLMClientResource(ConfigurableResource):
         decorated_call = create_decorated_call()
         return decorated_call()
 
-    def _raw_api_call(self, prompt: str, model: str, temperature: float, max_tokens: int) -> str:
-        """Raw API call with mandatory delay for ultra-conservative rate limiting."""
+    def _raw_api_call_info(self, prompt: str, model: str, temperature: float, max_tokens: int) -> dict:
+        """Raw API call with mandatory delay; return dict with text and finish info."""
         
         # Enforce mandatory delay between calls (ultra-conservative for free tier)
         if hasattr(self, '_last_call_time'):
@@ -113,12 +124,14 @@ class LLMClientResource(ConfigurableResource):
             # Record the time of this successful call
             self._last_call_time = time.time()
 
-            response_text = response.choices[0].message.content
+            choice = response.choices[0]
+            response_text = choice.message.content
             if response_text is None:
                 response_text = ""
-            
+            finish_reason = getattr(choice, "finish_reason", None)
+            truncated = str(finish_reason).lower() == "length"
             logger.info(f"API call successful, response length: {len(response_text)} chars")
-            return response_text.strip()
+            return {"text": response_text.strip(), "finish_reason": finish_reason, "truncated": truncated}
 
         except Exception as e:
             # Record the time even for failed calls to maintain delay
