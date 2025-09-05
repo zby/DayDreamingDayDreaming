@@ -207,15 +207,22 @@ def _draft_response_impl(context, draft_prompt, draft_generation_tasks) -> str:
         try:
             parsed_text = parser_fn(normalized)
         except Exception as e:
+            desc = "Parser raised an exception while processing RAW draft"
+            if raw_path_str:
+                desc += f" (RAW: {raw_path_str})"
+            meta = {
+                "function": MetadataValue.text("draft_response"),
+                "draft_task_id": MetadataValue.text(task_id),
+                "draft_template": MetadataValue.text(str(draft_template)),
+                "parser": MetadataValue.text(str(parser_name)),
+                "error": MetadataValue.text(str(e)),
+            }
+            if raw_path_str:
+                meta["raw_path"] = MetadataValue.path(raw_path_str)
+                meta["raw_chars"] = MetadataValue.int(len(normalized))
             raise Failure(
-                description="Parser raised an exception while processing RAW draft",
-                metadata={
-                    "function": MetadataValue.text("draft_response"),
-                    "draft_task_id": MetadataValue.text(task_id),
-                    "draft_template": MetadataValue.text(str(draft_template)),
-                    "parser": MetadataValue.text(str(parser_name)),
-                    "error": MetadataValue.text(str(e)),
-                },
+                description=desc,
+                metadata=meta,
             ) from e
         if not isinstance(parsed_text, str) or not parsed_text.strip():
             raise Failure(
