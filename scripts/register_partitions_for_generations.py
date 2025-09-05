@@ -193,38 +193,22 @@ def main() -> int:
             "generation_model": str(r["generation_model"]),
             "generation_model_name": model_map.get(str(r["generation_model"]), str(r["generation_model"]))
         })
-        if args.write_drafts:
-            draft_rows.append({
-                "draft_task_id": str(r["draft_task_id"]),
-                "combo_id": str(r["combo_id"]),
-                "draft_template": str(r["draft_template"]),
-                "generation_model": str(r["generation_model"]),
-                "generation_model_name": model_map.get(str(r["generation_model"]), str(r["generation_model"]))
-            })
+        draft_rows.append({
+            "draft_task_id": str(r["draft_task_id"]),
+            "combo_id": str(r["combo_id"]),
+            "draft_template": str(r["draft_template"]),
+            "generation_model": str(r["generation_model"]),
+            "generation_model_name": model_map.get(str(r["generation_model"]), str(r["generation_model"]))
+        })
         combo_ids.add(str(r["combo_id"]))
 
     # Write/merge outputs
     essay_out_csv = data_root / "2_tasks" / "essay_generation_tasks.csv"
     link_out_csv = data_root / "2_tasks" / "draft_generation_tasks.csv"
 
-    # Optionally clean data/2_tasks (non-cube selection)
+    # Ensure output directory exists
     two_tasks = data_root / "2_tasks"
-    if args.clean_2_tasks and not args.dry_run:
-        if two_tasks.exists():
-            removed = 0
-            preserve = {"selected_generations.txt", "selected_generations.csv", "essay_generation_tasks.csv"}
-            for p in two_tasks.iterdir():
-                if p.is_file() and p.name not in preserve:
-                    try:
-                        p.unlink()
-                        removed += 1
-                    except Exception as e:
-                        print(f"Warning: failed to remove {p}: {e}", file=sys.stderr)
-            print(f"Cleaned data/2_tasks (removed {removed} files; preserved {', '.join(sorted(preserve))})")
-        else:
-            two_tasks.mkdir(parents=True, exist_ok=True)
-    elif args.clean_2_tasks and args.dry_run:
-        print("[dry-run] Would clean data/2_tasks (remove existing files)")
+    two_tasks.mkdir(parents=True, exist_ok=True)
 
     # Write selected combo mappings for chosen combinations
     _write_selected_combo_mappings(data_root, sorted(combo_ids), dry_run=args.dry_run)
@@ -255,10 +239,6 @@ def main() -> int:
 
     # Evaluation axes (with optional overrides)
     eval_tpls, eval_models = _load_active_evaluation_axes(data_root)
-    if args.eval_templates is not None:
-        eval_tpls = list(args.eval_templates)
-    if args.eval_models is not None:
-        eval_models = list(args.eval_models)
     # Build evaluation tasks from essays only (current design)
     evaluation_rows: List[dict] = []
     if essay_rows and eval_tpls and eval_models:
