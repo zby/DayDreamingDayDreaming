@@ -2,6 +2,8 @@
 
 import pandas as pd
 from pathlib import Path
+import os
+import re
 from typing import Dict, Any, List
 from dagster import MetadataValue
 
@@ -63,6 +65,33 @@ def parse_evaluation_files(evaluation_tasks: pd.DataFrame, base_path: Path, pars
         parse_function = lambda text, task_row: parse_evaluation_response(text, task_row['evaluation_template'])
     
     parsed_results = []
+    _V_RE = re.compile(r"^(?P<stem>.+)_v(?P<ver>\d+)\.txt$")
+
+    def _latest_versioned_path(dir_path: Path, stem: str) -> Path | None:
+        try:
+            names = os.listdir(dir_path)
+        except Exception:
+            return None
+        best_ver = -1
+        best_name = None
+        prefix = stem + "_v"
+        for name in names:
+            if not name.startswith(prefix) or not name.endswith(".txt"):
+                continue
+            m = _V_RE.match(name)
+            if not m or m.group("stem") != stem:
+                continue
+            try:
+                ver = int(m.group("ver"))
+            except Exception:
+                continue
+            if ver > best_ver:
+                best_ver = ver
+                best_name = name
+        if best_name is None:
+            return None
+        p = dir_path / best_name
+        return p if p.exists() else None
     total_tasks = len(evaluation_tasks)
     
     for i, (_, task_row) in enumerate(evaluation_tasks.iterrows()):
@@ -70,14 +99,16 @@ def parse_evaluation_files(evaluation_tasks: pd.DataFrame, base_path: Path, pars
             context.log.info(f"Processed {i}/{total_tasks} evaluation tasks")
             
         evaluation_task_id = task_row['evaluation_task_id']
-        response_file = base_path / f"{evaluation_task_id}.txt"
+        latest = _latest_versioned_path(base_path, evaluation_task_id)
+        response_file = latest or (base_path / f"{evaluation_task_id}.txt")
         
         try:
             if not response_file.exists():
                 parsed_results.append({
                     "evaluation_task_id": evaluation_task_id,
                     "score": None,
-                    "error": "File not found"
+                    "error": "File not found",
+                    "used_response_path": str(base_path / f"{evaluation_task_id}.txt"),
                 })
                 continue
                 
@@ -87,14 +118,16 @@ def parse_evaluation_files(evaluation_tasks: pd.DataFrame, base_path: Path, pars
             parsed_results.append({
                 "evaluation_task_id": evaluation_task_id,
                 "score": result.get("score"),
-                "error": result.get("error")
+                "error": result.get("error"),
+                "used_response_path": str(response_file),
             })
             
         except Exception as e:
             parsed_results.append({
                 "evaluation_task_id": evaluation_task_id,
                 "score": None,
-                "error": f"Parse error: {str(e)}"
+                "error": f"Parse error: {str(e)}",
+                "used_response_path": str(response_file),
             })
     
     return pd.DataFrame(parsed_results)

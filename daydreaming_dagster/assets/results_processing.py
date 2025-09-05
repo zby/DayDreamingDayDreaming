@@ -51,10 +51,13 @@ def parsed_scores(context, evaluation_tasks: pd.DataFrame) -> pd.DataFrame:
         how="left",
     )
 
-    # Construct evaluation response path directly from task id
-    enriched_df["evaluation_response_path"] = enriched_df["evaluation_task_id"].apply(
-        lambda tid: str(Path("data/4_evaluation/evaluation_responses") / f"{tid}.txt")
-    )
+    # Evaluation response path: prefer actual used path if provided by parser; else construct
+    if "used_response_path" in enriched_df.columns:
+        enriched_df["evaluation_response_path"] = enriched_df["used_response_path"].astype(str)
+    else:
+        enriched_df["evaluation_response_path"] = enriched_df["evaluation_task_id"].apply(
+            lambda tid: str(Path("data/4_evaluation/evaluation_responses") / f"{tid}.txt")
+        )
 
     # Pass through document file path for generation reference
     enriched_df["generation_response_path"] = enriched_df["file_path"]
