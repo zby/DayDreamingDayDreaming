@@ -14,6 +14,12 @@ from ..utils.raw_readers import read_draft_templates
 from ..utils.draft_parsers import get_draft_parser
 from ..utils.dataframe_helpers import get_task_row
 from ..utils.raw_write import save_versioned_raw_text
+from ..utils.ids import (
+    compute_logical_key_id_draft,
+    new_doc_id,
+    doc_dir as build_doc_dir,
+)
+from ..utils.documents_index import DocumentRow
 
 # Reuse a single Jinja environment
 JINJA = Environment()
@@ -247,8 +253,122 @@ def _draft_response_impl(context, draft_prompt, draft_generation_tasks) -> str:
     partitions_def=draft_tasks_partitions,
     group_name="generation_draft",
     io_manager_key="draft_response_io_manager",
-    required_resource_keys={"openrouter_client", "experiment_config", "data_root"},
+    required_resource_keys={"openrouter_client", "experiment_config", "data_root", "documents_index"},
 )
 def draft_response(context, draft_prompt, draft_generation_tasks) -> str:
     """Generate Phase 1 LLM responses for drafts."""
-    return _draft_response_impl(context, draft_prompt, draft_generation_tasks)
+    parsed = _draft_response_impl(context, draft_prompt, draft_generation_tasks)
+
+    # Dual-write to documents index (Phase 1) under feature flag
+    try:
+        idx_res = context.resources.documents_index
+    except Exception:
+        idx_res = None
+
+    if idx_res and getattr(idx_res, "index_enabled", False):
+        import json, time, hashlib
+        from pathlib import Path as _Path
+
+        task_id = context.partition_key
+        # Pull task row again to avoid plumb-through changes
+        task_row = get_task_row(draft_generation_tasks, "draft_task_id", task_id, context, "draft_generation_tasks")
+        combo_id = task_row.get("combo_id")
+        draft_template = task_row.get("draft_template")
+        model_id = task_row.get("generation_model") or task_row.get("generation_model_id")
+
+        # Compute IDs
+        logical_key_id = compute_logical_key_id_draft(str(combo_id), str(draft_template), str(model_id))
+        run_id = getattr(context, "run_id", "run")
+        attempt = int(time.time_ns())
+        doc_id = new_doc_id(logical_key_id, run_id, attempt)
+
+        # Build doc_dir and write files atomically
+        idx = idx_res.get_index()
+        docs_root = _Path(idx.docs_root)
+        stage = "draft"
+        target_dir = build_doc_dir(docs_root, stage, logical_key_id, doc_id)
+        target_dir.mkdir(parents=True, exist_ok=True)
+
+        def _write_atomic(path: _Path, data: str):
+            tmp = path.with_suffix(path.suffix + ".tmp")
+            tmp.write_text(data, encoding="utf-8")
+            tmp.replace(path)
+
+        # We have only parsed text in this scope; raw text is best-effort from metadata of _impl
+        raw_text = None
+        try:
+            # The implementation above may have saved RAW to a versioned file; we do not re-read it here.
+            # For now, treat parsed as canonical; optionally duplicate parsed into raw until raw capture is added.
+            raw_text = parsed
+        except Exception:
+            raw_text = parsed
+
+        _write_atomic(target_dir / "raw.txt", raw_text)
+        _write_atomic(target_dir / "parsed.txt", parsed)
+
+        # Copy prompt if enabled
+        try:
+            if getattr(idx_res, "prompt_copy_enabled", True) and isinstance(draft_prompt, str):
+                _write_atomic(target_dir / "prompt.txt", draft_prompt)
+        except Exception:
+            pass
+
+        # Build metadata.json
+        meta_small = {
+            "function": "draft_response",
+            "legacy_write_ok": True if getattr(idx_res, "legacy_write_enabled", True) else False,
+        }
+        info = {}
+        try:
+            # Not available here; left empty for now
+            info = {}
+        except Exception:
+            info = {}
+        metadata = {
+            "task_id": task_id,
+            "combo_id": combo_id,
+            "draft_template": draft_template,
+            "model_id": model_id,
+            "usage": info.get("usage") if isinstance(info, dict) else None,
+        }
+        _write_atomic(target_dir / "metadata.json", json.dumps(metadata, ensure_ascii=False, indent=2))
+
+        # Insert DB row
+        content_hash = hashlib.sha256((raw_text or "").encode("utf-8")).hexdigest()
+        rel_dir = target_dir.relative_to(docs_root)
+        row = DocumentRow(
+            doc_id=doc_id,
+            logical_key_id=logical_key_id,
+            stage=stage,
+            task_id=task_id,
+            parent_doc_id=None,
+            template_id=str(draft_template),
+            model_id=str(model_id),
+            run_id=str(run_id),
+            prompt_path=str((target_dir / "prompt.txt")) if getattr(idx_res, "prompt_copy_enabled", True) else None,
+            parser=None,
+            status="ok",
+            usage_prompt_tokens=None,
+            usage_completion_tokens=None,
+            usage_max_tokens=None,
+            doc_dir=str(rel_dir),
+            raw_chars=len(raw_text or ""),
+            parsed_chars=len(parsed or ""),
+            content_hash=content_hash,
+            meta_small=meta_small,
+            lineage_prev_doc_id=None,
+        )
+        try:
+            idx.insert_document(row)
+            context.add_output_metadata(
+                {
+                    "doc_id": MetadataValue.text(doc_id),
+                    "logical_key_id": MetadataValue.text(logical_key_id),
+                    "doc_dir": MetadataValue.path(str(target_dir)),
+                }
+            )
+        except Exception as e:
+            # Do not fail the asset in Phase 1; just log. The legacy path remains authoritative.
+            context.log.warning(f"DocumentsIndex insert failed for draft_response {task_id}: {e}")
+
+    return parsed
