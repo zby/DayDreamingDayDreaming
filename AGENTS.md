@@ -9,13 +9,14 @@
 
 ## Build, Test, and Development Commands
 - Install: `uv sync` (use `uv sync --dev` for Black/Ruff).
+- Interpreter: prefer `.venv/bin/python` and `.venv/bin/pytest` to ensure the project virtual environment is used (avoid system `python`/`pytest`). If you use `uv`, `uv run <cmd>` will execute inside the same `.venv`.
 - Dagster UI: `uv run dagster dev -f daydreaming_dagster/definitions.py` (set `DAGSTER_HOME=$(pwd)/dagster_home`).
 - Auto-update upstream assets: start Dagster with the daemon (`export DAGSTER_HOME=$(pwd)/dagster_home && uv run dagster dev -f daydreaming_dagster/definitions.py`). Raw loaders and task definitions auto-rematerialize when `data/1_raw/**/*` changes.
 - Optional seed (once): `uv run dagster asset materialize --select "group:task_definitions" -f daydreaming_dagster/definitions.py`.
 - Two‑phase generation (split tasks):
   - Drafts: `uv run dagster asset materialize --select "group:generation_draft" --partition <draft_task_id> -f daydreaming_dagster/definitions.py` (legacy: `group:generation_links` with `link_task_id`).
   - Essays: `uv run dagster asset materialize --select "group:generation_essays" --partition <essay_task_id> -f daydreaming_dagster/definitions.py`.
-- Tests: `uv run pytest` (unit: `uv run pytest daydreaming_dagster/`, integration: `uv run pytest tests/`).
+- Tests: `.venv/bin/pytest` (unit: `.venv/bin/pytest daydreaming_dagster/`, integration: `.venv/bin/pytest tests/`).
 - Format/lint: `uv run black .` and `uv run ruff check`.
 
 ## Coding Style & Naming Conventions
@@ -44,7 +45,7 @@
 - Always test immediately when it is possible to test. Do not batch multiple code changes before running tests.
 - Keep iterations small: make one focused change, run the narrowest relevant test(s), then proceed.
 - Prefer the fastest checks first:
-  - Unit scope: `uv run pytest daydreaming_dagster/utils/test_foo.py::TestFoo::test_bar` or `-k "bar and TestFoo"`.
+  - Unit scope: `.venv/bin/pytest daydreaming_dagster/utils/test_foo.py::TestFoo::test_bar` or `-k "bar and TestFoo"`.
   - Asset scope: materialize only the changed asset/partition with Dagster CLI, not the whole graph.
   - Lint/format: `ruff`/`black --check` for style-only edits.
 - Define validation steps in your plan: after each implementation step, add a concrete “Run tests for X” step and execute it before moving on.
