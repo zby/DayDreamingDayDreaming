@@ -54,18 +54,25 @@ Atomic Writes
 - Insert the DB row after files are durable. On partial failures, leave the directory with `meta_small.backfill=true` or a `status=gen_error` marker for traceability.
 
 Dagster Integration (Write Path)
-- After generation, create `<stage>/<doc_id>/` under `data/docs/`.
-- Save artifacts: `raw.txt` (and `parsed.txt` if applicable), `metadata.json` (big fields).
-- Prompts remain in existing prompt dirs (e.g., `3_generation/draft_prompts/`, `3_generation/essay_prompts/`, `4_evaluation/evaluation_prompts/`). Store `prompt_path` in the table for easy retrieval and manual reruns.
-- Append a row to `documents` with `doc_id`, `logical_key_id`, core keys, sizes/hashes (if cheap), `doc_dir`, `prompt_path`, and status.
+- Partitions: Each generation/evaluation asset already uses dynamic partitions keyed by task IDs (`context.partition_key`). We will:
+  - Drafts: compute `logical_key_id = H("draft", draft_task_id, draft_template, model_id)` where `draft_task_id = context.partition_key` resolved from `draft_generation_tasks`.
+  - Essays: derive the parent draft’s `logical_key_id` from `draft_task_id` in `essay_generation_tasks`; fetch the latest `ok` draft row to get `parent_doc_id`; then compute essay `logical_key_id = H("essay", parent_doc_id, essay_template, model_id)`.
+  - Evaluations: from `evaluation_tasks` row, determine target document (essay or draft). If it’s an essay, resolve latest essay `doc_id` first; compute `logical_key_id = H("evaluation", target_doc_id, evaluation_template, model_id)`.
+- Directory per attempt: After generation, create `<stage>/<doc_id>/` under `data/docs/`.
+- Files saved: `raw.txt` (always if enabled), `parsed.txt` (if applicable), `metadata.json` (usage, provider details), optional `extras/`.
+- Prompts: Keep writing prompts via existing prompt IO managers (versioned), and store `prompt_path` in `documents` for traceability.
+- DB write: Insert into `documents` with `doc_id`, `logical_key_id`, `stage`, `task_id` (= partition key), `parent_doc_id` (essay/evaluation), `template_id`, `model_id`, `run_id` (`context.run_id`), `prompt_path`, `parser`, `status`, token usage, `doc_dir`, sizes, `meta_small`.
+- Output metadata: Each asset attaches Dagster metadata with `doc_id`, `logical_key_id`, `doc_dir`, `prompt_path`, `status`, and token counts for quick inspection in the UI.
 
 Write Path (direct adoption)
 - Writers will create per-doc directories and insert into SQLite without a feature toggle. Any failure in directory/DB write should fail the asset.
 - Legacy outputs (`draft_responses`, `..._raw`) remain written as today for operational continuity, but readers will move to the index.
 
 Dagster Integration (Read Path)
-- For downstream steps, resolve via the `documents` table: compute `logical_key_id` from task keys and select the latest `ok` row; no filesystem fallback. Fail fast if not found.
-- To reproduce/debug, load `raw.txt` and `metadata.json` from `doc_dir` referenced by the row.
+- Reader contract: Consumers compute the appropriate `logical_key_id` and query the `documents` table for the latest `ok` row. No direct filesystem search; fail fast if absent.
+- Phase‑2 prompt building: `essay_prompt` uses `draft_task_id` to compute the draft `logical_key_id` and fetches the latest `ok` draft row; it then reads `raw.txt` (or `parsed.txt` if parser mode) from the resolved `doc_dir`.
+- Evaluation prompt: resolves the target document the same way (based on `evaluation_tasks` row), then reads the text via `doc_dir` rather than using `file_path`.
+- Debugging: Use the row’s `doc_dir` to open `raw.txt` and `metadata.json` directly for reproduction.
 
 Backfill/Migration Plan (with validation after each step)
 1) Implement `ids.py` helper: `compute_logical_key_id(...)`, `new_doc_id(logical_key_id, run_id, attempt_or_ts)`.
@@ -130,13 +137,14 @@ Backfill/Migration Plan (with validation after each step)
 
 4) Reader updates:
    - Update helpers (e.g., `_load_phase1_text`) to resolve strictly via the `documents` table (latest `ok` by `logical_key_id`). If missing, fail fast with a clear error.
-   - Add a simple `documents_index.py` util with: `open_db`, `get_latest_by_task(stage, task_id)`, `insert_document(...)`.
+   - Partition awareness: helpers accept `context` to read `context.partition_key` and task rows, ensuring deterministic `logical_key_id` per partition.
+   - Add a simple `documents_index.py` util with: `open_db`, `get_latest_by_task(stage, task_id)`, `get_latest_by_logical(logical_key_id)`, `insert_document(...)`.
    - Validation:
      - Unit test: mock DB with a single row; `get_latest_by_task` returns expected `doc_dir` and fails when absent.
      - Integration: adjust `tests/test_pipeline_integration.py` to assert readers use the index (e.g., using a temporary DB and file), and fail when index row missing.
 
 5) Writer updates:
-   - In `draft_response`, `essay_response`, `evaluation_response` assets: compute `logical_key_id`, create `doc_dir`, write raw/parsed/metadata, store `prompt_path`, and insert a row. Fail if any step fails.
+   - In `draft_response`, `essay_response`, `evaluation_response` assets: compute `logical_key_id` (partition‑aware), derive `parent_doc_id` where applicable, create `doc_dir`, write raw/parsed/metadata, store `prompt_path`, and insert a row. Fail if any step fails.
    - Keep the current `save_versioned_raw_text` path intact (no `_vN` in new per-doc directories).
    - Validation:
      - Asset-level tests: materialize one representative partition for each stage with a mock LLM client; assert doc_dir exists and DB row inserted with correct `stage`, `task_id`, and `prompt_path`.
@@ -161,6 +169,111 @@ Queries Enabled
 - Filter by `run_id` to slice an experiment’s outputs.
 - Aggregate token usage by `model_id`/`template_id`.
 - Trace lineage from essay to its draft via `parent_doc_id`.
+
+Dagster Details (Partitions, IO Managers, Asset Changes)
+- Partitions: existing dynamic partitions map 1:1 to `task_id`s. We preserve current `partitions_def` on assets and compute IDs using `context.partition_key` and the corresponding task row. Re‑materializing a partition creates a new `doc_id` in the same `logical_key_id` group; readers selecting “latest ok” will pick it up automatically.
+- Run identity: populate `run_id` from `context.run_id`; allow optional override via a resource/RunConfig key (e.g., `experiment_label`) that we record in `run_id` or an additional `experiment_id` column.
+- IO managers (compat): keep current VersionedTextIOManager bindings for prompts and responses. Assets continue to return `str` so existing IO managers persist legacy files for human inspection and for interim compatibility.
+- New resource: add a `DocumentsIndex` ConfigurableResource with `db_path` (e.g., `data/db/documents.sqlite`) and `docs_root` (e.g., `data/docs`). Expose methods: `compute_logical_key_id(...)`, `new_doc_id(...)`, `insert_document(...)`, `get_latest_by_task(...)`, `get_latest_by_logical(...)`.
+- Asset write changes:
+  - `draft_response`: compute `logical_key_id` from (`draft_task_id`, `draft_template`, `model_id`), allocate `doc_id`, write per‑doc dir, insert row, attach metadata.
+  - `essay_response`: resolve latest `draft` `doc_id` by computing the draft’s `logical_key_id` from `draft_task_id`; compute essay `logical_key_id` using the parent `doc_id`; allocate `doc_id`, write dir, insert row with `parent_doc_id`.
+  - `evaluation_response`: resolve target doc (essay or draft) using `evaluation_tasks` row; compute eval `logical_key_id` with target `doc_id`; allocate `doc_id`, write dir, insert row with `parent_doc_id` = target `doc_id`.
+- Asset read changes:
+  - `_load_phase1_text` and any file readers switch to DB resolution: compute `logical_key_id` from the relevant task row and fetch latest `ok`; read `raw.txt`/`parsed.txt` from `doc_dir`.
+  - During migration, keep a guarded filesystem fallback (warn + mark deprecated) behind a feature flag; default to DB‑only after migration step 4.
+- Indexing and performance: add `CREATE INDEX idx_documents_logical ON documents(logical_key_id, created_at);` and optionally `idx_documents_task ON documents(stage, task_id, created_at)` to accelerate partition‑scoped lookups.
+- Error handling: if the DB insert fails, mark the Dagster run as failed; if file writes partially succeed, leave `status=gen_error` with `meta_small.backfill=true` to aid cleanup.
+
+Minimal Wiring in definitions.py
+- Add `documents_index` resource configuration (db/docs paths) and inject into writer/reader assets via `required_resource_keys`.
+- Keep existing IO managers as‑is; no change to `partitions_def` wiring.
+- Attach small, consistent output metadata across assets: `doc_id`, `logical_key_id`, `parent_doc_id` (if any), `doc_dir`, `prompt_path`, `status`, token counts.
+
+Feature Flags & Migration Controls
+- `DD_DOCS_INDEX_ENABLED` (bool): when false, writers/readers use legacy filesystem only. Default true for writers after step 5; keep a temporary reader fallback until step 4 completes.
+- `DD_DOCS_LEGACY_WRITE_ENABLED` (bool): keep legacy VersionedTextIOManager writes for responses. Default true initially; switch to false after confidence, so DB + doc_dir are the single source of truth.
+- `DD_DOCS_PROMPT_COPY_ENABLED` (bool): copy the prompt text into `doc_dir/prompt.txt` in addition to IO‑manager prompt file. Default true to ensure reproducibility regardless of prompt version filename discovery.
+
+Schema (DDL) & Indexes
+```sql
+CREATE TABLE IF NOT EXISTS documents (
+  doc_id TEXT PRIMARY KEY,
+  logical_key_id TEXT NOT NULL,
+  stage TEXT NOT NULL,                 -- draft | essay | evaluation
+  task_id TEXT NOT NULL,               -- partition key used by the asset
+  parent_doc_id TEXT,                  -- essay->draft, eval->target
+  template_id TEXT,
+  model_id TEXT,
+  run_id TEXT,
+  prompt_path TEXT,
+  parser TEXT,
+  status TEXT NOT NULL,                -- ok | truncated | parse_error | gen_error | skipped
+  usage_prompt_tokens INTEGER,
+  usage_completion_tokens INTEGER,
+  usage_max_tokens INTEGER,
+  created_at TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+  doc_dir TEXT NOT NULL,
+  raw_chars INTEGER,
+  parsed_chars INTEGER,
+  meta_small TEXT,
+  lineage_prev_doc_id TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_documents_logical ON documents(logical_key_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_documents_stage ON documents(stage, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_documents_task ON documents(stage, task_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_documents_parent ON documents(parent_doc_id, created_at DESC);
+PRAGMA journal_mode=WAL;
+```
+
+Prompt Persistence & Path Capture
+- Unknown prompt version filename at asset time: IOManager determines the `_vN` suffix after return. To ensure reproducibility:
+  - Always write `prompt.txt` into `doc_dir` alongside `raw.txt`/`parsed.txt` (enabled via `DD_DOCS_PROMPT_COPY_ENABLED`).
+  - Best‑effort: after the asset returns, we cannot intercept the IOManager path; therefore, we record the prompt path we used to render (template path + IDs) in `meta_small`, and optionally discover the versioned path on next run when reading.
+
+Idempotency, Retries, and Ordering
+- `doc_id` uniqueness: enforce `PRIMARY KEY(doc_id)` with `doc_id = new_doc_id(logical_key_id, run_id, attempt_or_ts)`; collisions are practically impossible if timestamp or monotonic attempt is included.
+- Write order in asset: create `doc_dir` → write files (atomic replace) → insert DB row → return text to IOManager.
+  - If IOManager write fails, Dagster marks the run failed; DB row exists with `status=ok`. This is acceptable during migration; once `DD_DOCS_LEGACY_WRITE_ENABLED=false`, the IOManager write for responses is skipped to avoid this failure mode.
+- Re‑materialization: running the same partition creates a new row with the same `logical_key_id` and a fresh `doc_id`. “Latest ok” selection updates consumers automatically.
+
+Failure & Status Mapping
+- `gen_error`: exception from LLM client or write path; insert row only if `doc_dir` exists with partials; otherwise skip row.
+- `truncated`: `info.truncated=true` or `finish_reason=length` → set status and raise Failure to prevent downstream use.
+- `parse_error`: parser exceptions when producing `parsed.txt`; keep `raw.txt` and mark status.
+- `ok`: successful write and validation; record token usage if available.
+
+Performance & Concurrency
+- SQLite write pattern: single INSERT per doc, optional small UPDATE for sizes after file write. Keep each write in its own transaction.
+- WAL mode enabled for resilience; a single writer (per process) is fine for Dagster’s typical concurrency.
+- Index‑only reads for `get_latest_by_logical` and `get_latest_by_task` using `(logical_key_id, created_at)` and `(stage, task_id, created_at)`.
+
+Resource API Sketch
+- `DocumentsIndex` (ConfigurableResource):
+  - `db_path: str`, `docs_root: str`.
+  - `compute_logical_key_id(stage, identifiers: dict) -> str`.
+  - `new_doc_id(logical_key_id: str, run_id: str, attempt_or_ts: str|int) -> str`.
+  - `insert_document(row: DocumentRow) -> None`.
+  - `get_latest_by_task(stage: str, task_id: str, status: set={"ok"}) -> Row|None`.
+  - `get_latest_by_logical(logical_key_id: str, status: set={"ok"}) -> Row|None`.
+  - `resolve_doc_dir(row) -> Path` and helpers for reading `raw.txt`, `parsed.txt`, `prompt.txt`.
+
+Backfill & Migration Details
+- Backfill script scans legacy directories and creates rows:
+  - Drafts: for each `{draft_task_id}[_vN].txt`, compute `logical_key_id = H("draft", draft_task_id, draft_template, model_id)` using the tasks tables to recover template/model.
+  - Essays: link to draft by matching `essay_generation_tasks` (has `draft_task_id`); set `parent_doc_id` to the latest matching draft.
+  - Evaluations: can be optionally backfilled later; priority is generation artifacts.
+- Validation reports: counts by stage, number of linked parents, orphaned files, and rows with missing `doc_dir`.
+
+Testing & Validation Additions
+- Unit: `ids.py` determinism and `DocumentsIndex` insert/select behavior; prompt copy logic.
+- Asset‑level: one partition per stage exercising OK, truncated, parse_error paths; assert DB status and files present.
+- Integration: Dagster materialization of a tiny subset with `DD_DOCS_INDEX_ENABLED=true` and legacy writes on; then toggle off legacy writes and re‑run to confirm DB‑only path works.
+
+Rollout Plan
+- Phase A (writers on): enable DB writes + per‑doc dirs for writers while readers still support filesystem fallback; verify indexes populate.
+- Phase B (readers switch): flip readers to DB‑only; keep legacy writes until confidence is high.
+- Phase C (legacy off): disable legacy response writes; keep prompt IOManager (for UI visibility) but rely on `prompt.txt` inside `doc_dir` for reproducibility.
 
 Open Items
 - Standardize `parsed.txt` extension per stage (e.g., `.md` for essays) if beneficial.
