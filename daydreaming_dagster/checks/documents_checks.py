@@ -54,8 +54,7 @@ def draft_files_exist_check(context) -> AssetCheckResult:
                     used = f"db:{base.name}"
                     return AssetCheckResult(passed=True, metadata={"used": MetadataValue.text(used), "doc_dir": MetadataValue.path(str(base))})
     except Exception as e:
-        context.log.warning(f"draft_files_exist_check: DB probe failed: {e}
-")
+        context.log.warning(f"draft_files_exist_check: DB probe failed: {e}")
     return AssetCheckResult(passed=False, metadata={"partition_key": MetadataValue.text(pk)})
 
 
@@ -103,4 +102,3 @@ def evaluation_files_exist_check(context) -> AssetCheckResult:
     except Exception as e:
         context.log.warning(f"evaluation_files_exist_check: DB probe failed: {e}")
     return AssetCheckResult(passed=False, metadata={"partition_key": MetadataValue.text(pk)})
-
