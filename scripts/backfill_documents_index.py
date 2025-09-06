@@ -160,6 +160,65 @@ def backfill(data_root: Path, db_path: Path, docs_root: Path, run_id: str, dry_r
             ))
         inserted += 1
 
+    # Evaluations (optional)
+    evals_csv = tasks2 / "evaluation_tasks.csv"
+    if evals_csv.exists():
+        eval_df = pd.read_csv(evals_csv)
+        eval_dir = data_root / "4_evaluation" / "evaluation_responses"
+        for _, row in eval_df.iterrows():
+            eval_task_id = str(row.get("evaluation_task_id"))
+            if not eval_task_id:
+                continue
+            file_path = _latest_versioned_txt(eval_dir, eval_task_id)
+            if not file_path:
+                continue
+            text = file_path.read_text(encoding="utf-8")
+
+            document_id = row.get("document_id")
+            stage_raw = str(row.get("stage") or "")
+            target_stage = "essay" if stage_raw.startswith("essay") else "draft"
+            parent_doc_id = None
+            try:
+                parent = idx.get_latest_by_task(target_stage, str(document_id))
+                if parent:
+                    parent_doc_id = parent.get("doc_id")
+            except Exception:
+                parent_doc_id = None
+
+            eval_template = str(row.get("evaluation_template"))
+            model_id = str(row.get("evaluation_model") or row.get("evaluation_model_id"))
+            from daydreaming_dagster.utils.ids import compute_logical_key_id_evaluation
+            logical = compute_logical_key_id_evaluation(str(parent_doc_id or document_id), eval_template, model_id)
+            doc_id = new_doc_id(logical, run_id, eval_task_id)
+            out_dir = build_doc_dir(docs_root, "evaluation", logical, doc_id)
+            if not dry_run:
+                out_dir.mkdir(parents=True, exist_ok=True)
+                (out_dir / "raw.txt").write_text(text, encoding="utf-8")
+                (out_dir / "parsed.txt").write_text(text, encoding="utf-8")
+                (out_dir / "metadata.json").write_text(json.dumps({
+                    "task_id": eval_task_id,
+                    "evaluation_template": eval_template,
+                    "model_id": model_id,
+                    "parent_doc_id": parent_doc_id,
+                }, ensure_ascii=False, indent=2), encoding="utf-8")
+                rel = out_dir.relative_to(docs_root)
+                idx.insert_document(DocumentRow(
+                    doc_id=doc_id,
+                    logical_key_id=logical,
+                    stage="evaluation",
+                    task_id=eval_task_id,
+                    parent_doc_id=parent_doc_id,
+                    doc_dir=str(rel),
+                    status="ok",
+                    template_id=eval_template,
+                    model_id=model_id,
+                    run_id=run_id,
+                    raw_chars=len(text),
+                    parsed_chars=len(text),
+                    meta_small={"function": "backfill"},
+                ))
+            inserted += 1
+
     print(f"Inserted/processed rows: {inserted}")
     return 0
 
@@ -177,4 +236,3 @@ def main():
 
 if __name__ == "__main__":
     raise SystemExit(main())
-
