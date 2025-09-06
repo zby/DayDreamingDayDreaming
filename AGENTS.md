@@ -30,6 +30,16 @@
 - Structure: fast unit tests colocated with code; integration tests in `tests/` may read from `data/` but must not hit real APIs (mock LLM calls).
 - Conventions: functions `test_*`, files `test_*.py`; use fixtures in `tests/fixtures/` where possible.
 
+### Unit vs. Integration Tests
+- Unit tests:
+  - Colocated with modules under `daydreaming_dagster/`.
+  - Must not access files under `data/` or make network calls; mock external deps (LLMs, file I/O, Dagster resources).
+  - Aim for very fast execution (<1s per test) and narrow scope.
+- Integration tests:
+  - Live under `tests/` only; exercise multiple components together.
+  - Can read from `data/` when validating data‑dependent behavior.
+  - Must not make real API calls (use stubs/mocks); fail if required local data is missing.
+
 ### Test Early, Test Often (Plan–Execute–Validate)
 - Always test immediately when it is possible to test. Do not batch multiple code changes before running tests.
 - Keep iterations small: make one focused change, run the narrowest relevant test(s), then proceed.
@@ -102,9 +112,13 @@
   2) Dry‑run to preview: `uv run sg -r rule.yml --rewrite --diff -g 'daydreaming_dagster/**/*.py'`
   3) Apply once reviewed: `uv run sg -r rule.yml --rewrite -g 'daydreaming_dagster/**/*.py'`
 - Tips:
-  - Prefer snippet `-e` for quick greps; switch to `-p`/rules for precise structure or refactors.
-  - Always use `-g` to scope searches to the repo path you intend.
-  - For broad text replacements, keep sg as a guardrail (structural match) and review diffs before committing.
+- Prefer snippet `-e` for quick greps; switch to `-p`/rules for precise structure or refactors.
+- Always use `-g` to scope searches to the repo path you intend.
+- For broad text replacements, keep sg as a guardrail (structural match) and review diffs before committing.
+
+## Design Principles
+- Dependency injection for testability: pass external services (LLM clients, IO managers, configs) into functions/classes rather than creating them internally, so units are easy to mock and verify in isolation.
+- Fail early rather than over‑defensive code: validate inputs and invariants up front and raise clear errors with actionable metadata, instead of silently tolerating bad state.
 
 ## Project Goals (Summary)
 - Purpose: Demonstrate that DayDreaming‑style workflows enable pre‑June‑2025 offline LLMs to generate genuinely novel ideas; use DayDreaming LLMs as a falsifiable benchmark while maintaining generality beyond this target.
