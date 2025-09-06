@@ -17,7 +17,9 @@ from ..utils.raw_readers import (
     read_essay_templates,
     read_evaluation_templates,
     read_llm_models,
+    read_concepts,
 )
+from ..utils.selected_combos import read_selected_combo_mappings, validate_selected_is_subset
 from .partitions import (
     draft_tasks_partitions,
     essay_tasks_partitions,
@@ -37,27 +39,54 @@ from typing import List
     required_resource_keys={"experiment_config", "data_root"},
 )
 def content_combinations(context) -> List[ContentCombination]:
-    """Build a minimal set of combinations from active concepts.
+    """Build combinations for generation.
 
-    Reads active concepts under `data/1_raw/concepts*` and produces a single
-    ContentCombination using up to `k_max` concepts at `description_level`.
+    Preferred source: data/2_tasks/selected_combo_mappings.csv (explicit selection
+    for historical or curated runs). Falls back to active concepts if selection
+    is missing.
     """
-    from ..utils.raw_readers import read_concepts
+    data_root = Path(getattr(context.resources, "data_root", "data"))
+    # Try explicit selection first
+    try:
+        sel = read_selected_combo_mappings(data_root)
+        # Validate against superset mapping if present
+        validate_selected_is_subset(sel, data_root / "combo_mappings.csv")
+        if not sel.empty:
+            # Build combinations per combo_id using the specified description_level
+            all_concepts = {c.concept_id: c for c in read_concepts(data_root, filter_active=False)}
+            combos: List[ContentCombination] = []
+            for combo_id, group in sel.groupby("combo_id"):
+                # Expect a single level across rows for the combo; take the first
+                level = str(group.iloc[0]["description_level"]) if "description_level" in group.columns else "paragraph"
+                concept_ids = [str(cid) for cid in group["concept_id"].astype(str).tolist()]
+                concepts = [all_concepts[cid] for cid in concept_ids if cid in all_concepts]
+                if len(concepts) != len(concept_ids):
+                    # Skip incomplete combos; rely on selection hygiene
+                    continue
+                combos.append(ContentCombination.from_concepts(concepts, level=level, combo_id=str(combo_id)))
+            context.add_output_metadata({"count": MetadataValue.int(len(combos)), "source": MetadataValue.text("selected")})
+            if combos:
+                return combos
+    except FileNotFoundError:
+        # No selection file — fall through to active concept fallback
+        pass
+    except Exception as e:
+        # Log and fall back
+        context.log.warning(f"content_combinations: selection load failed: {e}; falling back to active concepts")
 
+    # Fallback: derive a single combo from currently active concepts
     cfg = context.resources.experiment_config
     level = getattr(cfg, "description_level", "paragraph")
     k_max = int(getattr(cfg, "k_max", 2))
-    data_root = Path(getattr(context.resources, "data_root", "data"))
     concepts = read_concepts(data_root, filter_active=True)
     if not concepts:
-        context.add_output_metadata({"count": MetadataValue.int(0)})
+        context.add_output_metadata({"count": MetadataValue.int(0), "source": MetadataValue.text("fallback")})
         return []
     selected = concepts[: max(1, min(k_max, len(concepts)))]
-    # Ensure combo_mappings.csv exists and get a stable combo_id
     manager = ComboIDManager(str(data_root / "combo_mappings.csv"))
     combo_id = manager.get_or_create_combo_id([c.concept_id for c in selected], level, k_max)
     combo = ContentCombination.from_concepts(selected, level, combo_id=combo_id)
-    context.add_output_metadata({"count": MetadataValue.int(1)})
+    context.add_output_metadata({"count": MetadataValue.int(1), "source": MetadataValue.text("fallback")})
     return [combo]
 
 
