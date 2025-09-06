@@ -190,8 +190,10 @@ def backfill_from_evals(
 
     eval_dir = eval_root / "evaluation_responses"
     essay_dir = gen_root / "essay_responses"
+    essay_raw_dir = gen_root / "essay_responses_raw"
     gen_dir = gen_root / "generation_responses"
     draft_dir = gen_root / "draft_responses"
+    draft_raw_dir = gen_root / "draft_responses_raw"
     links_dir = gen_root / "links_responses"
     essay_prompts_dir = gen_root / "essay_prompts"
     gen_prompts_dir = gen_root / "generation_prompts"
@@ -238,21 +240,27 @@ def backfill_from_evals(
                 draft_path = cand2
         if draft_path is None:
             return None
-        content = read_text(draft_path)
-        if content is None:
+        parsed_content = read_text(draft_path)
+        if parsed_content is None:
             return None
-        # Minimal identifiers
-        template_id = "unknown"
-        model_id = "unknown"
-        logical = compute_logical_key_id_draft(combo_id, template_id, model_id)
+        # Optional raw content if available in draft_responses_raw
+        raw_content = None
+        raw_cand = draft_raw_dir / f"{key}.txt"
+        if raw_cand.exists():
+            raw_content = read_text(raw_cand)
+        # Use parsed identifiers for stable logical grouping
+        template_id = draft_tmpl
+        gen_model_id = model_id
+        logical = compute_logical_key_id_draft(combo_id, template_id, gen_model_id)
         attempt_key = f"draft:{draft_path.name}"
         doc_id = new_doc_id(logical, run_id, attempt_key)
         doc_base = make_doc_dir(docs_root, "draft", logical, doc_id)
         if not dry_run:
-            write_text(doc_base / "raw.txt", content)
-            write_text(doc_base / "parsed.txt", content)
+            if raw_content is not None:
+                write_text(doc_base / "raw.txt", raw_content)
+            write_text(doc_base / "parsed.txt", parsed_content)
             # Write prompt.txt when available from corresponding prompts dir
-            prompt_stem = key_base
+            prompt_stem = key
             pr = draft_prompts_dir / f"{prompt_stem}.txt"
             if not pr.exists():
                 pr = links_prompts_dir / f"{prompt_stem}.txt"
@@ -276,11 +284,11 @@ def backfill_from_evals(
                     doc_dir=str(Path("draft") / logical / doc_id),
                     parent_doc_id=None,
                     template_id=template_id,
-                    model_id=model_id,
+                    model_id=gen_model_id,
                     run_id=run_id,
                     status="ok",
-                    raw_chars=len(content),
-                    parsed_chars=len(content),
+                    raw_chars=len(raw_content) if raw_content is not None else None,
+                    parsed_chars=len(parsed_content),
                     meta_small=meta,
                 )
             )
@@ -297,9 +305,16 @@ def backfill_from_evals(
         if cache_key in created_essays:
             return created_essays[cache_key]
         # Exact essay match first (with or without essay_tmpl)
-        src_path: Optional[Path] = essay_files.get(key_essay) or essay_files.get(key_base)
-        created_from = "essay_responses"
-        template_id = "unknown"
+        matched_key: Optional[str] = None
+        src_path: Optional[Path] = None
+        if key_essay in essay_files:
+            src_path = essay_files[key_essay]
+            matched_key = key_essay
+        elif key_base in essay_files:
+            src_path = essay_files[key_base]
+            matched_key = key_base
+        created_from = "essay_responses" if src_path is not None else ""
+        template_id: Optional[str] = None
         # Strict fallback: legacy generation exact key_base only
         if src_path is None:
             gen_cand = gen_files.get(key_base)
@@ -321,16 +336,84 @@ def backfill_from_evals(
                 template_id = "parsed-from-links-v1"
         if src_path is None:
             raise FileNotFoundError(f"No essay or generation response for key={key_essay}")
-        content = read_text(src_path) or ""
+        parsed_content = read_text(src_path) or ""
+        # Determine essay template_id strictly (never 'unknown')
+        if created_from == "essay_responses":
+            if matched_key == key_essay and essay_tmpl:
+                template_id = essay_tmpl
+            elif matched_key == key_base:
+                # Older naming omitted essay template; default to draft template name
+                template_id = draft_tmpl
+        elif created_from in ("generation_responses", "draft_responses", "links_responses"):
+            template_id = "parsed-from-links-v1"
+        if not template_id:
+            raise RuntimeError(f"No essay template_id derived for {key_essay}")
+        # Optional raw content when we sourced from essay_responses or draft_responses
+        raw_content = None
+        if created_from == "essay_responses":
+            # Try raw for key_essay, then key_base
+            for rc in (essay_raw_dir / f"{key_essay}.txt", essay_raw_dir / f"{key_base}.txt"):
+                if rc.exists():
+                    raw_content = read_text(rc)
+                    break
+        elif created_from == "draft_responses":
+            rc = draft_raw_dir / f"{key_base}.txt"
+            if rc.exists():
+                raw_content = read_text(rc)
         # Create draft parent if available
         draft_doc_id = ensure_draft_for_parts(combo_id, draft_tmpl, model_id)
-        logical = compute_logical_key_id_essay(draft_doc_id or combo_id, template_id, "unknown")
+        # If we sourced from generation_responses and no draft exists, synthesize a draft from this file
+        if created_from == "generation_responses" and draft_doc_id is None:
+            # Mirror ensure_draft_for_parts but using the generation file as parsed content
+            nonlocal created_drafts_count
+            key = key_base
+            # Optional prompt from generation_prompts
+            gen_prompt = gen_prompts_dir / f"{key}.txt"
+            draft_parsed = parsed_content
+            draft_raw = None  # no raw counterpart for generation_responses
+            template_id_draft = draft_tmpl
+            gen_model_id = model_id
+            logical_draft = compute_logical_key_id_draft(combo_id, template_id_draft, gen_model_id)
+            attempt_key_draft = f"draft_from_gen:{src_path.name}"
+            draft_doc_id = new_doc_id(logical_draft, run_id, attempt_key_draft)
+            draft_base = make_doc_dir(docs_root, "draft", logical_draft, draft_doc_id)
+            if not dry_run:
+                if draft_raw is not None:
+                    write_text(draft_base / "raw.txt", draft_raw)
+                write_text(draft_base / "parsed.txt", draft_parsed)
+                if gen_prompt.exists():
+                    ptxt = read_text(gen_prompt)
+                    if ptxt is not None:
+                        write_text(draft_base / "prompt.txt", ptxt)
+                meta_d = {"source_file": str(src_path), "synthesized_from": "generation_responses"}
+                write_text(draft_base / "metadata.json", __import__("json").dumps(meta_d, ensure_ascii=False, indent=2))
+                idx.insert_document(
+                    DocumentRow(
+                        doc_id=draft_doc_id,
+                        logical_key_id=logical_draft,
+                        stage="draft",
+                        task_id=f"{combo_id}_auto_draft",
+                        doc_dir=str(Path("draft") / logical_draft / draft_doc_id),
+                        parent_doc_id=None,
+                        template_id=template_id_draft,
+                        model_id=gen_model_id,
+                        run_id=run_id,
+                        status="ok",
+                        raw_chars=None,
+                        parsed_chars=len(draft_parsed),
+                        meta_small=meta_d,
+                    )
+                )
+            created_drafts_by_combo[key] = draft_doc_id
+            created_drafts_count += 1
+        logical = compute_logical_key_id_essay(draft_doc_id or combo_id, template_id, model_id)
         attempt_key = f"essay:{src_path.name}"
         doc_id = new_doc_id(logical, run_id, attempt_key)
         doc_base = make_doc_dir(docs_root, "essay", logical, doc_id)
         if not dry_run:
-            write_text(doc_base / "raw.txt", content)
-            write_text(doc_base / "parsed.txt", content)
+            if raw_content is not None:
+                write_text(doc_base / "raw.txt", raw_content)
+            write_text(doc_base / "parsed.txt", parsed_content)
             # Write prompt.txt if available for essays
             # Prefer essay_prompts for essay_responses; else generation or draft/link prompts based on created_from
             prompt_candidates = []
@@ -367,8 +450,8 @@ def backfill_from_evals(
                     model_id=model_id,
                     run_id=run_id,
                     status="ok",
-                    raw_chars=len(content),
-                    parsed_chars=len(content),
+                    raw_chars=len(raw_content) if raw_content is not None else None,
+                    parsed_chars=len(parsed_content),
                     meta_small=meta,
                 )
             )
@@ -401,7 +484,7 @@ def backfill_from_evals(
         left_base, eval_tmpl_like, eval_model_like = split_eval_stem(base_no_ver)
         # Parse strictly: combo + draft_template + model (+ optional essay_template)
         combo_id, draft_tmpl, model_id, essay_tmpl = parse_eval_left_part(left_base)
-        if not (combo_id and draft_tmpl and model_id):
+        if not (combo_id and draft_tmpl and model_id and eval_tmpl_like and eval_model_like):
             # Strict matching requires these parts
             skipped_parse_fail += 1
             if len(parse_fail_examples) < 10:
@@ -416,7 +499,7 @@ def backfill_from_evals(
                 missing_source_examples.append(f"{combo_id}_{draft_tmpl}_{model_id} (essay_tmpl={essay_tmpl or '-'})")
             continue
         ev_content = read_text(ev_path) or ""
-        logical = compute_logical_key_id_evaluation(ref.essay_doc_id, eval_tmpl_like or "unknown", eval_model_like or "unknown")
+        logical = compute_logical_key_id_evaluation(ref.essay_doc_id, eval_tmpl_like, eval_model_like)
         attempt_key = f"evaluation:{ev_path.name}"
         doc_id = new_doc_id(logical, run_id, attempt_key)
         doc_base = make_doc_dir(docs_root, "evaluation", logical, doc_id)
