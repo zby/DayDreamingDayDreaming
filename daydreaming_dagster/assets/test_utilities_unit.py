@@ -1,6 +1,6 @@
 import pytest
 
-from daydreaming_dagster.utils.combo_ids import generate_combo_id
+from daydreaming_dagster.models.content_combination import generate_combo_id
 
 
 class TestComboIDGeneration:
@@ -23,6 +23,5 @@ class TestComboIDGeneration:
         id2 = generate_combo_id(concepts, "detailed", 2)
         id3 = generate_combo_id(concepts, "brief", 3)
         assert len({id1, id2, id3}) == 3
-
 
 

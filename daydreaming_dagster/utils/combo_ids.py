@@ -8,17 +8,6 @@ from typing import List
 import pandas as pd
 
 
-def generate_combo_id(concept_ids: List[str], description_level: str, k_max: int) -> str:
-    """Generate deterministic, versioned combo ID (delegates to model util).
-
-    Kept for backward-compat import paths; implementation lives with the model.
-    """
-    # Local import to avoid circular imports during Dagster asset import
-    from daydreaming_dagster.models.content_combination import generate_combo_id as _gen
-
-    return _gen(concept_ids, description_level, k_max)
-
-
 class ComboIDManager:
     """Manage the global append-only mapping of combo IDs to their components.
 
@@ -36,7 +25,12 @@ class ComboIDManager:
         Collision safety: If an existing combo_id is found with different
         parameters or concept set, raise a ValueError so callers can react.
         """
-        combo_id = generate_combo_id(concept_ids, description_level, k_max)
+        # Generate ID using the model's canonical function (kept close to the data model)
+        from daydreaming_dagster.models.content_combination import (
+            generate_combo_id as _gen_combo_id,
+        )
+
+        combo_id = _gen_combo_id(concept_ids, description_level, k_max)
 
         if self.mappings_path.exists():
             existing_mappings = pd.read_csv(self.mappings_path)
@@ -101,4 +95,3 @@ class ComboIDManager:
                 "created_at",
             ]
         )
-
