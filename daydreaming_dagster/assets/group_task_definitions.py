@@ -19,7 +19,7 @@ from ..utils.raw_readers import (
     read_llm_models,
     read_concepts,
 )
-from ..utils.selected_combos import read_selected_combo_mappings, validate_selected_is_subset
+from ..utils.selected_combos import read_selected_combo_mappings
 from .partitions import (
     draft_tasks_partitions,
     essay_tasks_partitions,
@@ -49,8 +49,6 @@ def content_combinations(context) -> List[ContentCombination]:
     # Try explicit selection first
     try:
         sel = read_selected_combo_mappings(data_root)
-        # Validate against superset mapping if present
-        validate_selected_is_subset(sel, data_root / "combo_mappings.csv")
         if not sel.empty:
             # Build combinations per combo_id using the specified description_level
             all_concepts = {c.concept_id: c for c in read_concepts(data_root, filter_active=False)}
