@@ -35,12 +35,26 @@ import pandas as pd
 from daydreaming_dagster.utils.eval_response_parser import parse_llm_response
 
 
-LEGACY_TEMPLATES = {
-    "creativity-metrics",
-    "daydreaming-verification",
-    "iterative-loops",
-    "scientific-rigor",
-}
+def load_eval_parsing_strategies(base_data: Path) -> Dict[str, str]:
+    """Load evaluation template -> parsing_strategy mapping from CSV if present.
+
+    Returns a dict like {template_id: 'complex'|'in_last_line'}; missing or invalid values are ignored.
+    """
+    mapping: Dict[str, str] = {}
+    csv_path = base_data / "1_raw" / "evaluation_templates.csv"
+    if not csv_path.exists():
+        return mapping
+    try:
+        df = pd.read_csv(csv_path)
+        if {"template_id", "parsing_strategy"}.issubset(df.columns):
+            for _, r in df.iterrows():
+                tid = str(r["template_id"]) if pd.notna(r.get("template_id")) else None
+                strategy = str(r["parsing_strategy"]).strip().lower() if pd.notna(r.get("parsing_strategy")) else ""
+                if tid and strategy in ("complex", "in_last_line"):
+                    mapping[tid] = strategy
+    except Exception:
+        pass
+    return mapping
 
 
 def load_known_templates(base_data: Path) -> Dict[str, Set[str]]:
@@ -244,17 +258,15 @@ def parse_identifiers_from_eval_task_id(
     return result
 
 
-def detect_parsing_strategy(evaluation_template: Optional[str]) -> str:
+def detect_parsing_strategy(evaluation_template: Optional[str], strategy_map: Optional[Dict[str, str]] = None) -> str:
     """Detect appropriate parsing strategy based on evaluation template.
 
     If template is unknown, prefer the modern "in_last_line" strategy.
     """
     if not evaluation_template:
         return "in_last_line"
-    if evaluation_template == "daydreaming-verification-v2":
-        return "in_last_line"
-    if evaluation_template in LEGACY_TEMPLATES:
-        return "complex"
+    if strategy_map and evaluation_template in strategy_map:
+        return strategy_map[evaluation_template]
     return "in_last_line"
 
 
@@ -306,6 +318,7 @@ def parse_all(
     # Base data root should be 'data'
     base_data = responses_dir.parents[1] if len(responses_dir.parents) >= 2 else Path("data")
     known = load_known_templates(base_data)
+    strategy_map = load_eval_parsing_strategies(base_data)
     model_map = load_model_mapping(base_data)
 
     # CROSS-EXPERIMENT: Scan all *.txt files and parse entirely from filenames
@@ -339,7 +352,7 @@ def parse_all(
 
         # Parse all metadata from filename - no task CSV dependencies
         id_parts = parse_identifiers_from_eval_task_id(evaluation_task_id, known)
-        strategy = detect_parsing_strategy(id_parts.get("evaluation_template"))
+        strategy = detect_parsing_strategy(id_parts.get("evaluation_template"), strategy_map)
         result = try_parse_with_fallback(text, strategy)
 
         row: Dict[str, Any] = {

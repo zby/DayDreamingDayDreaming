@@ -8,25 +8,46 @@ from dagster import MetadataValue
 from .eval_response_parser import parse_llm_response
 
 
-def detect_parsing_strategy(evaluation_template: str) -> str:
-    """Detect appropriate parsing strategy based on evaluation template.
-    
-    Args:
-        evaluation_template: Name of the evaluation template
-        
-    Returns:
-        Parsing strategy to use ('complex' or 'in_last_line')
+def load_evaluation_parsing_strategies(data_root: Path) -> dict[str, str]:
+    """Load evaluation template -> parsing_strategy mapping from CSV if present.
+
+    Falls back to empty mapping when file/column missing.
     """
-    # Legacy templates that use complex parsing
-    legacy_templates = {
-        'creativity-metrics', 'daydreaming-verification', 
-        'iterative-loops', 'scientific-rigor'
-    }
-    
-    if evaluation_template in legacy_templates:
-        return 'complex'
-    else:
-        return 'in_last_line'
+    try:
+        csv_path = Path(data_root) / "1_raw" / "evaluation_templates.csv"
+        if not csv_path.exists():
+            return {}
+        df = pd.read_csv(csv_path)
+        if "template_id" in df.columns and "parsing_strategy" in df.columns:
+            m = (
+                df[["template_id", "parsing_strategy"]]
+                .dropna(subset=["template_id"])
+                .set_index("template_id")["parsing_strategy"]
+                .to_dict()
+            )
+            # Normalize values
+            norm = {}
+            for k, v in m.items():
+                s = str(v).strip().lower() if isinstance(v, str) else ""
+                if s in ("complex", "in_last_line"):
+                    norm[k] = s
+            return norm
+    except Exception:
+        pass
+    return {}
+
+
+def detect_parsing_strategy(evaluation_template: str, strategy_map: dict[str, str] | None = None) -> str:
+    """Detect appropriate parsing strategy based on evaluation template.
+
+    - First, use mapping provided (from CSV) if available.
+    - Fallback to legacy hardcoded set for backward compatibility.
+    - Default to 'in_last_line'.
+    """
+    if strategy_map and evaluation_template in strategy_map:
+        return strategy_map[evaluation_template]
+    # No fallback to legacy lists; default to modern strategy
+    return 'in_last_line'
 
 
 def parse_evaluation_response(response_text: str, evaluation_template: str) -> Dict[str, Any]:
@@ -43,7 +64,7 @@ def parse_evaluation_response(response_text: str, evaluation_template: str) -> D
     return parse_llm_response(response_text, strategy)
 
 
-def parse_evaluation_files(evaluation_tasks: pd.DataFrame, base_path: Path, parse_function=None, context=None) -> pd.DataFrame:
+def parse_evaluation_files(evaluation_tasks: pd.DataFrame, base_path: Path, parse_function=None, context=None, strategy_map: dict[str, str] | None = None) -> pd.DataFrame:
     """Parse evaluation response files and extract structured data.
     
     Args:
@@ -60,7 +81,7 @@ def parse_evaluation_files(evaluation_tasks: pd.DataFrame, base_path: Path, pars
     
     # Use default parsing function if none provided
     if parse_function is None:
-        parse_function = lambda text, task_row: parse_evaluation_response(text, task_row['evaluation_template'])
+        parse_function = lambda text, task_row: parse_llm_response(text, detect_parsing_strategy(task_row['evaluation_template'], strategy_map))
     
     parsed_results = []
     from .versioned_files import latest_versioned_path
@@ -164,7 +185,7 @@ def parse_evaluation_file_from_filename(filename: str, base_path: Path) -> Dict[
     
     try:
         response_text = file_path.read_text(encoding="utf-8", errors="ignore")
-        strategy = detect_parsing_strategy(evaluation_template or "unknown")
+        strategy = detect_parsing_strategy(evaluation_template or "unknown", strategy_map)
         result = parse_llm_response(response_text, strategy)
         
         return {

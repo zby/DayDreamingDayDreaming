@@ -3,7 +3,13 @@ from pathlib import Path
 import pandas as pd
 import numpy as np
 
-from ..utils.evaluation_processing import parse_evaluation_files, enrich_evaluation_data, calculate_evaluation_metadata, add_evaluation_file_paths
+from ..utils.evaluation_processing import (
+    parse_evaluation_files,
+    enrich_evaluation_data,
+    calculate_evaluation_metadata,
+    add_evaluation_file_paths,
+    load_evaluation_parsing_strategies,
+)
 
 
 @asset(
@@ -25,7 +31,12 @@ def parsed_scores(context, evaluation_tasks: pd.DataFrame) -> pd.DataFrame:
     # Get base path and parse responses using evaluation processing utility
     base_path = Path(context.resources.evaluation_response_io_manager.base_path)
     # Use default parsing from utils - no custom parse function needed
-    parsed_df = parse_evaluation_files(evaluation_tasks, base_path, context=context)
+    # Load optional parsing strategy overrides from evaluation_templates.csv
+    try:
+        strategy_map = load_evaluation_parsing_strategies(Path(context.resources.data_root))
+    except Exception:
+        strategy_map = {}
+    parsed_df = parse_evaluation_files(evaluation_tasks, base_path, context=context, strategy_map=strategy_map)
 
     # Join with evaluation task metadata (denormalized)
     base_cols = [
