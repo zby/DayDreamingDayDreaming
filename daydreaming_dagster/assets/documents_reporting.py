@@ -3,6 +3,8 @@ from __future__ import annotations
 from dagster import asset, MetadataValue
 import pandas as pd
 from pathlib import Path
+import os
+from daydreaming_dagster.utils.documents_index import SQLiteDocumentsIndex
 
 
 @asset(
@@ -19,8 +21,18 @@ def documents_latest_report(context) -> pd.DataFrame:
     """
     try:
         idx_res = getattr(context.resources, "documents_index", None)
+        idx = None
         if idx_res and getattr(idx_res, "index_enabled", False):
             idx = idx_res.get_index()
+        else:
+            # Fallback: directly open index using defaults under data_root when env flag is set
+            if os.getenv("DD_DOCS_INDEX_ENABLED", "0") in ("1", "true", "True"):
+                data_root = Path(getattr(context.resources, "data_root", "data"))
+                db_path = data_root / "db" / "documents.sqlite"
+                docs_root = data_root / "docs"
+                idx = SQLiteDocumentsIndex(db_path, docs_root)
+                idx.init_maybe_create_tables()
+        if idx is not None:
             con = idx.connect()
             # Select latest rows by stage/logical key using rowid tie-breaker
             q = (
@@ -29,6 +41,9 @@ def documents_latest_report(context) -> pd.DataFrame:
                 ") t ON d1.stage=t.stage AND d1.logical_key_id=t.logical_key_id AND d1.created_at=t.mx"
             )
             rows = list(con.execute(q))
+            if not rows:
+                # Fallback: latest rows overall (helpful for smoke and empty groups)
+                rows = list(con.execute("SELECT * FROM documents ORDER BY created_at DESC, rowid DESC LIMIT 50"))
             df = pd.DataFrame(rows) if rows else pd.DataFrame(
                 columns=[
                     "doc_id","logical_key_id","stage","task_id","parent_doc_id","template_id","model_id","run_id","prompt_path","parser","status","usage_prompt_tokens","usage_completion_tokens","usage_max_tokens","created_at","doc_dir","raw_chars","parsed_chars","content_hash","meta_small","lineage_prev_doc_id"
@@ -52,4 +67,3 @@ def documents_latest_report(context) -> pd.DataFrame:
         "source": MetadataValue.text("empty"),
     })
     return df
-
