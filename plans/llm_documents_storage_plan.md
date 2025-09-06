@@ -326,6 +326,7 @@ Open Items
 Manual Validation Materializations (3-minute budget)
 - Environment (one shell):
   - export DAGSTER_HOME="$(pwd)/dagster_home"
+  - export DD_IN_PROCESS=1  # run assets in-process to avoid OS semaphore limits in CI/sandboxes
   - export DD_DOCS_INDEX_ENABLED=1
   - export DD_DOCS_PROMPT_COPY_ENABLED=1
   - export OPENROUTER_API_KEY=...   # required for generation
@@ -385,10 +386,10 @@ Autonomous Execution Guide (no prompts; commits gated)
 - Sequence (one-pass):
   1) `uv run pytest -q daydreaming_dagster/utils/test_ids.py daydreaming_dagster/utils/test_documents_index.py`
   2) Seed tasks: `uv run dagster asset materialize --select "group:task_definitions" -f daydreaming_dagster/definitions.py`
-  3) Draft materialize (3 min budget): run the example partition above; allow one retry if the first run fails due to transient LLM/network.
+  3) Draft materialize (3 min budget): run the example partition above with `DD_IN_PROCESS=1`; allow one retry if the first run fails due to transient LLM/network.
   4) Verify DB and files; print last 5 rows from SQLite and `tree data/docs/draft | head -n 100`.
-  5) Essay materialize for the matching partition; same 3 min budget; verify as in (4).
-  6) Evaluation materialize (novelty template with sonned or configured model); same 3 min budget; verify.
+  5) Essay materialize for the matching partition with `DD_IN_PROCESS=1`; same 3 min budget; verify as in (4).
+  6) Evaluation materialize (novelty template with sonned or configured model) with `DD_IN_PROCESS=1`; same 3 min budget; verify.
   7) Summarize: Output `doc_id`, `logical_key_id`, and on-disk paths for all three.
 
 - Autonomy rules:
@@ -396,6 +397,7 @@ Autonomous Execution Guide (no prompts; commits gated)
   - If models/templates are missing, list available partitions from `data/2_tasks` CSVs and pick the first available that matches the stage as a fallback.
   - If `OPENROUTER_API_KEY` is missing, skip generation steps and record that live validation was bypassed.
   - Do not modify code or configs without explicit approval; plan-only changes may be committed directly.
+  - Prefer `DD_IN_PROCESS=1` for dagster CLI materializations in CI/sandboxes to avoid multiprocess semaphore requirements.
 
 - Post-run acceptance criteria:
   - Draft: at least 1 row in `documents` with `stage='draft'` and an existing `doc_dir` with `raw.txt` and `parsed.txt`.
