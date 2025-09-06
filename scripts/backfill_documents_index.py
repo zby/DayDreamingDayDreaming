@@ -54,7 +54,7 @@ def backfill(data_root: Path, db_path: Path, docs_root: Path, run_id: str, dry_r
     essay_dir = data_root / "3_generation" / "essay_responses"
 
     # Additional pass: scan legacy directories to include all historical files (not only current tasks)
-    def _insert_doc(stage: str, task_id: str, logical: str, text: str, *, raw_text: str | None = None, template_id: str | None = None, model_id: str | None = None, parent_doc_id: str | None = None, attempt_id: str | None = None, prompt_text: str | None = None):
+    def _insert_doc(stage: str, task_id: str, logical: str, text: str, *, raw_text: str | None = None, template_id: str | None = None, model_id: str | None = None, parent_doc_id: str | None = None, attempt_id: str | None = None, prompt_text: str | None = None, legacy_task_id: str | None = None):
         nonlocal inserted
         doc_id = new_doc_id(logical, run_id, attempt_id or f"{task_id}")
         out_dir = build_doc_dir(docs_root, stage, logical, doc_id)
@@ -74,20 +74,22 @@ def backfill(data_root: Path, db_path: Path, docs_root: Path, run_id: str, dry_r
             rel = out_dir.relative_to(docs_root)
             try:
                 idx.insert_document(DocumentRow(
-                doc_id=doc_id,
-                logical_key_id=logical,
-                stage=stage,
-                task_id=task_id,
-                parent_doc_id=parent_doc_id,
-                doc_dir=str(rel),
-                status="ok",
-                template_id=template_id,
-                model_id=model_id,
-                run_id=run_id,
-                raw_chars=len(raw_text if raw_text is not None else text),
-                parsed_chars=len(text),
-                meta_small={"function": "backfill-scan"},
-            ))
+                    doc_id=doc_id,
+                    logical_key_id=logical,
+                    stage=stage,
+                    task_id=task_id,
+                    legacy_task_id=legacy_task_id or task_id,
+                    parent_doc_id=parent_doc_id,
+                    doc_dir=str(rel),
+                    status="ok",
+                    template_id=template_id,
+                    model_id=model_id,
+                    run_id=run_id,
+                    raw_chars=len(raw_text if raw_text is not None else text),
+                    parsed_chars=len(text),
+                    content_hash=None,
+                    meta_small={"function": "backfill-scan"},
+                ))
             except sqlite3.IntegrityError:
                 pass
         inserted += 1
@@ -192,7 +194,7 @@ def backfill(data_root: Path, db_path: Path, docs_root: Path, run_id: str, dry_r
                 if combo and tmpl and model
                 else compute_logical_key_id("draft", parts=(base,))
             )
-            _insert_doc("draft", base, logical, text, raw_text=raw_text, template_id=tmpl, model_id=model, attempt_id=p.name)
+            _insert_doc("draft", base, logical, text, raw_text=raw_text, template_id=tmpl, model_id=model, attempt_id=p.name, legacy_task_id=base)
 
     # Scan all links (legacy Phase-1 as drafts) BEFORE essays
     if links_resp_dir.exists():
@@ -221,7 +223,7 @@ def backfill(data_root: Path, db_path: Path, docs_root: Path, run_id: str, dry_r
                 if combo and tmpl and model
                 else compute_logical_key_id("draft", parts=(base,))
             )
-            _insert_doc("draft", base, logical, text, raw_text=text, template_id=tmpl, model_id=model, attempt_id=p.name, prompt_text=prompt_text)
+            _insert_doc("draft", base, logical, text, raw_text=text, template_id=tmpl, model_id=model, attempt_id=p.name, prompt_text=prompt_text, legacy_task_id=base)
 
     # Scan all essay files
     if essay_dir.exists():
@@ -240,7 +242,7 @@ def backfill(data_root: Path, db_path: Path, docs_root: Path, run_id: str, dry_r
                 if parent_doc_id and tmpl and model
                 else compute_logical_key_id("essay", parts=(base,))
             )
-            _insert_doc("essay", base, logical, text, raw_text=text, template_id=tmpl, model_id=model, parent_doc_id=parent_doc_id, attempt_id=p.name)
+            _insert_doc("essay", base, logical, text, raw_text=text, template_id=tmpl, model_id=model, parent_doc_id=parent_doc_id, attempt_id=p.name, legacy_task_id=base)
 
     # Scan all evaluation files
     eval_dir = data_root / "4_evaluation" / "evaluation_responses"
@@ -267,7 +269,7 @@ def backfill(data_root: Path, db_path: Path, docs_root: Path, run_id: str, dry_r
                 if (eval_template and model)
                 else compute_logical_key_id("evaluation", parts=(base,))
             )
-            _insert_doc("evaluation", base, logical, text, raw_text=text, template_id=eval_template, model_id=model, parent_doc_id=parent_doc_id, attempt_id=p.name)
+            _insert_doc("evaluation", base, logical, text, raw_text=text, template_id=eval_template, model_id=model, parent_doc_id=parent_doc_id, attempt_id=p.name, legacy_task_id=base)
 
     # (links already processed above)
 

@@ -13,6 +13,7 @@ CREATE TABLE IF NOT EXISTS documents (
   logical_key_id TEXT NOT NULL,
   stage TEXT NOT NULL CHECK (stage IN ('draft','essay','evaluation')),
   task_id TEXT NOT NULL,
+  legacy_task_id TEXT,
   parent_doc_id TEXT,
   template_id TEXT,
   model_id TEXT,
@@ -49,6 +50,7 @@ class DocumentRow:
     logical_key_id: str
     stage: str
     task_id: str
+    legacy_task_id: Optional[str] = None
     doc_dir: str
     status: str = "ok"
     parent_doc_id: Optional[str] = None
@@ -112,6 +114,10 @@ class SQLiteDocumentsIndex:
                 s = stmt.strip()
                 if s:
                     con.execute(s)
+            # Backward-compatible migration for legacy_task_id
+            cols = {row[1] for row in con.execute("PRAGMA table_info(documents)").fetchall()}
+            if "legacy_task_id" not in cols:
+                con.execute("ALTER TABLE documents ADD COLUMN legacy_task_id TEXT")
 
     def insert_document(self, row: DocumentRow) -> None:
         con = self.connect()
@@ -124,12 +130,12 @@ class SQLiteDocumentsIndex:
             con.execute(
                 """
                 INSERT INTO documents (
-                  doc_id, logical_key_id, stage, task_id, parent_doc_id,
+                  doc_id, logical_key_id, stage, task_id, legacy_task_id, parent_doc_id,
                   template_id, model_id, run_id, prompt_path, parser,
                   status, usage_prompt_tokens, usage_completion_tokens, usage_max_tokens,
                   doc_dir, raw_chars, parsed_chars, content_hash, meta_small, lineage_prev_doc_id
                 ) VALUES (
-                  :doc_id, :logical_key_id, :stage, :task_id, :parent_doc_id,
+                  :doc_id, :logical_key_id, :stage, :task_id, :legacy_task_id, :parent_doc_id,
                   :template_id, :model_id, :run_id, :prompt_path, :parser,
                   :status, :usage_prompt_tokens, :usage_completion_tokens, :usage_max_tokens,
                   :doc_dir, :raw_chars, :parsed_chars, :content_hash, :meta_small, :lineage_prev_doc_id
@@ -186,4 +192,3 @@ class SQLiteDocumentsIndex:
 
     def read_prompt(self, row: dict) -> str:
         return self.read_text(row, "prompt.txt")
-
