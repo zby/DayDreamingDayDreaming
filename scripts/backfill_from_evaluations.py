@@ -193,6 +193,11 @@ def backfill_from_evals(
     gen_dir = gen_root / "generation_responses"
     draft_dir = gen_root / "draft_responses"
     links_dir = gen_root / "links_responses"
+    essay_prompts_dir = gen_root / "essay_prompts"
+    gen_prompts_dir = gen_root / "generation_prompts"
+    draft_prompts_dir = gen_root / "draft_prompts"
+    links_prompts_dir = gen_root / "links_prompts"
+    eval_prompts_dir = eval_root / "evaluation_prompts"
 
     # Pre-index available response files by stem
     essay_files: Dict[str, Path] = {stem_of(p): p for p in essay_dir.glob("*.txt")}
@@ -246,6 +251,18 @@ def backfill_from_evals(
         if not dry_run:
             write_text(doc_base / "raw.txt", content)
             write_text(doc_base / "parsed.txt", content)
+            # Write prompt.txt when available from corresponding prompts dir
+            prompt_stem = key_base
+            pr = draft_prompts_dir / f"{prompt_stem}.txt"
+            if not pr.exists():
+                pr = links_prompts_dir / f"{prompt_stem}.txt"
+            if pr.exists():
+                try:
+                    ptxt = read_text(pr)
+                    if ptxt is not None:
+                        write_text(doc_base / "prompt.txt", ptxt)
+                except Exception:
+                    pass
             meta = {
                 "source_file": str(draft_path),
             }
@@ -314,6 +331,24 @@ def backfill_from_evals(
         if not dry_run:
             write_text(doc_base / "raw.txt", content)
             write_text(doc_base / "parsed.txt", content)
+            # Write prompt.txt if available for essays
+            # Prefer essay_prompts for essay_responses; else generation or draft/link prompts based on created_from
+            prompt_candidates = []
+            if created_from == "essay_responses":
+                prompt_candidates.append(essay_prompts_dir / f"{key_essay}.txt")
+                if key_essay != key_base:
+                    prompt_candidates.append(essay_prompts_dir / f"{key_base}.txt")
+            if created_from == "generation_responses":
+                prompt_candidates.append(gen_prompts_dir / f"{key_base}.txt")
+            if created_from in ("draft_responses", "links_responses"):
+                prompt_candidates.append(draft_prompts_dir / f"{key_base}.txt")
+                prompt_candidates.append(links_prompts_dir / f"{key_base}.txt")
+            for pr in prompt_candidates:
+                if pr.exists():
+                    ptxt = read_text(pr)
+                    if ptxt is not None:
+                        write_text(doc_base / "prompt.txt", ptxt)
+                        break
             meta = {
                 "source_file": str(src_path),
                 "created_from": created_from,
@@ -392,6 +427,14 @@ def backfill_from_evals(
                 "source_file": str(ev_path),
                 "parent_doc_id": ref.essay_doc_id,
             }
+            # Write evaluation prompt if present (try exact then versionless)
+            ev_prompt = eval_prompts_dir / f"{ev_path.stem}.txt"
+            if not ev_prompt.exists():
+                ev_prompt = eval_prompts_dir / f"{base_no_ver}.txt"
+            if ev_prompt.exists():
+                ptxt = read_text(ev_prompt)
+                if ptxt is not None:
+                    write_text(doc_base / "prompt.txt", ptxt)
             write_text(doc_base / "metadata.json", __import__("json").dumps(meta, ensure_ascii=False, indent=2))
             idx.insert_document(
                 DocumentRow(

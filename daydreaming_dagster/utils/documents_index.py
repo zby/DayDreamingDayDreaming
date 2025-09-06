@@ -18,7 +18,6 @@ CREATE TABLE IF NOT EXISTS documents (
   template_id TEXT,
   model_id TEXT,
   run_id TEXT,
-  prompt_path TEXT,
   parser TEXT,
   status TEXT NOT NULL CHECK (status IN ('ok','truncated','parse_error','gen_error','skipped')),
   usage_prompt_tokens INTEGER,
@@ -50,14 +49,14 @@ class DocumentRow:
     logical_key_id: str
     stage: str
     task_id: str
-    legacy_task_id: Optional[str] = None
     doc_dir: str
+    # Optional / defaulted fields must come after all required fields
+    legacy_task_id: Optional[str] = None
     status: str = "ok"
     parent_doc_id: Optional[str] = None
     template_id: Optional[str] = None
     model_id: Optional[str] = None
     run_id: Optional[str] = None
-    prompt_path: Optional[str] = None
     parser: Optional[str] = None
     usage_prompt_tokens: Optional[int] = None
     usage_completion_tokens: Optional[int] = None
@@ -115,7 +114,14 @@ class SQLiteDocumentsIndex:
                 if s:
                     con.execute(s)
             # Backward-compatible migration for legacy_task_id
-            cols = {row[1] for row in con.execute("PRAGMA table_info(documents)").fetchall()}
+            cols = set()
+            for row in con.execute("PRAGMA table_info(documents)").fetchall():
+                try:
+                    # when row_factory returns dict
+                    cols.add(row.get("name"))
+                except AttributeError:
+                    # fallback for tuple rows
+                    cols.add(row[1])
             if "legacy_task_id" not in cols:
                 con.execute("ALTER TABLE documents ADD COLUMN legacy_task_id TEXT")
 
@@ -131,12 +137,12 @@ class SQLiteDocumentsIndex:
                 """
                 INSERT INTO documents (
                   doc_id, logical_key_id, stage, task_id, legacy_task_id, parent_doc_id,
-                  template_id, model_id, run_id, prompt_path, parser,
+                  template_id, model_id, run_id, parser,
                   status, usage_prompt_tokens, usage_completion_tokens, usage_max_tokens,
                   doc_dir, raw_chars, parsed_chars, content_hash, meta_small, lineage_prev_doc_id
                 ) VALUES (
                   :doc_id, :logical_key_id, :stage, :task_id, :legacy_task_id, :parent_doc_id,
-                  :template_id, :model_id, :run_id, :prompt_path, :parser,
+                  :template_id, :model_id, :run_id, :parser,
                   :status, :usage_prompt_tokens, :usage_completion_tokens, :usage_max_tokens,
                   :doc_dir, :raw_chars, :parsed_chars, :content_hash, :meta_small, :lineage_prev_doc_id
                 )
@@ -164,6 +170,21 @@ class SQLiteDocumentsIndex:
         )
         args = [logical_key_id, *list(statuses)]
         cur = con.execute(q, args)
+        return cur.fetchone()
+
+    def get_by_doc_id(self, doc_id: str) -> Optional[dict]:
+        """Return the exact row for a given doc_id, or None."""
+        con = self.connect()
+        cur = con.execute("SELECT * FROM documents WHERE doc_id=? LIMIT 1", (str(doc_id),))
+        return cur.fetchone()
+
+    def get_by_doc_id_and_stage(self, doc_id: str, stage: str) -> Optional[dict]:
+        """Return the row for a given doc_id and stage, or None."""
+        con = self.connect()
+        cur = con.execute(
+            "SELECT * FROM documents WHERE doc_id=? AND stage=? LIMIT 1",
+            (str(doc_id), str(stage)),
+        )
         return cur.fetchone()
 
     # Filesystem helpers
