@@ -88,7 +88,6 @@ def ensure_db(db_path: Path) -> None:
               template_id TEXT,
               model_id TEXT,
               run_id TEXT,
-              prompt_hash TEXT,
               prompt_path TEXT,
               parser TEXT,
               status TEXT,
@@ -310,7 +309,6 @@ def backfill_stage(
                             "template_id": None,
                             "model_id": None,
                             "run_id": run_id,
-                            "prompt_hash": None,
                             "prompt_path": (
                                 _safe_relpath(info.get("prompt_path"), data_root)
                                 if info.get("prompt_path") is not None
@@ -365,7 +363,6 @@ def backfill_stage(
                         "template_id": None,
                         "model_id": None,
                         "run_id": run_id,
-                        "prompt_hash": None,
                         "prompt_path": (
                             _safe_relpath(info.get("prompt_path"), data_root)
                             if info.get("prompt_path") is not None
