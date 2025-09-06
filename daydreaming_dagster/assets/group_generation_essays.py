@@ -15,6 +15,13 @@ from ..utils.draft_parsers import get_draft_parser
 from ..utils.dataframe_helpers import get_task_row
 from ..utils.shared_context import MockLoadContext
 from ..utils.raw_write import save_versioned_raw_text
+from ..utils.ids import (
+    compute_logical_key_id_draft,
+    compute_logical_key_id_essay,
+    new_doc_id,
+    doc_dir as build_doc_dir,
+)
+from ..utils.documents_index import DocumentRow
 
 # Reuse a single Jinja environment
 JINJA = Environment()
@@ -37,6 +44,20 @@ def _load_phase1_text(context, draft_task_id: str) -> tuple[str, str]:
 
     Returns (normalized_text, source_label).
     """
+    # DB-first when enabled: resolve latest OK draft by task id
+    try:
+        idx_res = context.resources.documents_index
+        if getattr(idx_res, "index_enabled", False):
+            idx = idx_res.get_index()
+            row = idx.get_latest_by_task("draft", draft_task_id)
+            if row:
+                try:
+                    text = idx.read_parsed(row)
+                except Exception:
+                    text = idx.read_raw(row)
+                return str(text).replace("\r\n", "\n"), "draft_db"
+    except Exception:
+        pass
     draft_io = getattr(context.resources, "draft_response_io_manager", None)
     if draft_io is not None:
         try:
@@ -287,7 +308,111 @@ def _essay_response_impl(context, essay_prompt, essay_generation_tasks) -> str:
     partitions_def=essay_tasks_partitions,
     group_name="generation_essays",
     io_manager_key="essay_response_io_manager",
-    required_resource_keys={"openrouter_client", "experiment_config", "data_root", "draft_response_io_manager"},
+    required_resource_keys={"openrouter_client", "experiment_config", "data_root", "draft_response_io_manager", "documents_index"},
 )
 def essay_response(context, essay_prompt, essay_generation_tasks) -> str:
-    return _essay_response_impl(context, essay_prompt, essay_generation_tasks)
+    text = _essay_response_impl(context, essay_prompt, essay_generation_tasks)
+
+    # Dual-write to documents index under flag
+    try:
+        idx_res = context.resources.documents_index
+    except Exception:
+        idx_res = None
+
+    if idx_res and getattr(idx_res, "index_enabled", False):
+        import json, time, hashlib
+        from pathlib import Path as _Path
+
+        task_id = context.partition_key
+        task_row = get_task_row(essay_generation_tasks, "essay_task_id", task_id, context, "essay_generation_tasks")
+        essay_template = task_row.get("essay_template")
+        model_id = task_row.get("generation_model") or task_row.get("generation_model_id")
+        draft_task_id = task_row.get("draft_task_id")
+
+        idx = idx_res.get_index()
+        parent_doc_id = None
+        if isinstance(draft_task_id, str) and draft_task_id:
+            try:
+                parent = idx.get_latest_by_task("draft", draft_task_id)
+                if parent:
+                    parent_doc_id = parent.get("doc_id")
+            except Exception:
+                parent_doc_id = None
+
+        # If no parent found, compute draft logical key and warn-less continue (parent_doc_id stays None)
+        # Compute essay logical key from parent doc id (preferred) or from draft task tuple fallback
+        if parent_doc_id:
+            logical_key_id = compute_logical_key_id_essay(str(parent_doc_id), str(essay_template), str(model_id))
+        else:
+            # Fallback: use draft tuple to keep grouping deterministic even if parent missing
+            combo_id = task_row.get("combo_id")
+            draft_template = task_row.get("draft_template")
+            draft_logical = compute_logical_key_id_draft(str(combo_id), str(draft_template), str(model_id))
+            logical_key_id = compute_logical_key_id_essay(draft_logical, str(essay_template), str(model_id))
+
+        run_id = getattr(context, "run_id", "run")
+        attempt = int(time.time_ns())
+        doc_id = new_doc_id(logical_key_id, run_id, attempt)
+
+        docs_root = _Path(idx.docs_root)
+        stage = "essay"
+        target_dir = build_doc_dir(docs_root, stage, logical_key_id, doc_id)
+        target_dir.mkdir(parents=True, exist_ok=True)
+
+        def _write_atomic(path: _Path, data: str):
+            tmp = path.with_suffix(path.suffix + ".tmp")
+            tmp.write_text(data, encoding="utf-8")
+            tmp.replace(path)
+
+        raw_text = text
+        _write_atomic(target_dir / "raw.txt", raw_text)
+        _write_atomic(target_dir / "parsed.txt", text)
+        try:
+            if getattr(idx_res, "prompt_copy_enabled", True) and isinstance(essay_prompt, str):
+                _write_atomic(target_dir / "prompt.txt", essay_prompt)
+        except Exception:
+            pass
+
+        metadata = {
+            "task_id": task_id,
+            "essay_template": essay_template,
+            "model_id": model_id,
+            "parent_doc_id": parent_doc_id,
+        }
+        _write_atomic(target_dir / "metadata.json", json.dumps(metadata, ensure_ascii=False, indent=2))
+
+        content_hash = hashlib.sha256((raw_text or "").encode("utf-8")).hexdigest()
+        rel_dir = target_dir.relative_to(docs_root)
+        row = DocumentRow(
+            doc_id=doc_id,
+            logical_key_id=logical_key_id,
+            stage=stage,
+            task_id=task_id,
+            parent_doc_id=parent_doc_id,
+            template_id=str(essay_template),
+            model_id=str(model_id),
+            run_id=str(run_id),
+            prompt_path=str((target_dir / "prompt.txt")) if getattr(idx_res, "prompt_copy_enabled", True) else None,
+            parser=None,
+            status="ok",
+            doc_dir=str(rel_dir),
+            raw_chars=len(raw_text or ""),
+            parsed_chars=len(text or ""),
+            content_hash=content_hash,
+            meta_small={"function": "essay_response"},
+            lineage_prev_doc_id=None,
+        )
+        try:
+            idx.insert_document(row)
+            context.add_output_metadata(
+                {
+                    "doc_id": MetadataValue.text(doc_id),
+                    "logical_key_id": MetadataValue.text(logical_key_id),
+                    "doc_dir": MetadataValue.path(str(target_dir)),
+                    "parent_doc_id": MetadataValue.text(str(parent_doc_id) if parent_doc_id else ""),
+                }
+            )
+        except Exception as e:
+            context.log.warning(f"DocumentsIndex insert failed for essay_response {task_id}: {e}")
+
+    return text
