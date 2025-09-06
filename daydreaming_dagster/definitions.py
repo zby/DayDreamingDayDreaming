@@ -32,6 +32,9 @@ from daydreaming_dagster.checks.documents_checks import (
     draft_files_exist_check,
     essay_files_exist_check,
     evaluation_files_exist_check,
+    draft_db_row_present_check,
+    essay_db_row_present_check,
+    evaluation_db_row_present_check,
 )
 from daydreaming_dagster.assets.raw_data import RAW_SOURCE_ASSETS, TASK_SOURCE_ASSETS
 from daydreaming_dagster.schedules.raw_schedule import raw_schedule
@@ -111,6 +114,9 @@ defs = Definitions(
         draft_files_exist_check,
         essay_files_exist_check,
         evaluation_files_exist_check,
+        draft_db_row_present_check,
+        essay_db_row_present_check,
+        evaluation_db_row_present_check,
     ],
     schedules=[raw_schedule],
     resources={

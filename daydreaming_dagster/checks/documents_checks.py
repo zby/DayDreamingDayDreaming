@@ -2,10 +2,12 @@ from __future__ import annotations
 
 from dagster import asset_check, AssetCheckResult, MetadataValue
 from pathlib import Path
+import os
 
 from daydreaming_dagster.assets.group_generation_draft import draft_response as draft_response_asset
 from daydreaming_dagster.assets.group_generation_essays import essay_response as essay_response_asset
 from daydreaming_dagster.assets.group_evaluation import evaluation_response as evaluation_response_asset
+from daydreaming_dagster.utils.documents_index import SQLiteDocumentsIndex
 
 
 def _latest_versioned(path: Path, stem: str) -> Path | None:
@@ -102,3 +104,73 @@ def evaluation_files_exist_check(context) -> AssetCheckResult:
     except Exception as e:
         context.log.warning(f"evaluation_files_exist_check: DB probe failed: {e}")
     return AssetCheckResult(passed=False, metadata={"partition_key": MetadataValue.text(pk)})
+
+
+def _open_index_from_context(context) -> SQLiteDocumentsIndex | None:
+    try:
+        idx_res = getattr(context.resources, "documents_index", None)
+        if idx_res and getattr(idx_res, "index_enabled", False):
+            return idx_res.get_index()
+    except Exception:
+        pass
+    # Fallback: open directly if env says index is enabled
+    if os.getenv("DD_DOCS_INDEX_ENABLED", "0") in ("1", "true", "True"):
+        data_root = Path(getattr(context.resources, "data_root", "data"))
+        db_path = data_root / "db" / "documents.sqlite"
+        docs_root = data_root / "docs"
+        idx = SQLiteDocumentsIndex(db_path, docs_root)
+        try:
+            idx.init_maybe_create_tables()
+            return idx
+        except Exception:
+            return None
+    return None
+
+
+@asset_check(asset=draft_response_asset, required_resource_keys={"data_root"})
+def draft_db_row_present_check(context) -> AssetCheckResult:
+    pk = context.partition_key
+    # If index not enabled, treat as passed (non-blocking)
+    if os.getenv("DD_DOCS_INDEX_ENABLED", "0") not in ("1", "true", "True"):
+        return AssetCheckResult(passed=True, metadata={"skipped": MetadataValue.text("index disabled")})
+    idx = _open_index_from_context(context)
+    if not idx:
+        return AssetCheckResult(passed=True, metadata={"skipped": MetadataValue.text("index unavailable")})
+    row = idx.get_latest_by_task("draft", pk)
+    if not row:
+        return AssetCheckResult(passed=False, metadata={"partition_key": MetadataValue.text(pk)})
+    base = idx.resolve_doc_dir(row)
+    ok = base.exists()
+    return AssetCheckResult(passed=ok, metadata={"doc_dir": MetadataValue.path(str(base))})
+
+
+@asset_check(asset=essay_response_asset, required_resource_keys={"data_root"})
+def essay_db_row_present_check(context) -> AssetCheckResult:
+    pk = context.partition_key
+    if os.getenv("DD_DOCS_INDEX_ENABLED", "0") not in ("1", "true", "True"):
+        return AssetCheckResult(passed=True, metadata={"skipped": MetadataValue.text("index disabled")})
+    idx = _open_index_from_context(context)
+    if not idx:
+        return AssetCheckResult(passed=True, metadata={"skipped": MetadataValue.text("index unavailable")})
+    row = idx.get_latest_by_task("essay", pk)
+    if not row:
+        return AssetCheckResult(passed=False, metadata={"partition_key": MetadataValue.text(pk)})
+    base = idx.resolve_doc_dir(row)
+    ok = base.exists()
+    return AssetCheckResult(passed=ok, metadata={"doc_dir": MetadataValue.path(str(base))})
+
+
+@asset_check(asset=evaluation_response_asset, required_resource_keys={"data_root"})
+def evaluation_db_row_present_check(context) -> AssetCheckResult:
+    pk = context.partition_key
+    if os.getenv("DD_DOCS_INDEX_ENABLED", "0") not in ("1", "true", "True"):
+        return AssetCheckResult(passed=True, metadata={"skipped": MetadataValue.text("index disabled")})
+    idx = _open_index_from_context(context)
+    if not idx:
+        return AssetCheckResult(passed=True, metadata={"skipped": MetadataValue.text("index unavailable")})
+    row = idx.get_latest_by_task("evaluation", pk)
+    if not row:
+        return AssetCheckResult(passed=False, metadata={"partition_key": MetadataValue.text(pk)})
+    base = idx.resolve_doc_dir(row)
+    ok = base.exists()
+    return AssetCheckResult(passed=ok, metadata={"doc_dir": MetadataValue.path(str(base))})
