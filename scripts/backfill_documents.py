@@ -3,9 +3,8 @@ from __future__ import annotations
 
 import argparse
 import csv
-import sys
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, UTC
 from pathlib import Path
 from typing import Iterable, Optional
 
@@ -24,8 +23,7 @@ from daydreaming_dagster.utils.ids import (
 
 def iso_to_dt(s: str) -> Optional[datetime]:
     try:
-        # Accept naive ISO timestamps as UTC-equivalent for ordering
-        return datetime.fromisoformat(s.replace("Z", ""))
+        return datetime.fromisoformat((s or "").strip().replace("Z", ""))
     except Exception:
         return None
 
@@ -68,6 +66,7 @@ class BadRow:
 
 
 def append_bad_rows(path: Path, rows: Iterable[BadRow]) -> None:
+    rows = list(rows)
     if not rows:
         return
     ensure_parent(path)
@@ -126,7 +125,7 @@ def backfill(
 
     bad: list[BadRow] = []
 
-    # Index drafts (including links) for parent resolution
+    # Local types
     @dataclass
     class DraftRef:
         task_id: str
@@ -140,6 +139,16 @@ def backfill(
 
     def norm_model(v: Optional[str]) -> Optional[str]:
         return v.strip() if isinstance(v, str) else None
+
+    # Dedup by content hash across draft/link sources
+    import hashlib
+
+    seen_content: dict[str, str] = {}  # content_hash -> first task_id kept
+
+    def content_sha256(text: str) -> str:
+        h = hashlib.sha256()
+        h.update(text.encode("utf-8"))
+        return h.hexdigest()
 
     def ingest_draft_like(rows: list[dict], source_name: str, stage_label: str) -> list[DraftRef]:
         refs: list[DraftRef] = []
@@ -190,7 +199,30 @@ def backfill(
                 continue
 
             logical = compute_logical_key_id_draft(combo_id, template_id, model_id)
-            doc_id = new_doc_id(logical, run_id, i)
+            c_hash = content_sha256(content)
+
+            # Deduplicate by content across sources
+            if c_hash in seen_content:
+                bad.append(
+                    BadRow(
+                        source_csv=source_name,
+                        reason="duplicate_same_content",
+                        row_index=i,
+                        task_id=task_id,
+                        combo_id=combo_id,
+                        template_id=template_id,
+                        model_id=model_id,
+                        response_file=resp_rel,
+                        timestamp=ts_str,
+                    )
+                )
+                continue
+
+            seen_content[c_hash] = task_id
+
+            # Make attempt key unique across sources and rows
+            attempt_key = f"{source_name}:{i}:{ts_str}"
+            doc_id = new_doc_id(logical, run_id, attempt_key)
             doc_base = make_doc_dir(docs_root, "draft", logical, doc_id)
 
             if not dry_run:
@@ -200,6 +232,7 @@ def backfill(
                     "source_csv": source_name,
                     "response_file": resp_rel,
                     "generation_timestamp": ts_str,
+                    "content_hash": c_hash,
                 }
                 write_text(doc_base / "metadata.json", __import__("json").dumps(meta, ensure_ascii=False, indent=2))
                 idx.insert_document(
@@ -217,6 +250,7 @@ def backfill(
                         raw_chars=len(content),
                         parsed_chars=len(content),
                         meta_small=meta,
+                        content_hash=c_hash,
                     )
                 )
 
@@ -321,7 +355,8 @@ def backfill(
             continue
 
         logical = compute_logical_key_id_essay(parent.doc_id, template_id, model_id)
-        doc_id = new_doc_id(logical, run_id, i)
+        attempt_key = f"{essays_csv.name}:{i}:{ts_str}"
+        doc_id = new_doc_id(logical, run_id, attempt_key)
         doc_base = make_doc_dir(docs_root, "essay", logical, doc_id)
 
         if not dry_run:
@@ -354,8 +389,8 @@ def backfill(
 
     # Map task_id -> doc_id for lookups
     draft_task_to_doc = {r.task_id: r for r in all_drafts if r.doc_id}
-    # Build essay mapping: we wrote them above; we can query latest by task_id if needed, but we kept no index.
-    # For simplicity, scan docs table for essays we just inserted.
+
+    # Build essay mapping by querying what we inserted
     con = idx.connect()
     essays_by_task: dict[str, dict] = {}
     for row in con.execute("SELECT * FROM documents WHERE stage='essay'").fetchall():
@@ -367,7 +402,6 @@ def backfill(
         status = (r.get("evaluation_status") or "").strip().lower()
         ts_str = (r.get("evaluation_timestamp") or "").strip()
         ts = iso_to_dt(ts_str)
-        # evaluation response file column name in CSV
         resp_rel = (r.get("eval_response_file") or r.get("evaluation_response_file") or "").strip()
         eval_tmpl = (r.get("evaluation_template") or "").strip()
         eval_model = norm_model(r.get("evaluation_model"))
@@ -430,7 +464,8 @@ def backfill(
             continue
 
         logical = compute_logical_key_id_evaluation(parent_doc_id, eval_tmpl, eval_model)
-        doc_id = new_doc_id(logical, run_id, i)
+        attempt_key = f"{evals_csv.name}:{i}:{ts_str}"
+        doc_id = new_doc_id(logical, run_id, attempt_key)
         doc_base = make_doc_dir(docs_root, "evaluation", logical, doc_id)
 
         if not dry_run:
@@ -472,7 +507,7 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--cross-root", type=Path, default=Path("data/7_cross_experiment"), help="Cross-experiment CSVs directory")
     p.add_argument("--gen-root", type=Path, default=Path("data/3_generation"), help="Root for response_file paths")
     p.add_argument("--bad-list", type=Path, default=Path("data/7_cross_experiment/bad_generations.csv"), help="Output CSV for non-ingested rows")
-    p.add_argument("--run-id", type=str, default=datetime.utcnow().strftime("backfill-%Y%m%d-%H%M%S"), help="Run identifier for doc_id derivation")
+    p.add_argument("--run-id", type=str, default=datetime.now(UTC).strftime("backfill-%Y%m%d-%H%M%S%z"), help="Run identifier for doc_id derivation")
     p.add_argument("--dry-run", action="store_true", help="Do not write files or DB; only validate and report bad rows")
     args = p.parse_args(argv)
 
