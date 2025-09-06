@@ -49,6 +49,8 @@ def backfill(data_root: Path, db_path: Path, docs_root: Path, run_id: str, dry_r
     # Directory paths
     draft_dir = data_root / "3_generation" / "draft_responses"
     raw_dir = data_root / "3_generation" / "draft_responses_raw"
+    links_resp_dir = data_root / "3_generation" / "links_responses"
+    links_prompt_dir = data_root / "3_generation" / "links_prompts"
     essay_dir = data_root / "3_generation" / "essay_responses"
 
     # Additional pass: scan legacy directories to include all historical files (not only current tasks)
@@ -112,6 +114,59 @@ def backfill(data_root: Path, db_path: Path, docs_root: Path, run_id: str, dry_r
             return combo, model
         return None, None
 
+    def _split_parts(stem: str) -> list[str]:
+        return [p for p in stem.split("__") if p != ""]
+
+    # Reporting counters
+    prefix_hits = 0
+    glob_hits = 0
+    no_parent = 0
+    alias_inserts = 0
+
+    def _resolve_parent_draft(idx: SQLiteDocumentsIndex, essay_base: str, combo: str | None, model: str | None) -> str | None:
+        nonlocal prefix_hits, glob_hits, no_parent
+        con = idx.connect()
+        parts = _split_parts(essay_base)
+        # Legacy: essay id starts with draft id (first 3 parts)
+        if len(parts) >= 4:
+            draft_candidate = "__".join(parts[:3])
+            row = con.execute(
+                "SELECT doc_id FROM documents WHERE stage='draft' AND task_id=? ORDER BY created_at DESC, rowid DESC LIMIT 1",
+                (draft_candidate,),
+            ).fetchone()
+            if row:
+                prefix_hits += 1
+                return row[0] if isinstance(row, tuple) else row.get("doc_id")
+        # Legacy underscore format: combo_v1_<hash>_<draft_tpl>_<model>[_<essay_tpl>]
+        if "__" not in essay_base:
+            toks = essay_base.split("_")
+            if len(toks) >= 5 and toks[0] == "combo" and toks[1].startswith("v"):
+                # Draft candidate is all but the last token (drop essay template)
+                draft_candidate_u = "_".join(toks[:-1])
+                row = con.execute(
+                    "SELECT doc_id FROM documents WHERE stage='draft' AND task_id=? ORDER BY created_at DESC, rowid DESC LIMIT 1",
+                    (draft_candidate_u,),
+                ).fetchone()
+                if row:
+                    prefix_hits += 1
+                    return row[0] if isinstance(row, tuple) else row.get("doc_id")
+        # Fallback: combo+model using GLOB (treats '_' literally). Try double-underscore then underscore style.
+        if combo and model:
+            row = con.execute(
+                "SELECT doc_id FROM documents WHERE stage='draft' AND task_id GLOB ? ORDER BY created_at DESC, rowid DESC LIMIT 1",
+                (f"{combo}__*__{model}",),
+            ).fetchone()
+            if not row:
+                row = con.execute(
+                    "SELECT doc_id FROM documents WHERE stage='draft' AND task_id GLOB ? ORDER BY created_at DESC, rowid DESC LIMIT 1",
+                    (f"{combo}_*_{model}*",),
+                ).fetchone()
+            if row:
+                glob_hits += 1
+                return row[0] if isinstance(row, tuple) else row.get("doc_id")
+        no_parent += 1
+        return None
+
     # Scan all draft files
     if draft_dir.exists():
         for p in sorted(draft_dir.glob("*.txt")):
@@ -139,71 +194,17 @@ def backfill(data_root: Path, db_path: Path, docs_root: Path, run_id: str, dry_r
             )
             _insert_doc("draft", base, logical, text, raw_text=raw_text, template_id=tmpl, model_id=model, attempt_id=p.name)
 
-    # Scan all essay files
-    if essay_dir.exists():
-        for p in sorted(essay_dir.glob("*.txt")):
-            name = p.stem
-            base = name.split("_v")[0]
-            combo_u, model_u = _parse_combo_model_from_base(base)
-            combo, tmpl, model = _parse_triple(base)
-            if (not combo or not model) and combo_u and model_u:
-                combo, model = combo_u, model_u
-            text = p.read_text(encoding="utf-8")
-            # Try link to parent if a draft with same combo+model exists
-            parent_doc_id = None
-            if combo and model:
-                # Prefer any draft row with same combo+model (template segment differs)
-                cur = idx.connect().execute(
-                    "SELECT doc_id FROM documents WHERE stage='draft' AND task_id LIKE ? ORDER BY created_at DESC, rowid DESC LIMIT 1",
-                    (f"{combo}__%__{model}",),
-                )
-                r = cur.fetchone()
-                if r:
-                    parent_doc_id = r[0] if isinstance(r, tuple) else r.get("doc_id")
-            logical = (
-                compute_logical_key_id_essay(parent_doc_id, tmpl, model)
-                if parent_doc_id and tmpl and model
-                else compute_logical_key_id("essay", parts=(base,))
-            )
-            _insert_doc("essay", base, logical, text, raw_text=text, template_id=tmpl, model_id=model, parent_doc_id=parent_doc_id, attempt_id=p.name)
-
-    # Scan all evaluation files
-    eval_dir = data_root / "4_evaluation" / "evaluation_responses"
-    if eval_dir.exists():
-        for p in sorted(eval_dir.glob("*.txt")):
-            name = p.stem
-            base = name.split("_v")[0]
-            parts = base.split("__")
-            document_id = parts[0] if parts else base
-            eval_template = parts[1] if len(parts) > 1 else None
-            model = parts[2] if len(parts) > 2 else None
-            text = p.read_text(encoding="utf-8")
-            parent_doc_id = None
-            # Try resolve a parent doc by matching draft/essay task_id
-            cur = idx.connect().execute(
-                "SELECT doc_id FROM documents WHERE (stage='essay' OR stage='draft') AND task_id=? ORDER BY created_at DESC, rowid DESC LIMIT 1",
-                (document_id,),
-            )
-            r = cur.fetchone()
-            if r:
-                parent_doc_id = r.get("doc_id")
-            logical = (
-                compute_logical_key_id_evaluation(parent_doc_id or document_id, eval_template or "", model or "")
-                if (eval_template and model)
-                else compute_logical_key_id("evaluation", parts=(base,))
-            )
-            _insert_doc("evaluation", base, logical, text, raw_text=text, template_id=eval_template, model_id=model, parent_doc_id=parent_doc_id, attempt_id=p.name)
-
-    # Scan all links (treat as draft-like)
-    links_resp_dir = data_root / "3_generation" / "links_responses"
-    links_prompt_dir = data_root / "3_generation" / "links_prompts"
+    # Scan all links (legacy Phase-1 as drafts) BEFORE essays
     if links_resp_dir.exists():
         for p in sorted(links_resp_dir.glob("*.txt")):
             name = p.stem
             base = name.split("_v")[0]
-            combo, tmpl, model = _parse_triple(base)
+            parts = _split_parts(base)
+            combo = parts[0] if len(parts) >= 1 else None
+            tmpl  = parts[1] if len(parts) >= 2 else None
+            model = parts[2] if len(parts) >= 3 else None
             text = p.read_text(encoding="utf-8")
-            # Try to find matching prompt
+            # Try to find matching prompt (same version if present)
             prompt_text = None
             if links_prompt_dir.exists():
                 v = None
@@ -222,7 +223,120 @@ def backfill(data_root: Path, db_path: Path, docs_root: Path, run_id: str, dry_r
             )
             _insert_doc("draft", base, logical, text, raw_text=text, template_id=tmpl, model_id=model, attempt_id=p.name, prompt_text=prompt_text)
 
+    # Scan all essay files
+    if essay_dir.exists():
+        for p in sorted(essay_dir.glob("*.txt")):
+            name = p.stem
+            base = name.split("_v")[0]
+            combo_u, model_u = _parse_combo_model_from_base(base)
+            combo, tmpl, model = _parse_triple(base)
+            if (not combo or not model) and combo_u and model_u:
+                combo, model = combo_u, model_u
+            text = p.read_text(encoding="utf-8")
+            # Resolve parent draft via legacy prefix-of rule then combo+model using GLOB
+            parent_doc_id = _resolve_parent_draft(idx, base, combo, model)
+            logical = (
+                compute_logical_key_id_essay(parent_doc_id, tmpl, model)
+                if parent_doc_id and tmpl and model
+                else compute_logical_key_id("essay", parts=(base,))
+            )
+            _insert_doc("essay", base, logical, text, raw_text=text, template_id=tmpl, model_id=model, parent_doc_id=parent_doc_id, attempt_id=p.name)
+
+    # Scan all evaluation files
+    eval_dir = data_root / "4_evaluation" / "evaluation_responses"
+    if eval_dir.exists():
+        for p in sorted(eval_dir.glob("*.txt")):
+            name = p.stem
+            base = name.split("_v")[0]
+            parts = _split_parts(base)
+            document_id = "__".join(parts[:-2]) if len(parts) >= 3 else base
+            eval_template = parts[-2] if len(parts) >= 2 else None
+            model = parts[-1] if len(parts) >= 1 else None
+            text = p.read_text(encoding="utf-8")
+            parent_doc_id = None
+            # Try resolve a parent doc by matching draft/essay task_id
+            cur = idx.connect().execute(
+                "SELECT doc_id FROM documents WHERE (stage='essay' OR stage='draft') AND task_id=? ORDER BY created_at DESC, rowid DESC LIMIT 1",
+                (document_id,),
+            )
+            r = cur.fetchone()
+            if r:
+                parent_doc_id = r.get("doc_id")
+            logical = (
+                compute_logical_key_id_evaluation(parent_doc_id or document_id, eval_template or "", model or "")
+                if (eval_template and model)
+                else compute_logical_key_id("evaluation", parts=(base,))
+            )
+            _insert_doc("evaluation", base, logical, text, raw_text=text, template_id=eval_template, model_id=model, parent_doc_id=parent_doc_id, attempt_id=p.name)
+
+    # (links already processed above)
+
+    # Ensure essays with explicit draft_task_id can resolve by exact match: add alias draft rows when absent
+    tasks_csv = data_root / "2_tasks" / "essay_generation_tasks.csv"
+    if tasks_csv.exists():
+        try:
+            edf = pd.read_csv(tasks_csv)
+            con = idx.connect()
+            for _, erow in edf.iterrows():
+                dtid = erow.get("draft_task_id")
+                if not isinstance(dtid, str) or not dtid.strip():
+                    continue
+                # Skip if exact draft already present
+                if con.execute(
+                    "SELECT 1 FROM documents WHERE stage='draft' AND task_id=? LIMIT 1",
+                    (dtid,),
+                ).fetchone():
+                    continue
+                combo_id = erow.get("combo_id")
+                model_id = erow.get("generation_model") or erow.get("generation_model_id")
+                if not (isinstance(combo_id, str) and isinstance(model_id, str) and combo_id and model_id):
+                    continue
+                like = f"{combo_id}__%__{model_id}"
+                cand = con.execute(
+                    "SELECT * FROM documents WHERE stage='draft' AND task_id LIKE ? ORDER BY created_at DESC, rowid DESC LIMIT 1",
+                    (like,),
+                ).fetchone()
+                if not cand:
+                    continue
+                alias_doc_id = new_doc_id(cand["logical_key_id"], run_id, f"alias::{dtid}")
+                rel = cand["doc_dir"]
+                if not dry_run:
+                    try:
+                        con.execute(
+                            "INSERT INTO documents (doc_id, logical_key_id, stage, task_id, parent_doc_id, template_id, model_id, run_id, prompt_path, parser, status, usage_prompt_tokens, usage_completion_tokens, usage_max_tokens, doc_dir, raw_chars, parsed_chars, content_hash, meta_small, lineage_prev_doc_id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                            (
+                                alias_doc_id,
+                                cand["logical_key_id"],
+                                "draft",
+                                dtid,
+                                None,
+                                cand["template_id"],
+                                cand["model_id"],
+                                run_id,
+                                None,
+                                None,
+                                "ok",
+                                None,
+                                None,
+                                None,
+                                rel,
+                                cand["raw_chars"],
+                                cand["parsed_chars"],
+                                cand["content_hash"],
+                                '{"function":"backfill-alias"}',
+                                None,
+                            ),
+                        )
+                        con.commit()
+                        inserted += 1
+                    except sqlite3.IntegrityError:
+                        pass
+                alias_inserts += 1
+        except Exception:
+            pass
+
     print(f"Inserted/processed rows: {inserted}")
+    print(f"essay parent resolution: prefix_hits={prefix_hits}, glob_hits={glob_hits}, none={no_parent}, alias_inserts={alias_inserts}")
     return 0
 
 
