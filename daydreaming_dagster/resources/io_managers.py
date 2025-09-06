@@ -117,6 +117,16 @@ class CSVIOManager(IOManager):
         file_path = self.base_path / f"{asset_name}.csv"
         
         if not file_path.exists():
+            # Small retry to handle rare FS latency between producer/consumer steps
+            try:
+                import time
+                for _ in range(5):
+                    time.sleep(0.05)
+                    if file_path.exists():
+                        break
+            except Exception:
+                pass
+        if not file_path.exists():
             raise FileNotFoundError(f"CSV file not found: {file_path}")
         
         return pd.read_csv(file_path)
@@ -176,7 +186,14 @@ class VersionedTextIOManager(IOManager):
             legacy_enabled = os.getenv("DD_DOCS_LEGACY_WRITE_ENABLED", "1") in ("1", "true", "True")
         except Exception:
             legacy_enabled = True
-        asset_name = context.asset_key.path[-1] if context.asset_key and context.asset_key.path else ""
+        asset_name = ""
+        try:
+            ak = getattr(context, "asset_key", None)
+            path = getattr(ak, "path", None) if ak is not None else None
+            if path:
+                asset_name = path[-1]
+        except Exception:
+            asset_name = ""
         if (not legacy_enabled) and isinstance(asset_name, str) and asset_name.endswith("_response"):
             # Skip writing legacy response files when cutover flag is off
             context.log.info(
