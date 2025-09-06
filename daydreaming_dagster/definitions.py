@@ -25,6 +25,9 @@ from daydreaming_dagster.assets.group_results_summary import (
     generation_scores_pivot,
     evaluation_model_template_pivot,
 )
+from daydreaming_dagster.assets.documents_reporting import (
+    documents_latest_report,
+)
 from daydreaming_dagster.assets.raw_data import RAW_SOURCE_ASSETS, TASK_SOURCE_ASSETS
 from daydreaming_dagster.schedules.raw_schedule import raw_schedule
 from daydreaming_dagster.assets.group_task_definitions import (
@@ -94,6 +97,7 @@ defs = Definitions(
         draft_generation_results_append,
         essay_generation_results_append,
         evaluation_results_append,
+        documents_latest_report,
         # Source assets (CSV-only)
         *RAW_SOURCE_ASSETS,
         *TASK_SOURCE_ASSETS,
