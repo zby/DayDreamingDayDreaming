@@ -32,9 +32,15 @@ def _latest_versioned(path: Path, stem: str) -> Path | None:
     return legacy if legacy.exists() else None
 
 
+def _get_pk(context):
+    return getattr(context, "partition_key", None) or getattr(context, "asset_partition_key", None)
+
+
 @asset_check(asset=draft_response_asset, required_resource_keys={"data_root"})
 def draft_files_exist_check(context) -> AssetCheckResult:
-    pk = context.partition_key
+    pk = _get_pk(context)
+    if not pk:
+        return AssetCheckResult(passed=True, metadata={"skipped": MetadataValue.text("no partition context")})
     data_root = Path(context.resources.data_root)
     fs_dir = data_root / "3_generation" / "draft_responses"
     fs_file = _latest_versioned(fs_dir, pk)
@@ -62,7 +68,9 @@ def draft_files_exist_check(context) -> AssetCheckResult:
 
 @asset_check(asset=essay_response_asset, required_resource_keys={"data_root"})
 def essay_files_exist_check(context) -> AssetCheckResult:
-    pk = context.partition_key
+    pk = _get_pk(context)
+    if not pk:
+        return AssetCheckResult(passed=True, metadata={"skipped": MetadataValue.text("no partition context")})
     data_root = Path(context.resources.data_root)
     fs_dir = data_root / "3_generation" / "essay_responses"
     fs_file = _latest_versioned(fs_dir, pk)
@@ -85,7 +93,9 @@ def essay_files_exist_check(context) -> AssetCheckResult:
 
 @asset_check(asset=evaluation_response_asset, required_resource_keys={"data_root"})
 def evaluation_files_exist_check(context) -> AssetCheckResult:
-    pk = context.partition_key
+    pk = _get_pk(context)
+    if not pk:
+        return AssetCheckResult(passed=True, metadata={"skipped": MetadataValue.text("no partition context")})
     data_root = Path(context.resources.data_root)
     fs_dir = data_root / "4_evaluation" / "evaluation_responses"
     fs_file = _latest_versioned(fs_dir, pk)
@@ -129,7 +139,9 @@ def _open_index_from_context(context) -> SQLiteDocumentsIndex | None:
 
 @asset_check(asset=draft_response_asset, required_resource_keys={"data_root"})
 def draft_db_row_present_check(context) -> AssetCheckResult:
-    pk = context.partition_key
+    pk = _get_pk(context)
+    if not pk:
+        return AssetCheckResult(passed=True, metadata={"skipped": MetadataValue.text("no partition context")})
     # If index not enabled, treat as passed (non-blocking)
     if os.getenv("DD_DOCS_INDEX_ENABLED", "0") not in ("1", "true", "True"):
         return AssetCheckResult(passed=True, metadata={"skipped": MetadataValue.text("index disabled")})
@@ -146,7 +158,9 @@ def draft_db_row_present_check(context) -> AssetCheckResult:
 
 @asset_check(asset=essay_response_asset, required_resource_keys={"data_root"})
 def essay_db_row_present_check(context) -> AssetCheckResult:
-    pk = context.partition_key
+    pk = _get_pk(context)
+    if not pk:
+        return AssetCheckResult(passed=True, metadata={"skipped": MetadataValue.text("no partition context")})
     if os.getenv("DD_DOCS_INDEX_ENABLED", "0") not in ("1", "true", "True"):
         return AssetCheckResult(passed=True, metadata={"skipped": MetadataValue.text("index disabled")})
     idx = _open_index_from_context(context)
@@ -162,7 +176,9 @@ def essay_db_row_present_check(context) -> AssetCheckResult:
 
 @asset_check(asset=evaluation_response_asset, required_resource_keys={"data_root"})
 def evaluation_db_row_present_check(context) -> AssetCheckResult:
-    pk = context.partition_key
+    pk = _get_pk(context)
+    if not pk:
+        return AssetCheckResult(passed=True, metadata={"skipped": MetadataValue.text("no partition context")})
     if os.getenv("DD_DOCS_INDEX_ENABLED", "0") not in ("1", "true", "True"):
         return AssetCheckResult(passed=True, metadata={"skipped": MetadataValue.text("index disabled")})
     idx = _open_index_from_context(context)

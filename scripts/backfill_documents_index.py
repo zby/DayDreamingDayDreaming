@@ -90,12 +90,27 @@ def backfill(data_root: Path, db_path: Path, docs_root: Path, run_id: str, dry_r
                 pass
         inserted += 1
 
-    # Helper: parse triple task id parts if possible
+    # Helpers to parse combo/model from id or filename base
     def _parse_triple(pk: str) -> tuple[str | None, str | None, str | None]:
         parts = pk.split("__")
         if len(parts) == 3:
             return parts[0], parts[1], parts[2]
         return None, None, None
+
+    def _parse_combo_model_from_base(base: str) -> tuple[str | None, str | None]:
+        # Prefer __-separated triple
+        c,t,m = _parse_triple(base)
+        if c and m:
+            return c, m
+        # Fallback: underscore-separated legacy names like
+        # combo_v1_<hash>_<template>_<model>[_...]
+        toks = base.split("_")
+        # Expect at least: combo v1 <hash> <template> <model>
+        if len(toks) >= 5 and toks[0] == "combo" and toks[1].startswith("v"):
+            combo = "_".join(toks[:3])
+            model = toks[4]
+            return combo, model
+        return None, None
 
     # Scan all draft files
     if draft_dir.exists():
@@ -129,19 +144,22 @@ def backfill(data_root: Path, db_path: Path, docs_root: Path, run_id: str, dry_r
         for p in sorted(essay_dir.glob("*.txt")):
             name = p.stem
             base = name.split("_v")[0]
+            combo_u, model_u = _parse_combo_model_from_base(base)
             combo, tmpl, model = _parse_triple(base)
+            if (not combo or not model) and combo_u and model_u:
+                combo, model = combo_u, model_u
             text = p.read_text(encoding="utf-8")
             # Try link to parent if a draft with same combo+model exists
             parent_doc_id = None
             if combo and model:
-                # heuristic: pick any draft row with same combo+model (template unknown)
+                # Prefer any draft row with same combo+model (template segment differs)
                 cur = idx.connect().execute(
                     "SELECT doc_id FROM documents WHERE stage='draft' AND task_id LIKE ? ORDER BY created_at DESC, rowid DESC LIMIT 1",
-                    (f"{combo}%{model}",),
+                    (f"{combo}__%__{model}",),
                 )
                 r = cur.fetchone()
                 if r:
-                    parent_doc_id = r.get("doc_id")
+                    parent_doc_id = r[0] if isinstance(r, tuple) else r.get("doc_id")
             logical = (
                 compute_logical_key_id_essay(parent_doc_id, tmpl, model)
                 if parent_doc_id and tmpl and model

@@ -44,6 +44,9 @@ def _load_phase1_text(context, draft_task_id: str) -> tuple[str, str]:
 
     Returns (normalized_text, source_label).
     """
+    # Establish expected legacy dir path up front for clearer error metadata
+    draft_dir = Path(context.resources.data_root) / "3_generation" / "draft_responses"
+
     # DB-first when enabled: resolve latest OK draft by task id
     try:
         idx_res = context.resources.documents_index
@@ -69,7 +72,7 @@ def _load_phase1_text(context, draft_task_id: str) -> tuple[str, str]:
     # If legacy writes are disabled, do not fallback to filesystem
     legacy_enabled = os.getenv("DD_DOCS_LEGACY_WRITE_ENABLED", "1") in ("1", "true", "True")
     if legacy_enabled:
-        draft_dir = Path(context.resources.data_root) / "3_generation" / "draft_responses"
+        # Use the precomputed draft_dir
         try:
             import os as _os, re as _re
             _V_RE = _re.compile(rf"^{re.escape(draft_task_id)}_v(\d+)\.txt$")
@@ -99,7 +102,7 @@ def _load_phase1_text(context, draft_task_id: str) -> tuple[str, str]:
     raise Failure(
         description="Draft response not found",
         metadata={
-            "draft_task_id": MetadataValue.text(draft_task_id),
+            "draft_task_id": MetadataValue.text(str(draft_task_id)),
             "function": MetadataValue.text("_load_phase1_text"),
             "expected_dir": MetadataValue.path(str(draft_dir)),
             "resolution": MetadataValue.text(
@@ -170,6 +173,7 @@ def _essay_prompt_impl(context, essay_generation_tasks) -> str:
     partitions_def=essay_tasks_partitions,
     group_name="generation_essays",
     io_manager_key="essay_prompt_io_manager",
+    required_resource_keys={"data_root"},
 )
 def essay_prompt(context, essay_generation_tasks) -> str:
     return _essay_prompt_impl(context, essay_generation_tasks)
