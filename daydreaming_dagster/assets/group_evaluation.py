@@ -53,6 +53,17 @@ def evaluation_prompt(context, evaluation_tasks) -> str:
 
     if doc_text is None:
         file_path = task_row.get("file_path")
+        # If legacy writes are disabled and DB did not resolve, fail fast
+        import os as _os
+        legacy_enabled = _os.getenv("DD_DOCS_LEGACY_WRITE_ENABLED", "1") in ("1", "true", "True")
+        if not legacy_enabled:
+            raise Failure(
+                description="Evaluation target not found in documents index and legacy filesystem fallback is disabled",
+                metadata={
+                    "evaluation_task_id": MetadataValue.text(task_id),
+                    "document_id": MetadataValue.text(str(task_row.get("document_id"))),
+                },
+            )
         if not isinstance(file_path, str) or not len(file_path):
             raise Failure(
                 description=f"Missing or invalid file_path for evaluation task '{task_id}'",

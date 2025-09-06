@@ -66,32 +66,35 @@ def _load_phase1_text(context, draft_task_id: str) -> tuple[str, str]:
         except Exception:
             pass
 
-    draft_dir = Path(context.resources.data_root) / "3_generation" / "draft_responses"
-    try:
-        import os, re
-        _V_RE = re.compile(rf"^{re.escape(draft_task_id)}_v(\d+)\.txt$")
-        best_ver = -1
-        best_name = None
-        for name in os.listdir(draft_dir):
-            m = _V_RE.match(name)
-            if not m:
-                continue
-            try:
-                v = int(m.group(1))
-            except Exception:
-                continue
-            if v > best_ver:
-                best_ver = v
-                best_name = name
-        if best_name:
-            draft_fp = draft_dir / best_name
-            if draft_fp.exists():
-                return draft_fp.read_text(encoding="utf-8").replace("\r\n", "\n"), "draft_file_v"
-    except Exception:
-        pass
-    draft_fp_legacy = draft_dir / f"{draft_task_id}.txt"
-    if draft_fp_legacy.exists():
-        return draft_fp_legacy.read_text(encoding="utf-8").replace("\r\n", "\n"), "draft_file"
+    # If legacy writes are disabled, do not fallback to filesystem
+    legacy_enabled = os.getenv("DD_DOCS_LEGACY_WRITE_ENABLED", "1") in ("1", "true", "True")
+    if legacy_enabled:
+        draft_dir = Path(context.resources.data_root) / "3_generation" / "draft_responses"
+        try:
+            import os as _os, re as _re
+            _V_RE = _re.compile(rf"^{re.escape(draft_task_id)}_v(\d+)\.txt$")
+            best_ver = -1
+            best_name = None
+            for name in _os.listdir(draft_dir):
+                m = _V_RE.match(name)
+                if not m:
+                    continue
+                try:
+                    v = int(m.group(1))
+                except Exception:
+                    continue
+                if v > best_ver:
+                    best_ver = v
+                    best_name = name
+            if best_name:
+                draft_fp = draft_dir / best_name
+                if draft_fp.exists():
+                    return draft_fp.read_text(encoding="utf-8").replace("\r\n", "\n"), "draft_file_v"
+        except Exception:
+            pass
+        draft_fp_legacy = draft_dir / f"{draft_task_id}.txt"
+        if draft_fp_legacy.exists():
+            return draft_fp_legacy.read_text(encoding="utf-8").replace("\r\n", "\n"), "draft_file"
 
     raise Failure(
         description="Draft response not found",

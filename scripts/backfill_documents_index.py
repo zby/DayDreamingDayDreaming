@@ -5,12 +5,15 @@ import argparse
 import json
 from pathlib import Path
 import shutil
+import sqlite3
 import sys
 import pandas as pd
 from daydreaming_dagster.utils.documents_index import SQLiteDocumentsIndex, DocumentRow
 from daydreaming_dagster.utils.ids import (
+    compute_logical_key_id,
     compute_logical_key_id_draft,
     compute_logical_key_id_essay,
+    compute_logical_key_id_evaluation,
     new_doc_id,
     doc_dir as build_doc_dir,
 )
@@ -42,182 +45,164 @@ def backfill(data_root: Path, db_path: Path, docs_root: Path, run_id: str, dry_r
     idx = SQLiteDocumentsIndex(db_path, docs_root)
     idx.init_maybe_create_tables()
 
-    tasks2 = data_root / "2_tasks"
-    drafts_csv = tasks2 / "draft_generation_tasks.csv"
-    essays_csv = tasks2 / "essay_generation_tasks.csv"
-    if not drafts_csv.exists():
-        print("No draft_generation_tasks.csv; nothing to backfill")
-        return 0
-
-    draft_df = pd.read_csv(drafts_csv)
-    essay_df = pd.read_csv(essays_csv) if essays_csv.exists() else pd.DataFrame()
-
     inserted = 0
-
-    # Drafts
+    # Directory paths
     draft_dir = data_root / "3_generation" / "draft_responses"
     raw_dir = data_root / "3_generation" / "draft_responses_raw"
-    for _, row in draft_df.iterrows():
-        task_id = str(row["draft_task_id"]) if "draft_task_id" in row else None
-        if not task_id:
-            continue
-        combo_id = str(row.get("combo_id"))
-        draft_template = str(row.get("draft_template"))
-        model_id = str(row.get("generation_model") or row.get("generation_model_id"))
-
-        file_path = _latest_versioned_txt(draft_dir, task_id)
-        if not file_path:
-            continue
-        parsed = file_path.read_text(encoding="utf-8")
-        raw_path = _latest_versioned_txt(raw_dir, task_id)
-        raw = parsed
-        if raw_path and raw_path.exists():
-            raw = raw_path.read_text(encoding="utf-8")
-
-        logical = compute_logical_key_id_draft(combo_id, draft_template, model_id)
-        doc_id = new_doc_id(logical, run_id, task_id)
-        out_dir = build_doc_dir(docs_root, "draft", logical, doc_id)
-        if not dry_run:
-            out_dir.mkdir(parents=True, exist_ok=True)
-            (out_dir / "raw.txt").write_text(raw, encoding="utf-8")
-            (out_dir / "parsed.txt").write_text(parsed, encoding="utf-8")
-            (out_dir / "metadata.json").write_text(json.dumps({
-                "task_id": task_id,
-                "draft_template": draft_template,
-                "model_id": model_id,
-            }, ensure_ascii=False, indent=2), encoding="utf-8")
-            rel = out_dir.relative_to(docs_root)
-            idx.insert_document(DocumentRow(
-                doc_id=doc_id,
-                logical_key_id=logical,
-                stage="draft",
-                task_id=task_id,
-                doc_dir=str(rel),
-                status="ok",
-                template_id=draft_template,
-                model_id=model_id,
-                run_id=run_id,
-                raw_chars=len(raw),
-                parsed_chars=len(parsed),
-                meta_small={"function": "backfill"},
-            ))
-        inserted += 1
-
-    # Essays
     essay_dir = data_root / "3_generation" / "essay_responses"
-    for _, row in essay_df.iterrows():
-        task_id = str(row["essay_task_id"]) if "essay_task_id" in row else None
-        if not task_id:
-            continue
-        essay_template = str(row.get("essay_template"))
-        model_id = str(row.get("generation_model") or row.get("generation_model_id"))
-        draft_task_id = row.get("draft_task_id")
 
-        file_path = _latest_versioned_txt(essay_dir, task_id)
-        if not file_path:
-            continue
-        text = file_path.read_text(encoding="utf-8")
-
-        parent_doc_id = None
-        if isinstance(draft_task_id, str) and draft_task_id:
-            parent = idx.get_latest_by_task("draft", draft_task_id)
-            if parent:
-                parent_doc_id = parent.get("doc_id")
-
-        if parent_doc_id:
-            logical = compute_logical_key_id_essay(parent_doc_id, essay_template, model_id)
-        else:
-            # fallback: still group by draft task id to maintain some determinism
-            logical = compute_logical_key_id_essay(draft_task_id or "", essay_template, model_id)
-
-        doc_id = new_doc_id(logical, run_id, task_id)
-        out_dir = build_doc_dir(docs_root, "essay", logical, doc_id)
+    # Additional pass: scan legacy directories to include all historical files (not only current tasks)
+    def _insert_doc(stage: str, task_id: str, logical: str, text: str, *, raw_text: str | None = None, template_id: str | None = None, model_id: str | None = None, parent_doc_id: str | None = None, attempt_id: str | None = None, prompt_text: str | None = None):
+        nonlocal inserted
+        doc_id = new_doc_id(logical, run_id, attempt_id or f"{task_id}")
+        out_dir = build_doc_dir(docs_root, stage, logical, doc_id)
         if not dry_run:
             out_dir.mkdir(parents=True, exist_ok=True)
-            (out_dir / "raw.txt").write_text(text, encoding="utf-8")
+            (out_dir / "raw.txt").write_text(raw_text if raw_text is not None else text, encoding="utf-8")
             (out_dir / "parsed.txt").write_text(text, encoding="utf-8")
-            (out_dir / "metadata.json").write_text(json.dumps({
+            meta = {
                 "task_id": task_id,
-                "essay_template": essay_template,
-                "model_id": model_id,
-                "parent_doc_id": parent_doc_id,
-            }, ensure_ascii=False, indent=2), encoding="utf-8")
+                **({"template_id": template_id} if template_id else {}),
+                **({"model_id": model_id} if model_id else {}),
+                **({"parent_doc_id": parent_doc_id} if parent_doc_id else {}),
+            }
+            (out_dir / "metadata.json").write_text(json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8")
+            if prompt_text:
+                (out_dir / "prompt.txt").write_text(prompt_text, encoding="utf-8")
             rel = out_dir.relative_to(docs_root)
-            idx.insert_document(DocumentRow(
+            try:
+                idx.insert_document(DocumentRow(
                 doc_id=doc_id,
                 logical_key_id=logical,
-                stage="essay",
+                stage=stage,
                 task_id=task_id,
                 parent_doc_id=parent_doc_id,
                 doc_dir=str(rel),
                 status="ok",
-                template_id=essay_template,
+                template_id=template_id,
                 model_id=model_id,
                 run_id=run_id,
-                raw_chars=len(text),
+                raw_chars=len(raw_text if raw_text is not None else text),
                 parsed_chars=len(text),
-                meta_small={"function": "backfill"},
+                meta_small={"function": "backfill-scan"},
             ))
+            except sqlite3.IntegrityError:
+                pass
         inserted += 1
 
-    # Evaluations (optional)
-    evals_csv = tasks2 / "evaluation_tasks.csv"
-    if evals_csv.exists():
-        eval_df = pd.read_csv(evals_csv)
-        eval_dir = data_root / "4_evaluation" / "evaluation_responses"
-        for _, row in eval_df.iterrows():
-            eval_task_id = str(row.get("evaluation_task_id"))
-            if not eval_task_id:
-                continue
-            file_path = _latest_versioned_txt(eval_dir, eval_task_id)
-            if not file_path:
-                continue
-            text = file_path.read_text(encoding="utf-8")
+    # Helper: parse triple task id parts if possible
+    def _parse_triple(pk: str) -> tuple[str | None, str | None, str | None]:
+        parts = pk.split("__")
+        if len(parts) == 3:
+            return parts[0], parts[1], parts[2]
+        return None, None, None
 
-            document_id = row.get("document_id")
-            stage_raw = str(row.get("stage") or "")
-            target_stage = "essay" if stage_raw.startswith("essay") else "draft"
+    # Scan all draft files
+    if draft_dir.exists():
+        for p in sorted(draft_dir.glob("*.txt")):
+            name = p.stem
+            base = name.split("_v")[0]
+            combo, tmpl, model = _parse_triple(base)
+            text = p.read_text(encoding="utf-8")
+            # Prefer matching RAW by version when available
+            raw_text = text
+            if raw_dir.exists():
+                v = None
+                if "_v" in name:
+                    try:
+                        v = int(name.split("_v")[-1])
+                    except Exception:
+                        v = None
+                if v is not None:
+                    raw_candidate = raw_dir / f"{base}_v{v}.txt"
+                    if raw_candidate.exists():
+                        raw_text = raw_candidate.read_text(encoding="utf-8")
+            logical = (
+                compute_logical_key_id_draft(combo, tmpl, model)
+                if combo and tmpl and model
+                else compute_logical_key_id("draft", parts=(base,))
+            )
+            _insert_doc("draft", base, logical, text, raw_text=raw_text, template_id=tmpl, model_id=model, attempt_id=p.name)
+
+    # Scan all essay files
+    if essay_dir.exists():
+        for p in sorted(essay_dir.glob("*.txt")):
+            name = p.stem
+            base = name.split("_v")[0]
+            combo, tmpl, model = _parse_triple(base)
+            text = p.read_text(encoding="utf-8")
+            # Try link to parent if a draft with same combo+model exists
             parent_doc_id = None
-            try:
-                parent = idx.get_latest_by_task(target_stage, str(document_id))
-                if parent:
-                    parent_doc_id = parent.get("doc_id")
-            except Exception:
-                parent_doc_id = None
+            if combo and model:
+                # heuristic: pick any draft row with same combo+model (template unknown)
+                cur = idx.connect().execute(
+                    "SELECT doc_id FROM documents WHERE stage='draft' AND task_id LIKE ? ORDER BY created_at DESC, rowid DESC LIMIT 1",
+                    (f"{combo}%{model}",),
+                )
+                r = cur.fetchone()
+                if r:
+                    parent_doc_id = r.get("doc_id")
+            logical = (
+                compute_logical_key_id_essay(parent_doc_id, tmpl, model)
+                if parent_doc_id and tmpl and model
+                else compute_logical_key_id("essay", parts=(base,))
+            )
+            _insert_doc("essay", base, logical, text, raw_text=text, template_id=tmpl, model_id=model, parent_doc_id=parent_doc_id, attempt_id=p.name)
 
-            eval_template = str(row.get("evaluation_template"))
-            model_id = str(row.get("evaluation_model") or row.get("evaluation_model_id"))
-            from daydreaming_dagster.utils.ids import compute_logical_key_id_evaluation
-            logical = compute_logical_key_id_evaluation(str(parent_doc_id or document_id), eval_template, model_id)
-            doc_id = new_doc_id(logical, run_id, eval_task_id)
-            out_dir = build_doc_dir(docs_root, "evaluation", logical, doc_id)
-            if not dry_run:
-                out_dir.mkdir(parents=True, exist_ok=True)
-                (out_dir / "raw.txt").write_text(text, encoding="utf-8")
-                (out_dir / "parsed.txt").write_text(text, encoding="utf-8")
-                (out_dir / "metadata.json").write_text(json.dumps({
-                    "task_id": eval_task_id,
-                    "evaluation_template": eval_template,
-                    "model_id": model_id,
-                    "parent_doc_id": parent_doc_id,
-                }, ensure_ascii=False, indent=2), encoding="utf-8")
-                rel = out_dir.relative_to(docs_root)
-                idx.insert_document(DocumentRow(
-                    doc_id=doc_id,
-                    logical_key_id=logical,
-                    stage="evaluation",
-                    task_id=eval_task_id,
-                    parent_doc_id=parent_doc_id,
-                    doc_dir=str(rel),
-                    status="ok",
-                    template_id=eval_template,
-                    model_id=model_id,
-                    run_id=run_id,
-                    raw_chars=len(text),
-                    parsed_chars=len(text),
-                    meta_small={"function": "backfill"},
-                ))
-            inserted += 1
+    # Scan all evaluation files
+    eval_dir = data_root / "4_evaluation" / "evaluation_responses"
+    if eval_dir.exists():
+        for p in sorted(eval_dir.glob("*.txt")):
+            name = p.stem
+            base = name.split("_v")[0]
+            parts = base.split("__")
+            document_id = parts[0] if parts else base
+            eval_template = parts[1] if len(parts) > 1 else None
+            model = parts[2] if len(parts) > 2 else None
+            text = p.read_text(encoding="utf-8")
+            parent_doc_id = None
+            # Try resolve a parent doc by matching draft/essay task_id
+            cur = idx.connect().execute(
+                "SELECT doc_id FROM documents WHERE (stage='essay' OR stage='draft') AND task_id=? ORDER BY created_at DESC, rowid DESC LIMIT 1",
+                (document_id,),
+            )
+            r = cur.fetchone()
+            if r:
+                parent_doc_id = r.get("doc_id")
+            logical = (
+                compute_logical_key_id_evaluation(parent_doc_id or document_id, eval_template or "", model or "")
+                if (eval_template and model)
+                else compute_logical_key_id("evaluation", parts=(base,))
+            )
+            _insert_doc("evaluation", base, logical, text, raw_text=text, template_id=eval_template, model_id=model, parent_doc_id=parent_doc_id, attempt_id=p.name)
+
+    # Scan all links (treat as draft-like)
+    links_resp_dir = data_root / "3_generation" / "links_responses"
+    links_prompt_dir = data_root / "3_generation" / "links_prompts"
+    if links_resp_dir.exists():
+        for p in sorted(links_resp_dir.glob("*.txt")):
+            name = p.stem
+            base = name.split("_v")[0]
+            combo, tmpl, model = _parse_triple(base)
+            text = p.read_text(encoding="utf-8")
+            # Try to find matching prompt
+            prompt_text = None
+            if links_prompt_dir.exists():
+                v = None
+                if "_v" in name:
+                    try:
+                        v = int(name.split("_v")[-1])
+                    except Exception:
+                        v = None
+                cand = links_prompt_dir / (f"{base}_v{v}.txt" if v is not None else f"{base}.txt")
+                if cand.exists():
+                    prompt_text = cand.read_text(encoding="utf-8")
+            logical = (
+                compute_logical_key_id_draft(combo, tmpl, model)
+                if combo and tmpl and model
+                else compute_logical_key_id("draft", parts=(base,))
+            )
+            _insert_doc("draft", base, logical, text, raw_text=text, template_id=tmpl, model_id=model, attempt_id=p.name, prompt_text=prompt_text)
 
     print(f"Inserted/processed rows: {inserted}")
     return 0
