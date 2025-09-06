@@ -53,6 +53,11 @@ class MockLLMResource(ConfigurableResource):
         if not hasattr(self, '_client'):
             self._client = MockLLMClient(responses=self.responses, should_fail=self.should_fail)
         return self._client.generate(prompt, model, temperature)
+
+    def generate_with_info(self, prompt: str, model: str, temperature: float = 0.7, max_tokens: int = None):
+        """Info-returning variant used by assets; wraps generate()."""
+        text = self.generate(prompt, model, temperature, max_tokens)
+        return text, {"finish_reason": "stop", "truncated": False}
     
     @property
     def call_count(self):

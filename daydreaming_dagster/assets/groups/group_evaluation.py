@@ -100,7 +100,11 @@ def evaluation_response(context, evaluation_prompt, evaluation_tasks) -> str:
     task_row = get_task_row(evaluation_tasks, "evaluation_task_id", task_id, context, "evaluation_tasks")
     model_name = task_row["evaluation_model_name"]
     llm_client = context.resources.openrouter_client
-    response = llm_client.generate(evaluation_prompt, model=model_name)
+    text, info = llm_client.generate_with_info(evaluation_prompt, model=model_name)
+    context.add_output_metadata({
+        "evaluation_task_id": MetadataValue.text(task_id),
+        "model_used": MetadataValue.text(model_name),
+        "finish_reason": MetadataValue.text(str((info or {}).get("finish_reason"))),
+    })
     context.log.info(f"Generated evaluation response for task {task_id} using model {model_name}")
-    return response
-
+    return text

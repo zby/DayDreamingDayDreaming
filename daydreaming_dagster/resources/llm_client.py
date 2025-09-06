@@ -44,27 +44,12 @@ class LLMClientResource(ConfigurableResource):
             )
 
     def generate(self, prompt: str, model: str, temperature: float = 0.7, max_tokens: Optional[int] = None) -> str:
-        """Generate content using specified model with rate limiting and retry logic.
+        """Generate content and return only the text.
 
-        Args:
-            prompt: Text prompt to send to the model
-            model: Model identifier
-            temperature: Sampling temperature (0.0-2.0). Lower values = more deterministic
-            max_tokens: Maximum tokens to generate (defaults to default_max_tokens)
-
-        Returns:
-            Generated response text
-
-        Raises:
-            ValueError: For missing API key (immediate failure)
-            Exception: For permanent failures after all retries exhausted
+        Thin wrapper over generate_with_info for backwards compatibility.
         """
-        self._ensure_initialized()
-        effective_max_tokens = max_tokens or self.default_max_tokens
-        
-        # Call the decorated method that handles rate limiting and retries
-        info = self._make_api_call_info(prompt, model, temperature, effective_max_tokens)
-        return info.get("text", "")
+        text, _info = self.generate_with_info(prompt, model, temperature, max_tokens)
+        return text
 
     def generate_with_info(self, prompt: str, model: str, temperature: float = 0.7, max_tokens: Optional[int] = None) -> tuple[str, dict]:
         """Generate content and return (text, info dict).

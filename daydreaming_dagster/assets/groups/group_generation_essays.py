@@ -13,6 +13,7 @@ from ...utils.raw_readers import read_essay_templates, read_draft_templates
 from ...utils.link_parsers import get_draft_parser
 from ...utils.dataframe_helpers import get_task_row
 from ...utils.shared_context import MockLoadContext
+from ...utils.raw_write import save_versioned_raw_text
 
 # Reuse a single Jinja environment
 JINJA = Environment()
@@ -255,12 +256,8 @@ def _essay_response_impl(context, essay_prompt, essay_generation_tasks) -> str:
     model_name = task_row["generation_model_name"]
     llm_client = context.resources.openrouter_client
     max_tokens = getattr(getattr(context.resources, "experiment_config", None), "essay_generation_max_tokens", None) or 4096
-    # Generate with info if available
-    if hasattr(llm_client, "generate_with_info"):
-        text, info = llm_client.generate_with_info(essay_prompt, model=model_name, max_tokens=max_tokens)
-    else:
-        text = llm_client.generate(essay_prompt, model=model_name, max_tokens=max_tokens)
-        info = {"finish_reason": "stop", "truncated": False}
+    # Unified client path
+    text, info = llm_client.generate_with_info(essay_prompt, model=model_name, max_tokens=max_tokens)
 
     normalized = str(text).replace("\r\n", "\n")
 
@@ -272,26 +269,7 @@ def _essay_response_impl(context, essay_prompt, essay_generation_tasks) -> str:
     raw_dir = Path(raw_dir_override) if raw_dir_override else data_root / "3_generation" / "essay_responses_raw"
     raw_path_str = None
     if save_raw:
-        try:
-            raw_dir.mkdir(parents=True, exist_ok=True)
-            import os, re
-            pattern = re.compile(rf"^{re.escape(task_id)}_v(\\d+)\\.txt$")
-            current = 0
-            for name in os.listdir(raw_dir):
-                m = pattern.match(name)
-                if m:
-                    try:
-                        v = int(m.group(1))
-                        if v > current:
-                            current = v
-                    except Exception:
-                        pass
-            next_v = current + 1
-            raw_path = raw_dir / f"{task_id}_v{next_v}.txt"
-            raw_path.write_text(normalized, encoding="utf-8")
-            raw_path_str = str(raw_path)
-        except Exception as e:
-            context.log.info(f"Failed to save RAW essay for {task_id}: {e}")
+        raw_path_str = save_versioned_raw_text(raw_dir, task_id, normalized, logger=context.log)
 
     # Truncation detection identical to drafts: finish_reason==length or usage tokens hit cap
     finish_reason = (info or {}).get("finish_reason") if isinstance(info, dict) else None
@@ -302,7 +280,7 @@ def _essay_response_impl(context, essay_prompt, essay_generation_tasks) -> str:
     if isinstance(usage, dict):
         completion_tokens = usage.get("completion_tokens")
         requested_max = usage.get("max_tokens")
-    if was_truncated or str(finish_reason).lower() == "length":
+    if was_truncated:
         meta = {
             "mode": MetadataValue.text("llm"),
             "function": MetadataValue.text("essay_response"),

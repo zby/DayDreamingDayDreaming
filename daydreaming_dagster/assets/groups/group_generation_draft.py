@@ -8,13 +8,12 @@ from dagster import asset, Failure, MetadataValue
 import pandas as pd
 from pathlib import Path
 from jinja2 import Environment, TemplateSyntaxError
-import os
-import re
 from ..partitions import draft_tasks_partitions
 from ...utils.template_loader import load_generation_template
 from ...utils.raw_readers import read_draft_templates
 from ...utils.link_parsers import get_draft_parser
 from ...utils.dataframe_helpers import get_task_row
+from ...utils.raw_write import save_versioned_raw_text
 
 # Reuse a single Jinja environment
 JINJA = Environment()
@@ -103,12 +102,8 @@ def _draft_response_impl(context, draft_prompt, draft_generation_tasks) -> str:
     llm_client = context.resources.openrouter_client
     experiment_config = context.resources.experiment_config
     max_tokens = getattr(experiment_config, "draft_generation_max_tokens", None) or 20480
-    # Support both new (generate_with_info) and legacy (generate) client interfaces
-    if hasattr(llm_client, "generate_with_info"):
-        text, info = llm_client.generate_with_info(draft_prompt, model=model_name, max_tokens=max_tokens)
-    else:
-        text = llm_client.generate(draft_prompt, model=model_name, max_tokens=max_tokens)
-        info = {"finish_reason": "stop", "truncated": False}
+    # Unified client path
+    text, info = llm_client.generate_with_info(draft_prompt, model=model_name, max_tokens=max_tokens)
 
     # Normalize newlines and validate minimum lines
     normalized = str(text).replace("\r\n", "\n")
@@ -136,30 +131,12 @@ def _draft_response_impl(context, draft_prompt, draft_generation_tasks) -> str:
     raw_dir = Path(raw_dir_override) if raw_dir_override else data_root / "3_generation" / "draft_responses_raw"
     raw_path_str = None
     if save_raw:
-        try:
-            raw_dir.mkdir(parents=True, exist_ok=True)
-            pattern = re.compile(rf"^{re.escape(task_id)}_v(\d+)\.txt$")
-            current = 0
-            for name in os.listdir(raw_dir):
-                m = pattern.match(name)
-                if m:
-                    try:
-                        v = int(m.group(1))
-                        if v > current:
-                            current = v
-                    except Exception:
-                        pass
-            next_v = current + 1
-            raw_path = raw_dir / f"{task_id}_v{next_v}.txt"
-            raw_path.write_text(normalized, encoding="utf-8")
-            raw_path_str = str(raw_path)
-        except Exception as e:
-            context.log.info(f"Failed to save RAW draft for {task_id}: {e}")
+        raw_path_str = save_versioned_raw_text(raw_dir, task_id, normalized, logger=context.log)
 
     # If the response was truncated (e.g., hit token limit), mark as failure after saving RAW
     finish_reason = (info or {}).get("finish_reason") if isinstance(info, dict) else None
     was_truncated = bool((info or {}).get("truncated") if isinstance(info, dict) else False)
-    if was_truncated or str(finish_reason).lower() == "length":
+    if was_truncated:
         usage = (info or {}).get("usage") if isinstance(info, dict) else None
         completion_tokens = None
         requested_max = None

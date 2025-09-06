@@ -35,6 +35,10 @@ class _FakeLLM:
     def generate(self, *_args, **_kwargs):
         return self._text
 
+    # Provide the info-style API to match production client
+    def generate_with_info(self, *args, **kwargs):
+        return self._text, {"finish_reason": "stop", "truncated": False}
+
 
 class _Cfg:
     # Ensure raw is saved and default path is used
