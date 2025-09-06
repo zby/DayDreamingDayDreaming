@@ -215,6 +215,20 @@ def evaluation_tasks(
     if "active" in evaluation_templates_df.columns:
         evaluation_templates_df = evaluation_templates_df[evaluation_templates_df["active"] == True]
     eval_templates = list(evaluation_templates_df["template_id"].tolist())
+    # Optional parser column: build lookup to propagate into tasks
+    parser_map: dict[str, str] = {}
+    if "parser" in evaluation_templates_df.columns:
+        try:
+            parser_map = (
+                evaluation_templates_df[["template_id", "parser"]]
+                .dropna(subset=["template_id"])  # keep valid template ids
+                .astype({"template_id": str})
+                .set_index("template_id")["parser"]
+                .astype(str)
+                .to_dict()
+            )
+        except Exception:
+            parser_map = {}
 
     data_root_path = Path(data_root)
     docs: List[dict] = []
@@ -292,6 +306,7 @@ def evaluation_tasks(
                         "evaluation_template": eval_template_id,
                         "evaluation_model": eval_model_id,
                         "evaluation_model_name": eval_model_name,
+                        "parser": parser_map.get(str(eval_template_id)),
                     }
                 )
     tasks_df = pd.DataFrame(rows)

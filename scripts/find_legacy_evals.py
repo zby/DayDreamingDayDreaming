@@ -77,12 +77,12 @@ def main() -> int:
     responses_dir = Path(args.responses_dir) if args.responses_dir else (data_root / "4_evaluation" / "evaluation_responses")
     tasks_csv = Path(args.tasks_csv) if args.tasks_csv else (data_root / "2_tasks" / "evaluation_tasks.csv")
 
-    # Import detection logic from project utility to avoid duplicated truth
-    from daydreaming_dagster.utils.evaluation_processing import detect_parsing_strategy, load_evaluation_parsing_strategies
+    # Load strict parser map
+    from daydreaming_dagster.utils.evaluation_parsing_config import load_parser_map
 
     # Map evaluation_task_id -> evaluation_template from tasks CSV if present
     task_templates = _load_task_templates(tasks_csv)
-    strategy_map = load_evaluation_parsing_strategies(data_root)
+    parser_map = load_parser_map(data_root)
 
     legacy_rows: list[tuple[str, str, str, str]] = []
     total = 0
@@ -93,7 +93,10 @@ def main() -> int:
         if not template:
             # Unable to determine template; skip
             continue
-        strategy = detect_parsing_strategy(template, strategy_map)
+        if template not in parser_map:
+            print(f"Unknown template (no parser configured): {template} for {stem}", file=sys.stderr)
+            continue
+        strategy = parser_map[template]
         if strategy == "complex":
             legacy_rows.append((stem, template, strategy, str(fp)))
 

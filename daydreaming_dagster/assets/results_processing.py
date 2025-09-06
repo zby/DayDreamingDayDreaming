@@ -8,7 +8,6 @@ from ..utils.evaluation_processing import (
     enrich_evaluation_data,
     calculate_evaluation_metadata,
     add_evaluation_file_paths,
-    load_evaluation_parsing_strategies,
 )
 
 
@@ -30,13 +29,10 @@ def parsed_scores(context, evaluation_tasks: pd.DataFrame) -> pd.DataFrame:
     
     # Get base path and parse responses using evaluation processing utility
     base_path = Path(context.resources.evaluation_response_io_manager.base_path)
-    # Use default parsing from utils - no custom parse function needed
-    # Load optional parsing strategy overrides from evaluation_templates.csv
-    try:
-        strategy_map = load_evaluation_parsing_strategies(Path(context.resources.data_root))
-    except Exception:
-        strategy_map = {}
-    parsed_df = parse_evaluation_files(evaluation_tasks, base_path, context=context, strategy_map=strategy_map)
+    # Strict: evaluation_tasks must include a valid 'parser' column; no fallbacks.
+    if "parser" not in evaluation_tasks.columns:
+        raise Failure("evaluation_tasks is missing required 'parser' column. Ensure evaluation_templates.csv defines 'parser' for each active template.")
+    parsed_df = parse_evaluation_files(evaluation_tasks, base_path, context=context)
 
     # Join with evaluation task metadata (denormalized)
     base_cols = [

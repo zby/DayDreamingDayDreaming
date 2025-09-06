@@ -17,6 +17,33 @@ def test_parse_evaluation_files_empty_tasks():
     assert list(result.columns) == ['evaluation_task_id', 'score', 'error']
 
 
+def test_parse_evaluation_files_respects_parser_complex(tmp_path: Path):
+    """Default parser selection should honor explicit parser='complex'."""
+    # Prepare task row and file
+    task_id = "doc__templateX__modelY"
+    (tmp_path / f"{task_id}.txt").write_text("REASONING: ok\nTotal Score: 7/10", encoding="utf-8")
+    tasks = pd.DataFrame([
+        {"evaluation_task_id": task_id, "evaluation_template": "templateX", "parser": "complex"}
+    ])
+    out = parse_evaluation_files(tasks, tmp_path)
+    assert len(out) == 1
+    assert out.iloc[0]["score"] == 7.0
+    assert out.iloc[0]["used_parser"] == "complex"
+
+
+def test_parse_evaluation_files_respects_parser_in_last_line(tmp_path: Path):
+    """Default parser selection should honor explicit parser='in_last_line'."""
+    task_id = "doc__templateY__modelZ"
+    (tmp_path / f"{task_id}.txt").write_text("Some text\nSCORE: 8", encoding="utf-8")
+    tasks = pd.DataFrame([
+        {"evaluation_task_id": task_id, "evaluation_template": "templateY", "parser": "in_last_line"}
+    ])
+    out = parse_evaluation_files(tasks, tmp_path)
+    assert len(out) == 1
+    assert out.iloc[0]["score"] == 8.0
+    assert out.iloc[0]["used_parser"] == "in_last_line"
+
+
 def test_enrich_evaluation_data_basic():
     """Test basic evaluation metadata enrichment."""
     parsed_df = pd.DataFrame({

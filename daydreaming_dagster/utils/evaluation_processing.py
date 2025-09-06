@@ -1,4 +1,4 @@
-"""Utilities for processing evaluation response files and enriching with metadata."""
+"""Utilities for processing evaluation response files and enriching with metadata (strict)."""
 
 import pandas as pd
 from pathlib import Path
@@ -6,65 +6,10 @@ from typing import Dict, Any, List
 from dagster import MetadataValue
 
 from .eval_response_parser import parse_llm_response
+from .evaluation_parsing_config import ALLOWED_PARSERS, require_parser_for_template, load_parser_map
 
 
-def load_evaluation_parsing_strategies(data_root: Path) -> dict[str, str]:
-    """Load evaluation template -> parsing_strategy mapping from CSV if present.
-
-    Falls back to empty mapping when file/column missing.
-    """
-    try:
-        csv_path = Path(data_root) / "1_raw" / "evaluation_templates.csv"
-        if not csv_path.exists():
-            return {}
-        df = pd.read_csv(csv_path)
-        if "template_id" in df.columns and "parsing_strategy" in df.columns:
-            m = (
-                df[["template_id", "parsing_strategy"]]
-                .dropna(subset=["template_id"])
-                .set_index("template_id")["parsing_strategy"]
-                .to_dict()
-            )
-            # Normalize values
-            norm = {}
-            for k, v in m.items():
-                s = str(v).strip().lower() if isinstance(v, str) else ""
-                if s in ("complex", "in_last_line"):
-                    norm[k] = s
-            return norm
-    except Exception:
-        pass
-    return {}
-
-
-def detect_parsing_strategy(evaluation_template: str, strategy_map: dict[str, str] | None = None) -> str:
-    """Detect appropriate parsing strategy based on evaluation template.
-
-    - First, use mapping provided (from CSV) if available.
-    - Fallback to legacy hardcoded set for backward compatibility.
-    - Default to 'in_last_line'.
-    """
-    if strategy_map and evaluation_template in strategy_map:
-        return strategy_map[evaluation_template]
-    # No fallback to legacy lists; default to modern strategy
-    return 'in_last_line'
-
-
-def parse_evaluation_response(response_text: str, evaluation_template: str) -> Dict[str, Any]:
-    """Parse an evaluation response using the appropriate strategy.
-    
-    Args:
-        response_text: Raw response text from the file
-        evaluation_template: Name of the evaluation template
-        
-    Returns:
-        Dictionary with score and error fields
-    """
-    strategy = detect_parsing_strategy(evaluation_template)
-    return parse_llm_response(response_text, strategy)
-
-
-def parse_evaluation_files(evaluation_tasks: pd.DataFrame, base_path: Path, parse_function=None, context=None, strategy_map: dict[str, str] | None = None) -> pd.DataFrame:
+def parse_evaluation_files(evaluation_tasks: pd.DataFrame, base_path: Path, parse_function=None, context=None) -> pd.DataFrame:
     """Parse evaluation response files and extract structured data.
     
     Args:
@@ -81,7 +26,19 @@ def parse_evaluation_files(evaluation_tasks: pd.DataFrame, base_path: Path, pars
     
     # Use default parsing function if none provided
     if parse_function is None:
-        parse_function = lambda text, task_row: parse_llm_response(text, detect_parsing_strategy(task_row['evaluation_template'], strategy_map))
+        # Strict default: require valid parser per row
+        def _default_parse(text: str, task_row: pd.Series) -> Dict[str, Any]:
+            tpl = task_row.get('evaluation_template')
+            parser = task_row.get('parser')
+            if not isinstance(parser, str) or parser.strip() not in ALLOWED_PARSERS:
+                raise ValueError(
+                    f"Missing/invalid parser for template '{tpl}'. Ensure evaluation_tasks includes a valid 'parser' column"
+                )
+            chosen = parser.strip()
+            out = parse_llm_response(text, chosen)
+            return out | {"used_parser": chosen}
+
+        parse_function = _default_parse
     
     parsed_results = []
     from .versioned_files import latest_versioned_path
@@ -112,6 +69,7 @@ def parse_evaluation_files(evaluation_tasks: pd.DataFrame, base_path: Path, pars
                 "evaluation_task_id": evaluation_task_id,
                 "score": result.get("score"),
                 "error": result.get("error"),
+                "used_parser": result.get("used_parser"),
                 "used_response_path": str(response_file),
             })
             
@@ -126,7 +84,7 @@ def parse_evaluation_files(evaluation_tasks: pd.DataFrame, base_path: Path, pars
     return pd.DataFrame(parsed_results)
 
 
-def parse_evaluation_file_from_filename(filename: str, base_path: Path) -> Dict[str, Any]:
+def parse_evaluation_file_from_filename(filename: str, base_path: Path, parser_map: dict[str, str]) -> Dict[str, Any]:
     """Parse a single evaluation file using filename-based parsing.
     
     This function is useful for cross-experiment analysis where task metadata
@@ -185,8 +143,8 @@ def parse_evaluation_file_from_filename(filename: str, base_path: Path) -> Dict[
     
     try:
         response_text = file_path.read_text(encoding="utf-8", errors="ignore")
-        strategy = detect_parsing_strategy(evaluation_template or "unknown", strategy_map)
-        result = parse_llm_response(response_text, strategy)
+        parser = require_parser_for_template(evaluation_template or "", parser_map)
+        result = parse_llm_response(response_text, parser)
         
         return {
             "evaluation_task_id": filename,
@@ -228,13 +186,16 @@ def parse_evaluation_files_cross_experiment(base_path: Path, context=None) -> pd
         context.log.info(f"Found {len(txt_files)} evaluation files to parse")
     
     parsed_results = []
+    # Strict parser map from data root inferred from responses path
+    data_root = base_path.parents[1] if len(base_path.parents) >= 2 else Path("data")
+    parser_map = load_parser_map(data_root)
     for i, file_path in enumerate(txt_files):
         if context and i > 0 and i % 100 == 0:
             context.log.info(f"Processed {i}/{len(txt_files)} evaluation files")
         
         # Parse file using filename-based approach
         filename = file_path.stem
-        result = parse_evaluation_file_from_filename(filename, base_path)
+        result = parse_evaluation_file_from_filename(filename, base_path, parser_map)
         parsed_results.append(result)
     
     return pd.DataFrame(parsed_results)

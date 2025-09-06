@@ -33,28 +33,12 @@ from datetime import datetime
 import pandas as pd
 
 from daydreaming_dagster.utils.eval_response_parser import parse_llm_response
+from daydreaming_dagster.utils.evaluation_parsing_config import load_parser_map, require_parser_for_template
 
 
 def load_eval_parsing_strategies(base_data: Path) -> Dict[str, str]:
-    """Load evaluation template -> parsing_strategy mapping from CSV if present.
-
-    Returns a dict like {template_id: 'complex'|'in_last_line'}; missing or invalid values are ignored.
-    """
-    mapping: Dict[str, str] = {}
-    csv_path = base_data / "1_raw" / "evaluation_templates.csv"
-    if not csv_path.exists():
-        return mapping
-    try:
-        df = pd.read_csv(csv_path)
-        if {"template_id", "parsing_strategy"}.issubset(df.columns):
-            for _, r in df.iterrows():
-                tid = str(r["template_id"]) if pd.notna(r.get("template_id")) else None
-                strategy = str(r["parsing_strategy"]).strip().lower() if pd.notna(r.get("parsing_strategy")) else ""
-                if tid and strategy in ("complex", "in_last_line"):
-                    mapping[tid] = strategy
-    except Exception:
-        pass
-    return mapping
+    # Backwards-compatible name; now strictly reads 'parser' column
+    return load_parser_map(base_data)
 
 
 def load_known_templates(base_data: Path) -> Dict[str, Set[str]]:
@@ -259,35 +243,18 @@ def parse_identifiers_from_eval_task_id(
 
 
 def detect_parsing_strategy(evaluation_template: Optional[str], strategy_map: Optional[Dict[str, str]] = None) -> str:
-    """Detect appropriate parsing strategy based on evaluation template.
-
-    If template is unknown, prefer the modern "in_last_line" strategy.
-    """
-    if not evaluation_template:
-        return "in_last_line"
-    if strategy_map and evaluation_template in strategy_map:
-        return strategy_map[evaluation_template]
-    return "in_last_line"
+    # Deprecated: use require_parser_for_template
+    if evaluation_template is None:
+        raise ValueError("evaluation_template is required in strict mode")
+    if not strategy_map or evaluation_template not in strategy_map:
+        raise ValueError(f"No parser configured for template '{evaluation_template}'")
+    return strategy_map[evaluation_template]
 
 
-def try_parse_with_fallback(text: str, primary_strategy: str) -> Dict[str, Any]:
-    """Try parsing with primary strategy, then fall back to the other strategy.
-
-    Returns a dict with keys: score, error.
-    """
-    try:
-        res = parse_llm_response(text, primary_strategy)
-        return {"score": res["score"], "error": None}
-    except Exception as primary_exc:
-        fallback = "complex" if primary_strategy == "in_last_line" else "in_last_line"
-        try:
-            res = parse_llm_response(text, fallback)
-            return {"score": res["score"], "error": None}
-        except Exception as fallback_exc:
-            return {
-                "score": None,
-                "error": f"Parse error (primary={primary_strategy}: {primary_exc}); (fallback={fallback}: {fallback_exc})",
-            }
+def parse_strict(text: str, template: str, parser_map: Dict[str, str]) -> Dict[str, Any]:
+    parser = require_parser_for_template(template, parser_map)
+    res = parse_llm_response(text, parser)
+    return {"score": res["score"], "error": None}
 
 
 # Removed load_tasks function - no longer needed for tasks-free implementation
@@ -352,8 +319,14 @@ def parse_all(
 
         # Parse all metadata from filename - no task CSV dependencies
         id_parts = parse_identifiers_from_eval_task_id(evaluation_task_id, known)
-        strategy = detect_parsing_strategy(id_parts.get("evaluation_template"), strategy_map)
-        result = try_parse_with_fallback(text, strategy)
+        tpl = id_parts.get("evaluation_template")
+        if not tpl:
+            result = {"score": None, "error": "Unknown evaluation_template in filename; cannot choose parser"}
+        else:
+            try:
+                result = parse_strict(text, tpl, strategy_map)
+            except Exception as e:
+                result = {"score": None, "error": f"Parse error: {e}"}
 
         row: Dict[str, Any] = {
             "evaluation_task_id": evaluation_task_id,
