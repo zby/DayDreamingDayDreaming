@@ -2,8 +2,6 @@
 
 import pandas as pd
 from pathlib import Path
-import os
-import re
 from typing import Dict, Any, List
 from dagster import MetadataValue
 
@@ -65,33 +63,7 @@ def parse_evaluation_files(evaluation_tasks: pd.DataFrame, base_path: Path, pars
         parse_function = lambda text, task_row: parse_evaluation_response(text, task_row['evaluation_template'])
     
     parsed_results = []
-    _V_RE = re.compile(r"^(?P<stem>.+)_v(?P<ver>\d+)\.txt$")
-
-    def _latest_versioned_path(dir_path: Path, stem: str) -> Path | None:
-        try:
-            names = os.listdir(dir_path)
-        except Exception:
-            return None
-        best_ver = -1
-        best_name = None
-        prefix = stem + "_v"
-        for name in names:
-            if not name.startswith(prefix) or not name.endswith(".txt"):
-                continue
-            m = _V_RE.match(name)
-            if not m or m.group("stem") != stem:
-                continue
-            try:
-                ver = int(m.group("ver"))
-            except Exception:
-                continue
-            if ver > best_ver:
-                best_ver = ver
-                best_name = name
-        if best_name is None:
-            return None
-        p = dir_path / best_name
-        return p if p.exists() else None
+    from .versioned_files import latest_versioned_path
     total_tasks = len(evaluation_tasks)
     
     for i, (_, task_row) in enumerate(evaluation_tasks.iterrows()):
@@ -99,7 +71,7 @@ def parse_evaluation_files(evaluation_tasks: pd.DataFrame, base_path: Path, pars
             context.log.info(f"Processed {i}/{total_tasks} evaluation tasks")
             
         evaluation_task_id = task_row['evaluation_task_id']
-        latest = _latest_versioned_path(base_path, evaluation_task_id)
+        latest = latest_versioned_path(base_path, evaluation_task_id, ".txt")
         response_file = latest or (base_path / f"{evaluation_task_id}.txt")
         
         try:

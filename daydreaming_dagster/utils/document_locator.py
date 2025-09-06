@@ -1,40 +1,8 @@
 from __future__ import annotations
 
 from pathlib import Path
-import os
-import re
 from typing import Tuple
-
-
-_V_RE = re.compile(r"^(?P<stem>.+)_v(?P<ver>\d+)\.txt$")
-
-
-def _latest_versioned_in_dir(dir_path: Path, stem: str) -> Path | None:
-    """Return latest `{stem}_vN.txt` under dir_path, or None if none exist."""
-    try:
-        names = os.listdir(dir_path)
-    except Exception:
-        return None
-    best_ver = -1
-    best_name = None
-    prefix = stem + "_v"
-    for name in names:
-        if not name.startswith(prefix) or not name.endswith(".txt"):
-            continue
-        m = _V_RE.match(name)
-        if not m or m.group("stem") != stem:
-            continue
-        try:
-            ver = int(m.group("ver"))
-        except Exception:
-            continue
-        if ver > best_ver:
-            best_ver = ver
-            best_name = name
-    if best_name is None:
-        return None
-    p = dir_path / best_name
-    return p if p.exists() else None
+from .versioned_files import latest_versioned_path
 
 
 def find_document_path(document_id: str, data_root: Path) -> Tuple[Path | None, str]:
@@ -54,10 +22,10 @@ def find_document_path(document_id: str, data_root: Path) -> Tuple[Path | None, 
     # Prefer versioned file in essay/draft directories
     essay_dir = base / "3_generation" / "essay_responses"
     draft_dir = base / "3_generation" / "draft_responses"
-    latest_essay = _latest_versioned_in_dir(essay_dir, document_id)
+    latest_essay = latest_versioned_path(essay_dir, document_id, ".txt")
     if latest_essay is not None:
         return latest_essay, "essay_responses"
-    latest_draft = _latest_versioned_in_dir(draft_dir, document_id)
+    latest_draft = latest_versioned_path(draft_dir, document_id, ".txt")
     if latest_draft is not None:
         return latest_draft, "draft_responses"
 
