@@ -246,16 +246,16 @@ class TestPipelineIntegration:
             with patch.dict(os.environ, {"DAGSTER_HOME": str(temp_dagster_home)}):
                 instance = DagsterInstance.ephemeral(tempdir=str(temp_dagster_home))
 
-                from daydreaming_dagster.assets.groups.group_task_definitions import (
+                from daydreaming_dagster.assets.group_task_definitions import (
                     selected_combo_mappings, content_combinations, draft_generation_tasks, essay_generation_tasks, evaluation_tasks
                 )
-                from daydreaming_dagster.assets.groups.group_generation_draft import (
+                from daydreaming_dagster.assets.group_generation_draft import (
                     draft_prompt, draft_response
                 )
-                from daydreaming_dagster.assets.groups.group_generation_essays import (
+                from daydreaming_dagster.assets.group_generation_essays import (
                     essay_prompt, essay_response
                 )
-                from daydreaming_dagster.assets.groups.group_evaluation import (
+                from daydreaming_dagster.assets.group_evaluation import (
                     evaluation_prompt, evaluation_response
                 )
                 from daydreaming_dagster.resources.io_managers import (
@@ -331,10 +331,10 @@ class TestPipelineIntegration:
                 test_gen_partitions = gen_tasks_df["draft_task_id"].tolist()[:2]  # Limit to 2 for testing
                 
                 # Materialize a few generation tasks for testing
-                from daydreaming_dagster.assets.groups.group_generation_draft import (
+                from daydreaming_dagster.assets.group_generation_draft import (
                     draft_prompt, draft_response
                 )
-                from daydreaming_dagster.assets.groups.group_generation_essays import (
+                from daydreaming_dagster.assets.group_generation_essays import (
                     essay_prompt, essay_response
                 )
                 
@@ -449,7 +449,7 @@ class TestPipelineIntegration:
                 instance = DagsterInstance.ephemeral(tempdir=str(temp_dagster_home))
                 
                 # Import selection generator and content_combinations (no fallback)
-                from daydreaming_dagster.assets.groups.group_task_definitions import selected_combo_mappings, content_combinations
+                from daydreaming_dagster.assets.group_task_definitions import selected_combo_mappings, content_combinations
                 from daydreaming_dagster.resources.io_managers import CSVIOManager
                 from daydreaming_dagster.resources.experiment_config import ExperimentConfig
                 
@@ -563,7 +563,7 @@ class TestPipelineIntegration:
             with patch.dict(os.environ, {'DAGSTER_HOME': str(temp_dagster_home)}):
                 instance = DagsterInstance.ephemeral(tempdir=str(temp_dagster_home))
                 
-                from daydreaming_dagster.assets.groups.group_task_definitions import (
+                from daydreaming_dagster.assets.group_task_definitions import (
                     selected_combo_mappings, content_combinations, draft_generation_tasks
                 )
                 from daydreaming_dagster.resources.io_managers import CSVIOManager, PartitionedTextIOManager

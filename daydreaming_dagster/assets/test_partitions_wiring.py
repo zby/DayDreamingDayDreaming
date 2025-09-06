@@ -11,8 +11,8 @@ try:
     HAS_MULTI = True
 except Exception:
     HAS_MULTI = False
-from daydreaming_dagster.assets.groups.group_evaluation import evaluation_prompt
-from daydreaming_dagster.assets.groups.group_generation_essays import essay_response as gen_response_asset
+from daydreaming_dagster.assets.group_evaluation import evaluation_prompt
+from daydreaming_dagster.assets.group_generation_essays import essay_response as gen_response_asset
 
 
 def test_evaluation_multi_partitions_definition():

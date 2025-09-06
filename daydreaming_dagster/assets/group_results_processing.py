@@ -1,4 +1,3 @@
-"""Shim module: re-export assets from groups/group_results_processing.py."""
+"""Group: results_processing — flat import path for results processing assets."""
 
-from .groups.group_results_processing import *  # noqa: F401,F403
-
+from .results_processing import parsed_scores  # re-export primary asset symbol

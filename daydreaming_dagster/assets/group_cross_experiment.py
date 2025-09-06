@@ -1,8 +1,9 @@
-"""Thin wrapper to import group_cross_experiment assets from the groups package.
+"""Group: cross_experiment — flat import path for cross-experiment assets."""
 
-This mirrors the pattern used by other top-level group_* modules so that
-daydreaming_dagster.definitions can import a flat path for assets.
-"""
-
-from .groups.group_cross_experiment import *  # noqa: F401,F403
-
+from .cross_experiment import (
+    filtered_evaluation_results,
+    template_version_comparison_pivot,
+    draft_generation_results_append,
+    essay_generation_results_append,
+    evaluation_results_append,
+)
