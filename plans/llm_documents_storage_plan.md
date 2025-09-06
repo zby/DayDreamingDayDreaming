@@ -367,3 +367,42 @@ Notes
 - If partitions are unknown, list from the generated task tables under data/2_tasks/*.csv or via Dagster UI.
 - Restart dagster dev after code changes so the documents index resource is loaded.
 - If any step fails fast (e.g., truncation guard), no doc_dir is written and no DB row should be inserted.
+
+Autonomous Execution Guide (no prompts; commits gated)
+- Scope: The agent executes the following end-to-end without interactive questions. Any code modifications will be staged but require an explicit human-approved commit.
+
+- Pre-flight checks (fail-fast):
+  - Verify Python has sqlite3: `python -c "import sqlite3; print(sqlite3.sqlite_version)"`.
+  - Ensure `DAGSTER_HOME` is set to `$(pwd)/dagster_home`; create the folder if missing.
+  - Ensure `OPENROUTER_API_KEY` is present; otherwise skip live generation and run only unit tests/backfill-free validations.
+
+- Flags (temporary, runtime-only):
+  - Export for the current process only (do not write config files):
+    - `DD_DOCS_INDEX_ENABLED=1`
+    - `DD_DOCS_PROMPT_COPY_ENABLED=1`
+    - Leave `DD_DOCS_LEGACY_WRITE_ENABLED=1` during dual-write.
+
+- Sequence (one-pass):
+  1) `uv run pytest -q daydreaming_dagster/utils/test_ids.py daydreaming_dagster/utils/test_documents_index.py`
+  2) Seed tasks: `uv run dagster asset materialize --select "group:task_definitions" -f daydreaming_dagster/definitions.py`
+  3) Draft materialize (3 min budget): run the example partition above; allow one retry if the first run fails due to transient LLM/network.
+  4) Verify DB and files; print last 5 rows from SQLite and `tree data/docs/draft | head -n 100`.
+  5) Essay materialize for the matching partition; same 3 min budget; verify as in (4).
+  6) Evaluation materialize (novelty template with sonned or configured model); same 3 min budget; verify.
+  7) Summarize: Output `doc_id`, `logical_key_id`, and on-disk paths for all three.
+
+- Autonomy rules:
+  - If a step fails, attempt once more with exponential backoff up to the 3-minute budget; record diagnostics. Do not proceed to dependent steps if prerequisites fail.
+  - If models/templates are missing, list available partitions from `data/2_tasks` CSVs and pick the first available that matches the stage as a fallback.
+  - If `OPENROUTER_API_KEY` is missing, skip generation steps and record that live validation was bypassed.
+  - Do not modify code or configs without explicit approval; plan-only changes may be committed directly.
+
+- Post-run acceptance criteria:
+  - Draft: at least 1 row in `documents` with `stage='draft'` and an existing `doc_dir` with `raw.txt` and `parsed.txt`.
+  - Essay: at least 1 row in `documents` with `stage='essay'` linked to a draft via `parent_doc_id`.
+  - Evaluation: at least 1 row with `stage='evaluation'` linked to a target `doc_id` via `parent_doc_id`.
+  - All reads of `raw.txt`/`parsed.txt` succeed from `doc_dir`.
+
+- Optional autonomous add-ons (when enabled by flags):
+  - Run asset checks (files_exist, db_row_present, status_valid) once implemented to surface invariants in Dagster UI.
+  - Produce a short CSV report of the latest rows by stage from SQLite under `data/7_reporting/documents_latest.csv` (non-intrusive).
