@@ -1,6 +1,6 @@
 """Cross-experiment analysis assets for template version comparison and results tracking."""
 
-from dagster import asset, AssetIn, MetadataValue, Config, AutomationCondition
+from dagster import asset, AssetIn, MetadataValue, Config, AutomationCondition, Failure
 from pathlib import Path
 import pandas as pd
 from typing import Dict, Any
@@ -274,6 +274,22 @@ def evaluation_results_append(context, evaluation_tasks, essay_generation_tasks)
         )
         return "no_essay_task_found"
     essay_row = essay_rows.iloc[0]
+
+    # Require draft_template column (legacy link_template no longer supported)
+    if "draft_template" not in essay_rows.columns or pd.isna(essay_row.get("draft_template")) or str(essay_row.get("draft_template")).strip() == "":
+        raise Failure(
+            description=(
+                "Missing draft_template in essay_generation_tasks; legacy link_template fallback is no longer supported."
+            ),
+            metadata={
+                "function": MetadataValue.text("evaluation_results_append"),
+                "essay_task_id": MetadataValue.text(str(essay_task_id)),
+                "columns_present": MetadataValue.json(sorted([str(c) for c in essay_rows.columns])),
+                "resolution": MetadataValue.text(
+                    "Ensure essay_generation_tasks includes a non-empty 'draft_template' column propagated from draft tasks."
+                ),
+            },
+        )
     
     # Check if evaluation response file exists
     eval_response_file = Path(f"data/4_evaluation/evaluation_responses/{task_id}.txt")
@@ -284,7 +300,7 @@ def evaluation_results_append(context, evaluation_tasks, essay_generation_tasks)
         "evaluation_task_id": task_id,
         "essay_task_id": essay_task_id,
         "combo_id": essay_row["combo_id"],
-        "draft_template": essay_row.get("draft_template", essay_row.get("link_template", "unknown")),
+        "draft_template": essay_row["draft_template"],
         "essay_template": essay_row["essay_template"],
         "generation_model": essay_row["generation_model_name"],
         "evaluation_template": eval_task_row["evaluation_template"],
@@ -310,7 +326,7 @@ def evaluation_results_append(context, evaluation_tasks, essay_generation_tasks)
             "combo_id": MetadataValue.text(essay_row["combo_id"]),
             "evaluation_template": MetadataValue.text(eval_task_row["evaluation_template"]),
             "evaluation_model": MetadataValue.text(eval_task_row["evaluation_model_name"]),
-            "draft_template": MetadataValue.text(essay_row.get("draft_template", essay_row.get("link_template", "unknown"))),
+            "draft_template": MetadataValue.text(str(essay_row["draft_template"])),
             "essay_template": MetadataValue.text(essay_row["essay_template"]),
             "generation_model": MetadataValue.text(essay_row["generation_model_name"]),
             "response_exists": MetadataValue.bool(eval_response_exists),

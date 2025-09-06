@@ -20,7 +20,6 @@ RAW_CSVS = [
     Path("data/1_raw/concepts_metadata.csv"),
     Path("data/1_raw/llm_models.csv"),
     Path("data/1_raw/draft_templates.csv"),
-    Path("data/1_raw/link_templates.csv"),  # deprecated; kept during transition
     Path("data/1_raw/essay_templates.csv"),
     Path("data/1_raw/evaluation_templates.csv"),
 ]
