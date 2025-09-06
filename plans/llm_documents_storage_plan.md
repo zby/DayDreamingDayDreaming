@@ -322,3 +322,48 @@ Optional Dagster Leverage
 Open Items
 - Standardize `parsed.txt` extension per stage (e.g., `.md` for essays) if beneficial.
 - Define retention policy/timeline for legacy files after readers switch fully to the index.
+
+Manual Validation Materializations (3-minute budget)
+- Environment (one shell):
+  - export DAGSTER_HOME="$(pwd)/dagster_home"
+  - export DD_DOCS_INDEX_ENABLED=1
+  - export DD_DOCS_PROMPT_COPY_ENABLED=1
+  - export OPENROUTER_API_KEY=...   # required for generation
+  - uv run dagster asset materialize --select "group:task_definitions" -f daydreaming_dagster/definitions.py
+
+- Draft (single partition):
+  - Example draft_task_id:
+    - combo_v1_1f0b4806fc4a_rolling-summary-simplified-v1_gemini_2.5_flash,combo_v1_1f0b4806fc4a,rolling-summary-simplified-v1,gemini_2.5_flash,google/gemini-2.5-flash
+  - Command:
+    - uv run dagster asset materialize --select draft_response \
+      --partition "combo_v1_1f0b4806fc4a_rolling-summary-simplified-v1_gemini_2.5_flash,combo_v1_1f0b4806fc4a,rolling-summary-simplified-v1,gemini_2.5_flash,google/gemini-2.5-flash" \
+      -f daydreaming_dagster/definitions.py
+  - Allow up to ~3 minutes for LLM call. Verify:
+    - Files: data/docs/draft/<logical_key_id>/<doc_id>/{raw.txt,parsed.txt,prompt.txt,metadata.json}
+    - DB: sqlite3 data/db/documents.sqlite 'select stage,task_id,doc_dir,created_at from documents order by created_at desc limit 5;'
+
+- Essay (matching partition):
+  - Determine essay_task_id for the same combo + essay template + model. Pattern: <combo_id>__<essay_template_id>__<model_id>.
+  - Example placeholder (adjust to your essay template id):
+    - combo_v1_1f0b4806fc4a__creative-synthesis-v10__google/gemini-2.5-flash
+  - Command:
+    - uv run dagster asset materialize --select "group:generation_essays" \
+      --partition "<essay_task_id>" \
+      -f daydreaming_dagster/definitions.py
+  - Allow up to ~3 minutes. Verify `data/docs/essay/<logical>/<doc>/...` and DB row.
+
+- Evaluation (novelty template, sonned model example):
+  - Build evaluation_task_id as: <document_id>__<evaluation_template_id>__<evaluation_model_id>
+    - document_id: use the essay_task_id you just materialized (or a draft_task_id for 1-phase evals)
+    - evaluation_template_id: e.g., novelty template id from data/1_raw/evaluation_templates/
+    - evaluation_model_id: e.g., sonned (ensure it exists in models CSV)
+  - Command:
+    - uv run dagster asset materialize --select "group:evaluation" \
+      --partition "<evaluation_task_id>" \
+      -f daydreaming_dagster/definitions.py
+  - Verify `data/docs/evaluation/<logical>/<doc>/...` and DB row.
+
+Notes
+- If partitions are unknown, list from the generated task tables under data/2_tasks/*.csv or via Dagster UI.
+- Restart dagster dev after code changes so the documents index resource is loaded.
+- If any step fails fast (e.g., truncation guard), no doc_dir is written and no DB row should be inserted.
