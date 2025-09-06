@@ -112,6 +112,42 @@ def _load_phase1_text(context, draft_task_id: str) -> tuple[str, str]:
     )
 
 
+def _load_phase1_text_by_combo_model(context, combo_id: str, model_id: str) -> tuple[str, str]:
+    try:
+        idx_res = context.resources.documents_index
+    except Exception:
+        idx_res = None
+    if not (idx_res and getattr(idx_res, "index_enabled", False)):
+        raise Failure(
+            description="Documents index not available to resolve draft by combo/model",
+            metadata={
+                "function": MetadataValue.text("_load_phase1_text_by_combo_model"),
+                "combo_id": MetadataValue.text(str(combo_id)),
+                "model_id": MetadataValue.text(str(model_id)),
+            },
+        )
+    idx = idx_res.get_index()
+    like = f"{combo_id}__%__{model_id}"
+    row = idx.connect().execute(
+        "SELECT * FROM documents WHERE stage='draft' AND task_id LIKE ? ORDER BY created_at DESC, rowid DESC LIMIT 1",
+        (like,),
+    ).fetchone()
+    if row:
+        try:
+            text = idx.read_parsed(row)
+        except Exception:
+            text = idx.read_raw(row)
+        return str(text).replace("\r\n", "\n"), "draft_db_combo_model"
+    raise Failure(
+        description="Draft response not found by combo/model prefix rule",
+        metadata={
+            "function": MetadataValue.text("_load_phase1_text_by_combo_model"),
+            "combo_id": MetadataValue.text(str(combo_id)),
+            "model_id": MetadataValue.text(str(model_id)),
+        },
+    )
+
+
 def _essay_prompt_impl(context, essay_generation_tasks) -> str:
     """Generate Phase‑2 prompts based on Phase‑1 drafts."""
     task_id = context.partition_key
@@ -173,7 +209,7 @@ def _essay_prompt_impl(context, essay_generation_tasks) -> str:
     partitions_def=essay_tasks_partitions,
     group_name="generation_essays",
     io_manager_key="essay_prompt_io_manager",
-    required_resource_keys={"data_root"},
+    required_resource_keys={"data_root", "documents_index"},
 )
 def essay_prompt(context, essay_generation_tasks) -> str:
     return _essay_prompt_impl(context, essay_generation_tasks)
@@ -188,7 +224,14 @@ def _essay_response_impl(context, essay_prompt, essay_generation_tasks) -> str:
 
     if mode == "copy":
         draft_task_id = task_row.get("draft_task_id")
-        text, _ = _load_phase1_text(context, draft_task_id)
+        try:
+            text, _ = _load_phase1_text(context, draft_task_id)
+        except Failure:
+            combo_id = task_row.get("combo_id")
+            model_id = task_row.get("generation_model") or task_row.get("generation_model_id")
+            if not (isinstance(combo_id, str) and isinstance(model_id, str) and combo_id and model_id):
+                raise
+            text, _ = _load_phase1_text_by_combo_model(context, combo_id, model_id)
         context.add_output_metadata(
             {
                 "function": MetadataValue.text("essay_response"),
@@ -202,7 +245,14 @@ def _essay_response_impl(context, essay_prompt, essay_generation_tasks) -> str:
         return text
     if mode == "parser":
         draft_task_id = task_row.get("draft_task_id")
-        raw_text, _ = _load_phase1_text(context, draft_task_id)
+        try:
+            raw_text, _ = _load_phase1_text(context, draft_task_id)
+        except Failure:
+            combo_id = task_row.get("combo_id")
+            model_id = task_row.get("generation_model") or task_row.get("generation_model_id")
+            if not (isinstance(combo_id, str) and isinstance(model_id, str) and combo_id and model_id):
+                raise
+            raw_text, _ = _load_phase1_text_by_combo_model(context, combo_id, model_id)
         parser_name = None
         try:
             ddf = read_draft_templates(Path(context.resources.data_root), filter_active=False)
@@ -315,7 +365,7 @@ def _essay_response_impl(context, essay_prompt, essay_generation_tasks) -> str:
     partitions_def=essay_tasks_partitions,
     group_name="generation_essays",
     io_manager_key="essay_response_io_manager",
-    required_resource_keys={"openrouter_client", "experiment_config", "data_root", "draft_response_io_manager"},
+    required_resource_keys={"openrouter_client", "experiment_config", "data_root", "draft_response_io_manager", "documents_index"},
 )
 def essay_response(context, essay_prompt, essay_generation_tasks) -> str:
     text = _essay_response_impl(context, essay_prompt, essay_generation_tasks)

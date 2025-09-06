@@ -109,6 +109,7 @@ def backfill(
     bad_list: Path,
     run_id: str,
     dry_run: bool = False,
+    allow_skip: bool = False,
 ) -> None:
     idx = SQLiteDocumentsIndex(db_path, docs_root)
     idx.init_maybe_create_tables()
@@ -164,58 +165,63 @@ def backfill(
 
             # Validate minimal fields
             if not task_id or not combo_id or not template_id or not model_id or not ts or status != "success":
-                bad.append(
-                    BadRow(
-                        source_csv=source_name,
-                        reason="invalid_row",
-                        row_index=i,
-                        task_id=task_id,
-                        combo_id=combo_id,
-                        template_id=template_id,
-                        model_id=model_id or "",
-                        response_file=resp_rel,
-                        timestamp=ts_str,
-                    )
+                br = BadRow(
+                    source_csv=source_name,
+                    reason="invalid_row",
+                    row_index=i,
+                    task_id=task_id,
+                    combo_id=combo_id,
+                    template_id=template_id,
+                    model_id=model_id or "",
+                    response_file=resp_rel,
+                    timestamp=ts_str,
                 )
-                continue
+                if allow_skip:
+                    bad.append(br)
+                    continue
+                raise RuntimeError(f"{source_name}: invalid_row at #{i}: {br}")
 
             # Read response content if present
             resp_path = gen_root / resp_rel if resp_rel else None
             content = read_text(resp_path) if resp_path else None
             if content is None:
-                bad.append(
-                    BadRow(
-                        source_csv=source_name,
-                        reason="missing_response_file",
-                        row_index=i,
-                        task_id=task_id,
-                        combo_id=combo_id,
-                        template_id=template_id,
-                        model_id=model_id,
-                        response_file=resp_rel,
-                        timestamp=ts_str,
-                    )
+                br = BadRow(
+                    source_csv=source_name,
+                    reason="missing_response_file",
+                    row_index=i,
+                    task_id=task_id,
+                    combo_id=combo_id,
+                    template_id=template_id,
+                    model_id=model_id,
+                    response_file=resp_rel,
+                    timestamp=ts_str,
                 )
-                continue
+                if allow_skip:
+                    bad.append(br)
+                    continue
+                raise RuntimeError(f"{source_name}: missing_response_file at #{i}: {br}")
 
             logical = compute_logical_key_id_draft(combo_id, template_id, model_id)
             c_hash = content_sha256(content)
 
             # Deduplicate by content across sources
             if c_hash in seen_content:
-                bad.append(
-                    BadRow(
-                        source_csv=source_name,
-                        reason="duplicate_same_content",
-                        row_index=i,
-                        task_id=task_id,
-                        combo_id=combo_id,
-                        template_id=template_id,
-                        model_id=model_id,
-                        response_file=resp_rel,
-                        timestamp=ts_str,
-                    )
+                br = BadRow(
+                    source_csv=source_name,
+                    reason="duplicate_same_content",
+                    row_index=i,
+                    task_id=task_id,
+                    combo_id=combo_id,
+                    template_id=template_id,
+                    model_id=model_id,
+                    response_file=resp_rel,
+                    timestamp=ts_str,
                 )
+                if allow_skip:
+                    bad.append(br)
+                    continue
+                # Duplicates are acceptable if content matches; we skip silently in strict mode
+                # but do not treat as failure. Just continue.
                 continue
 
             seen_content[c_hash] = task_id
@@ -294,38 +300,40 @@ def backfill(
         resp_rel = (r.get("response_file") or "").strip()
 
         if not task_id or not combo_id or not template_id or not model_id or not ts or status != "success":
-            bad.append(
-                BadRow(
-                    source_csv=essays_csv.name,
-                    reason="invalid_row",
-                    row_index=i,
-                    task_id=task_id,
-                    combo_id=combo_id,
-                    template_id=template_id,
-                    model_id=model_id or "",
-                    response_file=resp_rel,
-                    timestamp=ts_str,
-                )
+            br = BadRow(
+                source_csv=essays_csv.name,
+                reason="invalid_row",
+                row_index=i,
+                task_id=task_id,
+                combo_id=combo_id,
+                template_id=template_id,
+                model_id=model_id or "",
+                response_file=resp_rel,
+                timestamp=ts_str,
             )
-            continue
+            if allow_skip:
+                bad.append(br)
+                continue
+            raise RuntimeError(f"{essays_csv.name}: invalid_row at #{i}: {br}")
 
         resp_path = gen_root / resp_rel if resp_rel else None
         content = read_text(resp_path) if resp_path else None
         if content is None:
-            bad.append(
-                BadRow(
-                    source_csv=essays_csv.name,
-                    reason="missing_response_file",
-                    row_index=i,
-                    task_id=task_id,
-                    combo_id=combo_id,
-                    template_id=template_id,
-                    model_id=model_id,
-                    response_file=resp_rel,
-                    timestamp=ts_str,
-                )
+            br = BadRow(
+                source_csv=essays_csv.name,
+                reason="missing_response_file",
+                row_index=i,
+                task_id=task_id,
+                combo_id=combo_id,
+                template_id=template_id,
+                model_id=model_id,
+                response_file=resp_rel,
+                timestamp=ts_str,
             )
-            continue
+            if allow_skip:
+                bad.append(br)
+                continue
+            raise RuntimeError(f"{essays_csv.name}: missing_response_file at #{i}: {br}")
 
         # Resolve parent by (combo_id, model) with timestamp <= essay ts; prefer latest and drafts over links on tie
         parent: Optional[DraftRef] = None
@@ -339,20 +347,21 @@ def backfill(
             else:
                 break
         if parent is None or parent.doc_id is None or parent.logical_key_id is None:
-            bad.append(
-                BadRow(
-                    source_csv=essays_csv.name,
-                    reason="unresolved_parent",
-                    row_index=i,
-                    task_id=task_id,
-                    combo_id=combo_id,
-                    template_id=template_id,
-                    model_id=model_id,
-                    response_file=resp_rel,
-                    timestamp=ts_str,
-                )
+            br = BadRow(
+                source_csv=essays_csv.name,
+                reason="unresolved_parent",
+                row_index=i,
+                task_id=task_id,
+                combo_id=combo_id,
+                template_id=template_id,
+                model_id=model_id,
+                response_file=resp_rel,
+                timestamp=ts_str,
             )
-            continue
+            if allow_skip:
+                bad.append(br)
+                continue
+            raise RuntimeError(f"{essays_csv.name}: unresolved_parent at #{i}: {br}")
 
         logical = compute_logical_key_id_essay(parent.doc_id, template_id, model_id)
         attempt_key = f"{essays_csv.name}:{i}:{ts_str}"
@@ -409,38 +418,40 @@ def backfill(
         gen_task = (r.get("generation_task_id") or "").strip()
 
         if not task_id or not eval_tmpl or not eval_model or not ts or status != "success":
-            bad.append(
-                BadRow(
-                    source_csv=evals_csv.name,
-                    reason="invalid_row",
-                    row_index=i,
-                    task_id=task_id,
-                    combo_id=r.get("combo_id") or "",
-                    template_id=eval_tmpl,
-                    model_id=eval_model or "",
-                    response_file=resp_rel,
-                    timestamp=ts_str,
-                )
+            br = BadRow(
+                source_csv=evals_csv.name,
+                reason="invalid_row",
+                row_index=i,
+                task_id=task_id,
+                combo_id=r.get("combo_id") or "",
+                template_id=eval_tmpl,
+                model_id=eval_model or "",
+                response_file=resp_rel,
+                timestamp=ts_str,
             )
-            continue
+            if allow_skip:
+                bad.append(br)
+                continue
+            raise RuntimeError(f"{evals_csv.name}: invalid_row at #{i}: {br}")
 
         resp_path = gen_root / resp_rel if resp_rel else None
         content = read_text(resp_path) if resp_path else None
         if content is None:
-            bad.append(
-                BadRow(
-                    source_csv=evals_csv.name,
-                    reason="missing_response_file",
-                    row_index=i,
-                    task_id=task_id,
-                    combo_id=r.get("combo_id") or "",
-                    template_id=eval_tmpl,
-                    model_id=eval_model,
-                    response_file=resp_rel,
-                    timestamp=ts_str,
-                )
+            br = BadRow(
+                source_csv=evals_csv.name,
+                reason="missing_response_file",
+                row_index=i,
+                task_id=task_id,
+                combo_id=r.get("combo_id") or "",
+                template_id=eval_tmpl,
+                model_id=eval_model,
+                response_file=resp_rel,
+                timestamp=ts_str,
             )
-            continue
+            if allow_skip:
+                bad.append(br)
+                continue
+            raise RuntimeError(f"{evals_csv.name}: missing_response_file at #{i}: {br}")
 
         parent_doc_id: Optional[str] = None
         if essay_task and essay_task in essays_by_task:
@@ -448,20 +459,21 @@ def backfill(
         elif gen_task and gen_task in draft_task_to_doc:
             parent_doc_id = draft_task_to_doc[gen_task].doc_id
         else:
-            bad.append(
-                BadRow(
-                    source_csv=evals_csv.name,
-                    reason="unresolved_target",
-                    row_index=i,
-                    task_id=task_id,
-                    combo_id=r.get("combo_id") or "",
-                    template_id=eval_tmpl,
-                    model_id=eval_model,
-                    response_file=resp_rel,
-                    timestamp=ts_str,
-                )
+            br = BadRow(
+                source_csv=evals_csv.name,
+                reason="unresolved_target",
+                row_index=i,
+                task_id=task_id,
+                combo_id=r.get("combo_id") or "",
+                template_id=eval_tmpl,
+                model_id=eval_model,
+                response_file=resp_rel,
+                timestamp=ts_str,
             )
-            continue
+            if allow_skip:
+                bad.append(br)
+                continue
+            raise RuntimeError(f"{evals_csv.name}: unresolved_target at #{i}: {br}")
 
         logical = compute_logical_key_id_evaluation(parent_doc_id, eval_tmpl, eval_model)
         attempt_key = f"{evals_csv.name}:{i}:{ts_str}"
@@ -497,7 +509,8 @@ def backfill(
             )
 
     # Write bad list
-    append_bad_rows(bad_list, bad)
+    if allow_skip:
+        append_bad_rows(bad_list, bad)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -508,7 +521,8 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--gen-root", type=Path, default=Path("data/3_generation"), help="Root for response_file paths")
     p.add_argument("--bad-list", type=Path, default=Path("data/7_cross_experiment/bad_generations.csv"), help="Output CSV for non-ingested rows")
     p.add_argument("--run-id", type=str, default=datetime.now(UTC).strftime("backfill-%Y%m%d-%H%M%S%z"), help="Run identifier for doc_id derivation")
-    p.add_argument("--dry-run", action="store_true", help="Do not write files or DB; only validate and report bad rows")
+    p.add_argument("--dry-run", action="store_true", help="Do not write files or DB; only validate and (if --allow-skip) report bad rows")
+    p.add_argument("--allow-skip", action="store_true", help="Skip and record bad rows instead of failing (writes bad_generations.csv)")
     args = p.parse_args(argv)
 
     backfill(
@@ -519,10 +533,10 @@ def main(argv: list[str] | None = None) -> int:
         bad_list=args.bad_list,
         run_id=args.run_id,
         dry_run=args.dry_run,
+        allow_skip=args.allow_skip,
     )
     return 0
 
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

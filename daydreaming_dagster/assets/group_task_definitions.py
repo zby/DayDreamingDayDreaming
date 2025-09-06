@@ -161,13 +161,17 @@ def essay_generation_tasks(context, content_combinations: List[ContentCombinatio
     for combo in content_combinations:
         for _, t in templates_df.iterrows():
             for _, m in gen_models.iterrows():
-                essay_task_id = f"{combo.combo_id}__{t['template_id']}__{m['id']}"
                 draft_template = t.get("from_draft_template") or t.get("draft_template")
                 draft_task_id = None
                 if draft_template and draft_index is not None:
                     key = (combo.combo_id, draft_template, m["id"])
                     if key in draft_index.index:
                         draft_task_id = draft_index.loc[key]["draft_task_id"]  # type: ignore
+                # Construct essay task id: prefer to derive from draft_task_id when available
+                if draft_task_id:
+                    essay_task_id = f"{draft_task_id}__{t['template_id']}"
+                else:
+                    essay_task_id = f"{combo.combo_id}__{t['template_id']}__{m['id']}"
                 rows.append(
                     {
                         "essay_task_id": essay_task_id,
