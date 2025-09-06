@@ -10,7 +10,7 @@ from pathlib import Path
 from jinja2 import Environment, TemplateSyntaxError
 from .partitions import draft_tasks_partitions
 from ..utils.template_loader import load_generation_template
-from ..utils.raw_readers import read_draft_templates
+from ..utils.raw_readers import read_draft_templates, read_concepts
 from ..utils.draft_parsers import get_draft_parser
 from ..utils.dataframe_helpers import get_task_row
 from ..utils.raw_write import save_versioned_raw_text
@@ -20,6 +20,7 @@ from ..utils.ids import (
     doc_dir as build_doc_dir,
 )
 from ..utils.documents_index import DocumentRow
+from ..utils.combo_ids import ComboIDManager
 
 # Reuse a single Jinja environment
 JINJA = Environment()
@@ -47,15 +48,30 @@ def draft_prompt(
     # Resolve content combination; curated combos are provided via content_combinations
     content_combination = next((c for c in content_combinations if c.combo_id == combo_id), None)
     if content_combination is None:
-        available_combos = [combo.combo_id for combo in content_combinations[:5]]
-        raise Failure(
-            description=f"Content combination '{combo_id}' not found in combinations database",
-            metadata={
-                "combo_id": MetadataValue.text(combo_id),
-                "available_combinations_sample": MetadataValue.text(str(available_combos)),
-                "total_combinations": MetadataValue.int(len(content_combinations)),
-            },
-        )
+        # Fallback: resolve from global combo_mappings.csv for historical combos
+        data_root = Path(getattr(context.resources, "data_root", "data"))
+        mgr = ComboIDManager(str(data_root / "combo_mappings.csv"))
+        mappings = mgr.load_mappings()
+        rows = mappings[mappings["combo_id"] == combo_id]
+        if not rows.empty:
+            wanted = set(rows["concept_id"].astype(str).tolist())
+            concepts = [c for c in read_concepts(data_root, filter_active=False) if c.concept_id in wanted]
+            if len(concepts) == len(wanted):
+                from ..models.content_combination import ContentCombination
+
+                content_combination = ContentCombination.from_concepts(concepts, level=getattr(context.resources.experiment_config, "description_level", "paragraph"), combo_id=combo_id)
+        if content_combination is None:
+            available_combos = [combo.combo_id for combo in content_combinations[:5]]
+            raise Failure(
+                description=f"Content combination '{combo_id}' not found in combinations database",
+                metadata={
+                    "combo_id": MetadataValue.text(combo_id),
+                    "available_combinations_sample": MetadataValue.text(str(available_combos)),
+                    "total_combinations": MetadataValue.int(len(content_combinations)),
+                    "fallback_mappings_present": MetadataValue.bool(not rows.empty),
+                    "resolution": MetadataValue.text("Ensure combo exists in data/combo_mappings.csv or pick a matching combo partition."),
+                },
+            )
 
     # Load draft template (phase 'draft')
     try:
