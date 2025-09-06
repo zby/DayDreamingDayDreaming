@@ -30,7 +30,7 @@ import pandas as pd
 
 # Import project utilities
 from daydreaming_dagster.utils.raw_readers import read_draft_templates, read_llm_models
-from daydreaming_dagster.utils.link_parsers import get_draft_parser
+from daydreaming_dagster.utils.draft_parsers import get_draft_parser
 
 
 def parse_args() -> argparse.Namespace:

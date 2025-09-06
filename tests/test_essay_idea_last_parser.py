@@ -1,4 +1,4 @@
-from daydreaming_dagster.utils.idea_parsers import parse_essay_idea_last
+from daydreaming_dagster.utils.draft_parsers import parse_essay_idea_last
 
 
 def test_extraction_picks_highest_stage():
@@ -40,4 +40,3 @@ def test_raises_when_no_essay_idea_blocks_found():
         assert False, "Expected ValueError when no <essay-idea> blocks present"
     except ValueError as e:
         assert "No <essay-idea> blocks" in str(e)
-

@@ -296,7 +296,7 @@ data/1_raw/generation_templates/
 
 Adding a new draft template:
 - Place the template file under `data/1_raw/generation_templates/draft/<template_id>.txt`.
-- Register it in `data/1_raw/draft_templates.csv` with the same `template_id` and set `active=true` (set others to `false`). If the draft output requires extraction into an essay‑ready fragment, set the `parser` column (e.g., `essay_idea_last`). Supported parser names live in `daydreaming_dagster/utils/link_parsers.py`. Missing or unknown parsers cause a hard failure during draft generation (Phase‑1), and the RAW draft is still saved for debugging.
+- Register it in `data/1_raw/draft_templates.csv` with the same `template_id` and set `active=true` (set others to `false`). If the draft output requires extraction into an essay‑ready fragment, set the `parser` column (e.g., `essay_idea_last`). Supported parser names live in `daydreaming_dagster/utils/draft_parsers.py`. Missing or unknown parsers cause a hard failure during draft generation (Phase‑1), and the RAW draft is still saved for debugging.
 - Optional: set `GEN_TEMPLATES_ROOT` to point to a different root if you maintain templates outside the repo.
 
 Active draft templates are controlled in `data/1_raw/draft_templates.csv` via the `active` column. Examples include:

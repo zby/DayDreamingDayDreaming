@@ -116,7 +116,7 @@ Edit the template CSV files to control which templates are active:
 - Columns: `template_id`, `template_name`, `description`, `active`, `parser`.
 - Control which Phase‑1 draft templates are used by setting `active: true` (set others to `false`).
 - Parser column: if the draft output requires extraction, set a valid `parser` name (e.g., `essay_idea_last`). Parsing happens in Phase‑1 and failures there will fail the draft with a clear error. RAW LLM output is still saved under `data/3_generation/draft_responses_raw/` for debugging.
-- Parser registry: supported parser names are defined in `daydreaming_dagster/utils/link_parsers.py`. To add a new parser, implement and register it there.
+- Parser registry: supported parser names are defined in `daydreaming_dagster/utils/draft_parsers.py`. To add a new parser, implement and register it there.
 - To introduce a new draft template:
   - Add a file under `data/1_raw/generation_templates/draft/<template_id>.txt`.
   - Add a row to `data/1_raw/draft_templates.csv` with the same `template_id`, set `active=true`, and set `parser` if needed.
