@@ -111,8 +111,17 @@ def _draft_response_impl(context, draft_prompt, draft_generation_tasks) -> str:
     # Unified client path
     text, info = llm_client.generate_with_info(draft_prompt, model=model_name, max_tokens=max_tokens)
 
-    # Normalize newlines and validate minimum lines
+    # Normalize newlines and save RAW immediately (before any validation) to aid debugging
     normalized = str(text).replace("\r\n", "\n")
+    save_raw = bool(getattr(experiment_config, "save_raw_draft_enabled", True))
+    raw_dir_override = getattr(experiment_config, "raw_draft_dir_override", None)
+    data_root = Path(getattr(context.resources, "data_root", "data"))
+    raw_dir = Path(raw_dir_override) if raw_dir_override else data_root / "3_generation" / "draft_responses_raw"
+    raw_path_str = None
+    if save_raw:
+        raw_path_str = save_versioned_raw_text(raw_dir, task_id, normalized, logger=context.log)
+
+    # Validate minimum lines after ensuring RAW is persisted
     response_lines = [line.strip() for line in normalized.split("\n") if line.strip()]
     min_lines = getattr(experiment_config, "min_draft_lines", 3)
     if len(response_lines) < int(min_lines):
@@ -127,17 +136,9 @@ def _draft_response_impl(context, draft_prompt, draft_generation_tasks) -> str:
                 "response_content_preview": MetadataValue.text(
                     normalized[:200] + "..." if len(normalized) > 200 else normalized
                 ),
+                **({"raw_path": MetadataValue.path(raw_path_str)} if raw_path_str else {}),
             },
         )
-
-    # Side-write RAW response with versioning (opt-out via experiment_config)
-    save_raw = bool(getattr(experiment_config, "save_raw_draft_enabled", True))
-    raw_dir_override = getattr(experiment_config, "raw_draft_dir_override", None)
-    data_root = Path(getattr(context.resources, "data_root", "data"))
-    raw_dir = Path(raw_dir_override) if raw_dir_override else data_root / "3_generation" / "draft_responses_raw"
-    raw_path_str = None
-    if save_raw:
-        raw_path_str = save_versioned_raw_text(raw_dir, task_id, normalized, logger=context.log)
 
     # If the response was truncated (e.g., hit token limit), mark as failure after saving RAW
     finish_reason = (info or {}).get("finish_reason") if isinstance(info, dict) else None
@@ -253,7 +254,7 @@ def _draft_response_impl(context, draft_prompt, draft_generation_tasks) -> str:
     partitions_def=draft_tasks_partitions,
     group_name="generation_draft",
     io_manager_key="draft_response_io_manager",
-    required_resource_keys={"openrouter_client", "experiment_config", "data_root", "documents_index"},
+    required_resource_keys={"openrouter_client", "experiment_config", "data_root"},
 )
 def draft_response(context, draft_prompt, draft_generation_tasks) -> str:
     """Generate Phase 1 LLM responses for drafts."""

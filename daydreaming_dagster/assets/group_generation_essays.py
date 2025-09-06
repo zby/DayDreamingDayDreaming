@@ -308,7 +308,7 @@ def _essay_response_impl(context, essay_prompt, essay_generation_tasks) -> str:
     partitions_def=essay_tasks_partitions,
     group_name="generation_essays",
     io_manager_key="essay_response_io_manager",
-    required_resource_keys={"openrouter_client", "experiment_config", "data_root", "draft_response_io_manager", "documents_index"},
+    required_resource_keys={"openrouter_client", "experiment_config", "data_root", "draft_response_io_manager"},
 )
 def essay_response(context, essay_prompt, essay_generation_tasks) -> str:
     text = _essay_response_impl(context, essay_prompt, essay_generation_tasks)

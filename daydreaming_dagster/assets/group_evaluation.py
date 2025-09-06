@@ -25,7 +25,7 @@ logger = logging.getLogger(__name__)
     partitions_def=evaluation_tasks_partitions,
     group_name="evaluation",
     io_manager_key="evaluation_prompt_io_manager",
-    required_resource_keys={"data_root", "documents_index"},
+    required_resource_keys={"data_root"},
     deps={EVALUATION_TEMPLATES_KEY},
 )
 def evaluation_prompt(context, evaluation_tasks) -> str:
@@ -120,7 +120,7 @@ def evaluation_prompt(context, evaluation_tasks) -> str:
     partitions_def=evaluation_tasks_partitions,
     group_name="evaluation",
     io_manager_key="evaluation_response_io_manager",
-    required_resource_keys={"openrouter_client", "documents_index"},
+    required_resource_keys={"openrouter_client"},
     deps=["evaluation_prompt", "evaluation_tasks"],
 )
 def evaluation_response(context, evaluation_prompt, evaluation_tasks) -> str:
