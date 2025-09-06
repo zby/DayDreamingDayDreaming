@@ -295,6 +295,19 @@ def llm_client_resource(context) -> LLMClientResource:
 - **Version Control**: Text-based formats for diff tracking
 - **Portability**: Standard formats for external tool integration
 
+### 4. Versioned Files Helper (`utils/versioned_files.py`)
+
+**Purpose**: Centralize versioned filename handling for `{stem}_vN.ext` artifacts.
+
+**Functions**:
+- `latest_versioned_path(dir, stem, ext)`: Return the highest version path or `None`.
+- `next_versioned_path(dir, stem, ext)`: Compute the next version filename (v1 if none).
+- `save_versioned_text(dir, stem, text, ext)`: Write text to the next version and return the path.
+
+**Usage**:
+- Preferred for RAW/parsed prompt and response files to avoid duplicated regex logic.
+- Utilities like `document_locator` and `evaluation_processing` already use this helper.
+
 ## Partitioning Architecture
 
 ### Dynamic Partitioning Strategy

@@ -219,6 +219,28 @@ uv run pytest --cov=daydreaming_dagster
 - `DAGSTER_HOME`: Dagster metadata storage (set to absolute path of `dagster_home/` directory)
 - Versioned artifacts: Draft/essay/evaluation prompts and responses are written as `{id}_vN.txt`. Reads automatically pick the highest version; legacy `{id}.txt` is used only if no versions exist.
 
+### Versioned Files Utility
+
+To keep versioned artifact handling consistent, use the helpers in `daydreaming_dagster/utils/versioned_files.py` instead of re‑implementing regex logic:
+
+- `latest_versioned_path(dir, stem, ext=".txt")`: Returns the latest `{stem}_vN{ext}` or `None`.
+- `next_versioned_path(dir, stem, ext=".txt")`: Returns the next path to write (v1 if none exist).
+- `save_versioned_text(dir, stem, text, ext=".txt")`: Writes `text` to the next versioned file and returns the path.
+
+Example:
+```python
+from pathlib import Path
+from daydreaming_dagster.utils.versioned_files import save_versioned_text, latest_versioned_path
+
+raw_dir = Path(data_root) / "3_generation" / "essay_responses_raw"
+path_str = save_versioned_text(raw_dir, task_id, raw_text)
+
+essay_dir = Path(data_root) / "3_generation" / "essay_responses"
+latest = latest_versioned_path(essay_dir, task_id)
+```
+
+These functions are used by core utilities like `document_locator` and `evaluation_processing`, and should be preferred for any new versioned I/O.
+
 **Important**: Set `DAGSTER_HOME=$(pwd)/dagster_home` to use the project's Dagster configuration, which includes auto-materialization settings. Without this, Dagster uses temporary storage and ignores the project configuration.
 
 ### Pipeline Parameters

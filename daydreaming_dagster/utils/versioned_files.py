@@ -1,3 +1,18 @@
+"""Versioned file helpers for {stem}_vN.ext patterns.
+
+Use these helpers whenever writing or reading versioned artifacts (prompts,
+responses, etc.) to ensure consistent behavior across the codebase.
+
+Functions:
+- latest_versioned_path(dir, stem, ext): Return the highest N path or None
+- next_versioned_path(dir, stem, ext): Return the next path to write (v1 if none)
+- save_versioned_text(dir, stem, text, ext, logger): Write to next version and return path
+
+Notes:
+- `ext` may be provided with or without leading dot; both are accepted.
+- All helpers are tolerant of missing directories.
+"""
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -79,4 +94,3 @@ def save_versioned_text(dir_path: Path, stem: str, text: str, ext: str = ".txt",
             except Exception:
                 pass
         return None
-
