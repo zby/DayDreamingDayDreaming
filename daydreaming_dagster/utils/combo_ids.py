@@ -9,15 +9,14 @@ import pandas as pd
 
 
 def generate_combo_id(concept_ids: List[str], description_level: str, k_max: int) -> str:
-    """Generate deterministic, versioned combo ID from combination parameters.
+    """Generate deterministic, versioned combo ID (delegates to model util).
 
-    - Stable to ordering of concepts (sorted)
-    - Versioned to allow future changes without breaking joins
+    Kept for backward-compat import paths; implementation lives with the model.
     """
-    sorted_concepts = sorted(concept_ids)
-    hash_input = "|".join(sorted_concepts) + "|" + description_level + "|" + str(k_max)
-    hash_obj = hashlib.sha256(hash_input.encode())
-    return f"combo_v1_{hash_obj.hexdigest()[:12]}"
+    # Local import to avoid circular imports during Dagster asset import
+    from daydreaming_dagster.models.content_combination import generate_combo_id as _gen
+
+    return _gen(concept_ids, description_level, k_max)
 
 
 class ComboIDManager:
@@ -102,5 +101,4 @@ class ComboIDManager:
                 "created_at",
             ]
         )
-
 

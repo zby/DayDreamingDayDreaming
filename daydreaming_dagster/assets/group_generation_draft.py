@@ -11,7 +11,7 @@ from jinja2 import Environment, TemplateSyntaxError
 from .partitions import draft_tasks_partitions
 from ..utils.template_loader import load_generation_template
 from ..utils.raw_readers import read_draft_templates
-from ..utils.link_parsers import get_draft_parser
+from ..utils.draft_parsers import get_draft_parser
 from ..utils.dataframe_helpers import get_task_row
 from ..utils.raw_write import save_versioned_raw_text
 

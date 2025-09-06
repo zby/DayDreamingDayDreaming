@@ -1,6 +1,7 @@
 from dataclasses import dataclass, field
 from typing import List, Dict, Optional
 from itertools import product
+import hashlib
 
 from .concept import Concept
 
@@ -136,3 +137,15 @@ class ContentCombination:
                 if content and content.strip()
             ]
         return available
+
+
+def generate_combo_id(concept_ids: List[str], description_level: str, k_max: int) -> str:
+    """Generate a deterministic, versioned combo ID from combination parameters.
+
+    - Stable to ordering of concepts (sorted by id)
+    - Versioned to allow format evolution without breaking joins
+    """
+    sorted_concepts = sorted(map(str, concept_ids))
+    hash_input = "|".join(sorted_concepts) + "|" + str(description_level) + "|" + str(int(k_max))
+    digest = hashlib.sha256(hash_input.encode()).hexdigest()[:12]
+    return f"combo_v1_{digest}"
