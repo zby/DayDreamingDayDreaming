@@ -1,25 +1,25 @@
 from dagster import Definitions, multiprocess_executor
 import os
-from daydreaming_dagster.assets.groups.group_generation_draft import (
+from daydreaming_dagster.assets.group_generation_draft import (
     draft_prompt,
     draft_response,
 )
-from daydreaming_dagster.assets.groups.group_generation_essays import (
+from daydreaming_dagster.assets.group_generation_essays import (
     essay_prompt,
     essay_response,
 )
-from daydreaming_dagster.assets.groups.group_evaluation import (
+from daydreaming_dagster.assets.group_evaluation import (
     evaluation_prompt,
     evaluation_response,
 )
-from daydreaming_dagster.assets.groups.group_results_processing import (
+from daydreaming_dagster.assets.group_results_processing import (
     parsed_scores,
 )
 from daydreaming_dagster.assets.results_analysis import (
     evaluator_agreement_analysis,
     comprehensive_variance_analysis
 )
-from daydreaming_dagster.assets.groups.group_results_summary import (
+from daydreaming_dagster.assets.group_results_summary import (
     final_results,
     perfect_score_paths,
     generation_scores_pivot,
@@ -27,7 +27,7 @@ from daydreaming_dagster.assets.groups.group_results_summary import (
 )
 from daydreaming_dagster.assets.raw_data import RAW_SOURCE_ASSETS, TASK_SOURCE_ASSETS
 from daydreaming_dagster.schedules.raw_schedule import raw_schedule
-from daydreaming_dagster.assets.groups.group_task_definitions import (
+from daydreaming_dagster.assets.group_task_definitions import (
     selected_combo_mappings,
     content_combinations,
     draft_generation_tasks,
@@ -35,7 +35,7 @@ from daydreaming_dagster.assets.groups.group_task_definitions import (
     document_index,
     evaluation_tasks,
 )
-from daydreaming_dagster.assets.groups.group_cross_experiment import (
+from daydreaming_dagster.assets.group_cross_experiment import (
     filtered_evaluation_results,
     template_version_comparison_pivot,
     draft_generation_results_append,
