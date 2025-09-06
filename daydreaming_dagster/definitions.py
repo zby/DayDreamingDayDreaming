@@ -50,6 +50,7 @@ from daydreaming_dagster.resources.io_managers import (
     VersionedTextIOManager,
     InMemoryIOManager,
 )
+from daydreaming_dagster.resources.documents_index import DocumentsIndexResource
 from pathlib import Path
 
 
@@ -104,6 +105,7 @@ defs = Definitions(
         
         # Infrastructure configuration
         "data_root": "data",
+        "documents_index": DocumentsIndexResource(),
         
         # Simplified I/O managers - no complex source mappings or filtering
         "csv_io_manager": CSVIOManager(base_path=Path("data") / "2_tasks"),
