@@ -67,3 +67,69 @@ def documents_latest_report(context) -> pd.DataFrame:
         "source": MetadataValue.text("empty"),
     })
     return df
+
+@asset(
+    group_name="reporting",
+    io_manager_key="error_log_io_manager",
+    required_resource_keys={"data_root"},
+    compute_kind="python",
+)
+def documents_consistency_report(context) -> pd.DataFrame:
+    """Scan the documents index and report simple consistency issues per row.
+
+    Columns:
+    - doc_id, stage, task_id, doc_dir
+    - missing_raw, missing_parsed, missing_prompt
+    - dir_exists
+    """
+    idx: SQLiteDocumentsIndex | None = None
+    # Try opening via resource or via data_root fallback if flag is on
+    try:
+        idx_res = getattr(context.resources, "documents_index", None)
+        if idx_res and getattr(idx_res, "index_enabled", False):
+            idx = idx_res.get_index()
+    except Exception:
+        idx = None
+    if idx is None and os.getenv("DD_DOCS_INDEX_ENABLED", "0") in ("1", "true", "True"):
+        data_root = Path(getattr(context.resources, "data_root", "data"))
+        idx = SQLiteDocumentsIndex(data_root / "db" / "documents.sqlite", data_root / "docs")
+        idx.init_maybe_create_tables()
+
+    if idx is None:
+        context.log.info("documents_consistency_report: index disabled or unavailable; emitting empty report")
+        return pd.DataFrame(columns=[
+            "doc_id","stage","task_id","doc_dir","missing_raw","missing_parsed","missing_prompt","dir_exists"
+        ])
+
+    con = idx.connect()
+    # Examine recent rows (limit for performance); prefer latest per (stage, logical), then recent
+    rows = list(con.execute(
+        "SELECT d1.* FROM documents d1 JOIN ("
+        "  SELECT stage, logical_key_id, MAX(created_at) AS mx FROM documents GROUP BY stage, logical_key_id"
+        ") t ON d1.stage=t.stage AND d1.logical_key_id=t.logical_key_id AND d1.created_at=t.mx"
+    ))
+    if not rows:
+        rows = list(con.execute("SELECT * FROM documents ORDER BY created_at DESC, rowid DESC LIMIT 1000"))
+
+    records: list[dict] = []
+    for r in rows:
+        base = idx.resolve_doc_dir(r)
+        raw = base / "raw.txt"
+        parsed = base / "parsed.txt"
+        prompt = base / "prompt.txt"
+        records.append({
+            "doc_id": r.get("doc_id"),
+            "stage": r.get("stage"),
+            "task_id": r.get("task_id"),
+            "doc_dir": str(base),
+            "missing_raw": not raw.exists(),
+            "missing_parsed": not parsed.exists(),
+            "missing_prompt": not prompt.exists(),
+            "dir_exists": base.exists(),
+        })
+    df = pd.DataFrame(records)
+    context.add_output_metadata({
+        "rows": MetadataValue.int(len(df)),
+        "issues": MetadataValue.int(int(df[["missing_raw","missing_parsed","missing_prompt","dir_exists"]].any(axis=1).sum())) if not df.empty else MetadataValue.int(0),
+    })
+    return df

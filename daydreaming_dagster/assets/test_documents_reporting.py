@@ -5,7 +5,7 @@ import os
 from dagster import materialize, DagsterInstance
 from unittest.mock import patch
 
-from daydreaming_dagster.assets.documents_reporting import documents_latest_report
+from daydreaming_dagster.assets.documents_reporting import documents_latest_report, documents_consistency_report
 from daydreaming_dagster.resources.io_managers import CSVIOManager
 from daydreaming_dagster.resources.documents_index import DocumentsIndexResource
 from daydreaming_dagster.utils.documents_index import SQLiteDocumentsIndex, DocumentRow
@@ -41,10 +41,11 @@ def test_documents_latest_report_smoke(tmp_path: Path):
 
     with patch.dict(os.environ, {"DD_DOCS_INDEX_ENABLED": "1"}):
         with DagsterInstance.ephemeral() as instance:
-            result = materialize([documents_latest_report], resources=resources, instance=instance)
+            result = materialize([documents_latest_report, documents_consistency_report], resources=resources, instance=instance)
             assert result.success
     # Verify CSV written and non-empty
     out_csv = data_root / "7_reporting" / "documents_latest_report.csv"
     assert out_csv.exists(), "documents_latest_report.csv not created"
     assert out_csv.stat().st_size > 0, "documents_latest_report.csv is empty"
-
+    out_csv2 = data_root / "7_reporting" / "documents_consistency_report.csv"
+    assert out_csv2.exists(), "documents_consistency_report.csv not created"

@@ -27,6 +27,7 @@ from daydreaming_dagster.assets.group_results_summary import (
 )
 from daydreaming_dagster.assets.documents_reporting import (
     documents_latest_report,
+    documents_consistency_report,
 )
 from daydreaming_dagster.checks.documents_checks import (
     draft_files_exist_check,
@@ -106,6 +107,7 @@ defs = Definitions(
         essay_generation_results_append,
         evaluation_results_append,
         documents_latest_report,
+        documents_consistency_report,
         # Source assets (CSV-only)
         *RAW_SOURCE_ASSETS,
         *TASK_SOURCE_ASSETS,
