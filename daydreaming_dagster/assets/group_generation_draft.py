@@ -295,14 +295,29 @@ def draft_response(context, draft_prompt, draft_generation_tasks) -> str:
             tmp.write_text(data, encoding="utf-8")
             tmp.replace(path)
 
-        # We have only parsed text in this scope; raw text is best-effort from metadata of _impl
-        raw_text = None
+        # Prefer RAW from versioned raw dir if present; fallback to parsed text
+        raw_text = parsed
         try:
-            # The implementation above may have saved RAW to a versioned file; we do not re-read it here.
-            # For now, treat parsed as canonical; optionally duplicate parsed into raw until raw capture is added.
-            raw_text = parsed
+            data_root = _Path(getattr(context.resources, "data_root", "data"))
+            raw_dir = data_root / "3_generation" / "draft_responses_raw"
+            best = None
+            best_ver = -1
+            prefix = f"{task_id}_v"
+            if raw_dir.exists():
+                for name in raw_dir.iterdir():
+                    if not name.name.startswith(prefix) or name.suffix != ".txt":
+                        continue
+                    try:
+                        v = int(name.stem.split("_v")[-1])
+                    except Exception:
+                        continue
+                    if v > best_ver:
+                        best_ver = v
+                        best = name
+            if best and best.exists():
+                raw_text = best.read_text(encoding="utf-8")
         except Exception:
-            raw_text = parsed
+            pass
 
         _write_atomic(target_dir / "raw.txt", raw_text)
         _write_atomic(target_dir / "parsed.txt", parsed)
