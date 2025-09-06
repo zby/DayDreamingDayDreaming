@@ -68,7 +68,9 @@ from pathlib import Path
 
 # Responses and prompts are versioned; overwrite flags are not used.
 
-EXECUTOR = in_process_executor if os.environ.get("DD_IN_PROCESS") == "1" else multiprocess_executor.configured({"max_concurrent": 10})
+# Allow disabling OS semaphores (used by multiprocess executor) via env in restricted test envs.
+_IN_PROC = os.environ.get("DD_IN_PROCESS") == "1" or os.environ.get("DD_DISABLE_SEMAPHORES") in ("1", "true", "True")
+EXECUTOR = in_process_executor if _IN_PROC else multiprocess_executor.configured({"max_concurrent": 10})
 
 defs = Definitions(
     assets=[
