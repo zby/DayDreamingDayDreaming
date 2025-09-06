@@ -28,6 +28,11 @@ from daydreaming_dagster.assets.group_results_summary import (
 from daydreaming_dagster.assets.documents_reporting import (
     documents_latest_report,
 )
+from daydreaming_dagster.checks.documents_checks import (
+    draft_files_exist_check,
+    essay_files_exist_check,
+    evaluation_files_exist_check,
+)
 from daydreaming_dagster.assets.raw_data import RAW_SOURCE_ASSETS, TASK_SOURCE_ASSETS
 from daydreaming_dagster.schedules.raw_schedule import raw_schedule
 from daydreaming_dagster.assets.group_task_definitions import (
@@ -101,6 +106,11 @@ defs = Definitions(
         # Source assets (CSV-only)
         *RAW_SOURCE_ASSETS,
         *TASK_SOURCE_ASSETS,
+    ],
+    asset_checks=[
+        draft_files_exist_check,
+        essay_files_exist_check,
+        evaluation_files_exist_check,
     ],
     schedules=[raw_schedule],
     resources={
