@@ -1,4 +1,4 @@
-from dagster import Definitions, multiprocess_executor
+from dagster import Definitions, multiprocess_executor, in_process_executor
 import os
 from daydreaming_dagster.assets.group_generation_draft import (
     draft_prompt,
@@ -54,6 +54,8 @@ from pathlib import Path
 
 
 # Responses and prompts are versioned; overwrite flags are not used.
+
+EXECUTOR = in_process_executor if os.environ.get("DD_IN_PROCESS") == "1" else multiprocess_executor.configured({"max_concurrent": 10})
 
 defs = Definitions(
     assets=[
@@ -119,6 +121,6 @@ defs = Definitions(
         "summary_results_io_manager": CSVIOManager(base_path=Path("data") / "6_summary"),
         "cross_experiment_io_manager": CSVIOManager(base_path=Path("data") / "7_cross_experiment")
     },
-    executor=multiprocess_executor.configured({"max_concurrent": 10})
+    executor=EXECUTOR
     # Note: Pool concurrency is configured via dagster_home/dagster.yaml
 )

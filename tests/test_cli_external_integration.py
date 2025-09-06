@@ -18,6 +18,10 @@ def test_cli_materialize_selected_then_content():
         dagster_home.mkdir(parents=True, exist_ok=True)
         env = os.environ.copy()
         env["DAGSTER_HOME"] = str(dagster_home)
+        # Avoid sandbox permission issues with default UV cache in $HOME
+        env["UV_CACHE_DIR"] = str(Path(td) / "uv_cache")
+        # Force in-process executor via env flag understood by our Definitions
+        env["DD_IN_PROCESS"] = "1"
 
         # Step 1: generate selection
         p1 = run(["uv", "run", "dagster", "asset", "materialize", "-f", str(defs_path), "--select", "selected_combo_mappings"], cwd=str(repo_root), env=env)
