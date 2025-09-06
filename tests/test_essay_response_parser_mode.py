@@ -2,7 +2,7 @@ import pytest
 import pandas as pd
 from pathlib import Path
 
-from daydreaming_dagster.assets.groups.group_generation_essays import _essay_response_impl as essay_response_impl
+from daydreaming_dagster.assets.group_generation_essays import _essay_response_impl as essay_response_impl
 
 
 class _FakeLogger:

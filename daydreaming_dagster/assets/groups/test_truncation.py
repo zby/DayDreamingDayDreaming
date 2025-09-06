@@ -4,8 +4,8 @@ import pytest
 
 from dagster import Failure
 
-from .group_generation_draft import _draft_response_impl as draft_response_impl
-from .group_generation_essays import _essay_response_impl as essay_response_impl
+from daydreaming_dagster.assets.group_generation_draft import _draft_response_impl as draft_response_impl
+from daydreaming_dagster.assets.group_generation_essays import _essay_response_impl as essay_response_impl
 
 
 class _FakeLogger:

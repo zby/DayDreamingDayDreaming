@@ -4,7 +4,7 @@ import pytest
 import pandas as pd
 from jinja2 import Environment
 
-from daydreaming_dagster.assets.groups.group_evaluation import evaluation_prompt
+from daydreaming_dagster.assets.group_evaluation import evaluation_prompt
 
 
 class TestMockLoadContext:

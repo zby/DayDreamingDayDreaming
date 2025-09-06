@@ -2,7 +2,7 @@ import pandas as pd
 from pathlib import Path
 import pytest
 
-from daydreaming_dagster.assets.groups.group_generation_draft import _draft_response_impl as draft_response_impl
+from daydreaming_dagster.assets.group_generation_draft import _draft_response_impl as draft_response_impl
 from dagster import Failure
 
 
