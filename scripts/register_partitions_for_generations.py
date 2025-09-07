@@ -44,6 +44,13 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--dry-run", action="store_true", help="Compute and print actions but make no changes")
     # Reset by default; use --add-only to avoid clearing existing partitions
     p.add_argument("--add-only", action="store_true", help="Do not clear existing dynamic partitions (add-only mode)")
+    # New: explicit doc-id inputs for evaluation tasks
+    p.add_argument(
+        "--evaluation-parent-doc-ids",
+        type=Path,
+        default=None,
+        help="CSV/TSV file with a 'parent_doc_id' column to build evaluation_tasks.csv",
+    )
     return p.parse_args()
 
 
@@ -247,36 +254,32 @@ def main() -> int:
         parser_map = load_parser_map(data_root)
     except Exception as e:
         print(f"Warning: could not load parser map from evaluation_templates.csv: {e}", file=sys.stderr)
-    # Build evaluation tasks from essays only (current design)
+    # Build evaluation tasks from explicit parent_doc_id list (required)
     evaluation_rows: List[dict] = []
-    if essay_rows and eval_tpls and eval_models:
-        # Map evaluation model id -> display name
-        model_name_map = _load_models_map(data_root)
-        for r in essay_rows:
-            essay_task_id = r["essay_task_id"]
-            # Locate source document path (prefer essay responses if present)
-            fp, src = find_document_path(essay_task_id, data_root)
-            file_path = str(fp) if fp else ""
-            for tpl in eval_tpls:
-                for model in eval_models:
-                    evaluation_rows.append({
-                        "evaluation_task_id": f"{essay_task_id}__{tpl}__{model}",
-                        "document_id": essay_task_id,
-                        "essay_task_id": essay_task_id,
-                        "draft_task_id": r.get("draft_task_id"),
-                        "combo_id": r.get("combo_id"),
-                        "draft_template": r.get("draft_template"),
-                        "essay_template": r.get("essay_template"),
-                        "generation_model": r.get("generation_model"),
-                        "generation_model_name": r.get("generation_model_name"),
-                        "evaluation_template": tpl,
-                        "evaluation_model": model,
-                        "evaluation_model_name": model_name_map.get(model, model),
-                        "parser": parser_map.get(tpl),
-                        "file_path": file_path,
-                        "source_dir": src,
-                        "source_asset": "essay_response",
-                    })
+    if args.evaluation_parent_doc_ids is None:
+        print("Error: --evaluation-parent-doc-ids is required to build evaluation_tasks.csv with pinned doc IDs", file=sys.stderr)
+        return 1
+    try:
+        parent_df = pd.read_csv(args.evaluation_parent_doc_ids)
+    except Exception as e:
+        print(f"Failed to read {args.evaluation_parent_doc_ids}: {e}", file=sys.stderr)
+        return 1
+    if "parent_doc_id" not in parent_df.columns:
+        print(f"Input must contain a 'parent_doc_id' column: {args.evaluation_parent_doc_ids}", file=sys.stderr)
+        return 1
+    # Map evaluation model id -> display name
+    model_name_map = _load_models_map(data_root)
+    for doc_id in parent_df["parent_doc_id"].astype(str).tolist():
+        for tpl in eval_tpls:
+            for model in eval_models:
+                evaluation_rows.append({
+                    "evaluation_task_id": f"{doc_id}__{tpl}__{model}",
+                    "parent_doc_id": doc_id,
+                    "evaluation_template": tpl,
+                    "evaluation_model": model,
+                    "evaluation_model_name": model_name_map.get(model, model),
+                    "parser": parser_map.get(tpl),
+                })
     # Write evaluation tasks CSV
     eval_out_csv = data_root / "2_tasks" / "evaluation_tasks.csv"
     added_evals = 0
@@ -286,9 +289,8 @@ def main() -> int:
             evaluation_rows,
             key="evaluation_task_id",
             columns=[
-                "evaluation_task_id","document_id","essay_task_id","draft_task_id","combo_id",
-                "draft_template","essay_template","generation_model","generation_model_name",
-                "evaluation_template","evaluation_model","evaluation_model_name","parser","file_path","source_dir","source_asset",
+                "evaluation_task_id","parent_doc_id",
+                "evaluation_template","evaluation_model","evaluation_model_name","parser",
             ],
             dry_run=args.dry_run,
         )
