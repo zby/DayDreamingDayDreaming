@@ -42,6 +42,7 @@ def parsed_scores(context, evaluation_tasks: pd.DataFrame, evaluation_templates:
     # Join with evaluation task metadata (denormalized)
     base_cols = [
         "evaluation_task_id",
+        "parent_doc_id",
         "document_id",
         "stage",
         "origin",
@@ -83,6 +84,7 @@ def parsed_scores(context, evaluation_tasks: pd.DataFrame, evaluation_templates:
 
     # Select final columns (include IDs useful for downstream path reconstruction)
     desired_cols = [
+        "parent_doc_id",
         "document_id",
         "stage",
         "origin",
