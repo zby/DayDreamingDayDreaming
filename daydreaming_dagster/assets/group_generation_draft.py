@@ -332,7 +332,6 @@ def draft_response(context, draft_prompt, draft_generation_tasks) -> str:
         # Build metadata.json
         meta_small = {
             "function": "draft_response",
-            "legacy_write_ok": True if getattr(idx_res, "legacy_write_enabled", True) else False,
         }
         info = {}
         try:

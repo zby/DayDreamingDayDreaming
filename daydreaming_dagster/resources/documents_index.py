@@ -17,8 +17,7 @@ class DocumentsIndexResource(ConfigurableResource):
     """
     Dagster resource wrapping the standalone SQLiteDocumentsIndex.
 
-    Exposes feature flags via environment variables (no behavior change unless used by assets):
-    - DD_DOCS_LEGACY_WRITE_ENABLED (default: true)
+    Feature flags:
     - DD_DOCS_PROMPT_COPY_ENABLED (default: true)
     """
 
@@ -35,10 +34,6 @@ class DocumentsIndexResource(ConfigurableResource):
     @property
     def index_enabled(self) -> bool:
         return True
-
-    @property
-    def legacy_write_enabled(self) -> bool:
-        return os.getenv("DD_DOCS_LEGACY_WRITE_ENABLED", "1") in ("1", "true", "True")
 
     @property
     def prompt_copy_enabled(self) -> bool:

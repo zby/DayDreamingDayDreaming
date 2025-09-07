@@ -181,26 +181,6 @@ class VersionedTextIOManager(IOManager):
         return self.base_path / f"{pk}.txt"
 
     def handle_output(self, context: OutputContext, obj: str):
-        # Optionally disable legacy response writes during cutover
-        try:
-            legacy_enabled = os.getenv("DD_DOCS_LEGACY_WRITE_ENABLED", "1") in ("1", "true", "True")
-        except Exception:
-            legacy_enabled = True
-        asset_name = ""
-        try:
-            ak = getattr(context, "asset_key", None)
-            path = getattr(ak, "path", None) if ak is not None else None
-            if path:
-                asset_name = path[-1]
-        except Exception:
-            asset_name = ""
-        if (not legacy_enabled) and isinstance(asset_name, str) and asset_name.endswith("_response"):
-            # Skip writing legacy response files when cutover flag is off
-            context.log.info(
-                f"VersionedTextIOManager: skipping legacy write for {asset_name} due to DD_DOCS_LEGACY_WRITE_ENABLED=0"
-            )
-            return
-
         partition_key = context.partition_key
         # Ensure directory exists
         self.base_path.mkdir(parents=True, exist_ok=True)
