@@ -20,6 +20,7 @@ from ..utils.ids import (
     doc_dir as build_doc_dir,
 )
 from ..utils.documents_index import DocumentRow
+from ..utils.document import Document
 
 # Reuse a single Jinja environment
 JINJA = Environment()
@@ -260,9 +261,9 @@ def draft_response(context, draft_prompt, draft_generation_tasks) -> str:
     """Generate Phase 1 LLM responses for drafts."""
     parsed = _draft_response_impl(context, draft_prompt, draft_generation_tasks)
 
-    # Write to documents index (Phase 1)
+    # Write to documents index (Phase 1) using Document helper
     idx_res = context.resources.documents_index
-    import json, time, hashlib
+    import time
     from pathlib import Path as _Path
 
     task_id = context.partition_key
@@ -277,18 +278,6 @@ def draft_response(context, draft_prompt, draft_generation_tasks) -> str:
     run_id = getattr(context, "run_id", "run")
     attempt = int(time.time_ns())
     doc_id = new_doc_id(logical_key_id, run_id, attempt)
-
-    # Build doc_dir and write files atomically
-    idx = idx_res.get_index()
-    docs_root = _Path(idx.docs_root)
-    stage = "draft"
-    target_dir = build_doc_dir(docs_root, stage, logical_key_id, doc_id)
-    target_dir.mkdir(parents=True, exist_ok=True)
-
-    def _write_atomic(path: _Path, data: str):
-        tmp = path.with_suffix(path.suffix + ".tmp")
-        tmp.write_text(data, encoding="utf-8")
-        tmp.replace(path)
 
     # Prefer RAW from versioned raw dir if present; fallback to parsed text
     raw_text = parsed
@@ -314,58 +303,39 @@ def draft_response(context, draft_prompt, draft_generation_tasks) -> str:
     except Exception:
         pass
 
-    _write_atomic(target_dir / "raw.txt", raw_text)
-    _write_atomic(target_dir / "parsed.txt", parsed)
-
-    # Copy prompt if enabled
-    try:
-        if getattr(idx_res, "prompt_copy_enabled", True) and isinstance(draft_prompt, str):
-            _write_atomic(target_dir / "prompt.txt", draft_prompt)
-    except Exception:
-        pass
-
-    # Build metadata.json
-    meta_small = {
-        "function": "draft_response",
-    }
-    info = {}
-    try:
-        # Not available here; left empty for now
-        info = {}
-    except Exception:
-        info = {}
-    metadata = {
+    # Build document and write files
+    idx = idx_res.get_index()
+    docs_root = _Path(idx.docs_root)
+    metadata_json = {
         "task_id": task_id,
         "combo_id": combo_id,
         "draft_template": draft_template,
         "model_id": model_id,
-        "usage": info.get("usage") if isinstance(info, dict) else None,
+        "usage": None,
+        "function": "draft_response",
     }
-    _write_atomic(target_dir / "metadata.json", json.dumps(metadata, ensure_ascii=False, indent=2))
-
-    # Insert DB row
-    content_hash = hashlib.sha256((raw_text or "").encode("utf-8")).hexdigest()
-    rel_dir = target_dir.relative_to(docs_root)
-    row = DocumentRow(
-        doc_id=doc_id,
+    prompt_text = draft_prompt if getattr(idx_res, "prompt_copy_enabled", True) and isinstance(draft_prompt, str) else None
+    doc = Document(
+        stage="draft",
         logical_key_id=logical_key_id,
-        stage=stage,
-        task_id=task_id,
+        doc_id=doc_id,
         parent_doc_id=None,
-        template_id=str(draft_template),
-        model_id=str(model_id),
+        raw_text=raw_text,
+        parsed_text=parsed,
+        prompt_text=prompt_text,
+        metadata=metadata_json,
+    )
+    target_dir = doc.write_files(docs_root)
+
+    # Insert into index
+    row = doc.to_index_row(
+        docs_root,
+        task_id=task_id,
+        template_id=str(draft_template) if draft_template is not None else None,
+        model_id=str(model_id) if model_id is not None else None,
         run_id=str(run_id),
         parser=None,
         status="ok",
-        usage_prompt_tokens=None,
-        usage_completion_tokens=None,
-        usage_max_tokens=None,
-        doc_dir=str(rel_dir),
-        raw_chars=len(raw_text or ""),
-        parsed_chars=len(parsed or ""),
-        content_hash=content_hash,
-        meta_small=meta_small,
-        lineage_prev_doc_id=None,
     )
     try:
         idx.insert_document(row)
