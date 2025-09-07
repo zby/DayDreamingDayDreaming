@@ -17,7 +17,7 @@ class TestDocumentsIndex:
             logical_key_id="logical1",
             stage="draft",
             task_id="task1",
-            doc_dir=str(Path("draft") / "logical1" / "docA"),
+            doc_dir=str(Path("draft") / "docA"),
             status="ok",
         )
         idx.insert_document(r1)
@@ -27,7 +27,7 @@ class TestDocumentsIndex:
             logical_key_id="logical1",
             stage="draft",
             task_id="task1",
-            doc_dir=str(Path("draft") / "logical1" / "docB"),
+            doc_dir=str(Path("draft") / "docB"),
             status="ok",
         )
         idx.insert_document(r2)
@@ -39,4 +39,3 @@ class TestDocumentsIndex:
         got_logical = idx.get_latest_by_logical("logical1")
         assert got_logical is not None
         assert got_logical["doc_id"] == "docB"
-

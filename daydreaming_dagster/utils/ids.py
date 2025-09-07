@@ -73,5 +73,5 @@ def new_doc_id(logical_key_id: str, run_id: str, attempt_or_ts: str | int, *, le
 def doc_dir(root: str | "os.PathLike[str]", stage: str, logical_key_id: str, doc_id: str):
     from pathlib import Path
 
-    return Path(root) / stage / logical_key_id / doc_id
-
+    # Flat layout: buckets removed; ignore logical_key_id in path
+    return Path(root) / stage / doc_id

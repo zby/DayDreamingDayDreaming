@@ -196,9 +196,9 @@ class SQLiteDocumentsIndex:
             return p if p.is_absolute() else (self.docs_root / p)
         # Fallback: compute from fields
         stage = row["stage"]
-        logical = row["logical_key_id"]
+        # Flat layout: buckets removed; place docs directly under stage
         doc_id = row["doc_id"]
-        return self.docs_root / stage / logical / doc_id
+        return self.docs_root / stage / doc_id
 
     def read_text(self, row: dict, name: str) -> str:
         base = self.resolve_doc_dir(row)

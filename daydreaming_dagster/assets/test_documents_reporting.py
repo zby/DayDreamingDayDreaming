@@ -20,14 +20,14 @@ def test_documents_latest_report_smoke(tmp_path: Path):
     idx.init_maybe_create_tables()
     # Insert a minimal draft row
     docs_root.mkdir(parents=True, exist_ok=True)
-    (docs_root / "draft" / "logicalX" / "docX").mkdir(parents=True)
+    (docs_root / "draft" / "docX").mkdir(parents=True)
     idx.insert_document(
         DocumentRow(
             doc_id="docX",
             logical_key_id="logicalX",
             stage="draft",
             task_id="taskX",
-            doc_dir=str(Path("draft") / "logicalX" / "docX"),
+            doc_dir=str(Path("draft") / "docX"),
             status="ok",
         )
     )
