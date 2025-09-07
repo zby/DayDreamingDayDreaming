@@ -13,7 +13,6 @@ CREATE TABLE IF NOT EXISTS documents (
   logical_key_id TEXT NOT NULL,
   stage TEXT NOT NULL CHECK (stage IN ('draft','essay','evaluation')),
   task_id TEXT NOT NULL,
-  legacy_task_id TEXT,
   parent_doc_id TEXT,
   template_id TEXT,
   model_id TEXT,
@@ -51,7 +50,6 @@ class DocumentRow:
     task_id: str
     doc_dir: str
     # Optional / defaulted fields must come after all required fields
-    legacy_task_id: Optional[str] = None
     status: str = "ok"
     parent_doc_id: Optional[str] = None
     template_id: Optional[str] = None
@@ -113,17 +111,6 @@ class SQLiteDocumentsIndex:
                 s = stmt.strip()
                 if s:
                     con.execute(s)
-            # Backward-compatible migration for legacy_task_id
-            cols = set()
-            for row in con.execute("PRAGMA table_info(documents)").fetchall():
-                try:
-                    # when row_factory returns dict
-                    cols.add(row.get("name"))
-                except AttributeError:
-                    # fallback for tuple rows
-                    cols.add(row[1])
-            if "legacy_task_id" not in cols:
-                con.execute("ALTER TABLE documents ADD COLUMN legacy_task_id TEXT")
 
     def insert_document(self, row: DocumentRow) -> None:
         con = self.connect()
@@ -136,12 +123,12 @@ class SQLiteDocumentsIndex:
             con.execute(
                 """
                 INSERT INTO documents (
-                  doc_id, logical_key_id, stage, task_id, legacy_task_id, parent_doc_id,
+                  doc_id, logical_key_id, stage, task_id, parent_doc_id,
                   template_id, model_id, run_id, parser,
                   status, usage_prompt_tokens, usage_completion_tokens, usage_max_tokens,
                   doc_dir, raw_chars, parsed_chars, content_hash, meta_small, lineage_prev_doc_id
                 ) VALUES (
-                  :doc_id, :logical_key_id, :stage, :task_id, :legacy_task_id, :parent_doc_id,
+                  :doc_id, :logical_key_id, :stage, :task_id, :parent_doc_id,
                   :template_id, :model_id, :run_id, :parser,
                   :status, :usage_prompt_tokens, :usage_completion_tokens, :usage_max_tokens,
                   :doc_dir, :raw_chars, :parsed_chars, :content_hash, :meta_small, :lineage_prev_doc_id
