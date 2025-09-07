@@ -19,7 +19,7 @@ Usage example:
 
 Doc-ID pinning (default):
 - evaluation_tasks.csv is generated with a pinned parent_doc_id for each evaluation task,
-  resolved from the documents SQLite index (data/db/documents.sqlite). No flags needed.
+  taken directly from the curated essay_generation_tasks.csv. No extra flags needed.
 """
 
 from __future__ import annotations
@@ -34,7 +34,7 @@ import pandas as pd
 import re
 from daydreaming_dagster.utils.document_locator import find_document_path
 from daydreaming_dagster.utils.evaluation_parsing_config import load_parser_map
-import sqlite3
+import sqlite3  # legacy helpers kept below will be removed soon
 
 
 def parse_args() -> argparse.Namespace:
@@ -151,32 +151,13 @@ def _load_active_evaluation_axes(data_root: Path) -> tuple[list[str], list[str]]
 
 
 def _open_documents_db(data_root: Path) -> sqlite3.Connection | None:
-    """Open the documents SQLite DB if present; return None if missing/unavailable."""
-    db_path = Path(data_root) / "db" / "documents.sqlite"
-    try:
-        if not db_path.exists():
-            return None
-        con = sqlite3.connect(str(db_path))
-        con.row_factory = sqlite3.Row
-        return con
-    except Exception:
-        return None
+    """(Deprecated) Open the documents SQLite DB if present. Not used in doc-id-first flow."""
+    return None
 
 
 def _resolve_latest_essay_doc_id(con: sqlite3.Connection, essay_task_id: str) -> str | None:
-    """Return latest essay doc_id for a given essay_task_id from the documents DB."""
-    try:
-        row = con.execute(
-            (
-                "SELECT doc_id FROM documents "
-                "WHERE stage='essay' AND task_id=? "
-                "ORDER BY created_at DESC, rowid DESC LIMIT 1"
-            ),
-            (str(essay_task_id),),
-        ).fetchone()
-        return str(row["doc_id"]) if row and row["doc_id"] else None
-    except Exception:
-        return None
+    """(Deprecated) DB-based resolution removed. Use parent_doc_id from curated CSV."""
+    return None
 
 
 def _write_table(out_csv: Path, rows: List[dict], key: str, columns: List[str], dry_run: bool = False) -> int:
@@ -280,25 +261,24 @@ def main() -> int:
     # Build evaluation tasks pinned by doc_id (default)
     evaluation_rows: List[dict] = []
     if essay_rows and eval_tpls and eval_models:
+        if "parent_doc_id" not in df.columns:
+            print("Input CSV must contain 'parent_doc_id' to build evaluation_tasks.csv with pinned doc IDs", file=sys.stderr)
+            return 1
         model_name_map = _load_models_map(data_root)
-        con = _open_documents_db(data_root)
-        for r in essay_rows:
-            essay_task_id = r["essay_task_id"]
-            # Resolve the latest essay doc_id for this task (pinned lineage)
-            parent_doc_id = _resolve_latest_essay_doc_id(con, essay_task_id) if con else None
+        for _, r in df.iterrows():
+            essay_task_id = str(r["essay_task_id"])
+            parent_doc_id = str(r.get("parent_doc_id") or "").strip()
             if not parent_doc_id:
-                print(
-                    f"Warning: no essay doc_id found in DB for task_id={essay_task_id}; parent_doc_id will be empty",
-                    file=sys.stderr,
-                )
+                print(f"Error: missing parent_doc_id for essay_task_id={essay_task_id}", file=sys.stderr)
+                return 1
             # Locate source document path (optional, for ops UX)
             fp, src = find_document_path(essay_task_id, data_root)
             file_path = str(fp) if fp else ""
             for tpl in eval_tpls:
                 for model in eval_models:
                     evaluation_rows.append({
-                        "evaluation_task_id": f"{essay_task_id}__{tpl}__{model}",
-                        "parent_doc_id": parent_doc_id or "",
+                        "evaluation_task_id": f"{parent_doc_id}__{tpl}__{model}",
+                        "parent_doc_id": parent_doc_id,
                         # task context (kept for compatibility in reports)
                         "document_id": essay_task_id,
                         "essay_task_id": essay_task_id,
