@@ -155,7 +155,8 @@ def template_version_comparison_pivot(
     deps=["draft_response"],
     automation_condition=AutomationCondition.eager(),
     group_name="cross_experiment_tracking",
-    description="Automatically appends new row when draft_response completes"
+    description="Automatically appends new row when draft_response completes",
+    required_resource_keys={"documents_index"},
 )
 def draft_generation_results_append(context, draft_generation_tasks):
     """Automatically appends new row when draft_response completes."""
@@ -167,8 +168,10 @@ def draft_generation_results_append(context, draft_generation_tasks):
         return "no_task_found"
     task_row = task_rows.iloc[0]
     
-    response_file = Path(f"data/3_generation/draft_responses/{task_id}.txt")
-    response_exists = response_file.exists()
+    # Resolve via documents index (DB-only)
+    idx = context.resources.documents_index.get_index()
+    row = idx.get_latest_by_task("draft", task_id)
+    response_exists = bool(row)
     
     new_row = {
         "draft_task_id": task_id,
@@ -177,10 +180,16 @@ def draft_generation_results_append(context, draft_generation_tasks):
         "generation_model": task_row["generation_model_name"],
         "generation_status": "success" if response_exists else "failed",
         "generation_timestamp": datetime.now().isoformat(),
-        "response_file": f"draft_responses/{task_id}.txt"
+        # Point to DB-managed parsed file when present
+        **(
+            {
+                "response_file": f"docs/draft/{row.get('doc_id')}/parsed.txt",
+                "response_size_bytes": int(row.get("parsed_chars")) if isinstance(row.get("parsed_chars"), (int, float)) else None,
+            }
+            if response_exists else {}
+        ),
     }
-    if response_exists:
-        new_row["response_size_bytes"] = response_file.stat().st_size
+    
     
     try:
         append_to_results_csv("data/7_cross_experiment/draft_generation_results.csv", new_row)
@@ -203,7 +212,8 @@ def draft_generation_results_append(context, draft_generation_tasks):
     deps=["essay_response"],
     automation_condition=AutomationCondition.eager(),
     group_name="cross_experiment_tracking",
-    description="Automatically appends new row when essay_response completes"
+    description="Automatically appends new row when essay_response completes",
+    required_resource_keys={"documents_index"},
 )
 def essay_generation_results_append(context, essay_generation_tasks):
     """Automatically appends new row when essay_response completes."""
@@ -215,8 +225,9 @@ def essay_generation_results_append(context, essay_generation_tasks):
         return "no_task_found"
     task_row = task_rows.iloc[0]
     
-    response_file = Path(f"data/3_generation/essay_responses/{task_id}.txt")
-    response_exists = response_file.exists()
+    idx = context.resources.documents_index.get_index()
+    row = idx.get_latest_by_task("essay", task_id)
+    response_exists = bool(row)
     
     new_row = {
         "essay_task_id": task_id,
@@ -225,10 +236,14 @@ def essay_generation_results_append(context, essay_generation_tasks):
         "generation_model": task_row["generation_model_name"],
         "generation_status": "success" if response_exists else "failed",
         "generation_timestamp": datetime.now().isoformat(),
-        "response_file": f"essay_responses/{task_id}.txt"
+        **(
+            {
+                "response_file": f"docs/essay/{row.get('doc_id')}/parsed.txt",
+                "response_size_bytes": int(row.get("parsed_chars")) if isinstance(row.get("parsed_chars"), (int, float)) else None,
+            }
+            if response_exists else {}
+        ),
     }
-    if response_exists:
-        new_row["response_size_bytes"] = response_file.stat().st_size
     
     try:
         append_to_results_csv("data/7_cross_experiment/essay_generation_results.csv", new_row)
@@ -251,7 +266,8 @@ def essay_generation_results_append(context, essay_generation_tasks):
     deps=["evaluation_response"],
     automation_condition=AutomationCondition.eager(),
     group_name="cross_experiment_tracking",
-    description="Automatically appends new row when evaluation_response completes"
+    description="Automatically appends new row when evaluation_response completes",
+    required_resource_keys={"documents_index"},
 )
 def evaluation_results_append(context, evaluation_tasks, essay_generation_tasks):
     """Automatically appends new row when evaluation_response completes."""
@@ -291,9 +307,10 @@ def evaluation_results_append(context, evaluation_tasks, essay_generation_tasks)
             },
         )
     
-    # Check if evaluation response file exists
-    eval_response_file = Path(f"data/4_evaluation/evaluation_responses/{task_id}.txt")
-    eval_response_exists = eval_response_file.exists()
+    # Resolve via documents index (DB-only)
+    idx = context.resources.documents_index.get_index()
+    ev_row = idx.get_latest_by_task("evaluation", task_id)
+    eval_response_exists = bool(ev_row)
     
     # Create row data
     new_row = {
@@ -307,12 +324,14 @@ def evaluation_results_append(context, evaluation_tasks, essay_generation_tasks)
         "evaluation_model": eval_task_row["evaluation_model_name"],
         "evaluation_status": "success" if eval_response_exists else "failed",
         "evaluation_timestamp": datetime.now().isoformat(),
-        "eval_response_file": f"evaluation_responses/{task_id}.txt"
+        **(
+            {
+                "eval_response_file": f"docs/evaluation/{ev_row.get('doc_id')}/parsed.txt",
+                "eval_response_size_bytes": int(ev_row.get("parsed_chars")) if isinstance(ev_row.get("parsed_chars"), (int, float)) else None,
+            }
+            if eval_response_exists else {}
+        ),
     }
-    
-    # Add file size if file exists
-    if eval_response_exists:
-        new_row["eval_response_size_bytes"] = eval_response_file.stat().st_size
     
     # Append to results table
     try:
