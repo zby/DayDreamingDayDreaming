@@ -1,4 +1,4 @@
-template_id,template_name,description,active,parsing_strategy
+template_id,template_name,description,active,parser
 creativity-metrics,Creativity Metrics,Evaluates novel creative thinking patterns for breakthrough innovations,false,complex
 scientific-rigor,Scientific Rigor,Assesses methodological soundness and evidence quality,false,complex
 iterative-loops,Iterative Loops,Evaluates capacity for iterative refinement and continuous improvement,false,complex
