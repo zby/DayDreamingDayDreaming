@@ -10,7 +10,7 @@ This guide shows the current, simple flow to run curated drafts/essays/evaluatio
 
 ## Step 1: Select Top Prior-Art Winners
 
-Use `scripts/select_top_prior_art.py` to pick the top‑N by prior‑art scores and optionally write the curated essay tasks CSV.
+Use `scripts/select_top_prior_art.py` to pick the top‑N by prior‑art scores and optionally write the curated essay tasks CSV. Pivots and selections are keyed by `parent_doc_id` (the essay document id), which is the first token of the `evaluation_task_id` in the doc‑id‑first scheme.
 
 What it does
 - Reads cross‑experiment scores, considers prior‑art templates (`gemini-prior-art-eval`, `gemini-prior-art-eval-v2` by default), and selects top‑N `document_id`s.
@@ -27,6 +27,7 @@ uv run python scripts/select_top_prior_art.py \
 
 Notes
 - Writing is enabled by default; use `--no-write-drafts` to preview selection without writing.
+- When joining or pivoting across results, prefer `parent_doc_id` over task ids for stable aggregation.
 
 ## Step 2: Register Curated Partitions (and Evaluations)
 
@@ -50,7 +51,7 @@ Key flags
 - `--write-keys-dir DIR`: also write partition key lists to files.
 
 Inputs it accepts
-- A text file of `document_id`s (one per line), or a CSV with one of: `document_id`, `essay_task_id`, or `draft_task_id`.
+- A text file of `parent_doc_id`s (one per line), or a CSV with one of: `parent_doc_id`, `essay_doc_id`, `document_id`, `essay_task_id`, or `draft_task_id` (legacy). The registration script resolves evaluation partitions using `parent_doc_id`.
 
 Outputs it writes
 - `data/2_tasks/essay_generation_tasks.csv` and (unless disabled) `data/2_tasks/draft_generation_tasks.csv` (de‑duplicated by task id).
@@ -73,7 +74,7 @@ Evaluations
 ```bash
 uv run dagster asset materialize -f daydreaming_dagster/definitions.py \
   --select "evaluation_prompt,evaluation_response" \
-  --partition "<document_id>__<evaluation_template>__<evaluation_model_id>"
+  --partition "<parent_doc_id>__<evaluation_template>__<evaluation_model_id>"
 ```
 
 Parsing and summaries
@@ -81,5 +82,8 @@ Parsing and summaries
 uv run dagster asset materialize -f daydreaming_dagster/definitions.py \
   --select parsed_scores,final_results
 ```
+
+Pivoting by parent_doc_id
+- Use `scripts/build_pivot_tables.py` (or downstream analysis) to build pivots that index rows by `parent_doc_id` for deterministic grouping across attempts and reruns.
 
 That’s it: two scripts to select winners and register only what you want to run, independent of `k_max` or the full cube.
