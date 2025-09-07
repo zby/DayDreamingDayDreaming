@@ -13,9 +13,6 @@ from ..utils.raw_readers import read_essay_templates
 from ..utils.dataframe_helpers import get_task_row
 from ..utils.raw_write import save_versioned_raw_text
 from ..utils.ids import (
-    compute_logical_key_id_draft,
-    compute_logical_key_id_essay,
-    new_doc_id,
     doc_dir as build_doc_dir,
 )
 from ..utils.filesystem_rows import (
@@ -337,11 +334,16 @@ def essay_response(context, essay_prompt, essay_generation_tasks) -> str:
                 "resolution": MetadataValue.text("Provide parent_doc_id (draft doc id) in essay_generation_tasks.csv"),
             },
         )
-    logical_key_id = compute_logical_key_id_essay(str(parent_doc_id), str(essay_template), str(model_id))
-
-    run_id = getattr(context, "run_id", "run")
-    attempt = int(time.time_ns())
-    doc_id = new_doc_id(logical_key_id, run_id, attempt)
+    doc_id = task_row.get("doc_id")
+    if not (isinstance(doc_id, str) and doc_id.strip()):
+        raise Failure(
+            description="Missing doc_id for essay task",
+            metadata={
+                "function": MetadataValue.text("essay_response"),
+                "essay_task_id": MetadataValue.text(task_id),
+                "resolution": MetadataValue.text("Ensure essay_generation_tasks.csv includes a doc_id column"),
+            },
+        )
 
     docs_root = Path(getattr(context.resources, "data_root", "data")) / "docs"
     # Build document using helper
@@ -357,7 +359,7 @@ def essay_response(context, essay_prompt, essay_generation_tasks) -> str:
 
     doc = Document(
         stage="essay",
-        logical_key_id=logical_key_id,
+        logical_key_id="",
         doc_id=doc_id,
         parent_doc_id=parent_doc_id,
         raw_text=text,
@@ -370,7 +372,6 @@ def essay_response(context, essay_prompt, essay_generation_tasks) -> str:
     context.add_output_metadata(
         {
             "doc_id": MetadataValue.text(doc_id),
-            "logical_key_id": MetadataValue.text(logical_key_id),
             "doc_dir": MetadataValue.path(str(target_dir)),
             "parent_doc_id": MetadataValue.text(str(parent_doc_id) if parent_doc_id else ""),
         }

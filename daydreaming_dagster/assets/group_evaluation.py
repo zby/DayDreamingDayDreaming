@@ -13,9 +13,7 @@ from ..utils.filesystem_rows import (
     read_parsed as fs_read_parsed,
     read_raw as fs_read_raw,
 )
-from ..utils.ids import (
-    compute_logical_key_id_evaluation,
-)
+
 import pandas as pd
 import logging
 from jinja2 import Environment
@@ -123,11 +121,16 @@ def evaluation_response(context, evaluation_prompt, evaluation_tasks) -> str:
     parent_doc_id = task_row.get("parent_doc_id")
     evaluation_template = task_row.get("evaluation_template")
     model_id = task_row.get("evaluation_model") or task_row.get("evaluation_model_id")
-    logical_key_id = compute_logical_key_id_evaluation(str(parent_doc_id), str(evaluation_template), str(model_id))
-    run_id = getattr(context, "run_id", "run")
-    attempt = int(time.time_ns())
-    from ..utils.ids import new_doc_id
-    doc_id = new_doc_id(logical_key_id, run_id, attempt)
+    doc_id = task_row.get("doc_id")
+    if not (isinstance(doc_id, str) and doc_id.strip()):
+        raise Failure(
+            description="Missing doc_id for evaluation task",
+            metadata={
+                "function": MetadataValue.text("evaluation_response"),
+                "evaluation_task_id": MetadataValue.text(task_id),
+                "resolution": MetadataValue.text("Ensure evaluation_tasks.csv includes a doc_id column"),
+            },
+        )
     docs_root = _Path(getattr(context.resources, "data_root", "data")) / "docs"
     metadata = {
         "task_id": task_id,
@@ -140,7 +143,7 @@ def evaluation_response(context, evaluation_prompt, evaluation_tasks) -> str:
     prompt_text = evaluation_prompt if isinstance(evaluation_prompt, str) else None
     doc = Document(
         stage="evaluation",
-        logical_key_id=logical_key_id,
+        logical_key_id="",
         doc_id=doc_id,
         parent_doc_id=parent_doc_id,
         raw_text=text,
@@ -152,7 +155,6 @@ def evaluation_response(context, evaluation_prompt, evaluation_tasks) -> str:
     context.add_output_metadata(
         {
             "doc_id": MetadataValue.text(doc_id),
-            "logical_key_id": MetadataValue.text(logical_key_id),
             "doc_dir": MetadataValue.path(str(target_dir)),
             "parent_doc_id": MetadataValue.text(str(parent_doc_id) if parent_doc_id else ""),
         }

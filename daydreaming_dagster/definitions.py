@@ -56,7 +56,6 @@ from daydreaming_dagster.resources.experiment_config import ExperimentConfig
 from daydreaming_dagster.resources.io_managers import (
     PartitionedTextIOManager,
     CSVIOManager,
-    VersionedTextIOManager,
     InMemoryIOManager,
 )
 from pathlib import Path
@@ -129,14 +128,13 @@ defs = Definitions(
         # Simplified I/O managers - no complex source mappings or filtering
         "csv_io_manager": CSVIOManager(base_path=Path("data") / "2_tasks"),
         "in_memory_io_manager": InMemoryIOManager(),
-        
-        # Versioned I/O managers for prompts and responses (non-destructive)
-        "draft_prompt_io_manager": VersionedTextIOManager(base_path=Path("data") / "3_generation" / "draft_prompts"),
-        "draft_response_io_manager": VersionedTextIOManager(base_path=Path("data") / "3_generation" / "draft_responses"),
-        "essay_prompt_io_manager": VersionedTextIOManager(base_path=Path("data") / "3_generation" / "essay_prompts"),
-        "essay_response_io_manager": VersionedTextIOManager(base_path=Path("data") / "3_generation" / "essay_responses"),
-        "evaluation_prompt_io_manager": VersionedTextIOManager(base_path=Path("data") / "4_evaluation" / "evaluation_prompts"),
-        "evaluation_response_io_manager": VersionedTextIOManager(base_path=Path("data") / "4_evaluation" / "evaluation_responses"),
+        # Prompts and responses use in-memory IO managers for runtime; tests may override these
+        "draft_prompt_io_manager": InMemoryIOManager(),
+        "draft_response_io_manager": InMemoryIOManager(),
+        "essay_prompt_io_manager": InMemoryIOManager(),
+        "essay_response_io_manager": InMemoryIOManager(),
+        "evaluation_prompt_io_manager": InMemoryIOManager(),
+        "evaluation_response_io_manager": InMemoryIOManager(),
         "error_log_io_manager": CSVIOManager(base_path=Path("data") / "7_reporting"),
         "parsing_results_io_manager": CSVIOManager(base_path=Path("data") / "5_parsing"),
         "summary_results_io_manager": CSVIOManager(base_path=Path("data") / "6_summary"),

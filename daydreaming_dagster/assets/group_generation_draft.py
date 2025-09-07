@@ -14,11 +14,6 @@ from ..utils.raw_readers import read_draft_templates
 from ..utils.draft_parsers import get_draft_parser
 from ..utils.dataframe_helpers import get_task_row
 from ..utils.raw_write import save_versioned_raw_text
-from ..utils.ids import (
-    compute_logical_key_id_draft,
-    new_doc_id,
-    doc_dir as build_doc_dir,
-)
 from ..utils.document import Document
 
 # Reuse a single Jinja environment
@@ -270,12 +265,16 @@ def draft_response(context, draft_prompt, draft_generation_tasks) -> str:
     combo_id = task_row.get("combo_id")
     draft_template = task_row.get("draft_template")
     model_id = task_row.get("generation_model") or task_row.get("generation_model_id")
-
-    # Compute IDs
-    logical_key_id = compute_logical_key_id_draft(str(combo_id), str(draft_template), str(model_id))
-    run_id = getattr(context, "run_id", "run")
-    attempt = int(time.time_ns())
-    doc_id = new_doc_id(logical_key_id, run_id, attempt)
+    doc_id = task_row.get("doc_id")
+    if not (isinstance(doc_id, str) and doc_id.strip()):
+        raise Failure(
+            description="Missing doc_id for draft task",
+            metadata={
+                "function": MetadataValue.text("draft_response"),
+                "draft_task_id": MetadataValue.text(task_id),
+                "resolution": MetadataValue.text("Ensure draft_generation_tasks.csv includes a doc_id column"),
+            },
+        )
 
     # Prefer RAW from versioned raw dir if present; fallback to parsed text
     raw_text = parsed
@@ -316,7 +315,7 @@ def draft_response(context, draft_prompt, draft_generation_tasks) -> str:
     prompt_text = draft_prompt if isinstance(draft_prompt, str) else None
     doc = Document(
         stage="draft",
-        logical_key_id=logical_key_id,
+        logical_key_id="",
         doc_id=doc_id,
         parent_doc_id=None,
         raw_text=raw_text,
@@ -328,7 +327,6 @@ def draft_response(context, draft_prompt, draft_generation_tasks) -> str:
     context.add_output_metadata(
         {
             "doc_id": MetadataValue.text(doc_id),
-            "logical_key_id": MetadataValue.text(logical_key_id),
             "doc_dir": MetadataValue.path(str(target_dir)),
         }
     )
