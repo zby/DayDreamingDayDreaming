@@ -18,7 +18,6 @@ from ..utils.ids import (
     new_doc_id,
     doc_dir as build_doc_dir,
 )
-from ..utils.documents_index import DocumentRow
 from ..utils.filesystem_rows import (
     get_row_by_doc_id as fs_get_row_by_doc_id,
     read_parsed as fs_read_parsed,
@@ -126,34 +125,13 @@ def _load_phase1_text_by_draft_task(context, draft_task_id: str) -> tuple[str, s
 
 
 def _load_phase1_text_by_combo_model(context, combo_id: str, model_id: str) -> tuple[str, str]:
-    idx_res = context.resources.documents_index
-    if not idx_res:
-        raise Failure(
-            description="Documents index not available to resolve draft by combo/model",
-            metadata={
-                "function": MetadataValue.text("_load_phase1_text_by_combo_model"),
-                "combo_id": MetadataValue.text(str(combo_id)),
-                "model_id": MetadataValue.text(str(model_id)),
-            },
-        )
-    idx = idx_res.get_index()
-    like = f"{combo_id}_%_{model_id}"
-    row = idx.connect().execute(
-        "SELECT * FROM documents WHERE stage='draft' AND task_id LIKE ? ORDER BY created_at DESC, rowid DESC LIMIT 1",
-        (like,),
-    ).fetchone()
-    if row:
-        try:
-            text = idx.read_parsed(row)
-        except Exception:
-            text = idx.read_raw(row)
-        return str(text).replace("\r\n", "\n"), "draft_db_combo_model"
     raise Failure(
-        description="Draft response not found by combo/model prefix rule",
+        description="combo/model-based resolution is not supported; provide parent_doc_id",
         metadata={
             "function": MetadataValue.text("_load_phase1_text_by_combo_model"),
             "combo_id": MetadataValue.text(str(combo_id)),
             "model_id": MetadataValue.text(str(model_id)),
+            "resolution": MetadataValue.text("Use parent_doc_id (draft doc id) in essay_generation_tasks.csv"),
         },
     )
 
@@ -220,7 +198,7 @@ def _essay_prompt_impl(context, essay_generation_tasks) -> str:
     partitions_def=essay_tasks_partitions,
     group_name="generation_essays",
     io_manager_key="essay_prompt_io_manager",
-    required_resource_keys={"data_root", "documents_index"},
+    required_resource_keys={"data_root"},
 )
 def essay_prompt(context, essay_generation_tasks) -> str:
     return _essay_prompt_impl(context, essay_generation_tasks)
@@ -334,13 +312,12 @@ def _essay_response_impl(context, essay_prompt, essay_generation_tasks) -> str:
     partitions_def=essay_tasks_partitions,
     group_name="generation_essays",
     io_manager_key="essay_response_io_manager",
-    required_resource_keys={"openrouter_client", "experiment_config", "data_root", "documents_index"},
+    required_resource_keys={"openrouter_client", "experiment_config", "data_root"},
 )
 def essay_response(context, essay_prompt, essay_generation_tasks) -> str:
     text = _essay_response_impl(context, essay_prompt, essay_generation_tasks)
 
-    # Write to documents index
-    idx_res = context.resources.documents_index
+    # Write to filesystem (docs)
     import time
     from pathlib import Path as _Path
 
@@ -375,12 +352,7 @@ def essay_response(context, essay_prompt, essay_generation_tasks) -> str:
         "parent_doc_id": parent_doc_id,
         "function": "essay_response",
     }
-    prompt_text = None
-    try:
-        if generator_mode == "llm" and getattr(idx_res, "prompt_copy_enabled", True) and isinstance(essay_prompt, str):
-            prompt_text = essay_prompt
-    except Exception:
-        prompt_text = None
+    prompt_text = essay_prompt if (generator_mode == "llm" and isinstance(essay_prompt, str)) else None
 
     doc = Document(
         stage="essay",
@@ -394,27 +366,13 @@ def essay_response(context, essay_prompt, essay_generation_tasks) -> str:
     )
     target_dir = doc.write_files(docs_root)
 
-    # Insert into index via helper-produced row
-    row = doc.to_index_row(
-        docs_root,
-        task_id=task_id,
-        template_id=str(essay_template) if essay_template is not None else None,
-        model_id=str(model_id) if model_id is not None else None,
-        run_id=str(run_id),
-        parser=None,
-        status="ok",
+    context.add_output_metadata(
+        {
+            "doc_id": MetadataValue.text(doc_id),
+            "logical_key_id": MetadataValue.text(logical_key_id),
+            "doc_dir": MetadataValue.path(str(target_dir)),
+            "parent_doc_id": MetadataValue.text(str(parent_doc_id) if parent_doc_id else ""),
+        }
     )
-    try:
-        idx.insert_document(row)
-        context.add_output_metadata(
-            {
-                "doc_id": MetadataValue.text(doc_id),
-                "logical_key_id": MetadataValue.text(logical_key_id),
-                "doc_dir": MetadataValue.path(str(target_dir)),
-                "parent_doc_id": MetadataValue.text(str(parent_doc_id) if parent_doc_id else ""),
-            }
-        )
-    except Exception as e:
-        context.log.warning(f"DocumentsIndex insert failed for essay_response {task_id}: {e}")
 
     return text

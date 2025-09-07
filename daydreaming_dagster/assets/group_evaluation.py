@@ -7,7 +7,6 @@ Asset definitions for the evaluation stage.
 from dagster import asset, Failure, MetadataValue
 from pathlib import Path
 from .partitions import evaluation_tasks_partitions
-from ..utils.documents_index import DocumentRow
 from ..utils.document import Document
 from ..utils.filesystem_rows import (
     get_row_by_doc_id as fs_get_row_by_doc_id,
@@ -103,7 +102,7 @@ def evaluation_prompt(context, evaluation_tasks) -> str:
     partitions_def=evaluation_tasks_partitions,
     group_name="evaluation",
     io_manager_key="evaluation_response_io_manager",
-    required_resource_keys={"openrouter_client", "documents_index"},
+    required_resource_keys={"openrouter_client", "data_root"},
     deps=["evaluation_prompt", "evaluation_tasks"],
 )
 def evaluation_response(context, evaluation_prompt, evaluation_tasks) -> str:
@@ -118,70 +117,44 @@ def evaluation_response(context, evaluation_prompt, evaluation_tasks) -> str:
         "finish_reason": MetadataValue.text(str((info or {}).get("finish_reason"))),
     })
     context.log.info(f"Generated evaluation response for task {task_id} using model {model_name}")
-    # Dual-write to documents index under flag
-    try:
-        idx_res = context.resources.documents_index
-    except Exception:
-        idx_res = None
-
-    if idx_res and getattr(idx_res, "index_enabled", False):
-        import time
-        from pathlib import Path as _Path
-
-        idx = idx_res.get_index()
-        parent_doc_id = task_row.get("parent_doc_id")
-
-        evaluation_template = task_row.get("evaluation_template")
-        model_id = task_row.get("evaluation_model") or task_row.get("evaluation_model_id")
-
-        # Compute logical key
-        logical_key_id = compute_logical_key_id_evaluation(str(parent_doc_id), str(evaluation_template), str(model_id))
-        run_id = getattr(context, "run_id", "run")
-        attempt = int(time.time_ns())
-        from ..utils.ids import new_doc_id
-        doc_id = new_doc_id(logical_key_id, run_id, attempt)
-
-        docs_root = _Path(idx.docs_root)
-        metadata = {
-            "task_id": task_id,
-            "evaluation_template": evaluation_template,
-            "model_id": model_id,
-            "parent_doc_id": parent_doc_id,
-            "function": "evaluation_response",
+    # Write to filesystem docs/evaluation
+    import time
+    from pathlib import Path as _Path
+    parent_doc_id = task_row.get("parent_doc_id")
+    evaluation_template = task_row.get("evaluation_template")
+    model_id = task_row.get("evaluation_model") or task_row.get("evaluation_model_id")
+    logical_key_id = compute_logical_key_id_evaluation(str(parent_doc_id), str(evaluation_template), str(model_id))
+    run_id = getattr(context, "run_id", "run")
+    attempt = int(time.time_ns())
+    from ..utils.ids import new_doc_id
+    doc_id = new_doc_id(logical_key_id, run_id, attempt)
+    docs_root = _Path(getattr(context.resources, "data_root", "data")) / "docs"
+    metadata = {
+        "task_id": task_id,
+        "evaluation_template": evaluation_template,
+        "model_id": model_id,
+        "parent_doc_id": parent_doc_id,
+        "function": "evaluation_response",
+    }
+    prompt_text = evaluation_prompt if isinstance(evaluation_prompt, str) else None
+    doc = Document(
+        stage="evaluation",
+        logical_key_id=logical_key_id,
+        doc_id=doc_id,
+        parent_doc_id=parent_doc_id,
+        raw_text=text,
+        parsed_text=text,
+        prompt_text=prompt_text,
+        metadata=metadata,
+    )
+    target_dir = doc.write_files(docs_root)
+    context.add_output_metadata(
+        {
+            "doc_id": MetadataValue.text(doc_id),
+            "logical_key_id": MetadataValue.text(logical_key_id),
+            "doc_dir": MetadataValue.path(str(target_dir)),
+            "parent_doc_id": MetadataValue.text(str(parent_doc_id) if parent_doc_id else ""),
         }
-        prompt_text = evaluation_prompt if getattr(idx_res, "prompt_copy_enabled", True) and isinstance(evaluation_prompt, str) else None
-        doc = Document(
-            stage="evaluation",
-            logical_key_id=logical_key_id,
-            doc_id=doc_id,
-            parent_doc_id=parent_doc_id,
-            raw_text=text,
-            parsed_text=text,
-            prompt_text=prompt_text,
-            metadata=metadata,
-        )
-        target_dir = doc.write_files(docs_root)
-
-        row = doc.to_index_row(
-            docs_root,
-            task_id=task_id,
-            template_id=str(evaluation_template) if evaluation_template is not None else None,
-            model_id=str(model_id) if model_id is not None else None,
-            run_id=str(run_id),
-            parser=None,
-            status="ok",
-        )
-        try:
-            idx.insert_document(row)
-            context.add_output_metadata(
-                {
-                    "doc_id": MetadataValue.text(doc_id),
-                    "logical_key_id": MetadataValue.text(logical_key_id),
-                    "doc_dir": MetadataValue.path(str(target_dir)),
-                    "parent_doc_id": MetadataValue.text(str(parent_doc_id) if parent_doc_id else ""),
-                }
-            )
-        except Exception as e:
-            context.log.warning(f"DocumentsIndex insert failed for evaluation_response {task_id}: {e}")
+    )
 
     return text

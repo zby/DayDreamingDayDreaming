@@ -7,7 +7,6 @@ import os
 from daydreaming_dagster.assets.group_generation_draft import draft_response as draft_response_asset
 from daydreaming_dagster.assets.group_generation_essays import essay_response as essay_response_asset
 from daydreaming_dagster.assets.group_evaluation import evaluation_response as evaluation_response_asset
-from daydreaming_dagster.utils.documents_index import SQLiteDocumentsIndex
 from daydreaming_dagster.utils.document_locator import find_document_path
 
 
@@ -76,56 +75,4 @@ def evaluation_files_exist_check(context) -> AssetCheckResult:
     return AssetCheckResult(passed=False, metadata={"doc_dir": MetadataValue.path(str(base))})
 
 
-def _open_index_from_context(context) -> SQLiteDocumentsIndex | None:
-    try:
-        return context.resources.documents_index.get_index()
-    except Exception:
-        return None
-
-
-@asset_check(asset=draft_response_asset, required_resource_keys={"documents_index"})
-def draft_db_row_present_check(context) -> AssetCheckResult:
-    pk = _get_pk(context)
-    if not pk:
-        return AssetCheckResult(passed=True, metadata={"skipped": MetadataValue.text("no partition context")})
-    idx = _open_index_from_context(context)
-    if not idx:
-        return AssetCheckResult(passed=False, metadata={"error": MetadataValue.text("documents_index unavailable")})
-    row = idx.get_latest_by_task("draft", pk)
-    if not row:
-        return AssetCheckResult(passed=False, metadata={"partition_key": MetadataValue.text(pk)})
-    base = idx.resolve_doc_dir(row)
-    ok = base.exists()
-    return AssetCheckResult(passed=ok, metadata={"doc_dir": MetadataValue.path(str(base))})
-
-
-@asset_check(asset=essay_response_asset, required_resource_keys={"documents_index"})
-def essay_db_row_present_check(context) -> AssetCheckResult:
-    pk = _get_pk(context)
-    if not pk:
-        return AssetCheckResult(passed=True, metadata={"skipped": MetadataValue.text("no partition context")})
-    idx = _open_index_from_context(context)
-    if not idx:
-        return AssetCheckResult(passed=False, metadata={"error": MetadataValue.text("documents_index unavailable")})
-    row = idx.get_latest_by_task("essay", pk)
-    if not row:
-        return AssetCheckResult(passed=False, metadata={"partition_key": MetadataValue.text(pk)})
-    base = idx.resolve_doc_dir(row)
-    ok = base.exists()
-    return AssetCheckResult(passed=ok, metadata={"doc_dir": MetadataValue.path(str(base))})
-
-
-@asset_check(asset=evaluation_response_asset, required_resource_keys={"documents_index"})
-def evaluation_db_row_present_check(context) -> AssetCheckResult:
-    pk = _get_pk(context)
-    if not pk:
-        return AssetCheckResult(passed=True, metadata={"skipped": MetadataValue.text("no partition context")})
-    idx = _open_index_from_context(context)
-    if not idx:
-        return AssetCheckResult(passed=False, metadata={"error": MetadataValue.text("documents_index unavailable")})
-    row = idx.get_latest_by_task("evaluation", pk)
-    if not row:
-        return AssetCheckResult(passed=False, metadata={"partition_key": MetadataValue.text(pk)})
-    base = idx.resolve_doc_dir(row)
-    ok = base.exists()
-    return AssetCheckResult(passed=ok, metadata={"doc_dir": MetadataValue.path(str(base))})
+# DB row-present checks removed under filesystem-only design

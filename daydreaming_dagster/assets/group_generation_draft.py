@@ -19,7 +19,6 @@ from ..utils.ids import (
     new_doc_id,
     doc_dir as build_doc_dir,
 )
-from ..utils.documents_index import DocumentRow
 from ..utils.document import Document
 
 # Reuse a single Jinja environment
@@ -255,14 +254,13 @@ def _draft_response_impl(context, draft_prompt, draft_generation_tasks) -> str:
     partitions_def=draft_tasks_partitions,
     group_name="generation_draft",
     io_manager_key="draft_response_io_manager",
-    required_resource_keys={"openrouter_client", "experiment_config", "data_root", "documents_index"},
+    required_resource_keys={"openrouter_client", "experiment_config", "data_root"},
 )
 def draft_response(context, draft_prompt, draft_generation_tasks) -> str:
     """Generate Phase 1 LLM responses for drafts."""
     parsed = _draft_response_impl(context, draft_prompt, draft_generation_tasks)
 
-    # Write to documents index (Phase 1) using Document helper
-    idx_res = context.resources.documents_index
+    # Write doc files under data_root/docs/draft using Document helper
     import time
     from pathlib import Path as _Path
 
@@ -304,8 +302,7 @@ def draft_response(context, draft_prompt, draft_generation_tasks) -> str:
         pass
 
     # Build document and write files
-    idx = idx_res.get_index()
-    docs_root = _Path(idx.docs_root)
+    docs_root = _Path(getattr(context.resources, "data_root", "data")) / "docs"
     metadata_json = {
         "task_id": task_id,
         "combo_id": combo_id,
@@ -326,27 +323,12 @@ def draft_response(context, draft_prompt, draft_generation_tasks) -> str:
         metadata=metadata_json,
     )
     target_dir = doc.write_files(docs_root)
-
-    # Insert into index
-    row = doc.to_index_row(
-        docs_root,
-        task_id=task_id,
-        template_id=str(draft_template) if draft_template is not None else None,
-        model_id=str(model_id) if model_id is not None else None,
-        run_id=str(run_id),
-        parser=None,
-        status="ok",
+    context.add_output_metadata(
+        {
+            "doc_id": MetadataValue.text(doc_id),
+            "logical_key_id": MetadataValue.text(logical_key_id),
+            "doc_dir": MetadataValue.path(str(target_dir)),
+        }
     )
-    try:
-        idx.insert_document(row)
-        context.add_output_metadata(
-            {
-                "doc_id": MetadataValue.text(doc_id),
-                "logical_key_id": MetadataValue.text(logical_key_id),
-                "doc_dir": MetadataValue.path(str(target_dir)),
-            }
-        )
-    except Exception as e:
-        context.log.warning(f"DocumentsIndex insert failed for draft_response {task_id}: {e}")
 
     return parsed

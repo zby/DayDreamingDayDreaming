@@ -30,6 +30,7 @@ def _open_db(db_path: Path) -> Optional[DbHandle]:
     if not db_path.exists():
         return None
     con = sqlite3.connect(str(db_path))
+    con.row_factory = sqlite3.Row
     return DbHandle(con=con)
 
 
@@ -43,17 +44,9 @@ def _read_csv_if_exists(path: Path) -> pd.DataFrame:
 
 
 def _eval_stage_from_row(row: pd.Series) -> Optional[str]:
-    # Prefer explicit source_stage column if present
-    if "source_stage" in row and isinstance(row["source_stage"], str) and row["source_stage"].strip():
-        s = row["source_stage"].strip().lower()
-        if s in ("draft", "essay", "evaluation"):
-            return s
-    # Fallback to generic stage column (e.g., essay2p/essay1p)
-    if "stage" in row and isinstance(row["stage"], str) and row["stage"].strip():
-        s = row["stage"].strip().lower()
-        return "essay" if s.startswith("essay") else ("draft" if s.startswith("draft") else None)
-    # Default: None (unknown)
-    return None
+    # Legacy helper no longer used: evaluations now only check parent_doc_id
+    # and assume the parent is an essay document.
+    return "essay"
 
 
 def _doc_dir(docs_root: Path, stage: str, doc_id: str) -> Path:
@@ -61,24 +54,23 @@ def _doc_dir(docs_root: Path, stage: str, doc_id: str) -> Path:
     return docs_root / stage / doc_id
 
 
-def audit_essays(
-    essay_csv: Path, docs_root: Path, db: Optional[DbHandle]
-) -> Tuple[pd.DataFrame, dict]:
-    df = _read_csv_if_exists(essay_csv)
+def audit_essays_from_db(docs_root: Path, db: DbHandle) -> Tuple[pd.DataFrame, dict]:
     problems: list[dict] = []
     ok = 0
-    total = len(df) if not df.empty else 0
+    # Scan all essay records from the documents table
+    rows = db.con.execute(
+        "SELECT doc_id, task_id, parent_doc_id FROM documents WHERE stage='essay'"
+    ).fetchall()
+    total = len(rows)
 
-    if df.empty:
-        return pd.DataFrame(), {"total": 0, "ok": 0, "missing_parent_doc_id": 0, "missing_on_disk": 0, "missing_in_db": 0}
-
-    has_parent = "parent_doc_id" in df.columns
-    for _, row in df.iterrows():
-        essay_task_id = str(row.get("essay_task_id"))
-        parent_doc_id = str(row.get("parent_doc_id")) if has_parent else ""
+    for row in rows:
+        essay_doc_id = str(row["doc_id"]) if row["doc_id"] is not None else ""
+        essay_task_id = str(row["task_id"]) if row["task_id"] is not None else ""
+        parent_doc_id = str(row["parent_doc_id"]) if row["parent_doc_id"] else ""
         if not parent_doc_id or parent_doc_id.lower() == "nan":
             problems.append(
                 {
+                    "essay_doc_id": essay_doc_id,
                     "essay_task_id": essay_task_id,
                     "issue": "missing_parent_doc_id",
                 }
@@ -88,15 +80,16 @@ def audit_essays(
         ddir = _doc_dir(docs_root, stage, parent_doc_id)
         exists_dir = ddir.exists()
         exists_file = (ddir / "parsed.txt").exists() or (ddir / "raw.txt").exists()
-        exists_db = db.has_row(stage, parent_doc_id) if db else None
-        if not exists_dir or not exists_file or (db and not exists_db):
+        exists_db = db.has_row(stage, parent_doc_id)
+        if not exists_dir or not exists_file or not exists_db:
             problems.append(
                 {
+                    "essay_doc_id": essay_doc_id,
                     "essay_task_id": essay_task_id,
                     "parent_doc_id": parent_doc_id,
                     "exists_dir": exists_dir,
                     "has_text": exists_file,
-                    **({"in_db": exists_db} if db else {}),
+                    "in_db": exists_db,
                     "issue": "missing_on_disk_or_db",
                 }
             )
@@ -111,63 +104,48 @@ def audit_essays(
         "missing_on_disk": int((problems_df["issue"] == "missing_on_disk_or_db").sum()) if not problems_df.empty else 0,
         "missing_in_db": int(
             problems_df.get("in_db").apply(lambda v: v is False).sum()
-        ) if (db and not problems_df.empty and "in_db" in problems_df.columns) else 0,
+        ) if (not problems_df.empty and "in_db" in problems_df.columns) else 0,
     }
     return problems_df, summary
 
 
-def audit_evaluations(
-    eval_csv: Path, docs_root: Path, db: Optional[DbHandle]
-) -> Tuple[pd.DataFrame, dict]:
-    df = _read_csv_if_exists(eval_csv)
+def audit_evaluations_from_db(docs_root: Path, db: DbHandle) -> Tuple[pd.DataFrame, dict]:
     problems: list[dict] = []
     ok = 0
-    total = len(df) if not df.empty else 0
+    rows = db.con.execute(
+        "SELECT doc_id, task_id, parent_doc_id FROM documents WHERE stage='evaluation'"
+    ).fetchall()
+    total = len(rows)
 
-    if df.empty:
-        return pd.DataFrame(), {"total": 0, "ok": 0, "missing_target_doc_id": 0, "missing_stage": 0, "missing_on_disk": 0, "missing_in_db": 0}
-
-    has_parent = "parent_doc_id" in df.columns
-    has_target_legacy = "target_doc_id" in df.columns
-    for _, row in df.iterrows():
-        evaluation_task_id = str(row.get("evaluation_task_id"))
-        # Prefer parent_doc_id (essay doc). Fall back to legacy target_doc_id if present.
-        target_doc_id = ""
-        if has_parent:
-            target_doc_id = str(row.get("parent_doc_id"))
-        if (not target_doc_id or target_doc_id.lower() == "nan") and has_target_legacy:
-            target_doc_id = str(row.get("target_doc_id"))
-        if not target_doc_id or target_doc_id.lower() == "nan":
+    for row in rows:
+        evaluation_doc_id = str(row["doc_id"]) if row["doc_id"] is not None else ""
+        evaluation_task_id = str(row["task_id"]) if row["task_id"] is not None else ""
+        parent_doc_id = str(row["parent_doc_id"]) if row["parent_doc_id"] else ""
+        if not parent_doc_id or parent_doc_id.lower() == "nan":
             problems.append(
                 {
+                    "evaluation_doc_id": evaluation_doc_id,
                     "evaluation_task_id": evaluation_task_id,
                     "issue": "missing_parent_doc_id",
                 }
             )
             continue
-        stage = _eval_stage_from_row(row)
-        if not stage:
-            problems.append(
-                {
-                    "evaluation_task_id": evaluation_task_id,
-                    "parent_doc_id": target_doc_id,
-                    "issue": "missing_source_stage",
-                }
-            )
-            continue
-        ddir = _doc_dir(docs_root, stage, target_doc_id)
+        # Evaluations reference essays by parent_doc_id
+        stage = "essay"
+        ddir = _doc_dir(docs_root, stage, parent_doc_id)
         exists_dir = ddir.exists()
         exists_file = (ddir / "parsed.txt").exists() or (ddir / "raw.txt").exists()
-        exists_db = db.has_row(stage, target_doc_id) if db else None
-        if not exists_dir or not exists_file or (db and not exists_db):
+        exists_db = db.has_row(stage, parent_doc_id)
+        if not exists_dir or not exists_file or not exists_db:
             problems.append(
                 {
+                    "evaluation_doc_id": evaluation_doc_id,
                     "evaluation_task_id": evaluation_task_id,
-                    "parent_doc_id": target_doc_id,
+                    "parent_doc_id": parent_doc_id,
                     "stage": stage,
                     "exists_dir": exists_dir,
                     "has_text": exists_file,
-                    **({"in_db": exists_db} if db else {}),
+                    "in_db": exists_db,
                     "issue": "missing_on_disk_or_db",
                 }
             )
@@ -179,11 +157,10 @@ def audit_evaluations(
         "total": total,
         "ok": ok,
         "missing_parent_doc_id": int((problems_df["issue"] == "missing_parent_doc_id").sum()) if not problems_df.empty else 0,
-        "missing_stage": int((problems_df["issue"] == "missing_source_stage").sum()) if not problems_df.empty else 0,
         "missing_on_disk": int((problems_df["issue"] == "missing_on_disk_or_db").sum()) if not problems_df.empty else 0,
         "missing_in_db": int(
             problems_df.get("in_db").apply(lambda v: v is False).sum()
-        ) if (db and not problems_df.empty and "in_db" in problems_df.columns) else 0,
+        ) if (not problems_df.empty and "in_db" in problems_df.columns) else 0,
     }
     return problems_df, summary
 
@@ -199,13 +176,14 @@ def main() -> int:
 
     args.out.mkdir(parents=True, exist_ok=True)
 
-    db = _open_db(args.db) if args.db.exists() else None
+    if not args.db.exists():
+        print(f"ERROR: DB not found at {args.db}. This audit now scans the documents table and requires the DB.")
+        return 1
+    db = _open_db(args.db)
+    assert db is not None
 
-    essay_csv = args.data_root / "2_tasks" / "essay_generation_tasks.csv"
-    eval_csv = args.data_root / "2_tasks" / "evaluation_tasks.csv"
-
-    essay_problems, essay_summary = audit_essays(essay_csv, args.docs_root, db)
-    eval_problems, eval_summary = audit_evaluations(eval_csv, args.docs_root, db)
+    essay_problems, essay_summary = audit_essays_from_db(args.docs_root, db)
+    eval_problems, eval_summary = audit_evaluations_from_db(args.docs_root, db)
 
     # Write CSVs
     if not essay_problems.empty:
@@ -218,10 +196,10 @@ def main() -> int:
     summary = {
         "essays": essay_summary,
         "evaluations": eval_summary,
-        "db_checked": bool(db is not None),
+        "db_checked": True,
         "data_root": str(args.data_root),
         "docs_root": str(args.docs_root),
-        "db_path": str(args.db) if db else None,
+        "db_path": str(args.db),
     }
     (args.out / "audit_pinned_lineage_summary.json").write_text(
         json.dumps(summary, indent=2, ensure_ascii=False), encoding="utf-8"

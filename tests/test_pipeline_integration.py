@@ -262,15 +262,11 @@ class TestPipelineIntegration:
                     CSVIOManager, PartitionedTextIOManager
                 )
                 from daydreaming_dagster.resources.experiment_config import ExperimentConfig
-                from daydreaming_dagster.resources.documents_index import DocumentsIndexResource
 
                 resources = {
                     "data_root": str(pipeline_data_root),
                     "openrouter_client": CannedLLMResource(),
-                    "documents_index": DocumentsIndexResource(
-                        db_path=str(pipeline_data_root / "db" / "documents.sqlite"),
-                        docs_root=str(pipeline_data_root / "docs"),
-                    ),
+                    # no documents_index resource in filesystem-only mode
                     "csv_io_manager": CSVIOManager(base_path=pipeline_data_root / "2_tasks"),
                     # Two-phase generation I/O managers
                     "draft_prompt_io_manager": PartitionedTextIOManager(
@@ -572,17 +568,13 @@ class TestPipelineIntegration:
                     selected_combo_mappings, content_combinations, draft_generation_tasks
                 )
                 from daydreaming_dagster.resources.io_managers import CSVIOManager, PartitionedTextIOManager
-                from daydreaming_dagster.resources.documents_index import DocumentsIndexResource
                 from daydreaming_dagster.resources.experiment_config import ExperimentConfig
                 
                 test_data_root = str(temp_data_dir)
                 
                 resources = {
                     "data_root": test_data_root,
-                    "documents_index": DocumentsIndexResource(
-                        db_path=str(Path(test_data_root) / "db" / "documents.sqlite"),
-                        docs_root=str(Path(test_data_root) / "docs"),
-                    ),
+                    # no documents_index resource in filesystem-only mode
                     "csv_io_manager": CSVIOManager(base_path=Path(test_data_root) / "2_tasks"),
                     # legacy io managers removed in simplified architecture
                     "evaluation_prompt_io_manager": PartitionedTextIOManager(base_path=Path(test_data_root) / "4_evaluation" / "evaluation_prompts"),

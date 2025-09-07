@@ -2,15 +2,11 @@ from __future__ import annotations
 
 from pathlib import Path
 from daydreaming_dagster.utils.document import Document
-from daydreaming_dagster.utils.documents_index import SQLiteDocumentsIndex
 
 
 class TestDocument:
     def test_write_and_to_index_row(self, tmp_path: Path):
         docs_root = tmp_path / "docs"
-        db_path = tmp_path / "db.sqlite"
-        idx = SQLiteDocumentsIndex(db_path, docs_root)
-        idx.init_maybe_create_tables()
 
         # Build a simple draft document
         doc = Document(
@@ -30,16 +26,4 @@ class TestDocument:
         assert (target / "prompt.txt").read_text(encoding="utf-8") == "prompt content"
         assert (target / "metadata.json").exists()
 
-        row = doc.to_index_row(
-            docs_root,
-            task_id="task1",
-            template_id="tplX",
-            model_id="modelY",
-            run_id="run",
-        )
-        # insert to ensure the row is acceptable
-        idx.insert_document(row)
-        got = idx.get_by_doc_id("doc123")
-        assert got is not None
-        assert got["stage"] == "draft"
-        assert got["task_id"] == "task1"
+    # Index integration removed; filesystem write verified above

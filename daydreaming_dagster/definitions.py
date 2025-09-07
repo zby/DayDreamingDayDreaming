@@ -33,9 +33,6 @@ from daydreaming_dagster.checks.documents_checks import (
     draft_files_exist_check,
     essay_files_exist_check,
     evaluation_files_exist_check,
-    draft_db_row_present_check,
-    essay_db_row_present_check,
-    evaluation_db_row_present_check,
 )
 from daydreaming_dagster.assets.raw_data import RAW_SOURCE_ASSETS, TASK_SOURCE_ASSETS
 from daydreaming_dagster.schedules.raw_schedule import raw_schedule
@@ -62,7 +59,6 @@ from daydreaming_dagster.resources.io_managers import (
     VersionedTextIOManager,
     InMemoryIOManager,
 )
-from daydreaming_dagster.resources.documents_index import DocumentsIndexResource
 from pathlib import Path
 
 
@@ -121,9 +117,6 @@ defs = Definitions(
         draft_files_exist_check,
         essay_files_exist_check,
         evaluation_files_exist_check,
-        draft_db_row_present_check,
-        essay_db_row_present_check,
-        evaluation_db_row_present_check,
     ],
     schedules=[raw_schedule],
     resources={
@@ -132,7 +125,6 @@ defs = Definitions(
         
         # Infrastructure configuration
         "data_root": "data",
-        "documents_index": DocumentsIndexResource(),
         
         # Simplified I/O managers - no complex source mappings or filtering
         "csv_io_manager": CSVIOManager(base_path=Path("data") / "2_tasks"),

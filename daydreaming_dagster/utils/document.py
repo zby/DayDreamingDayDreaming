@@ -4,7 +4,6 @@ from dataclasses import dataclass
 from pathlib import Path
 import hashlib
 import json
-from .documents_index import DocumentRow
 from .ids import doc_dir as build_doc_dir
 
 
@@ -50,40 +49,4 @@ class Document:
             _write_atomic(base / "metadata.json", json.dumps(self.metadata, ensure_ascii=False, indent=2))
         return base
 
-    def to_index_row(
-        self,
-        docs_root: Path,
-        *,
-        task_id: str,
-        template_id: str | None,
-        model_id: str | None,
-        run_id: str | None,
-        parser: str | None = None,
-        status: str = "ok",
-    ) -> DocumentRow:
-        base = self.target_dir(docs_root)
-        rel_dir = base.relative_to(docs_root)
-        content_hash = hashlib.sha256((self.raw_text or "").encode("utf-8")).hexdigest()
-        meta_small = {"function": self.metadata.get("function")} if isinstance(self.metadata, dict) else None
-        return DocumentRow(
-            doc_id=self.doc_id,
-            logical_key_id=self.logical_key_id,
-            stage=self.stage,
-            task_id=task_id,
-            parent_doc_id=self.parent_doc_id,
-            template_id=str(template_id) if template_id is not None else None,
-            model_id=str(model_id) if model_id is not None else None,
-            run_id=str(run_id) if run_id is not None else None,
-            parser=parser,
-            status=status,
-            usage_prompt_tokens=None,
-            usage_completion_tokens=None,
-            usage_max_tokens=None,
-            doc_dir=str(rel_dir),
-            raw_chars=len(self.raw_text or ""),
-            parsed_chars=len(self.parsed_text or ""),
-            content_hash=content_hash,
-            meta_small=meta_small,
-            lineage_prev_doc_id=None,
-        )
-
+    # Index row conversion removed in filesystem-only mode
