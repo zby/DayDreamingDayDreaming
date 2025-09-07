@@ -36,118 +36,80 @@ def _get_pk(context):
     return getattr(context, "partition_key", None) or getattr(context, "asset_partition_key", None)
 
 
-@asset_check(asset=draft_response_asset, required_resource_keys={"data_root"})
+@asset_check(asset=draft_response_asset, required_resource_keys={"documents_index"})
 def draft_files_exist_check(context) -> AssetCheckResult:
     pk = _get_pk(context)
     if not pk:
         return AssetCheckResult(passed=True, metadata={"skipped": MetadataValue.text("no partition context")})
-    data_root = Path(context.resources.data_root)
-    fs_dir = data_root / "3_generation" / "draft_responses"
-    fs_file = _latest_versioned(fs_dir, pk)
-    used = None
-    if fs_file:
-        used = f"fs:{fs_file.name}"
-        return AssetCheckResult(passed=True, metadata={"used": MetadataValue.text(used), "path": MetadataValue.path(str(fs_file))})
-
-    # Try documents index if available and enabled
-    try:
-        idx_res = getattr(context.resources, "documents_index", None)
-        if idx_res and getattr(idx_res, "index_enabled", False):
-            idx = idx_res.get_index()
-            row = idx.get_latest_by_task("draft", pk)
-            if row:
-                base = idx.resolve_doc_dir(row)
-                raw = base / "raw.txt"
-                if raw.exists():
-                    used = f"db:{base.name}"
-                    return AssetCheckResult(passed=True, metadata={"used": MetadataValue.text(used), "doc_dir": MetadataValue.path(str(base))})
-    except Exception as e:
-        context.log.warning(f"draft_files_exist_check: DB probe failed: {e}")
-    return AssetCheckResult(passed=False, metadata={"partition_key": MetadataValue.text(pk)})
+    # DB-only check
+    idx_res = getattr(context.resources, "documents_index", None)
+    idx = idx_res.get_index() if idx_res else None
+    if not idx:
+        return AssetCheckResult(passed=False, metadata={"error": MetadataValue.text("documents_index unavailable")})
+    row = idx.get_latest_by_task("draft", pk)
+    if not row:
+        return AssetCheckResult(passed=False, metadata={"partition_key": MetadataValue.text(pk)})
+    base = idx.resolve_doc_dir(row)
+    raw = base / "raw.txt"
+    if raw.exists():
+        return AssetCheckResult(passed=True, metadata={"doc_dir": MetadataValue.path(str(base))})
+    return AssetCheckResult(passed=False, metadata={"doc_dir": MetadataValue.path(str(base))})
 
 
-@asset_check(asset=essay_response_asset, required_resource_keys={"data_root"})
+@asset_check(asset=essay_response_asset, required_resource_keys={"documents_index"})
 def essay_files_exist_check(context) -> AssetCheckResult:
     pk = _get_pk(context)
     if not pk:
         return AssetCheckResult(passed=True, metadata={"skipped": MetadataValue.text("no partition context")})
-    data_root = Path(context.resources.data_root)
-    fs_dir = data_root / "3_generation" / "essay_responses"
-    fs_file = _latest_versioned(fs_dir, pk)
-    if fs_file:
-        return AssetCheckResult(passed=True, metadata={"path": MetadataValue.path(str(fs_file))})
-    try:
-        idx_res = getattr(context.resources, "documents_index", None)
-        if idx_res and getattr(idx_res, "index_enabled", False):
-            idx = idx_res.get_index()
-            row = idx.get_latest_by_task("essay", pk)
-            if row:
-                base = idx.resolve_doc_dir(row)
-                raw = base / "raw.txt"
-                if raw.exists():
-                    return AssetCheckResult(passed=True, metadata={"doc_dir": MetadataValue.path(str(base))})
-    except Exception as e:
-        context.log.warning(f"essay_files_exist_check: DB probe failed: {e}")
-    return AssetCheckResult(passed=False, metadata={"partition_key": MetadataValue.text(pk)})
+    idx_res = getattr(context.resources, "documents_index", None)
+    idx = idx_res.get_index() if idx_res else None
+    if not idx:
+        return AssetCheckResult(passed=False, metadata={"error": MetadataValue.text("documents_index unavailable")})
+    row = idx.get_latest_by_task("essay", pk)
+    if not row:
+        return AssetCheckResult(passed=False, metadata={"partition_key": MetadataValue.text(pk)})
+    base = idx.resolve_doc_dir(row)
+    raw = base / "raw.txt"
+    if raw.exists():
+        return AssetCheckResult(passed=True, metadata={"doc_dir": MetadataValue.path(str(base))})
+    return AssetCheckResult(passed=False, metadata={"doc_dir": MetadataValue.path(str(base))})
 
 
-@asset_check(asset=evaluation_response_asset, required_resource_keys={"data_root"})
+@asset_check(asset=evaluation_response_asset, required_resource_keys={"documents_index"})
 def evaluation_files_exist_check(context) -> AssetCheckResult:
     pk = _get_pk(context)
     if not pk:
         return AssetCheckResult(passed=True, metadata={"skipped": MetadataValue.text("no partition context")})
-    data_root = Path(context.resources.data_root)
-    fs_dir = data_root / "4_evaluation" / "evaluation_responses"
-    fs_file = _latest_versioned(fs_dir, pk)
-    if fs_file:
-        return AssetCheckResult(passed=True, metadata={"path": MetadataValue.path(str(fs_file))})
-    try:
-        idx_res = getattr(context.resources, "documents_index", None)
-        if idx_res and getattr(idx_res, "index_enabled", False):
-            idx = idx_res.get_index()
-            row = idx.get_latest_by_task("evaluation", pk)
-            if row:
-                base = idx.resolve_doc_dir(row)
-                raw = base / "raw.txt"
-                if raw.exists():
-                    return AssetCheckResult(passed=True, metadata={"doc_dir": MetadataValue.path(str(base))})
-    except Exception as e:
-        context.log.warning(f"evaluation_files_exist_check: DB probe failed: {e}")
-    return AssetCheckResult(passed=False, metadata={"partition_key": MetadataValue.text(pk)})
+    idx_res = getattr(context.resources, "documents_index", None)
+    idx = idx_res.get_index() if idx_res else None
+    if not idx:
+        return AssetCheckResult(passed=False, metadata={"error": MetadataValue.text("documents_index unavailable")})
+    row = idx.get_latest_by_task("evaluation", pk)
+    if not row:
+        return AssetCheckResult(passed=False, metadata={"partition_key": MetadataValue.text(pk)})
+    base = idx.resolve_doc_dir(row)
+    raw = base / "raw.txt"
+    if raw.exists():
+        return AssetCheckResult(passed=True, metadata={"doc_dir": MetadataValue.path(str(base))})
+    return AssetCheckResult(passed=False, metadata={"doc_dir": MetadataValue.path(str(base))})
 
 
 def _open_index_from_context(context) -> SQLiteDocumentsIndex | None:
     try:
         idx_res = getattr(context.resources, "documents_index", None)
-        if idx_res and getattr(idx_res, "index_enabled", False):
-            return idx_res.get_index()
+        return idx_res.get_index() if idx_res else None
     except Exception:
-        pass
-    # Fallback: open directly if env says index is enabled
-    if os.getenv("DD_DOCS_INDEX_ENABLED", "0") in ("1", "true", "True"):
-        data_root = Path(getattr(context.resources, "data_root", "data"))
-        db_path = data_root / "db" / "documents.sqlite"
-        docs_root = data_root / "docs"
-        idx = SQLiteDocumentsIndex(db_path, docs_root)
-        try:
-            idx.init_maybe_create_tables()
-            return idx
-        except Exception:
-            return None
-    return None
+        return None
 
 
-@asset_check(asset=draft_response_asset, required_resource_keys={"data_root"})
+@asset_check(asset=draft_response_asset, required_resource_keys={"documents_index"})
 def draft_db_row_present_check(context) -> AssetCheckResult:
     pk = _get_pk(context)
     if not pk:
         return AssetCheckResult(passed=True, metadata={"skipped": MetadataValue.text("no partition context")})
-    # If index not enabled, treat as passed (non-blocking)
-    if os.getenv("DD_DOCS_INDEX_ENABLED", "0") not in ("1", "true", "True"):
-        return AssetCheckResult(passed=True, metadata={"skipped": MetadataValue.text("index disabled")})
     idx = _open_index_from_context(context)
     if not idx:
-        return AssetCheckResult(passed=True, metadata={"skipped": MetadataValue.text("index unavailable")})
+        return AssetCheckResult(passed=False, metadata={"error": MetadataValue.text("documents_index unavailable")})
     row = idx.get_latest_by_task("draft", pk)
     if not row:
         return AssetCheckResult(passed=False, metadata={"partition_key": MetadataValue.text(pk)})
@@ -156,16 +118,14 @@ def draft_db_row_present_check(context) -> AssetCheckResult:
     return AssetCheckResult(passed=ok, metadata={"doc_dir": MetadataValue.path(str(base))})
 
 
-@asset_check(asset=essay_response_asset, required_resource_keys={"data_root"})
+@asset_check(asset=essay_response_asset, required_resource_keys={"documents_index"})
 def essay_db_row_present_check(context) -> AssetCheckResult:
     pk = _get_pk(context)
     if not pk:
         return AssetCheckResult(passed=True, metadata={"skipped": MetadataValue.text("no partition context")})
-    if os.getenv("DD_DOCS_INDEX_ENABLED", "0") not in ("1", "true", "True"):
-        return AssetCheckResult(passed=True, metadata={"skipped": MetadataValue.text("index disabled")})
     idx = _open_index_from_context(context)
     if not idx:
-        return AssetCheckResult(passed=True, metadata={"skipped": MetadataValue.text("index unavailable")})
+        return AssetCheckResult(passed=False, metadata={"error": MetadataValue.text("documents_index unavailable")})
     row = idx.get_latest_by_task("essay", pk)
     if not row:
         return AssetCheckResult(passed=False, metadata={"partition_key": MetadataValue.text(pk)})
@@ -174,16 +134,14 @@ def essay_db_row_present_check(context) -> AssetCheckResult:
     return AssetCheckResult(passed=ok, metadata={"doc_dir": MetadataValue.path(str(base))})
 
 
-@asset_check(asset=evaluation_response_asset, required_resource_keys={"data_root"})
+@asset_check(asset=evaluation_response_asset, required_resource_keys={"documents_index"})
 def evaluation_db_row_present_check(context) -> AssetCheckResult:
     pk = _get_pk(context)
     if not pk:
         return AssetCheckResult(passed=True, metadata={"skipped": MetadataValue.text("no partition context")})
-    if os.getenv("DD_DOCS_INDEX_ENABLED", "0") not in ("1", "true", "True"):
-        return AssetCheckResult(passed=True, metadata={"skipped": MetadataValue.text("index disabled")})
     idx = _open_index_from_context(context)
     if not idx:
-        return AssetCheckResult(passed=True, metadata={"skipped": MetadataValue.text("index unavailable")})
+        return AssetCheckResult(passed=False, metadata={"error": MetadataValue.text("documents_index unavailable")})
     row = idx.get_latest_by_task("evaluation", pk)
     if not row:
         return AssetCheckResult(passed=False, metadata={"partition_key": MetadataValue.text(pk)})

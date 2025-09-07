@@ -38,7 +38,7 @@ def evaluation_prompt(context, evaluation_tasks) -> str:
             description="Documents index is required for evaluation_prompt",
             metadata={
                 "function": MetadataValue.text("evaluation_prompt"),
-                "resolution": MetadataValue.text("Set DD_DOCS_INDEX_ENABLED=1 and backfill if migrating from files"),
+                "resolution": MetadataValue.text("Ensure documents_index resource is configured and DB is backfilled"),
             },
         )
     idx = idx_res.get_index()

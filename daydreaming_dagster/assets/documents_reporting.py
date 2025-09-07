@@ -21,17 +21,7 @@ def documents_latest_report(context) -> pd.DataFrame:
     """
     try:
         idx_res = getattr(context.resources, "documents_index", None)
-        idx = None
-        if idx_res and getattr(idx_res, "index_enabled", False):
-            idx = idx_res.get_index()
-        else:
-            # Fallback: directly open index using defaults under data_root when env flag is set
-            if os.getenv("DD_DOCS_INDEX_ENABLED", "0") in ("1", "true", "True"):
-                data_root = Path(getattr(context.resources, "data_root", "data"))
-                db_path = data_root / "db" / "documents.sqlite"
-                docs_root = data_root / "docs"
-                idx = SQLiteDocumentsIndex(db_path, docs_root)
-                idx.init_maybe_create_tables()
+        idx = idx_res.get_index() if idx_res else None
         if idx is not None:
             con = idx.connect()
             # Select latest rows by stage/logical key using rowid tie-breaker
@@ -83,17 +73,12 @@ def documents_consistency_report(context) -> pd.DataFrame:
     - dir_exists
     """
     idx: SQLiteDocumentsIndex | None = None
-    # Try opening via resource or via data_root fallback if flag is on
+    # Open via resource only (DB-only mode)
     try:
         idx_res = getattr(context.resources, "documents_index", None)
-        if idx_res and getattr(idx_res, "index_enabled", False):
-            idx = idx_res.get_index()
+        idx = idx_res.get_index() if idx_res else None
     except Exception:
         idx = None
-    if idx is None and os.getenv("DD_DOCS_INDEX_ENABLED", "0") in ("1", "true", "True"):
-        data_root = Path(getattr(context.resources, "data_root", "data"))
-        idx = SQLiteDocumentsIndex(data_root / "db" / "documents.sqlite", data_root / "docs")
-        idx.init_maybe_create_tables()
 
     if idx is None:
         context.log.info("documents_consistency_report: index disabled or unavailable; emitting empty report")

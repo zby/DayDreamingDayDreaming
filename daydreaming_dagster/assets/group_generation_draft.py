@@ -266,7 +266,7 @@ def draft_response(context, draft_prompt, draft_generation_tasks) -> str:
     except Exception:
         idx_res = None
 
-    if idx_res and getattr(idx_res, "index_enabled", False):
+    if idx_res:
         import json, time, hashlib
         from pathlib import Path as _Path
 

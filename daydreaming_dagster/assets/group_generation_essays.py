@@ -50,7 +50,7 @@ def _load_phase1_text_by_parent_doc(context, parent_doc_id: str) -> tuple[str, s
         idx_res = context.resources.documents_index
     except Exception:
         idx_res = None
-    if not (idx_res and getattr(idx_res, "index_enabled", False)):
+    if not idx_res:
         raise Failure(
             description="Documents index not available to resolve draft by parent_doc_id",
             metadata={
@@ -91,7 +91,7 @@ def _load_phase1_text_by_draft_task(context, draft_task_id: str) -> tuple[str, s
         idx_res = context.resources.documents_index
     except Exception:
         idx_res = None
-    if not (idx_res and getattr(idx_res, "index_enabled", False)):
+    if not idx_res:
         raise Failure(
             description="Documents index not available to resolve draft by task id",
             metadata={
@@ -121,7 +121,7 @@ def _load_phase1_text_by_combo_model(context, combo_id: str, model_id: str) -> t
         idx_res = context.resources.documents_index
     except Exception:
         idx_res = None
-    if not (idx_res and getattr(idx_res, "index_enabled", False)):
+    if not idx_res:
         raise Failure(
             description="Documents index not available to resolve draft by combo/model",
             metadata={
@@ -131,7 +131,7 @@ def _load_phase1_text_by_combo_model(context, combo_id: str, model_id: str) -> t
             },
         )
     idx = idx_res.get_index()
-    like = f"{combo_id}__%__{model_id}"
+    like = f"{combo_id}_%_{model_id}"
     row = idx.connect().execute(
         "SELECT * FROM documents WHERE stage='draft' AND task_id LIKE ? ORDER BY created_at DESC, rowid DESC LIMIT 1",
         (like,),
@@ -369,7 +369,7 @@ def essay_response(context, essay_prompt, essay_generation_tasks) -> str:
     except Exception:
         idx_res = None
 
-    if idx_res and getattr(idx_res, "index_enabled", False):
+    if idx_res:
         import json, time, hashlib
         from pathlib import Path as _Path
 
