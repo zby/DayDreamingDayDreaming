@@ -359,7 +359,6 @@ def essay_response(context, essay_prompt, essay_generation_tasks) -> str:
 
     doc = Document(
         stage="essay",
-        logical_key_id="",
         doc_id=doc_id,
         parent_doc_id=parent_doc_id,
         raw_text=text,

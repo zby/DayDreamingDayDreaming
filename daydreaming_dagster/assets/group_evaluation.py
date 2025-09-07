@@ -143,7 +143,6 @@ def evaluation_response(context, evaluation_prompt, evaluation_tasks) -> str:
     prompt_text = evaluation_prompt if isinstance(evaluation_prompt, str) else None
     doc = Document(
         stage="evaluation",
-        logical_key_id="",
         doc_id=doc_id,
         parent_doc_id=parent_doc_id,
         raw_text=text,

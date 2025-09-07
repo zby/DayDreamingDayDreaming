@@ -315,7 +315,6 @@ def draft_response(context, draft_prompt, draft_generation_tasks) -> str:
     prompt_text = draft_prompt if isinstance(draft_prompt, str) else None
     doc = Document(
         stage="draft",
-        logical_key_id="",
         doc_id=doc_id,
         parent_doc_id=None,
         raw_text=raw_text,

@@ -11,7 +11,6 @@ class TestDocument:
         # Build a simple draft document
         doc = Document(
             stage="draft",
-            logical_key_id="comboA__tplX__modelY",
             doc_id="doc123",
             parent_doc_id=None,
             raw_text="raw content",

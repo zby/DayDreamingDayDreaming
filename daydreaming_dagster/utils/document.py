@@ -22,7 +22,6 @@ class Document:
     """
 
     stage: str
-    logical_key_id: str
     doc_id: str
     parent_doc_id: str | None
     raw_text: str
@@ -32,7 +31,7 @@ class Document:
 
     def target_dir(self, docs_root: Path) -> Path:
         """Resolve the canonical doc directory from docs_root using repo helper."""
-        return build_doc_dir(Path(docs_root), self.stage, self.logical_key_id, self.doc_id)
+        return build_doc_dir(Path(docs_root), self.stage, self.doc_id)
 
     def write_files(self, docs_root: Path) -> Path:
         """Write raw.txt, parsed.txt, optional prompt.txt and metadata.json.
