@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from datetime import datetime, UTC
 from pathlib import Path
 from typing import Dict, Optional, Tuple, List
+import csv
 
 from daydreaming_dagster.utils.documents_index import (
     DocumentRow,
@@ -107,6 +108,43 @@ def split_eval_stem(stem: str) -> Tuple[str, Optional[str], Optional[str]]:
     return left_base, eval_tmpl, eval_model
 
 
+def strip_version_suffix(stem: str) -> str:
+    import re
+    m = re.match(r"^(.*?)(?:[_-]v\d+)$", stem)
+    return m.group(1) if m else stem
+
+
+def extract_candidate_lines_from_prompt(prompt: str) -> Optional[List[str]]:
+    lines = prompt.splitlines()
+    # Prefer explicit marker (case-insensitive)
+    for i, line in enumerate(lines):
+        low = line.lower()
+        if ('candidate text:' in low) or ('response to evaluate:' in low):
+            out: List[str] = []
+            j = i + 1
+            while j < len(lines) and len(out) < 2:
+                s = lines[j].strip()
+                if s:
+                    out.append(s)
+                j += 1
+            if len(out) == 2:
+                return out
+            break
+    # Fallback: use first markdown heading line and next non-empty line
+    for i, line in enumerate(lines):
+        if line.strip().startswith('## '):
+            out: List[str] = [line.strip()]
+            for j in range(i + 1, len(lines)):
+                s = lines[j].strip()
+                if s:
+                    out.append(s)
+                    break
+            if len(out) == 2:
+                return out
+            break
+    return None
+
+
 def parse_eval_left_part(left: str) -> Tuple[Optional[str], Optional[str], Optional[str], Optional[str]]:
     """Parse the left part (before '__') of an evaluation filename.
 
@@ -201,6 +239,38 @@ def backfill_from_evals(
     links_prompts_dir = gen_root / "links_prompts"
     eval_prompts_dir = eval_root / "evaluation_prompts"
 
+    # Load draft template parsers (template_id -> parser name or None)
+    draft_template_parsers: dict[str, str|None] = {}
+    dt_csv = Path("data/1_raw/draft_templates.csv")
+    if dt_csv.exists():
+        import csv as _csv1
+        with dt_csv.open("r", encoding="utf-8", newline="") as f:
+            r = _csv1.DictReader(f)
+            for row in r:
+                tid = (row.get("template_id") or row.get("id") or "").strip()
+                parser = (row.get("parser") or "").strip() or None
+                if tid:
+                    draft_template_parsers[tid] = parser
+
+    # Load essay template generators (template_id -> generator class)
+    essay_template_generators: dict[str, str] = {}
+    et_csv = Path("data/1_raw/essay_templates.csv")
+    if et_csv.exists():
+        import csv as _csv2
+        with et_csv.open("r", encoding="utf-8", newline="") as f:
+            r = _csv2.DictReader(f)
+            for row in r:
+                tid = (row.get("template_id") or row.get("id") or "").strip()
+                gen = (row.get("generator") or "").strip().lower()
+                if tid:
+                    essay_template_generators[tid] = gen
+    # Known override: v9 is llm
+    essay_template_generators.setdefault("creative-synthesis-v9", "llm")
+
+    # Draft parsers registry
+    from daydreaming_dagster.utils.draft_parsers import get_draft_parser
+
+
     # Pre-index available response files by stem
     essay_files: Dict[str, Path] = {stem_of(p): p for p in essay_dir.glob("*.txt")}
     gen_files: Dict[str, Path] = {stem_of(p): p for p in gen_dir.glob("*.txt")}
@@ -240,14 +310,26 @@ def backfill_from_evals(
                 draft_path = cand2
         if draft_path is None:
             return None
-        parsed_content = read_text(draft_path)
-        if parsed_content is None:
+        input_text = read_text(draft_path)
+        if input_text is None:
             return None
         # Optional raw content if available in draft_responses_raw
         raw_content = None
         raw_cand = draft_raw_dir / f"{key}.txt"
         if raw_cand.exists():
             raw_content = read_text(raw_cand)
+        # If no dedicated raw exists, persist input as raw to preserve source
+        if raw_content is None:
+            raw_content = input_text
+        # Compute parsed via parser if configured; else copy raw
+        parser_name = draft_template_parsers.get(draft_tmpl)
+        if parser_name:
+            parser_fn = get_draft_parser(parser_name)
+            if parser_fn is None:
+                raise RuntimeError(f"unknown_draft_parser name={parser_name} for template={draft_tmpl}")
+            parsed_content = parser_fn(raw_content or "")
+        else:
+            parsed_content = raw_content or ""
         # Use parsed identifiers for stable logical grouping
         template_id = draft_tmpl
         gen_model_id = model_id
@@ -326,6 +408,10 @@ def backfill_from_evals(
         if src_path is None:
             draft_cand = draft_dir / f"{key_base}.txt"
             link_cand = links_dir / f"{key_base}.txt"
+            gen_cand_path = gen_dir / f"{key_base}.txt"
+            present = [("draft", draft_cand.exists()), ("links", link_cand.exists()), ("gen", gen_cand_path.exists())]
+            if sum(1 for _, ok in present if ok) > 1:
+                raise RuntimeError(f"ambiguous_sources for {key_base}: " + ",".join([k for k, ok in present if ok]))
             if draft_cand.exists():
                 src_path = draft_cand
                 created_from = "draft_responses"
@@ -476,8 +562,18 @@ def backfill_from_evals(
             selected[base_no_ver] = ev_path
             selected_ver[base_no_ver] = (ver or 0)
 
+    # Special-case skip list for problematic evaluation tasks (by versionless task_id prefix)
+    SKIP_EVAL_TASK_PREFIXES = {
+        # User-requested skip; note: allow both 'flash' and possible truncated 'flas'
+        "combo_v1_13c725cf02fa_creative-synthesis-v7_gemini_2.5_flash",
+        "combo_v1_13c725cf02fa_creative-synthesis-v7_gemini_2.5_flas",
+    }
+
     selected_eval_files = len(selected)
     for base_no_ver, ev_path in sorted(selected.items(), key=lambda kv: kv[1].name):
+        # Skip explicitly flagged tasks
+        if any(base_no_ver.startswith(pref) for pref in SKIP_EVAL_TASK_PREFIXES):
+            continue
         stem = stem_of(ev_path)
         # Parse on the versionless stem for template/model parts
         # Extract eval_left_part without assuming '__' exists
@@ -576,6 +672,114 @@ def main(argv: list[str] | None = None) -> int:
         run_id=args.run_id,
         dry_run=args.dry_run,
     )
+    # Post-backfill validation: essay generation semantics
+    try:
+        import sys as _sys
+        from pathlib import Path as _Path
+        # Ensure we can import the validator from the scripts directory
+        _this_dir = _Path(__file__).parent
+        if str(_this_dir) not in _sys.path:
+            _sys.path.append(str(_this_dir))
+        from validate_essay_generation_semantics import validate as _validate
+
+        res = _validate(args.db, args.docs_root, _Path("data/1_raw/essay_templates.csv"))
+        print(f"essay_semantics_checked={res['checked']}")
+        print(f"essay_semantics_copy_ok={res['copy_ok']}")
+        print(f"essay_semantics_llm_ok={res['llm_ok']}")
+        print(f"essay_semantics_skipped_unknown={res['skipped_unknown']}")
+        print(f"essay_semantics_violations={len(res['violations'])}")
+        if res.get('violations'):
+            for v in res['violations'][:10]:
+                print(f"VIOLATION: essay={v.essay_doc_id} tmpl={v.template_id} gen={v.generator} parent={v.parent_doc_id} problem={v.problem} detail={v.detail}")
+        # Fail if any unknown/skipped or violations are present
+        if res.get('skipped_unknown', 0) > 0 or len(res.get('violations', [])) > 0:
+            return 2
+    except Exception as _ex:
+        print(f"warning: validation step failed to run: {_ex}")
+        return 1
+
+    # Relink evaluations by prompt candidate text when needed (version-independent)
+    try:
+        # Lightweight inline relinker to avoid import path issues
+        idx2 = SQLiteDocumentsIndex(args.db, args.docs_root)
+        con2 = idx2.connect()
+        con2.row_factory = lambda c, r: {c.description[i][0]: r[i] for i in range(len(r))}
+        processed = 0
+        updated = 0
+        for ev in con2.execute("SELECT * FROM documents WHERE stage='evaluation' AND status='ok' ORDER BY created_at").fetchall():
+            processed += 1
+            ev_dir = idx2.resolve_doc_dir(ev)
+            prompt = read_text(ev_dir / 'prompt.txt')
+            if not prompt:
+                continue
+            parent_id = ev.get('parent_doc_id')
+            essay_row = con2.execute("SELECT * FROM documents WHERE doc_id=?", (parent_id,)).fetchone() if parent_id else None
+            es_ok = False
+            if essay_row:
+                es_dir = idx2.resolve_doc_dir(essay_row)
+                es_parsed = read_text(es_dir / 'parsed.txt')
+                if es_parsed and (es_parsed in prompt):
+                    es_ok = True
+            if es_ok:
+                continue
+            # Need relink: extract candidates and match essays by left prefix
+            cand_lines = extract_candidate_lines_from_prompt(prompt)
+            if not cand_lines:
+                continue
+            base_no_ver = strip_version_suffix(ev['task_id'])
+            left, _et, _em = split_eval_stem(base_no_ver)
+            if not left:
+                continue
+            like_prefix = left + '%'
+            essays = con2.execute("SELECT * FROM documents WHERE stage='essay' AND status='ok' AND task_id LIKE ? ORDER BY created_at DESC", (like_prefix,)).fetchall()
+            matches = []
+            for es in essays:
+                es_dir2 = idx2.resolve_doc_dir(es)
+                es_parsed2 = read_text(es_dir2 / 'parsed.txt') or ''
+                if all(line in es_parsed2 for line in cand_lines):
+                    matches.append(es)
+            if not matches:
+                continue
+            # Choose the most recent
+            new_parent = matches[0]['doc_id']
+            if new_parent == parent_id:
+                continue
+            # Update parent_doc_id and annotate meta
+            meta = ev.get('meta_small')
+            try:
+                meta_obj = json.loads(meta) if isinstance(meta, str) and meta else {}
+            except Exception:
+                meta_obj = {}
+            meta_obj['relinked_reason'] = 'matched_by_prompt_candidate_text'
+            with con2:
+                con2.execute("UPDATE documents SET parent_doc_id=?, meta_small=? WHERE doc_id=?", (new_parent, json.dumps(meta_obj, ensure_ascii=False), ev['doc_id']))
+            updated += 1
+        print(f"relink_by_prompt_processed={processed} relink_by_prompt_updated={updated}")
+    except Exception as _ex:
+        print(f"warning: relink by prompt failed: {_ex}")
+
+    # Post-backfill validation: evaluation prompt contains essay parsed
+    try:
+        import sys as _sys2
+        from pathlib import Path as _Path2
+        _this_dir2 = _Path2(__file__).parent
+        if str(_this_dir2) not in _sys2.path:
+            _sys2.path.append(str(_this_dir2))
+        from validate_evaluation_prompt_contains_essay import validate as _validate_eval
+
+        res2 = _validate_eval(args.db, args.docs_root)
+        print(f"eval_prompt_checked={res2['checked']}")
+        print(f"eval_prompt_ok={res2['ok']}")
+        print(f"eval_prompt_violations={len(res2['violations'])}")
+        if res2.get('violations'):
+            for v in res2['violations'][:10]:
+                print(f"EVAL_VIOLATION: eval={v['evaluation_doc_id']} task={v['evaluation_task_id']} problem={v['problem']} detail={v['detail']}")
+        if len(res2.get('violations', [])) > 0:
+            return 2
+    except Exception as _ex:
+        print(f"warning: evaluation prompt validation failed to run: {_ex}")
+        return 1
+
     return 0
 
 
