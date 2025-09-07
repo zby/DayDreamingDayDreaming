@@ -28,6 +28,7 @@ from __future__ import annotations
 
 import argparse
 from pathlib import Path
+import json
 import sys
 import pandas as pd
 from daydreaming_dagster.utils.document_locator import find_document_path
@@ -163,6 +164,34 @@ def main() -> int:
 
     essay_rows = []
     missing_essays = []
+    missing_parents = []
+
+    def _find_parent_doc_id_from_essay_docs(data_root: Path, essay_task_id: str) -> str | None:
+        """Scan data/docs/essay/**/metadata.json for a row with task_id == essay_task_id.
+
+        Returns the latest by created_at if multiple, else first found; None if not found.
+        """
+        docs_root = data_root / "docs" / "essay"
+        if not docs_root.exists():
+            return None
+        best = None
+        best_ts = ""
+        # Two-level traversal: stage/essay/<doc_id>/metadata.json (logical_key directory may be omitted)
+        # Our layout is flat by doc_id: essay/<doc_id>/metadata.json
+        for md in docs_root.glob("*/metadata.json"):
+            try:
+                meta = json.loads(md.read_text(encoding="utf-8"))
+            except Exception:
+                continue
+            if not isinstance(meta, dict):
+                continue
+            if str(meta.get("task_id")) != str(essay_task_id):
+                continue
+            created = str(meta.get("created_at") or "")
+            if created >= best_ts:
+                best_ts = created
+                best = str(meta.get("parent_doc_id") or "")
+        return best or None
 
     for doc in top_docs:
         parts = doc.split("_")
@@ -205,8 +234,12 @@ def main() -> int:
             fp, _ = find_document_path(doc, data_root)
             if not fp:
                 missing_essays.append(str(essay_dir / f"{doc}.txt"))
+            parent_doc_id = _find_parent_doc_id_from_essay_docs(data_root, doc)
+            if not parent_doc_id:
+                missing_parents.append(doc)
             essay_rows.append({
                 "essay_task_id": doc,
+                "parent_doc_id": parent_doc_id or "",
                 "draft_task_id": draft_task_id,
                 "combo_id": combo_id,
                 "draft_template": draft_template,
@@ -223,7 +256,7 @@ def main() -> int:
         essay_out_csv.parent.mkdir(parents=True, exist_ok=True)
         if essay_rows:
             pd.DataFrame(essay_rows, columns=[
-                "essay_task_id","draft_task_id","combo_id","draft_template",
+                "essay_task_id","parent_doc_id","draft_task_id","combo_id","draft_template",
                 "essay_template","generation_model","generation_model_name"
             ]).drop_duplicates(subset=["essay_task_id"]).to_csv(essay_out_csv, index=False)
             print(f"Wrote {len(essay_rows)} curated essay tasks to {essay_out_csv}")
@@ -238,6 +271,12 @@ def main() -> int:
             print(" -", m, file=sys.stderr)
         if len(missing_essays) > 10:
             print(f" ... {len(missing_essays)-10} more", file=sys.stderr)
+    if missing_parents:
+        print("Warning: could not derive parent_doc_id for some essay_task_id from docs; parent_doc_id will be blank:", file=sys.stderr)
+        for m in missing_parents[:10]:
+            print(" -", m, file=sys.stderr)
+        if len(missing_parents) > 10:
+            print(f" ... {len(missing_parents)-10} more", file=sys.stderr)
     # Note: Draft backfill checks removed; selection focuses on essays only.
     return 0
 
