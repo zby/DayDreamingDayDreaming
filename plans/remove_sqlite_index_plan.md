@@ -1,12 +1,23 @@
-# Plan: Replace SQLite Documents Index with Filesystem + Metadata
+# Plan: Remove SQLite Index (Filesystem + Metadata Only)
 
-Status: draft
+Status: ready
 Owner: daydreaming_dagster
-Scope: Remove `SQLiteDocumentsIndex` entirely. After doc_id-first rollout, replace remaining reads with a minimal path-based helper over `metadata.json`. Pointer files are optional and ops-only.
+Scope: Remove `SQLiteDocumentsIndex` and all DB reads/writes from runtime paths. Use a minimal, path-based helper over `metadata.json` in a flat docs layout. Keep optional ops-only scripts if desired.
 
 ## Summary
 
-This plan executes after plans/doc_id_first_design_plan.md is completed. Assets now require pinned doc IDs (`parent_doc_id`) and resolve parents/targets directly by filesystem path. We currently still dual‑write to a SQLite table (`documents`) and use it in a few non‑asset paths (checks/reporting/ops). Since all linking data exists on disk, we will remove SQLite and refactor remaining reads to a small path‑based helper that loads `metadata.json` from the flat layout `docs_root/<stage>/<doc_id>/` (note: no logical_key_id directory level in the path).
+This plan executes after plans/doc_id_first_design_plan.md. Assets and scripts now prefer pinned doc IDs (`parent_doc_id`) and resolve parents/targets by filesystem path. We still have SQLite usage in several places; this plan removes it and replaces any remaining reads with a small path‑based helper that loads `metadata.json` from the flat layout `docs_root/<stage>/<doc_id>/` (no `logical_key_id` directory level).
+
+Current code state (snapshot)
+- Flat layout in code: `utils/ids.py::doc_dir` returns `docs/<stage>/<doc_id>`.
+- Partitions script updated: `scripts/register_partitions_for_generations.py` requires an essay document id column (doc‑id first) and writes `evaluation_tasks.csv` with `parent_doc_id`.
+- DB still referenced in runtime code and tests:
+  - Assets: `assets/group_generation_essays.py` and `assets/group_evaluation.py` import `documents_index` and call DB lookups/inserts.
+  - Checks: `checks/documents_checks.py` includes DB‑based asset checks.
+  - Utils/Resource: `utils/documents_index.py`, `resources/documents_index.py` present.
+  - Tests: `utils/test_documents_index.py`, `tests/test_pipeline_integration.py` wire `DocumentsIndexResource`.
+  - Ops scripts: several `scripts/backfill/*` and `scripts/print_latest_doc.py` use the DB.
+  - Docs: `docs/llm_documents_index_guide.md` references DB enablement/backfill.
 
 Goal: Eliminate the DB dependency, keep IDs and behavior stable, and make artifacts fully portable. Pointer files for “latest” are optional and remain ops‑only.
 
@@ -36,8 +47,8 @@ Deferred
 - Ensure it includes at least:
   - `task_id` (draft_task_id | essay_task_id | evaluation_task_id)
   - `template_id`, `model_id`
-  - `parent_doc_id` (for essays/evaluations)
-  - `run_id`, `attempt` (we already encode attempt in doc_id; keep explicit for portability)
+  - `parent_doc_id` (essays/evaluations)
+  - `run_id`, `attempt` (attempt is also encoded in `doc_id`)
   - `created_at` (ISO timestamp; write once on create)
 
 3) Pointer files (ops‑only, optional)
@@ -47,10 +58,10 @@ Deferred
 - Runtime assets will not depend on these pointers.
 
 4) Filesystem helper API (runtime)
-- Minimal helper (pure functions) to replace SQLite reads using the flat layout:
-  - `get_row_by_doc_id(stage, doc_id)` → resolve `docs_root/<stage>/<doc_id>`, load `metadata.json`, and return a dict with at least: `doc_id`, `stage`, `doc_dir`, and selected metadata fields (`task_id`, `parent_doc_id`, `template_id`, `model_id`, `created_at`).
-  - `read_raw/parsed/prompt(row)` → derive from `row["doc_dir"]`.
-  - Optional ops helpers: `find_latest_doc_id_by_task_id(stage, task_id)` by scanning `metadata.json` (ordered by `created_at`).
+- Minimal helper (pure functions) to replace DB reads in runtime paths using the flat layout:
+  - `get_row_by_doc_id(stage, doc_id) -> dict` resolves `docs_root/<stage>/<doc_id>`, loads `metadata.json`, and returns a dict with at least: `doc_id`, `stage`, `doc_dir`, and metadata fields (`task_id`, `parent_doc_id`, `template_id`, `model_id`, `created_at`).
+  - `read_raw(row)`, `read_parsed(row)`, `read_prompt(row)` derive from `row["doc_dir"]`.
+  - Optional ops helper: `find_latest_doc_id_by_task_id(stage, task_id)` by scanning `docs_root/<stage>/*/metadata.json` (ordered by `created_at`). Runtime assets must not rely on this.
 
 5) Writes (Document helper)
 - Ensure `metadata.json` contains required fields and `created_at`.
@@ -59,27 +70,28 @@ Deferred
 ## Migration and Rollout Plan
 
 Phase A — Prerequisite (Completed)
-- plans/doc_id_first_design_plan.md enforced: parent_doc_id required; assets resolve by doc_id; verified coverage.
+- Doc‑id first: Adopt `parent_doc_id` across tasks, assets, and scripts (minor docs pending update).
+- Partitions: `scripts/register_partitions_for_generations.py` updated to require essay doc ids and write `evaluation_tasks.csv` with `parent_doc_id`.
 
-Phase B — Replace runtime reads with filesystem helper
-- Introduce minimal helper (e.g., `utils/filesystem_rows.py:get_row_by_doc_id`).
-- Update non‑asset call sites to remove SQLite usage:
-  - `daydreaming_dagster/checks/documents_checks.py`
-  - `daydreaming_dagster/assets/cross_experiment.py`
-  - `daydreaming_dagster/assets/documents_reporting.py`
-- Update unit tests accordingly and run `.venv/bin/pytest daydreaming_dagster/ -q` and `.venv/bin/pytest tests/ -q`.
+Phase B — Replace runtime reads with filesystem helper (assets first)
+- Add `utils/filesystem_rows.py` with the helper API above.
+- Refactor assets to remove DB reads/writes and drop the `documents_index` resource:
+  - `assets/group_generation_essays.py`: load parent draft via `get_row_by_doc_id('draft', parent_doc_id)`; remove `get_latest_by_task` and DB inserts; `required_resource_keys` should not include `documents_index`.
+  - `assets/group_evaluation.py`: load target essay via `get_row_by_doc_id('essay', parent_doc_id)`; remove DB reads/inserts; drop `documents_index` from `required_resource_keys`.
+- Keep `utils/document.Document` for filesystem writes only (no `DocumentRow` dependency in runtime).
+- Update/adjust unit tests for these assets to assert fail‑fast when `parent_doc_id` missing and success when present.
 
 Phase C — Remove SQLite code and resource
-- Delete `daydreaming_dagster/utils/documents_index.py` and `daydreaming_dagster/resources/documents_index.py`.
-- Remove tests that exercised SQLite index (`utils/test_documents_index.py`) or port them to filesystem helper semantics.
-- Update `definitions.py` and any configs to drop `documents_index` resource.
+- Delete `utils/documents_index.py` and `resources/documents_index.py`.
+- Remove DB-based checks from `checks/documents_checks.py` (keep filesystem checks only) and stop registering them.
+- Update tests: remove/port `utils/test_documents_index.py` and any integration wiring of `DocumentsIndexResource` in `tests/test_pipeline_integration.py`.
+- Ensure `definitions.py` has no references to `documents_index` (already true), and assets no longer require it.
 
 Phase D — Optional ops tooling
-- Provide scripts for pointer maintenance and browsing if useful:
-  - `scripts/rebuild_pointers.py` (from metadata.json)
-  - `scripts/verify_pointers.py` (compare to a scan)
-  - `scripts/print_latest_doc.py` (ops convenience)
-- Make clear these are not used by runtime assets.
+- Provide filesystem-based ops scripts if needed; deprecate or rewrite DB‑dependent backfills:
+  - Keep or port: `scripts/print_latest_doc.py` (FS scan), `scripts/list_partitions_latest.py`.
+  - Mark DB backfills in `scripts/backfill/*` as legacy; optionally port small, high‑value ones to scan `metadata.json` instead of SQLite.
+- Update/retire `docs/llm_documents_index_guide.md` to a short “Filesystem Docs” guide.
 
 ## Risks & Mitigations
 
@@ -96,19 +108,24 @@ Phase D — Optional ops tooling
 - Update checks, cross‑experiment, and reporting to call the filesystem helper.
 
 3) Clean up SQLite
-- Remove `documents_index` resource, SQLite module, and tests. Update imports and docs.
+- Remove `documents_index` resource, SQLite module, DB checks, and associated tests. Update imports and docs.
 
 4) Optional ops scripts
   - Add/rewrite pointer maintenance and “latest” browsing tools under `scripts/`.
 
 5) Partitions script (already updated)
-- scripts/register_partitions_for_generations.py has been updated to require the essay document ID in the curated input and to write evaluation `parent_doc_id` accordingly. No further changes needed here.
+- `scripts/register_partitions_for_generations.py` is updated to require the essay document id in the curated input and to write evaluation `parent_doc_id`. No further changes needed here.
 
 ## Success Criteria
 
-- All unit/integration tests pass with SQLite fully removed.
-- No behavioral change in asset outputs, file layout, or IDs.
-- Docs and guides updated; no references to DB or index resources in runtime paths.
+- All unit/integration tests pass with SQLite fully removed from runtime.
+- No behavioral change in asset outputs, file layout, or IDs; lineage remains doc‑id first.
+- Docs/guides reflect filesystem‑only runtime; DB docs archived or clearly marked legacy.
+
+## Validation Plan
+- Unit: run `.venv/bin/pytest daydreaming_dagster/ -q` after refactors; update tests that referenced DB.
+- Integration: run `.venv/bin/pytest tests/ -q` and a targeted materialization of one draft/essay/evaluation partition to confirm end‑to‑end reads from filesystem.
+- Scripts: run `./scripts/rebuild_results.sh` and ensure outputs are produced; run `scripts/parse_all_scores.py` and `scripts/build_pivot_tables.py` and confirm pivots group by `parent_doc_id`.
 
 ## Open Questions
   
