@@ -359,12 +359,14 @@ def backfill_from_evals(
                 "source_file": str(draft_path),
             }
             write_text(doc_base / "metadata.json", __import__("json").dumps(meta, ensure_ascii=False, indent=2))
+            # Use legacy/canonical draft task id with single underscores: <combo_id>_<draft_template>_<model_id>
+            draft_task_id = f"{combo_id}_{template_id}_{gen_model_id}"
             idx.insert_document(
                 DocumentRow(
                     doc_id=doc_id,
                     logical_key_id=logical,
                     stage="draft",
-                    task_id=f"{combo_id}_auto_draft",
+                    task_id=draft_task_id,
                     doc_dir=str(Path("draft") / doc_id),
                     parent_doc_id=None,
                     template_id=template_id,
@@ -476,12 +478,14 @@ def backfill_from_evals(
                         write_text(draft_base / "prompt.txt", ptxt)
                 meta_d = {"source_file": str(src_path), "synthesized_from": "generation_responses"}
                 write_text(draft_base / "metadata.json", __import__("json").dumps(meta_d, ensure_ascii=False, indent=2))
+                # Use legacy/canonical draft task id with single underscores
+                draft_task_id = f"{combo_id}_{template_id_draft}_{gen_model_id}"
                 idx.insert_document(
                     DocumentRow(
                         doc_id=draft_doc_id,
                         logical_key_id=logical_draft,
                         stage="draft",
-                        task_id=f"{combo_id}_auto_draft",
+                        task_id=draft_task_id,
                         doc_dir=str(Path("draft") / draft_doc_id),
                         parent_doc_id=None,
                         template_id=template_id_draft,
@@ -522,10 +526,11 @@ def backfill_from_evals(
                     if ptxt is not None:
                         write_text(doc_base / "prompt.txt", ptxt)
                         break
+            # Populate metadata with the canonical draft task id when available
             meta = {
                 "source_file": str(src_path),
                 "created_from": created_from,
-                "parent_task_id": f"{combo_id}_auto_draft" if draft_doc_id else None,
+                "parent_task_id": (f"{combo_id}_{draft_tmpl}_{model_id}" if draft_doc_id else None),
             }
             write_text(doc_base / "metadata.json", __import__("json").dumps(meta, ensure_ascii=False, indent=2))
             idx.insert_document(

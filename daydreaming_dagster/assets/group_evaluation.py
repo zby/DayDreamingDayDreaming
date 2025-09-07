@@ -25,7 +25,7 @@ logger = logging.getLogger(__name__)
     partitions_def=evaluation_tasks_partitions,
     group_name="evaluation",
     io_manager_key="evaluation_prompt_io_manager",
-    required_resource_keys={"data_root"},
+    required_resource_keys={"data_root", "documents_index"},
     deps={EVALUATION_TEMPLATES_KEY},
 )
 def evaluation_prompt(context, evaluation_tasks) -> str:
@@ -34,22 +34,64 @@ def evaluation_prompt(context, evaluation_tasks) -> str:
     # DB-first: resolve target document by task id/stage
     doc_text = None
     used_source = None
-    try:
-        idx_res = context.resources.documents_index
-        if getattr(idx_res, "index_enabled", False):
-            idx = idx_res.get_index()
-            document_id = task_row.get("document_id")
-            stage_raw = str(task_row.get("stage") or "")
+    idx_res = getattr(context.resources, "documents_index", None)
+    if idx_res and getattr(idx_res, "index_enabled", False):
+        idx = idx_res.get_index()
+        document_id = task_row.get("document_id")
+        # Robust stage inference: many curated CSVs lack an explicit 'stage' column
+        stage_raw = str(task_row.get("stage") or "").strip().lower()
+        if stage_raw:
             stage = "essay" if stage_raw.startswith("essay") else "draft"
-            row = idx.get_latest_by_task(stage, str(document_id))
-            if row:
+        else:
+            # Infer from presence of essay_task_id/source_dir/file_path
+            source_dir = str(task_row.get("source_dir") or "").lower()
+            file_path = str(task_row.get("file_path") or "").lower()
+            if isinstance(task_row.get("essay_task_id"), str) and task_row.get("essay_task_id"):
+                stage = "essay"
+            elif "essay" in source_dir or "essay_responses" in file_path:
+                stage = "essay"
+            else:
+                stage = "draft"
+        context.log.info(
+            f"evaluation_prompt: resolving target from index stage={stage} document_id={document_id}"
+        )
+        key = str(document_id)
+        row = idx.get_latest_by_task(stage, key)
+        if row:
+            try:
+                doc_text = idx.read_parsed(row)
+            except Exception:
+                doc_text = idx.read_raw(row)
+            used_source = f"{stage}_db"
+        else:
+            # Emit helpful diagnostics
+            essay_count = idx.connect().execute(
+                "SELECT COUNT(1) AS c FROM documents WHERE stage='essay' AND task_id=?",
+                (key,),
+            ).fetchone()
+            draft_count = idx.connect().execute(
+                "SELECT COUNT(1) AS c FROM documents WHERE stage='draft' AND task_id=?",
+                (key,),
+            ).fetchone()
+            context.log.warning(
+                "evaluation_prompt: no row found for stage=%s, task_id=%s (essay_count=%s, draft_count=%s)",
+                stage,
+                key,
+                getattr(essay_count, "get", lambda k: essay_count["c"] if isinstance(essay_count, dict) else essay_count)("c") if essay_count else None,
+                getattr(draft_count, "get", lambda k: draft_count["c"] if isinstance(draft_count, dict) else draft_count)("c") if draft_count else None,
+            )
+            # Try the opposite stage just in case inference is wrong
+            alt_stage = "draft" if stage == "essay" else "essay"
+            alt_row = idx.get_latest_by_task(alt_stage, key)
+            if alt_row:
                 try:
-                    doc_text = idx.read_parsed(row)
+                    doc_text = idx.read_parsed(alt_row)
                 except Exception:
-                    doc_text = idx.read_raw(row)
-                used_source = f"{stage}_db"
-    except Exception:
-        doc_text = None
+                    doc_text = idx.read_raw(alt_row)
+                used_source = f"{alt_stage}_db"
+                context.log.info(
+                    f"evaluation_prompt: resolved via alternate stage={alt_stage} for task_id={key}"
+                )
 
     if doc_text is None:
         file_path = task_row.get("file_path")
@@ -216,7 +258,6 @@ def evaluation_response(context, evaluation_prompt, evaluation_tasks) -> str:
             template_id=str(evaluation_template),
             model_id=str(model_id),
             run_id=str(run_id),
-            prompt_path=str((target_dir / "prompt.txt")) if getattr(idx_res, "prompt_copy_enabled", True) else None,
             parser=None,
             status="ok",
             doc_dir=str(rel_dir),

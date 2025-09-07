@@ -506,7 +506,6 @@ def essay_response(context, essay_prompt, essay_generation_tasks) -> str:
             template_id=str(essay_template),
             model_id=str(model_id),
             run_id=str(run_id),
-            prompt_path=str((target_dir / "prompt.txt")) if getattr(idx_res, "prompt_copy_enabled", True) else None,
             parser=None,
             status="ok",
             doc_dir=str(rel_dir),
