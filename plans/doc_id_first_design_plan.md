@@ -32,17 +32,17 @@ Replace “latest-by-task” linking with explicit, pinned doc IDs across stages
 - essay_generation_tasks.csv
   - Add optional `parent_doc_id` (string). When present, assets resolve the draft by doc_id.
 - evaluation_tasks.csv
-  - Add optional `target_doc_id` (string). When present, assets resolve the target by doc_id. Keep existing `document_id` for back‑compat.
+  - Reuse `parent_doc_id` (string) to point to the parent essay document to evaluate. Keep existing `document_id` (task id) only for legacy fallback during migration.
 
 2) Asset behavior (prefer doc_id; fallback to latest)
 - essay_prompt / essay_response
   - If `parent_doc_id` present → read draft text by `stage='draft'` + `doc_id` (direct path).
   - Else → legacy fallback: resolve via latest‑by‑task using `draft_task_id`.
-  - Metadata: include `parent_doc_id` in essay metadata.json (already present when using DB helper; keep consistent).
+  - Metadata: include `parent_doc_id` in essay metadata.json (keep consistent).
 - evaluation_prompt / evaluation_response
-  - If `target_doc_id` present → resolve by `stage` + `doc_id` (direct path). Stage heuristic: prefer `essay` unless explicitly configured; or pass along `source_stage` field in evaluation_tasks.
+  - If `parent_doc_id` present → resolve by `stage='essay'` + `doc_id` (direct path). Optionally allow `source_stage` to override when evaluating drafts directly.
   - Else → legacy fallback: resolve via latest‑by‑task using `document_id` (task id).
-  - Metadata: include `parent_doc_id` = resolved target doc_id.
+  - Metadata: include `parent_doc_id` = parent essay doc_id.
 
 3) FSIndex + Document helper alignment
 - FSIndex (from remove_sqlite_index_plan):
@@ -56,8 +56,8 @@ Replace “latest-by-task” linking with explicit, pinned doc IDs across stages
 - scripts/register_partitions_for_generations.py
   - Accept doc IDs in curated inputs:
     - For essays: `parent_doc_id` column or `parent:` prefix in an input list to pin parent.
-    - For evaluations: `target_doc_id` column or `doc:` prefix.
-  - Populate the new columns in `data/2_tasks/*.csv` when provided.
+    - For evaluations: `parent_doc_id` column or `doc:` prefix to pin the parent essay doc.
+  - Populate `parent_doc_id` in `data/2_tasks/*.csv` when provided.
 - scripts/print_latest_doc.py / list_partitions_latest.py
   - Keep as ops tools; document that production flows should pin doc_id via task CSVs.
 
@@ -71,7 +71,7 @@ Replace “latest-by-task” linking with explicit, pinned doc IDs across stages
 ## Migration / Rollout
 
 Phase A — Add fields + no‑op behavior changes
-- Add `parent_doc_id` (essays) and `target_doc_id` (evaluations) columns to task generation and CSV readers (utils/raw_readers, assets/group_task_definitions).
+- Add `parent_doc_id` to essay and evaluation task tables; wire through utils/raw_readers and assets/group_task_definitions.
 - Update assets to prefer doc_id when present; otherwise keep existing behavior.
 - Update docs: recommend pinning doc IDs for reproducible runs.
 
@@ -106,8 +106,8 @@ Phase D — Optional cleanup
 - Wire through utils/raw_readers and assets/group_task_definitions.
 
 2) Assets
-- generation_essays: prefer parent_doc_id in `_load_phase1_text`/`essay_response`; fallback to index/pointer by draft_task_id.
-- group_evaluation: prefer target_doc_id in prompt/response; fallback to latest‑by‑task.
+- generation_essays: prefer parent_doc_id in `_load_phase1_text`/`essay_response`; fallback to pointer by draft_task_id.
+- group_evaluation: prefer parent_doc_id (essay doc) in prompt/response; fallback to latest‑by‑task.
 
 3) FSIndex
 - Provide path‑based `get_by_doc_id_and_stage`.
@@ -120,4 +120,3 @@ Phase D — Optional cleanup
 5) Docs & Checks
 - Update operating guide with doc_id pinning examples.
 - Make checks warn when running without pinned lineage in non‑dev runs.
-
