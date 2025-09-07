@@ -2,27 +2,27 @@
 
 Status: draft
 Owner: daydreaming_dagster
-Scope: Replace `SQLiteDocumentsIndex` with filesystem-based lookup using `metadata.json` and small pointer files.
+Scope: Remove `SQLiteDocumentsIndex` entirely. After doc_id-first rollout, replace remaining reads with a minimal path-based helper over `metadata.json`. Pointer files are optional and ops-only.
 
 ## Summary
 
-We currently dual-write generation/evaluation artifacts to `data/docs/<stage>/<logical_key_id>/<doc_id>/` and a SQLite table (`documents`). Reads for phase-to-phase linking and reports use the SQLite index. Given that all data needed for linking exists on disk already, we can remove SQLite by introducing a tiny filesystem index (pointer files) and expanding `metadata.json` to make lookups reliable and fast.
+This plan executes after plans/doc_id_first_design_plan.md is completed. Assets now require pinned doc IDs (`parent_doc_id`) and resolve parents/targets directly by filesystem path. We currently still dual‑write to a SQLite table (`documents`) and use it in a few non‑asset paths (checks/reporting/ops). Since all linking data exists on disk, we will remove SQLite and refactor remaining reads to a small path‑based helper that loads `metadata.json` from `docs_root/<stage>/<logical_key_id>/<doc_id>/`.
 
-Goal: Keep the same user‑visible behavior and IDs, simplify infra (no DB), reduce coupling, and make artifacts fully portable.
+Goal: Eliminate the DB dependency, keep IDs and behavior stable, and make artifacts fully portable. Pointer files for “latest” are optional and remain ops‑only.
 
 Current progress
 - Document helper is implemented and used by draft/essay/evaluation assets to write `raw.txt`, `parsed.txt`, optional `prompt.txt`, and `metadata.json` consistently.
 - Assets still insert rows into SQLite; reads for phase linking/reporting still use the DB. This plan removes that dependency.
+ - Verified: all essay and evaluation records already include `parent_doc_id`; no additional audit/check needed in this plan.
 
 Deferred
 - Global CSV audit log is deferred; we can add an append‑only journal later if needed.
 
 ## What SQLite Gives Us Today (to replace)
 
-- Retrieval helpers:
-  - `get_latest_by_task(stage, task_id)`
-  - `get_by_doc_id_and_stage(doc_id, stage)`
-  - `read_raw/parsed/prompt` path resolution
+- Retrieval helpers (to be replaced):
+  - Path‑based: `get_by_doc_id_and_stage(doc_id, stage)` and read of `raw/parsed/prompt` → replace with filesystem helper.
+  - Latest‑by‑task: `get_latest_by_task(stage, task_id)` → no longer used by runtime after doc_id‑first; keep only for ops scripts if desired.
 - Append‑only “attempts” per logical key with created_at ordering
 - Lightweight reporting (iterate rows)
 
@@ -40,105 +40,76 @@ Deferred
   - `run_id`, `attempt` (we already encode attempt in doc_id; keep explicit for portability)
   - `created_at` (ISO timestamp; write once on create)
 
-3) Pointer files (fast lookups, atomic updates)
-- Latest by logical key (per directory, optional):
-  - File: `docs_root/<stage>/<logical_key_id>/_latest.json`
-  - Content: `{ "doc_id": ..., "created_at": ..., "parser": null, ... }`
-- Latest by task id (bucketed to avoid huge directories):
-  - Dir: `docs_root/<stage>/_by_task/<hh>/<task_key>.json`
-    - `<hh>` = first 2 hex of SHA256(task_id), `task_key` = full SHA256(task_id)
-    - Content: `{ "task_id": ..., "doc_id": ..., "logical_key_id": ..., "created_at": ... }`
-  - Rationale: O(1) lookups without scanning; low contention because each task_id updates its own file.
+3) Pointer files (ops‑only, optional)
+- If needed for ops browsing of “latest”, maintain:
+  - Per logical key `_latest.json` under `docs_root/<stage>/<logical_key_id>/`.
+  - Optional by‑task buckets under `docs_root/<stage>/_by_task/...`.
+- Runtime assets will not depend on these pointers.
 
- - 4) Read API (drop‑in replacement)
- - New `FSIndex` class with the minimal surface used by runtime assets:
-  - `get_latest_by_task(stage, task_id)` → read bucketed JSON; fallback to scan when missing
-  - `get_by_doc_id_and_stage(doc_id, stage)` → direct path resolution: `docs_root/<stage>/<doc_id>` (no scan)
-  - `read_raw/parsed/prompt(row)` → derive from `doc_dir` (same as today)
-  - Note: `get_latest_by_logical` can be added later for ops tooling; not required by assets.
-- Scans are only on fallback and can be cached per run.
+4) Filesystem helper API (runtime)
+- Minimal helper (pure functions) to replace SQLite reads:
+  - `get_row_by_doc_id(stage, doc_id)` → resolve directory, load `metadata.json`, and return a row dict with derived paths.
+  - `read_raw/parsed/prompt(row)` → derive from `row["doc_dir"]`.
 
 5) Writes (Document helper)
-- Extend `Document.write_files()` to also update the two pointer files atomically:
-  - Compute `task_id` and `logical_key_id` from its metadata/fields
-  - Write JSON to `_latest.json` and bucketed task file via temp‑file + replace
-  - If pointers are missing or corrupted, they’ll be rebuilt by a standalone script (below)
+- Ensure `metadata.json` contains required fields and `created_at`.
+- Do not require pointer updates for runtime; provide standalone scripts to rebuild optional pointers if we choose to maintain them for ops.
 
 ## Migration and Rollout Plan
 
-Phase 0 — Inventory & Flag
-- Add `DD_DOCS_FS_INDEX=1` to switch reads to FSIndex while keeping SQLite writes on (belt‑and‑suspenders).
-- Sites to update reads:
-  - generation_essays: `_load_phase1_text_by_draft_task`, `_load_phase1_text_by_parent_doc`
-  - evaluation: `evaluation_prompt`
-  - documents_reporting: `documents_latest_report`, `documents_consistency_report`
-  - asset checks: `*_db_row_present_check`
+Phase A — Prerequisite (Completed)
+- plans/doc_id_first_design_plan.md enforced: parent_doc_id required; assets resolve by doc_id; verified coverage.
 
-Phase 1 — Implement FSIndex (read‑only)
-- Add `utils/fs_index.py` implementing the API above (no writers yet).
-- Add small unit tests for lookups with synthetic docs.
-- Resource: add `DocumentsFSIndexResource` (same `.get_index()` semantics) next to existing resource.
+Phase B — Replace runtime reads with filesystem helper
+- Introduce minimal helper (e.g., `utils/filesystem_rows.py:get_row_by_doc_id`).
+- Update non‑asset call sites to remove SQLite usage:
+  - `daydreaming_dagster/checks/documents_checks.py`
+  - `daydreaming_dagster/assets/cross_experiment.py`
+  - `daydreaming_dagster/assets/documents_reporting.py`
+- Update unit tests accordingly and run `.venv/bin/pytest daydreaming_dagster/ -q` and `.venv/bin/pytest tests/ -q`.
 
-Phase 2 — Dual‑write pointers
-- Extend `utils/document.Document.write_files()` to update pointer files.
-- Backfill script: `scripts/rebuild_fs_index.py` to rebuild pointers from `metadata.json` when needed.
-- Keep SQLite writes during this phase; reads controlled by flag.
+Phase C — Remove SQLite code and resource
+- Delete `daydreaming_dagster/utils/documents_index.py` and `daydreaming_dagster/resources/documents_index.py`.
+- Remove tests that exercised SQLite index (`utils/test_documents_index.py`) or port them to filesystem helper semantics.
+- Update `definitions.py` and any configs to drop `documents_index` resource.
 
-Phase 3 — Flip reads to FSIndex
-- Toggle default: `DocumentsIndexResource.get_index()` returns FSIndex when `DD_DOCS_FS_INDEX=1` (or make FS default, SQLite behind flag).
-- Update checks/reports to use FSIndex.
-- CI: run essay/draft/eval unit tests with FS enabled.
-
-Phase 4 — Remove SQLite
-- Delete `utils/documents_index.py` and `resources/documents_index.py` SQLite paths.
-- Update docs (guides + architecture) to remove DB mentions.
-- Clean tests depending on DB.
+Phase D — Optional ops tooling
+- Provide scripts for pointer maintenance and browsing if useful:
+  - `scripts/rebuild_pointers.py` (from metadata.json)
+  - `scripts/verify_pointers.py` (compare to a scan)
+  - `scripts/print_latest_doc.py` (ops convenience)
+- Make clear these are not used by runtime assets.
 
 ## Risks & Mitigations
 
-- Performance on large trees: mitigated by pointer files; scans only on cold/missing pointers.
-- Concurrency on pointer updates: per‑logical `_latest.json` and per‑task bucketed JSON minimize contention; atomic replace guarantees consistency. Worst case: transient missing pointers → fallback scan.
-- Backward compatibility: keep SQLite reads behind flag during transition; scripts to rebuild FS pointers.
-- Data integrity: `created_at`, `doc_id`, `logical_key_id`, and content hashes remain in metadata and files; pointers are derivable.
+- Performance on large trees: path‑based reads are O(1); reporting that scans trees can be batched and cached. Pointers are optional if faster ops views are needed.
+- Backward compatibility: doc_id‑first removes “latest” coupling from runtime paths; ops scripts can retain optional latest pointers.
+- Data integrity: `created_at`, `doc_id`, `logical_key_id`, and content hashes remain in metadata and files.
 
 ## Detailed Tasks
 
-1) Add FSIndex
-- File: `daydreaming_dagster/utils/fs_index.py`
-- Methods: `get_latest_by_task`, `get_by_doc_id_and_stage`, `read_raw/parsed/prompt`
-- Simple dataclass Row type mirroring `dict` structure used today (doc_id, stage, doc_dir, etc.)
+1) Filesystem helper
+- Implement `get_row_by_doc_id(stage, doc_id)` and `read_raw/parsed/prompt(row)`.
 
-2) Extend Document helper
-- Add `created_at` (ISO) and `attempt` to `metadata.json` on write.
-- Add `update_pointers(docs_root, stage, logical_key_id, task_id, doc_id)` called inside `write_files()`.
+2) Replace usages
+- Update checks, cross‑experiment, and reporting to call the filesystem helper.
 
-3) Resource layer
-- New: `DocumentsFSIndexResource(docs_root=...)` with `.get_index()` returning `FSIndex`.
-- Transition: `DocumentsIndexResource` can delegate to FSIndex by default; env var flips behavior.
+3) Clean up SQLite
+- Remove `documents_index` resource, SQLite module, and tests. Update imports and docs.
 
-4) Replace reads site‑by‑site
-- generation_essays: use `documents_index.get_index()` → FSIndex transparently.
-- evaluation_prompt: same change; keep failure messages the same.
-- documents_reporting + checks: port to FSIndex.
-
-5) Backfill & Maintenance
-- Script: `scripts/rebuild_fs_index.py` to regenerate all pointer files from `metadata.json` (walk directories, choose latest by `created_at` then lexical doc_id).
-- Script: `scripts/verify_fs_index.py` to compare pointers vs a fresh scan and report drift.
-
-6) Deletion
-- Remove SQLite code and dependencies after a full cycle on FS in CI and a local dry run.
+4) Optional ops scripts
+- Add/rewrite pointer maintenance and “latest” browsing tools under `scripts/`.
 
 ## Success Criteria
 
-- All unit/integration tests pass with `DD_DOCS_FS_INDEX=1` and with SQLite removed.
-- Latency of phase‑to‑phase lookups comparable to current (pointers present).
+- All unit/integration tests pass with SQLite fully removed.
 - No behavioral change in asset outputs, file layout, or IDs.
-- Docs and guides updated; no references to DB in runtime paths.
+- Docs and guides updated; no references to DB or index resources in runtime paths.
 
 ## Open Questions
   
 Out‑of‑scope for this iteration
-- Append‑only CSV index (global audit log) — postponed until after FSIndex cutover proves stable.
+- Append‑only CSV index (global audit log) — postponed.
 
-- Do we need a global report of all docs across stages? If yes, implement a simple `walk_docs()` in FSIndex that yields rows using metadata.json.
-- Should we encode `task_id` into directory names to avoid maintaining by‑task pointers? We keep directories stable and rely on pointer JSON for clarity and atomicity.
+- Do we need a global report of all docs across stages? If yes, implement a simple `walk_docs()` that yields rows using `metadata.json`.
+- Should we encode `task_id` into directory names? Keep directories stable; if needed, use optional pointer JSON for ops clarity.

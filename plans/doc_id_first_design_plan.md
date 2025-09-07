@@ -2,23 +2,23 @@
 
 Status: draft
 Owner: daydreaming_dagster
-Related: plans/remove_sqlite_index_plan.md (FSIndex + pointers)
+Related: plans/remove_sqlite_index_plan.md (pointer files)
 
 ## Summary
 
-Replace “latest-by-task” linking with explicit, pinned doc IDs across stages. Essays should reference a concrete parent draft `doc_id`; evaluations should reference a concrete target `doc_id`. Keep a legacy fallback to “latest” only when a doc ID is not provided. This improves determinism, reproducibility, and debuggability, and simplifies the future FSIndex (no DB).
+Replace “latest-by-task” linking with explicit, pinned doc IDs across stages. Essays must reference a concrete parent draft `doc_id`; evaluations must reference a concrete target `doc_id`. We will treat doc IDs as required (no optionality), which improves determinism, reproducibility, and debuggability, and removes any DB reliance.
 
 ## Goals
 
 - Deterministic lineage: essay → draft doc_id; evaluation → target doc_id.
-- Backward-compatible: if a doc_id is not provided, use latest-by-task as a temporary fallback.
+- Enforce pinned lineage: reject tasks missing required doc IDs.
 - Minimal surface for runtime lookups: prefer `get_by_doc_id_and_stage()` (path-based), keep “latest-by-task” pointers for ops/legacy only.
 - Update scripts/UX to make it easy to curate doc_id–pinned flows.
 
 ## Non‑Goals (this iteration)
 
 - CSV audit log of all docs (deferred; see remove_sqlite_index_plan).
-- Removal of the “latest-by-task” fallback (we’ll de-emphasize it, not delete it immediately).
+- Maintaining “latest-by-task” for production paths (it will remain as an ops tool only).
 
 ## Current dependencies on latest‑by‑task
 
@@ -30,65 +30,87 @@ Replace “latest-by-task” linking with explicit, pinned doc IDs across stages
 
 1) Task table schema changes
 - essay_generation_tasks.csv
-  - Add optional `parent_doc_id` (string). When present, assets resolve the draft by doc_id.
+  - Add required `parent_doc_id` (string). Assets resolve the draft by this doc_id.
 - evaluation_tasks.csv
-  - Reuse `parent_doc_id` (string) to point to the parent essay document to evaluate. Keep existing `document_id` (task id) only for legacy fallback during migration.
+  - Use required `parent_doc_id` (string) to point to the parent essay document to evaluate.
+  - `document_id` (task id) is deprecated for lookup; keep only for legacy references during migration and remove from code paths.
 
-2) Asset behavior (prefer doc_id; fallback to latest)
+2) Asset behavior (require doc_id)
 - essay_prompt / essay_response
-  - If `parent_doc_id` present → read draft text by `stage='draft'` + `doc_id` (direct path).
-  - Else → legacy fallback: resolve via latest‑by‑task using `draft_task_id`.
+  - Read draft text by `stage='draft'` + `parent_doc_id` (direct path).
+  - If `parent_doc_id` missing → fail fast with a clear error (no fallback).
   - Metadata: include `parent_doc_id` in essay metadata.json (keep consistent).
 - evaluation_prompt / evaluation_response
-  - If `parent_doc_id` present → resolve by `stage='essay'` + `doc_id` (direct path). Optionally allow `source_stage` to override when evaluating drafts directly.
-  - Else → legacy fallback: resolve via latest‑by‑task using `document_id` (task id).
+  - Resolve by `stage='essay'` + `parent_doc_id` (direct path). Optionally allow `source_stage` to override when evaluating drafts directly.
+  - If `parent_doc_id` missing → fail fast with a clear error (no fallback).
   - Metadata: include `parent_doc_id` = parent essay doc_id.
 
-3) FSIndex + Document helper alignment
-- FSIndex (from remove_sqlite_index_plan):
-  - `get_by_doc_id_and_stage(doc_id, stage)` → resolve `docs_root/<stage>/<doc_id>` directly.
-  - `get_latest_by_task(stage, task_id)` → read bucketed pointer JSON (fallback/ops only).
+3) Filesystem helper alignment
+- Minimal helper API (pure, path‑based):
+  - `get_row_by_doc_id(stage, doc_id)` → derive `docs_root/<stage>/<doc_id>`, load `metadata.json`, and return a row dict with derived paths (`raw.txt`, `parsed.txt`, `prompt.txt`).
 - Document.write_files()
-  - Ensure `metadata.json` contains `task_id`, `parent_doc_id` (if any), `template_id`, `model_id`, `run_id`, `attempt`, `created_at`.
-  - Maintain pointer updates (latest‑by‑task and optional per‑logical `_latest.json`).
+  - Ensure `metadata.json` contains `task_id`, `parent_doc_id` (required for essays/evaluations), `template_id`, `model_id`, `run_id`, `attempt`, `created_at`.
+  - No runtime dependency on pointer files; any “latest” browsing remains an ops‑only concern.
+
+ 
 
 4) Scripts & CLI UX
 - scripts/register_partitions_for_generations.py
   - Accept doc IDs in curated inputs:
     - For essays: `parent_doc_id` column or `parent:` prefix in an input list to pin parent.
     - For evaluations: `parent_doc_id` column or `doc:` prefix to pin the parent essay doc.
-  - Populate `parent_doc_id` in `data/2_tasks/*.csv` when provided.
+  - Populate `parent_doc_id` in `data/2_tasks/*.csv` (required in curated flows).
 - scripts/print_latest_doc.py / list_partitions_latest.py
   - Keep as ops tools; document that production flows should pin doc_id via task CSVs.
 
 5) Checks and reporting
-- Asset checks: where we validate “row present in index”, allow either path:
-  - If a doc_id is referenced (parent/target), check by path (`docs_root/<stage>/<doc_id>`).
-  - Else, check via latest‑by‑task pointer (transition period only).
+- Asset checks: validate by path only when a parent/target doc_id is specified (required now).
 - Cross‑experiment appenders
   - Capture the produced `doc_id` from asset metadata and use it directly in appended CSVs (avoid re‑resolving latest).
 
 ## Migration / Rollout
 
-Phase A — Add fields + no‑op behavior changes
-- Add `parent_doc_id` to essay and evaluation task tables; wire through utils/raw_readers and assets/group_task_definitions.
-- Update assets to prefer doc_id when present; otherwise keep existing behavior.
-- Update docs: recommend pinning doc IDs for reproducible runs.
+Phase A — Enforce required IDs (Completed)
+- parent_doc_id required in essay/evaluation task tables; assets and docs updated.
 
-Phase B — Script support + examples
+Phase B — Asset changes + tests
+- Update assets to hard‑require parent_doc_id (remove latest‑by‑task paths):
+  - `daydreaming_dagster/assets/group_generation_essays.py`
+  - `daydreaming_dagster/assets/group_evaluation.py`
+- Update unit tests to pass parent_doc_id and assert clear failures when missing.
+- Run tests (unit first, then integration):
+  - `.venv/bin/pytest daydreaming_dagster/ -q`
+  - `.venv/bin/pytest tests/ -q`
+- Gate: all tests pass locally and in CI.
+
+Phase C — Script support + examples
 - Extend `register_partitions_for_generations.py` to accept doc IDs and populate task CSVs.
 - Add examples in docs/guides/operating_guide.md for curated, doc_id‑pinned runs.
 
-Phase C — Prefer pinned by default (policy)
-- In guides and CI examples, use doc_id‑pinned flows; treat “latest-by-task” as a fallback only.
-- Update checks to warn (not fail) when running without pinned parent/target in non‑interactive environments.
+Phase D — Documentation and ops tooling only
+- In guides and CI examples, use doc_id‑pinned flows exclusively.
+- Keep “latest-by-task” pointers available only for ops scripts and debugging; not used in asset paths.
 
-Phase D — Optional cleanup
+Phase E — Optional cleanup
 - Reduce code paths that rely on “latest” in core assets once adoption is high. Keep pointers and scripts for ops.
+
+Phase F — Index removal + filesystem helpers
+- Remove latest‑by‑task usage from:
+  - `daydreaming_dagster/checks/documents_checks.py`
+  - `daydreaming_dagster/assets/cross_experiment.py`
+  - `daydreaming_dagster/assets/documents_reporting.py`
+- Replace `DocumentsIndexResource` with a minimal `FilesystemDocumentHelper` (pure, path‑based).
+- Replace `idx.get_by_doc_id_and_stage` calls with the filesystem helper.
+- Delete SQLite index code and tests (or keep a thin shim temporarily):
+  - `daydreaming_dagster/utils/documents_index.py`
+  - `daydreaming_dagster/resources/documents_index.py`
+  - `daydreaming_dagster/utils/test_documents_index.py`
+- Provide an ops‑only script for browsing latest by task if needed.
+- Run unit/integration tests and update any remaining call sites.
 
 ## Risks & Mitigations
 
-- Incomplete curation: users might omit the doc_id. Mitigation: maintain fallback + clear metadata indicating fallback mode.
+- Incomplete curation: users might omit the doc_id. Mitigation: fail early with actionable error and provide helper scripts to fetch valid doc_ids.
 - Stage ambiguity for evaluation targets: Mitigation: include an explicit `source_stage` in evaluation_tasks when needed (defaults to essay when both exist).
 - Legacy data: tasks produced before this change won’t have doc IDs. Mitigation: allow pinning later via a helper that reads documents index/pointers and writes the pinned IDs back to CSVs.
 
@@ -102,16 +124,16 @@ Phase D — Optional cleanup
 ## Implementation Tasks (Engineering Checklist)
 
 1) Task tables
-- Add optional columns: `parent_doc_id` (essay), `target_doc_id` (evaluation).
+- Enforce required `parent_doc_id` in essay and evaluation task rows (schema + runtime validation).
 - Wire through utils/raw_readers and assets/group_task_definitions.
 
 2) Assets
-- generation_essays: prefer parent_doc_id in `_load_phase1_text`/`essay_response`; fallback to pointer by draft_task_id.
-- group_evaluation: prefer parent_doc_id (essay doc) in prompt/response; fallback to latest‑by‑task.
+- generation_essays: require parent_doc_id in `_load_phase1_text`/`essay_response`; no fallback.
+- group_evaluation: require parent_doc_id (essay doc) in prompt/response; no fallback.
 
-3) FSIndex
-- Provide path‑based `get_by_doc_id_and_stage`.
-- Keep pointer‑based `get_latest_by_task` for fallback and ops.
+3) Filesystem helper
+- Provide path‑based `get_row_by_doc_id`.
+- Do not use any “latest” lookup in assets; keep such capability in ops scripts only.
 
 4) Scripts
 - register_partitions_for_generations: accept doc IDs, write new columns.
