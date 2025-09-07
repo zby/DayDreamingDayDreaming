@@ -19,6 +19,11 @@ from ..utils.ids import (
     doc_dir as build_doc_dir,
 )
 from ..utils.documents_index import DocumentRow
+from ..utils.filesystem_rows import (
+    get_row_by_doc_id as fs_get_row_by_doc_id,
+    read_parsed as fs_read_parsed,
+    read_raw as fs_read_raw,
+)
 from ..utils.document import Document
 
 # Reuse a single Jinja environment
@@ -86,72 +91,38 @@ def _get_essay_generator_mode(data_root: str | Path, template_id: str) -> str:
 
 
 def _load_phase1_text_by_parent_doc(context, parent_doc_id: str) -> tuple[str, str]:
-    """Load Phase‑1 text by parent_doc_id using the documents index.
+    """Load Phase‑1 text by parent_doc_id directly from the filesystem.
 
     Returns (normalized_text, source_label).
     """
-    idx_res = context.resources.documents_index
-    if not idx_res:
-        raise Failure(
-            description="Documents index not available to resolve draft by parent_doc_id",
-            metadata={
-                "function": MetadataValue.text("_load_phase1_text_by_parent_doc"),
-                "parent_doc_id": MetadataValue.text(str(parent_doc_id)),
-            },
-        )
-    idx = idx_res.get_index()
-    row = idx.get_by_doc_id_and_stage(str(parent_doc_id), "draft")
+    data_root = Path(getattr(context.resources, "data_root", "data"))
+    docs_root = data_root / "docs"
+    row = fs_get_row_by_doc_id(docs_root, "draft", str(parent_doc_id))
     if not row:
         raise Failure(
-            description="Parent draft document not found in index",
+            description="Parent draft document not found",
             metadata={
                 "function": MetadataValue.text("_load_phase1_text_by_parent_doc"),
                 "parent_doc_id": MetadataValue.text(str(parent_doc_id)),
             },
         )
     try:
-        text = idx.read_parsed(row)
+        text = fs_read_parsed(row)
     except Exception:
-        text = idx.read_raw(row)
-    return str(text).replace("\r\n", "\n"), "draft_db_parent"
+        text = fs_read_raw(row)
+    return str(text).replace("\r\n", "\n"), "draft_fs_parent"
 
 
 def _load_phase1_text_by_draft_task(context, draft_task_id: str) -> tuple[str, str]:
-    """Load Phase‑1 text by draft_task_id using the documents index only.
-
-    Returns (normalized_text, source_label).
-    """
-    if not (isinstance(draft_task_id, str) and draft_task_id):
-        raise Failure(
-            description="Missing draft_task_id for essay task",
-            metadata={
-                "function": MetadataValue.text("_load_phase1_text_by_draft_task"),
-            },
-        )
-    idx_res = context.resources.documents_index
-    if not idx_res:
-        raise Failure(
-            description="Documents index not available to resolve draft by task id",
-            metadata={
-                "function": MetadataValue.text("_load_phase1_text_by_draft_task"),
-                "draft_task_id": MetadataValue.text(str(draft_task_id)),
-            },
-        )
-    idx = idx_res.get_index()
-    row = idx.get_latest_by_task("draft", str(draft_task_id))
-    if not row:
-        raise Failure(
-            description="Draft not found in documents index for task id",
-            metadata={
-                "function": MetadataValue.text("_load_phase1_text_by_draft_task"),
-                "draft_task_id": MetadataValue.text(str(draft_task_id)),
-            },
-        )
-    try:
-        text = idx.read_parsed(row)
-    except Exception:
-        text = idx.read_raw(row)
-    return str(text).replace("\r\n", "\n"), "draft_db_task"
+    """Deprecated: task-based resolution removed — doc-id required."""
+    raise Failure(
+        description="draft_task_id-based resolution is disabled; provide parent_doc_id",
+        metadata={
+            "function": MetadataValue.text("_load_phase1_text_by_draft_task"),
+            "draft_task_id": MetadataValue.text(str(draft_task_id)),
+            "resolution": MetadataValue.text("Add parent_doc_id to essay_generation_tasks.csv for this essay_task_id"),
+        },
+    )
 
 
 def _load_phase1_text_by_combo_model(context, combo_id: str, model_id: str) -> tuple[str, str]:
@@ -204,9 +175,18 @@ def _essay_prompt_impl(context, essay_generation_tasks) -> str:
         )
         return f"{generator_mode.upper()}_MODE: no prompt needed"
 
-    # Resolve Phase‑1 text strictly via draft_task_id using the documents index
-    draft_task_id = task_row.get("draft_task_id")
-    draft_text, used_source = _load_phase1_text_by_draft_task(context, draft_task_id)
+    # Resolve Phase‑1 text strictly via parent_doc_id (doc-id required)
+    parent_doc_id = task_row.get("parent_doc_id")
+    if not (isinstance(parent_doc_id, str) and parent_doc_id.strip()):
+        raise Failure(
+            description="Missing parent_doc_id for essay task",
+            metadata={
+                "function": MetadataValue.text("essay_prompt"),
+                "essay_task_id": MetadataValue.text(task_id),
+                "resolution": MetadataValue.text("Provide parent_doc_id (draft doc id) in essay_generation_tasks.csv"),
+            },
+        )
+    draft_text, used_source = _load_phase1_text_by_parent_doc(context, str(parent_doc_id))
     draft_lines = [line.strip() for line in draft_text.split("\n") if line.strip()]
 
     try:
@@ -258,9 +238,17 @@ def _essay_response_impl(context, essay_prompt, essay_generation_tasks) -> str:
     mode = _get_essay_generator_mode(context.resources.data_root, template_name)
 
     # Load Phase‑1 draft text; prefer index when available, otherwise fall back to IO/filesystem
-    draft_task_id = task_row.get("draft_task_id")
-    # DB-only resolution of Phase-1 text
-    draft_text, used_source = _load_phase1_text_by_draft_task(context, draft_task_id)
+    parent_doc_id = task_row.get("parent_doc_id")
+    if not (isinstance(parent_doc_id, str) and parent_doc_id.strip()):
+        raise Failure(
+            description="Missing parent_doc_id for essay task",
+            metadata={
+                "function": MetadataValue.text("_essay_response_impl"),
+                "essay_task_id": MetadataValue.text(task_id),
+                "resolution": MetadataValue.text("Provide parent_doc_id (draft doc id) in essay_generation_tasks.csv"),
+            },
+        )
+    draft_text, used_source = _load_phase1_text_by_parent_doc(context, str(parent_doc_id))
 
     if mode == "copy":
         text = draft_text
@@ -269,9 +257,7 @@ def _essay_response_impl(context, essay_prompt, essay_generation_tasks) -> str:
                 "function": MetadataValue.text("essay_response"),
                 "mode": MetadataValue.text("copy"),
                 "essay_task_id": MetadataValue.text(task_id),
-                "source_draft_task_id": MetadataValue.text(str(draft_task_id)),
-                # Back-compat with older naming in tests/reports
-                "source_link_task_id": MetadataValue.text(str(draft_task_id)),
+                "parent_doc_id": MetadataValue.text(str(parent_doc_id)),
                 "source": MetadataValue.text(used_source),
                 "chars": MetadataValue.int(len(text)),
                 "lines": MetadataValue.int(sum(1 for _ in text.splitlines())),
@@ -362,29 +348,25 @@ def essay_response(context, essay_prompt, essay_generation_tasks) -> str:
     task_row = get_task_row(essay_generation_tasks, "essay_task_id", task_id, context, "essay_generation_tasks")
     essay_template = task_row.get("essay_template")
     model_id = task_row.get("generation_model") or task_row.get("generation_model_id")
-    draft_task_id = task_row.get("draft_task_id")
     generator_mode = (_get_essay_generator_mode(context.resources.data_root, essay_template) or "llm").lower()
 
-    idx = idx_res.get_index()
-    # Derive parent (draft) doc from draft_task_id via the index (fail fast if missing)
-    parent_row = idx.get_latest_by_task("draft", str(draft_task_id))
-    if not parent_row:
+    parent_doc_id = task_row.get("parent_doc_id")
+    if not (isinstance(parent_doc_id, str) and parent_doc_id.strip()):
         raise Failure(
-            description="Draft not found in documents index for essay parent",
+            description="Missing parent_doc_id for essay task",
             metadata={
                 "function": MetadataValue.text("essay_response"),
                 "essay_task_id": MetadataValue.text(task_id),
-                "draft_task_id": MetadataValue.text(str(draft_task_id)),
+                "resolution": MetadataValue.text("Provide parent_doc_id (draft doc id) in essay_generation_tasks.csv"),
             },
         )
-    parent_doc_id = parent_row.get("doc_id")
     logical_key_id = compute_logical_key_id_essay(str(parent_doc_id), str(essay_template), str(model_id))
 
     run_id = getattr(context, "run_id", "run")
     attempt = int(time.time_ns())
     doc_id = new_doc_id(logical_key_id, run_id, attempt)
 
-    docs_root = _Path(idx.docs_root)
+    docs_root = Path(getattr(context.resources, "data_root", "data")) / "docs"
     # Build document using helper
     metadata = {
         "task_id": task_id,

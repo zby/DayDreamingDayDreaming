@@ -138,6 +138,7 @@ def test_evaluation_tasks_id_and_columns():
                     {
                         "evaluation_task_id": f"{doc['document_id']}__{tpl}__{eval_model_id}",
                         "document_id": doc["document_id"],
+                        "parent_doc_id": doc["document_id"],
                         "stage": doc["stage"],
                         "origin": doc["origin"],
                         "file_path": doc["file_path"],
@@ -162,6 +163,7 @@ def test_evaluation_tasks_id_and_columns():
     required_cols = {
         "evaluation_task_id",
         "document_id",
+        "parent_doc_id",
         "stage",
         "origin",
         "file_path",

@@ -18,7 +18,7 @@ class _FakeDraftIO:
 
 
 class _FakeContext:
-    def __init__(self, partition_key: str, data_root: Path, draft_io, draft_task_id: str, draft_content: str):
+    def __init__(self, partition_key: str, data_root: Path, draft_io):
         class _Res:
             pass
 
@@ -28,32 +28,6 @@ class _FakeContext:
         self.resources = _Res()
         self.resources.data_root = str(data_root)
         self.resources.draft_response_io_manager = draft_io
-        # Minimal documents_index stub to satisfy DB-only loader
-        class _Idx:
-            def __init__(self, task_id: str, text: str):
-                self._task_id = task_id
-                self._text = text
-                self.docs_root = str(data_root / "docs")
-
-            def get_latest_by_task(self, stage: str, task_id: str, statuses=("ok",)):
-                if stage == "draft" and task_id == self._task_id:
-                    return {"doc_id": "docX", "stage": stage, "task_id": task_id, "doc_dir": str(Path("draft") / "docX")}
-                return None
-
-            def read_parsed(self, _row):
-                return self._text
-
-            def read_raw(self, _row):
-                return self._text
-
-        class _IdxRes:
-            def __init__(self, task_id: str, text: str):
-                self._idx = _Idx(task_id, text)
-
-            def get_index(self):
-                return self._idx
-
-        self.resources.documents_index = _IdxRes(draft_task_id, draft_content)
         # LLM present but unused in copy mode
         class _LLM:
             def generate(self, *_args, **_kwargs):
@@ -85,17 +59,21 @@ def _write_minimal_essay_templates_csv(dir_path: Path):
 def test_essay_response_copy_mode_returns_draft_content(tmp_path: Path):
     _write_minimal_essay_templates_csv(tmp_path)
 
-    draft_task_id = "comboX_deliberate-rolling-thread-v2_sonnet-4"
+    # Prepare a parent draft doc on filesystem
+    parent_doc_id = "docX"
+    draft_dir = tmp_path / "docs" / "draft" / parent_doc_id
+    draft_dir.mkdir(parents=True, exist_ok=True)
     essay_template = "copy-from-drafts-v1"
-    essay_task_id = f"{draft_task_id}_{essay_template}"
+    essay_task_id = f"essay_for_{parent_doc_id}_{essay_template}"
 
     draft_content = "Line A\nLine B\nLine C\n"
+    (draft_dir / "parsed.txt").write_text(draft_content, encoding="utf-8")
 
     tasks = pd.DataFrame(
         [
             {
                 "essay_task_id": essay_task_id,
-                "draft_task_id": draft_task_id,
+                "parent_doc_id": parent_doc_id,
                 "draft_template": "deliberate-rolling-thread-v2",
                 "essay_template": essay_template,
                 "generation_model_name": "unused",
@@ -107,14 +85,12 @@ def test_essay_response_copy_mode_returns_draft_content(tmp_path: Path):
         partition_key=essay_task_id,
         data_root=tmp_path,
         draft_io=_FakeDraftIO(draft_content),
-        draft_task_id=draft_task_id,
-        draft_content=draft_content,
     )
 
     result = essay_response_impl(ctx, essay_prompt="COPY_MODE", essay_generation_tasks=tasks)
 
     assert result == draft_content
     mode = ctx._meta.get("mode")
-    src = ctx._meta.get("source_draft_task_id") or ctx._meta.get("source_link_task_id")
+    src_parent = ctx._meta.get("parent_doc_id")
     assert (getattr(mode, "text", mode)) == "copy"
-    assert (getattr(src, "text", src)) == draft_task_id
+    assert (getattr(src_parent, "text", src_parent)) == parent_doc_id
