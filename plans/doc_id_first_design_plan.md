@@ -97,6 +97,21 @@ Phase B — Asset changes + tests
   - `.venv/bin/pytest tests/ -q`
 - Gate: all tests pass locally and in CI.
 
+Unit test updates (doc‑id expectations and fail‑fast)
+- `daydreaming_dagster/assets/test_core_tasks_schema.py`
+  - Flip evaluation task schema to require `parent_doc_id` (keep `document_id` only if still emitted for legacy views; not used for resolution).
+  - Build `evaluation_task_id` using the essay doc id (now `parent_doc_id`).
+- `daydreaming_dagster/assets/test_selection_evaluation.py`
+  - Construct rows with `parent_doc_id` instead of `document_id` when building evaluation tasks from selected docs.
+  - Update assertion to compare `set(evaluation_tasks_df["parent_doc_id"])` to `set(selected_docs)`.
+- `daydreaming_dagster/assets/test_results_processing.py`
+  - In parsed scores enrichment test, rename denormalized column `document_id` to `parent_doc_id` and adjust joins/expected columns accordingly.
+  - Update results_processing asset expectations to carry `parent_doc_id` through; paths still derive from task IDs.
+- `tests/test_essay_response_copy_mode.py`
+  - Replace task‑based draft resolution with `parent_doc_id` in the input row; remove `documents_index` stub.
+  - Add a new test asserting fail‑fast when `parent_doc_id` is missing for essay response (clear error message).
+- Any tests mocking `get_latest_by_task` or depending on `documents_index` should instead mock the path‑based loader (`get_row_by_doc_id`).
+
 Phase C — Script support + examples
 - Extend `register_partitions_for_generations.py` to accept doc IDs and populate task CSVs.
 - Add examples in docs/guides/operating_guide.md for curated, doc_id‑pinned runs.
