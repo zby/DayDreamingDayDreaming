@@ -4,59 +4,59 @@ from dagster import asset, MetadataValue
 import pandas as pd
 from pathlib import Path
 import os
-from daydreaming_dagster.utils.documents_index import SQLiteDocumentsIndex
+import json
 
 
 @asset(
     group_name="reporting",
     io_manager_key="error_log_io_manager",
-    required_resource_keys={"data_root", "documents_index"},
+    required_resource_keys={"data_root"},
     compute_kind="python",
 )
 def documents_latest_report(context) -> pd.DataFrame:
-    """Export a small CSV snapshot of the latest OK rows per stage.
+    """Export a small CSV snapshot of recent docs by scanning filesystem metadata.
 
-    - If documents index resource is available and enabled, query SQLite; otherwise emit an empty CSV with headers.
-    - Output path: data/7_reporting/documents_latest_report.csv via CSVIOManager.
+    Output path: data/7_reporting/documents_latest_report.csv via CSVIOManager.
     """
-    try:
-        idx_res = context.resources.documents_index
-        idx = idx_res.get_index()
-        if idx is not None:
-            con = idx.connect()
-            # Select latest rows by stage/logical key using rowid tie-breaker
-            q = (
-                "SELECT d1.* FROM documents d1 JOIN ("
-                "  SELECT stage, logical_key_id, MAX(created_at) AS mx FROM documents WHERE status='ok' GROUP BY stage, logical_key_id"
-                ") t ON d1.stage=t.stage AND d1.logical_key_id=t.logical_key_id AND d1.created_at=t.mx"
-            )
-            rows = list(con.execute(q))
-            if not rows:
-                # Fallback: latest rows overall (helpful for smoke and empty groups)
-                rows = list(con.execute("SELECT * FROM documents ORDER BY created_at DESC, rowid DESC LIMIT 50"))
-            df = pd.DataFrame(rows) if rows else pd.DataFrame(
-                columns=[
-                    "doc_id","logical_key_id","stage","task_id","parent_doc_id","template_id","model_id","run_id","prompt_path","parser","status","usage_prompt_tokens","usage_completion_tokens","usage_max_tokens","created_at","doc_dir","raw_chars","parsed_chars","content_hash","meta_small","lineage_prev_doc_id"
-                ]
-            )
-            context.add_output_metadata({
-                "rows": MetadataValue.int(len(df)),
-                "source": MetadataValue.text("documents.sqlite"),
+    data_root = Path(getattr(context.resources, "data_root", "data"))
+    docs_root = data_root / "docs"
+    records: list[dict] = []
+    for stage in ("draft", "essay", "evaluation"):
+        base = docs_root / stage
+        if not base.exists():
+            continue
+        for doc_dir in base.iterdir():
+            if not doc_dir.is_dir():
+                continue
+            meta_path = doc_dir / "metadata.json"
+            task_id = None
+            created_at = None
+            try:
+                if meta_path.exists():
+                    meta = json.loads(meta_path.read_text(encoding="utf-8"))
+                    if isinstance(meta, dict):
+                        task_id = meta.get("task_id")
+                        created_at = meta.get("created_at")
+            except Exception:
+                pass
+            records.append({
+                "doc_id": doc_dir.name,
+                "stage": stage,
+                "task_id": task_id,
+                "created_at": created_at,
+                "doc_dir": str(doc_dir),
             })
-            return df
-    except Exception as e:
-        context.log.warning(f"documents_latest_report: falling back to empty output due to: {e}")
-    # Fail: index is required
-    from dagster import Failure as _Failure
-    raise _Failure(
-        description="documents_latest_report requires documents_index",
-        metadata={"function": MetadataValue.text("documents_latest_report")},
-    )
+    df = pd.DataFrame(records)
+    context.add_output_metadata({
+        "rows": MetadataValue.int(len(df)),
+        "source": MetadataValue.text("filesystem"),
+    })
+    return df
 
 @asset(
     group_name="reporting",
     io_manager_key="error_log_io_manager",
-    required_resource_keys={"data_root", "documents_index"},
+    required_resource_keys={"data_root"},
     compute_kind="python",
 )
 def documents_consistency_report(context) -> pd.DataFrame:
@@ -67,37 +67,38 @@ def documents_consistency_report(context) -> pd.DataFrame:
     - missing_raw, missing_parsed, missing_prompt
     - dir_exists
     """
-    idx: SQLiteDocumentsIndex | None = None
-    # Open via resource only (DB-only mode)
-    idx_res = context.resources.documents_index
-    idx = idx_res.get_index()
-
-    con = idx.connect()
-    # Examine recent rows (limit for performance); prefer latest per (stage, logical), then recent
-    rows = list(con.execute(
-        "SELECT d1.* FROM documents d1 JOIN ("
-        "  SELECT stage, logical_key_id, MAX(created_at) AS mx FROM documents GROUP BY stage, logical_key_id"
-        ") t ON d1.stage=t.stage AND d1.logical_key_id=t.logical_key_id AND d1.created_at=t.mx"
-    ))
-    if not rows:
-        rows = list(con.execute("SELECT * FROM documents ORDER BY created_at DESC, rowid DESC LIMIT 1000"))
-
+    data_root = Path(getattr(context.resources, "data_root", "data"))
+    docs_root = data_root / "docs"
     records: list[dict] = []
-    for r in rows:
-        base = idx.resolve_doc_dir(r)
-        raw = base / "raw.txt"
-        parsed = base / "parsed.txt"
-        prompt = base / "prompt.txt"
-        records.append({
-            "doc_id": r.get("doc_id"),
-            "stage": r.get("stage"),
-            "task_id": r.get("task_id"),
-            "doc_dir": str(base),
-            "missing_raw": not raw.exists(),
-            "missing_parsed": not parsed.exists(),
-            "missing_prompt": not prompt.exists(),
-            "dir_exists": base.exists(),
-        })
+    for stage in ("draft", "essay", "evaluation"):
+        base = docs_root / stage
+        if not base.exists():
+            continue
+        for doc_dir in base.iterdir():
+            if not doc_dir.is_dir():
+                continue
+            raw = doc_dir / "raw.txt"
+            parsed = doc_dir / "parsed.txt"
+            prompt = doc_dir / "prompt.txt"
+            task_id = None
+            try:
+                meta_path = doc_dir / "metadata.json"
+                if meta_path.exists():
+                    meta = json.loads(meta_path.read_text(encoding="utf-8"))
+                    if isinstance(meta, dict):
+                        task_id = meta.get("task_id")
+            except Exception:
+                pass
+            records.append({
+                "doc_id": doc_dir.name,
+                "stage": stage,
+                "task_id": task_id,
+                "doc_dir": str(doc_dir),
+                "missing_raw": not raw.exists(),
+                "missing_parsed": not parsed.exists(),
+                "missing_prompt": not prompt.exists(),
+                "dir_exists": doc_dir.exists(),
+            })
     df = pd.DataFrame(records)
     context.add_output_metadata({
         "rows": MetadataValue.int(len(df)),
