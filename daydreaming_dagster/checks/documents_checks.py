@@ -8,6 +8,7 @@ from daydreaming_dagster.assets.group_generation_draft import draft_response as 
 from daydreaming_dagster.assets.group_generation_essays import essay_response as essay_response_asset
 from daydreaming_dagster.assets.group_evaluation import evaluation_response as evaluation_response_asset
 from daydreaming_dagster.utils.documents_index import SQLiteDocumentsIndex
+from daydreaming_dagster.utils.document_locator import find_document_path
 
 
 def _latest_versioned(path: Path, stem: str) -> Path | None:
@@ -36,50 +37,40 @@ def _get_pk(context):
     return getattr(context, "partition_key", None) or getattr(context, "asset_partition_key", None)
 
 
-@asset_check(asset=draft_response_asset, required_resource_keys={"documents_index"})
+@asset_check(asset=draft_response_asset, required_resource_keys={"data_root"})
 def draft_files_exist_check(context) -> AssetCheckResult:
     pk = _get_pk(context)
     if not pk:
         return AssetCheckResult(passed=True, metadata={"skipped": MetadataValue.text("no partition context")})
-    # DB-only check
-    idx = context.resources.documents_index.get_index()
-    row = idx.get_latest_by_task("draft", pk)
-    if not row:
-        return AssetCheckResult(passed=False, metadata={"partition_key": MetadataValue.text(pk)})
-    base = idx.resolve_doc_dir(row)
-    raw = base / "raw.txt"
+    # Filesystem check
+    fp, src = find_document_path(pk, Path(getattr(context.resources, "data_root", "data")))
+    base = fp.parent if fp else Path("/")
+    raw = fp
     if raw.exists():
         return AssetCheckResult(passed=True, metadata={"doc_dir": MetadataValue.path(str(base))})
     return AssetCheckResult(passed=False, metadata={"doc_dir": MetadataValue.path(str(base))})
 
 
-@asset_check(asset=essay_response_asset, required_resource_keys={"documents_index"})
+@asset_check(asset=essay_response_asset, required_resource_keys={"data_root"})
 def essay_files_exist_check(context) -> AssetCheckResult:
     pk = _get_pk(context)
     if not pk:
         return AssetCheckResult(passed=True, metadata={"skipped": MetadataValue.text("no partition context")})
-    idx = context.resources.documents_index.get_index()
-    row = idx.get_latest_by_task("essay", pk)
-    if not row:
-        return AssetCheckResult(passed=False, metadata={"partition_key": MetadataValue.text(pk)})
-    base = idx.resolve_doc_dir(row)
-    raw = base / "raw.txt"
+    fp, src = find_document_path(pk, Path(getattr(context.resources, "data_root", "data")))
+    base = fp.parent if fp else Path("/")
+    raw = fp
     if raw.exists():
         return AssetCheckResult(passed=True, metadata={"doc_dir": MetadataValue.path(str(base))})
     return AssetCheckResult(passed=False, metadata={"doc_dir": MetadataValue.path(str(base))})
 
 
-@asset_check(asset=evaluation_response_asset, required_resource_keys={"documents_index"})
+@asset_check(asset=evaluation_response_asset, required_resource_keys={"data_root"})
 def evaluation_files_exist_check(context) -> AssetCheckResult:
     pk = _get_pk(context)
     if not pk:
         return AssetCheckResult(passed=True, metadata={"skipped": MetadataValue.text("no partition context")})
-    idx = context.resources.documents_index.get_index()
-    row = idx.get_latest_by_task("evaluation", pk)
-    if not row:
-        return AssetCheckResult(passed=False, metadata={"partition_key": MetadataValue.text(pk)})
-    base = idx.resolve_doc_dir(row)
-    raw = base / "raw.txt"
+    base = Path(getattr(context.resources, "data_root", "data")) / "4_evaluation" / "evaluation_responses"
+    raw = base / f"{pk}.txt"
     if raw.exists():
         return AssetCheckResult(passed=True, metadata={"doc_dir": MetadataValue.path(str(base))})
     return AssetCheckResult(passed=False, metadata={"doc_dir": MetadataValue.path(str(base))})
