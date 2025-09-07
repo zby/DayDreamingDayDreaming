@@ -18,7 +18,7 @@ class _FakeDraftIO:
 
 
 class _FakeContext:
-    def __init__(self, partition_key: str, data_root: Path, draft_io):
+    def __init__(self, partition_key: str, data_root: Path, draft_io, draft_task_id: str, draft_content: str):
         class _Res:
             pass
 
@@ -28,6 +28,32 @@ class _FakeContext:
         self.resources = _Res()
         self.resources.data_root = str(data_root)
         self.resources.draft_response_io_manager = draft_io
+        # Minimal documents_index stub to satisfy DB-only loader
+        class _Idx:
+            def __init__(self, task_id: str, text: str):
+                self._task_id = task_id
+                self._text = text
+                self.docs_root = str(data_root / "docs")
+
+            def get_latest_by_task(self, stage: str, task_id: str, statuses=("ok",)):
+                if stage == "draft" and task_id == self._task_id:
+                    return {"doc_id": "docX", "stage": stage, "task_id": task_id, "doc_dir": str(Path("draft") / "docX")}
+                return None
+
+            def read_parsed(self, _row):
+                return self._text
+
+            def read_raw(self, _row):
+                return self._text
+
+        class _IdxRes:
+            def __init__(self, task_id: str, text: str):
+                self._idx = _Idx(task_id, text)
+
+            def get_index(self):
+                return self._idx
+
+        self.resources.documents_index = _IdxRes(draft_task_id, draft_content)
         # LLM present but unused in copy mode
         class _LLM:
             def generate(self, *_args, **_kwargs):
@@ -81,6 +107,8 @@ def test_essay_response_copy_mode_returns_draft_content(tmp_path: Path):
         partition_key=essay_task_id,
         data_root=tmp_path,
         draft_io=_FakeDraftIO(draft_content),
+        draft_task_id=draft_task_id,
+        draft_content=draft_content,
     )
 
     result = essay_response_impl(ctx, essay_prompt="COPY_MODE", essay_generation_tasks=tasks)
