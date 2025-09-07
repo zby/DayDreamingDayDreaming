@@ -12,7 +12,7 @@ Replace “latest-by-task” linking with explicit, pinned doc IDs across stages
 
 - Deterministic lineage: essay → draft doc_id; evaluation → target doc_id.
 - Enforce pinned lineage: reject tasks missing required doc IDs.
-- Minimal surface for runtime lookups: prefer `get_by_doc_id_and_stage()` (path-based), keep “latest-by-task” pointers for ops/legacy only.
+- Minimal surface for runtime lookups: prefer a filesystem helper such as `get_row_by_doc_id(stage, doc_id)`; keep “latest-by-task” pointers for ops/legacy only.
 - Update scripts/UX to make it easy to curate doc_id–pinned flows.
 
 ## Non‑Goals (this iteration)
@@ -20,11 +20,11 @@ Replace “latest-by-task” linking with explicit, pinned doc IDs across stages
 - CSV audit log of all docs (deferred; see remove_sqlite_index_plan).
 - Maintaining “latest-by-task” for production paths (it will remain as an ops tool only).
 
-## Current dependencies on latest‑by‑task
+## Former dependencies on latest‑by‑task (now removed)
 
-- Essays: `_load_phase1_text_by_draft_task`, `essay_response` → parent draft row via `get_latest_by_task('draft', draft_task_id)`.
-- Evaluations: `evaluation_prompt`, `evaluation_response` → target doc via `get_latest_by_task(stage, document_id)`.
-- Checks and cross‑experiment appenders rely on “row present for this partition”.
+- Essays previously resolved drafts via `get_latest_by_task('draft', draft_task_id)`; now use `parent_doc_id` + filesystem.
+- Evaluations previously resolved targets via `get_latest_by_task(stage, document_id)`; now use `parent_doc_id` + filesystem.
+- DB‑row asset checks removed; filesystem existence checks remain.
 
 ## Proposed Design
 
