@@ -17,9 +17,9 @@ Usage example:
   uv run python scripts/register_partitions_for_generations.py \
     --input data/2_tasks/essay_generation_tasks.csv
 
-Flags:
-- --no-write-drafts: do not write draft_generation_tasks.csv (essays only)
-- --no-register: do not register Dagster partitions (CSV only)
+Doc-ID pinning (default):
+- evaluation_tasks.csv is generated with a pinned parent_doc_id for each evaluation task,
+  resolved from the documents SQLite index (data/db/documents.sqlite). No flags needed.
 """
 
 from __future__ import annotations
@@ -34,6 +34,7 @@ import pandas as pd
 import re
 from daydreaming_dagster.utils.document_locator import find_document_path
 from daydreaming_dagster.utils.evaluation_parsing_config import load_parser_map
+import sqlite3
 
 
 def parse_args() -> argparse.Namespace:
@@ -44,13 +45,6 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--dry-run", action="store_true", help="Compute and print actions but make no changes")
     # Reset by default; use --add-only to avoid clearing existing partitions
     p.add_argument("--add-only", action="store_true", help="Do not clear existing dynamic partitions (add-only mode)")
-    # New: explicit doc-id inputs for evaluation tasks
-    p.add_argument(
-        "--evaluation-parent-doc-ids",
-        type=Path,
-        default=None,
-        help="CSV/TSV file with a 'parent_doc_id' column to build evaluation_tasks.csv",
-    )
     return p.parse_args()
 
 
@@ -156,6 +150,35 @@ def _load_active_evaluation_axes(data_root: Path) -> tuple[list[str], list[str]]
     return tpl_ids, model_ids
 
 
+def _open_documents_db(data_root: Path) -> sqlite3.Connection | None:
+    """Open the documents SQLite DB if present; return None if missing/unavailable."""
+    db_path = Path(data_root) / "db" / "documents.sqlite"
+    try:
+        if not db_path.exists():
+            return None
+        con = sqlite3.connect(str(db_path))
+        con.row_factory = sqlite3.Row
+        return con
+    except Exception:
+        return None
+
+
+def _resolve_latest_essay_doc_id(con: sqlite3.Connection, essay_task_id: str) -> str | None:
+    """Return latest essay doc_id for a given essay_task_id from the documents DB."""
+    try:
+        row = con.execute(
+            (
+                "SELECT doc_id FROM documents "
+                "WHERE stage='essay' AND task_id=? "
+                "ORDER BY created_at DESC, rowid DESC LIMIT 1"
+            ),
+            (str(essay_task_id),),
+        ).fetchone()
+        return str(row["doc_id"]) if row and row["doc_id"] else None
+    except Exception:
+        return None
+
+
 def _write_table(out_csv: Path, rows: List[dict], key: str, columns: List[str], dry_run: bool = False) -> int:
     out_csv.parent.mkdir(parents=True, exist_ok=True)
     df = pd.DataFrame(rows, columns=columns) if rows else pd.DataFrame(columns=columns)
@@ -254,32 +277,45 @@ def main() -> int:
         parser_map = load_parser_map(data_root)
     except Exception as e:
         print(f"Warning: could not load parser map from evaluation_templates.csv: {e}", file=sys.stderr)
-    # Build evaluation tasks from explicit parent_doc_id list (required)
+    # Build evaluation tasks pinned by doc_id (default)
     evaluation_rows: List[dict] = []
-    if args.evaluation_parent_doc_ids is None:
-        print("Error: --evaluation-parent-doc-ids is required to build evaluation_tasks.csv with pinned doc IDs", file=sys.stderr)
-        return 1
-    try:
-        parent_df = pd.read_csv(args.evaluation_parent_doc_ids)
-    except Exception as e:
-        print(f"Failed to read {args.evaluation_parent_doc_ids}: {e}", file=sys.stderr)
-        return 1
-    if "parent_doc_id" not in parent_df.columns:
-        print(f"Input must contain a 'parent_doc_id' column: {args.evaluation_parent_doc_ids}", file=sys.stderr)
-        return 1
-    # Map evaluation model id -> display name
-    model_name_map = _load_models_map(data_root)
-    for doc_id in parent_df["parent_doc_id"].astype(str).tolist():
-        for tpl in eval_tpls:
-            for model in eval_models:
-                evaluation_rows.append({
-                    "evaluation_task_id": f"{doc_id}__{tpl}__{model}",
-                    "parent_doc_id": doc_id,
-                    "evaluation_template": tpl,
-                    "evaluation_model": model,
-                    "evaluation_model_name": model_name_map.get(model, model),
-                    "parser": parser_map.get(tpl),
-                })
+    if essay_rows and eval_tpls and eval_models:
+        model_name_map = _load_models_map(data_root)
+        con = _open_documents_db(data_root)
+        for r in essay_rows:
+            essay_task_id = r["essay_task_id"]
+            # Resolve the latest essay doc_id for this task (pinned lineage)
+            parent_doc_id = _resolve_latest_essay_doc_id(con, essay_task_id) if con else None
+            if not parent_doc_id:
+                print(
+                    f"Warning: no essay doc_id found in DB for task_id={essay_task_id}; parent_doc_id will be empty",
+                    file=sys.stderr,
+                )
+            # Locate source document path (optional, for ops UX)
+            fp, src = find_document_path(essay_task_id, data_root)
+            file_path = str(fp) if fp else ""
+            for tpl in eval_tpls:
+                for model in eval_models:
+                    evaluation_rows.append({
+                        "evaluation_task_id": f"{essay_task_id}__{tpl}__{model}",
+                        "parent_doc_id": parent_doc_id or "",
+                        # task context (kept for compatibility in reports)
+                        "document_id": essay_task_id,
+                        "essay_task_id": essay_task_id,
+                        "draft_task_id": r.get("draft_task_id"),
+                        "combo_id": r.get("combo_id"),
+                        "draft_template": r.get("draft_template"),
+                        "essay_template": r.get("essay_template"),
+                        "generation_model": r.get("generation_model"),
+                        "generation_model_name": r.get("generation_model_name"),
+                        "evaluation_template": tpl,
+                        "evaluation_model": model,
+                        "evaluation_model_name": model_name_map.get(model, model),
+                        "parser": parser_map.get(tpl),
+                        "file_path": file_path,
+                        "source_dir": src,
+                        "source_asset": "essay_response",
+                    })
     # Write evaluation tasks CSV
     eval_out_csv = data_root / "2_tasks" / "evaluation_tasks.csv"
     added_evals = 0
@@ -289,8 +325,14 @@ def main() -> int:
             evaluation_rows,
             key="evaluation_task_id",
             columns=[
-                "evaluation_task_id","parent_doc_id",
-                "evaluation_template","evaluation_model","evaluation_model_name","parser",
+                "evaluation_task_id",
+                # pinned lineage
+                "parent_doc_id",
+                # legacy/task context (kept during migration)
+                "document_id","essay_task_id","draft_task_id","combo_id",
+                "draft_template","essay_template","generation_model","generation_model_name",
+                # evaluation axes and optional parser and file hints
+                "evaluation_template","evaluation_model","evaluation_model_name","parser","file_path","source_dir","source_asset",
             ],
             dry_run=args.dry_run,
         )
