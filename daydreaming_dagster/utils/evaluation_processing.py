@@ -26,15 +26,13 @@ def parse_evaluation_files(evaluation_tasks: pd.DataFrame, base_path: Path, pars
     
     # Use default parsing function if none provided
     if parse_function is None:
-        # Strict default: require valid parser per row
+        # Load parser map from evaluation_templates.csv at parse-time
+        data_root = base_path.parents[1] if len(base_path.parents) >= 2 else Path("data")
+        parser_map = load_parser_map(data_root)
+
         def _default_parse(text: str, task_row: pd.Series) -> Dict[str, Any]:
             tpl = task_row.get('evaluation_template')
-            parser = task_row.get('parser')
-            if not isinstance(parser, str) or parser.strip() not in ALLOWED_PARSERS:
-                raise ValueError(
-                    f"Missing/invalid parser for template '{tpl}'. Ensure evaluation_tasks includes a valid 'parser' column"
-                )
-            chosen = parser.strip()
+            chosen = require_parser_for_template(str(tpl) if tpl is not None else "", parser_map)
             out = parse_llm_response(text, chosen)
             return out | {"used_parser": chosen}
 
