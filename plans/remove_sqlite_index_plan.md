@@ -6,7 +6,7 @@ Scope: Remove `SQLiteDocumentsIndex` entirely. After doc_id-first rollout, repla
 
 ## Summary
 
-This plan executes after plans/doc_id_first_design_plan.md is completed. Assets now require pinned doc IDs (`parent_doc_id`) and resolve parents/targets directly by filesystem path. We currently still dual‑write to a SQLite table (`documents`) and use it in a few non‑asset paths (checks/reporting/ops). Since all linking data exists on disk, we will remove SQLite and refactor remaining reads to a small path‑based helper that loads `metadata.json` from `docs_root/<stage>/<logical_key_id>/<doc_id>/`.
+This plan executes after plans/doc_id_first_design_plan.md is completed. Assets now require pinned doc IDs (`parent_doc_id`) and resolve parents/targets directly by filesystem path. We currently still dual‑write to a SQLite table (`documents`) and use it in a few non‑asset paths (checks/reporting/ops). Since all linking data exists on disk, we will remove SQLite and refactor remaining reads to a small path‑based helper that loads `metadata.json` from the flat layout `docs_root/<stage>/<doc_id>/` (note: no logical_key_id directory level in the path).
 
 Goal: Eliminate the DB dependency, keep IDs and behavior stable, and make artifacts fully portable. Pointer files for “latest” are optional and remain ops‑only.
 
@@ -28,8 +28,8 @@ Deferred
 
 ## Proposed Filesystem Design
 
-1) Document layout (unchanged)
-- `docs_root/<stage>/<logical_key_id>/<doc_id>/`
+1) Document layout (flat)
+- `docs_root/<stage>/<doc_id>/`
   - `raw.txt`, `parsed.txt`, optional `prompt.txt`, `metadata.json`
 
 2) metadata.json (extend)
@@ -47,9 +47,10 @@ Deferred
 - Runtime assets will not depend on these pointers.
 
 4) Filesystem helper API (runtime)
-- Minimal helper (pure functions) to replace SQLite reads:
-  - `get_row_by_doc_id(stage, doc_id)` → resolve directory, load `metadata.json`, and return a row dict with derived paths.
+- Minimal helper (pure functions) to replace SQLite reads using the flat layout:
+  - `get_row_by_doc_id(stage, doc_id)` → resolve `docs_root/<stage>/<doc_id>`, load `metadata.json`, and return a dict with at least: `doc_id`, `stage`, `doc_dir`, and selected metadata fields (`task_id`, `parent_doc_id`, `template_id`, `model_id`, `created_at`).
   - `read_raw/parsed/prompt(row)` → derive from `row["doc_dir"]`.
+  - Optional ops helpers: `find_latest_doc_id_by_task_id(stage, task_id)` by scanning `metadata.json` (ordered by `created_at`).
 
 5) Writes (Document helper)
 - Ensure `metadata.json` contains required fields and `created_at`.
@@ -98,7 +99,10 @@ Phase D — Optional ops tooling
 - Remove `documents_index` resource, SQLite module, and tests. Update imports and docs.
 
 4) Optional ops scripts
-- Add/rewrite pointer maintenance and “latest” browsing tools under `scripts/`.
+  - Add/rewrite pointer maintenance and “latest” browsing tools under `scripts/`.
+
+5) Partitions script (already updated)
+- scripts/register_partitions_for_generations.py has been updated to require the essay document ID in the curated input and to write evaluation `parent_doc_id` accordingly. No further changes needed here.
 
 ## Success Criteria
 
