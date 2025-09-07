@@ -148,16 +148,7 @@ class SQLiteDocumentsIndex:
         cur = con.execute(q, args)
         return cur.fetchone()
 
-    def get_latest_by_logical(self, logical_key_id: str, statuses: Iterable[str] = ("ok",)) -> Optional[dict]:
-        con = self.connect()
-        q = (
-            "SELECT * FROM documents WHERE logical_key_id=? "
-            "AND status IN (" + ",".join(["?"] * len(tuple(statuses))) + ") "
-            "ORDER BY created_at DESC, rowid DESC LIMIT 1"
-        )
-        args = [logical_key_id, *list(statuses)]
-        cur = con.execute(q, args)
-        return cur.fetchone()
+    # Note: get_latest_by_logical removed; prefer task-based lookups or dir pointers
 
     def get_by_doc_id(self, doc_id: str) -> Optional[dict]:
         """Return the exact row for a given doc_id, or None."""

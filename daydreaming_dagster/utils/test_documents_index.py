@@ -36,6 +36,4 @@ class TestDocumentsIndex:
         assert got_task is not None
         assert got_task["doc_id"] == "docB"
 
-        got_logical = idx.get_latest_by_logical("logical1")
-        assert got_logical is not None
-        assert got_logical["doc_id"] == "docB"
+        # get_latest_by_logical removed; task-based lookup suffices in runtime
