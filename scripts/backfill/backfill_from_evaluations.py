@@ -358,6 +358,8 @@ def backfill_from_evals(
                     pass
             meta = {
                 "source_file": str(draft_path),
+                "template_id": template_id,
+                "model_id": gen_model_id,
             }
             write_text(doc_base / "metadata.json", __import__("json").dumps(meta, ensure_ascii=False, indent=2))
             # Use legacy/canonical draft task id with single underscores: <combo_id>_<draft_template>_<model_id>
@@ -532,6 +534,8 @@ def backfill_from_evals(
                 "source_file": str(src_path),
                 "created_from": created_from,
                 "parent_task_id": (f"{combo_id}_{draft_tmpl}_{model_id}" if draft_doc_id else None),
+                "template_id": template_id,
+                "model_id": model_id,
             }
             write_text(doc_base / "metadata.json", __import__("json").dumps(meta, ensure_ascii=False, indent=2))
             idx.insert_document(
@@ -619,6 +623,8 @@ def backfill_from_evals(
                 "parent_doc_id": ref.essay_doc_id,
                 # Record the exact essay task id used as parent for easier audits
                 "parent_task_id": ref.essay_task_id,
+                "template_id": (eval_tmpl_like or "unknown"),
+                "model_id": (eval_model_like or "unknown"),
             }
             # Write evaluation prompt if present (try exact then versionless)
             ev_prompt = eval_prompts_dir / f"{ev_path.stem}.txt"
