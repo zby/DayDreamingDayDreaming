@@ -364,6 +364,7 @@ def essay_response(context, essay_prompt, essay_generation_tasks) -> str:
     essay_template = task_row.get("essay_template")
     model_id = task_row.get("generation_model") or task_row.get("generation_model_id")
     draft_task_id = task_row.get("draft_task_id")
+    generator_mode = (_get_essay_generator_mode(context.resources.data_root, essay_template) or "llm").lower()
 
     idx = idx_res.get_index()
     # Derive parent (draft) doc from draft_task_id via the index (fail fast if missing)
@@ -398,7 +399,8 @@ def essay_response(context, essay_prompt, essay_generation_tasks) -> str:
     _write_atomic(target_dir / "raw.txt", raw_text)
     _write_atomic(target_dir / "parsed.txt", text)
     try:
-        if getattr(idx_res, "prompt_copy_enabled", True) and isinstance(essay_prompt, str):
+        # Only write prompt.txt for LLM-generated essays (skip for copy/parser modes)
+        if generator_mode == "llm" and getattr(idx_res, "prompt_copy_enabled", True) and isinstance(essay_prompt, str):
             _write_atomic(target_dir / "prompt.txt", essay_prompt)
     except Exception:
         pass
