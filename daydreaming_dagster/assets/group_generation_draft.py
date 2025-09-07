@@ -260,13 +260,8 @@ def draft_response(context, draft_prompt, draft_generation_tasks) -> str:
     """Generate Phase 1 LLM responses for drafts."""
     parsed = _draft_response_impl(context, draft_prompt, draft_generation_tasks)
 
-    # Dual-write to documents index (Phase 1) under feature flag
-    try:
-        idx_res = context.resources.documents_index
-    except Exception:
-        idx_res = None
-
-    if idx_res:
+    # Write to documents index (Phase 1)
+    idx_res = context.resources.documents_index
         import json, time, hashlib
         from pathlib import Path as _Path
 

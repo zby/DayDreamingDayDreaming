@@ -32,8 +32,8 @@ def evaluation_prompt(context, evaluation_tasks) -> str:
     task_id = context.partition_key
     task_row = get_task_row(evaluation_tasks, "evaluation_task_id", task_id, context, "evaluation_tasks")
     # DB-only resolution (no filesystem fallback)
-    idx_res = getattr(context.resources, "documents_index", None)
-    if not (idx_res and getattr(idx_res, "index_enabled", False)):
+    idx_res = context.resources.documents_index
+    if not idx_res:
         raise Failure(
             description="Documents index is required for evaluation_prompt",
             metadata={
@@ -105,7 +105,7 @@ def evaluation_prompt(context, evaluation_tasks) -> str:
     partitions_def=evaluation_tasks_partitions,
     group_name="evaluation",
     io_manager_key="evaluation_response_io_manager",
-    required_resource_keys={"openrouter_client"},
+    required_resource_keys={"openrouter_client", "documents_index"},
     deps=["evaluation_prompt", "evaluation_tasks"],
 )
 def evaluation_response(context, evaluation_prompt, evaluation_tasks) -> str:

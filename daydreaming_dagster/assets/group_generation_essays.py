@@ -46,10 +46,7 @@ def _load_phase1_text_by_parent_doc(context, parent_doc_id: str) -> tuple[str, s
 
     Returns (normalized_text, source_label).
     """
-    try:
-        idx_res = context.resources.documents_index
-    except Exception:
-        idx_res = None
+    idx_res = context.resources.documents_index
     if not idx_res:
         raise Failure(
             description="Documents index not available to resolve draft by parent_doc_id",
@@ -87,10 +84,7 @@ def _load_phase1_text_by_draft_task(context, draft_task_id: str) -> tuple[str, s
                 "function": MetadataValue.text("_load_phase1_text_by_draft_task"),
             },
         )
-    try:
-        idx_res = context.resources.documents_index
-    except Exception:
-        idx_res = None
+    idx_res = context.resources.documents_index
     if not idx_res:
         raise Failure(
             description="Documents index not available to resolve draft by task id",
@@ -117,10 +111,7 @@ def _load_phase1_text_by_draft_task(context, draft_task_id: str) -> tuple[str, s
 
 
 def _load_phase1_text_by_combo_model(context, combo_id: str, model_id: str) -> tuple[str, str]:
-    try:
-        idx_res = context.resources.documents_index
-    except Exception:
-        idx_res = None
+    idx_res = context.resources.documents_index
     if not idx_res:
         raise Failure(
             description="Documents index not available to resolve draft by combo/model",
@@ -363,13 +354,8 @@ def _essay_response_impl(context, essay_prompt, essay_generation_tasks) -> str:
 def essay_response(context, essay_prompt, essay_generation_tasks) -> str:
     text = _essay_response_impl(context, essay_prompt, essay_generation_tasks)
 
-    # Dual-write to documents index under flag
-    try:
-        idx_res = context.resources.documents_index
-    except Exception:
-        idx_res = None
-
-    if idx_res:
+    # Write to documents index
+    idx_res = context.resources.documents_index
         import json, time, hashlib
         from pathlib import Path as _Path
 

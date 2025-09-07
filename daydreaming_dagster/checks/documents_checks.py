@@ -42,10 +42,7 @@ def draft_files_exist_check(context) -> AssetCheckResult:
     if not pk:
         return AssetCheckResult(passed=True, metadata={"skipped": MetadataValue.text("no partition context")})
     # DB-only check
-    idx_res = getattr(context.resources, "documents_index", None)
-    idx = idx_res.get_index() if idx_res else None
-    if not idx:
-        return AssetCheckResult(passed=False, metadata={"error": MetadataValue.text("documents_index unavailable")})
+    idx = context.resources.documents_index.get_index()
     row = idx.get_latest_by_task("draft", pk)
     if not row:
         return AssetCheckResult(passed=False, metadata={"partition_key": MetadataValue.text(pk)})
@@ -61,10 +58,7 @@ def essay_files_exist_check(context) -> AssetCheckResult:
     pk = _get_pk(context)
     if not pk:
         return AssetCheckResult(passed=True, metadata={"skipped": MetadataValue.text("no partition context")})
-    idx_res = getattr(context.resources, "documents_index", None)
-    idx = idx_res.get_index() if idx_res else None
-    if not idx:
-        return AssetCheckResult(passed=False, metadata={"error": MetadataValue.text("documents_index unavailable")})
+    idx = context.resources.documents_index.get_index()
     row = idx.get_latest_by_task("essay", pk)
     if not row:
         return AssetCheckResult(passed=False, metadata={"partition_key": MetadataValue.text(pk)})
@@ -80,10 +74,7 @@ def evaluation_files_exist_check(context) -> AssetCheckResult:
     pk = _get_pk(context)
     if not pk:
         return AssetCheckResult(passed=True, metadata={"skipped": MetadataValue.text("no partition context")})
-    idx_res = getattr(context.resources, "documents_index", None)
-    idx = idx_res.get_index() if idx_res else None
-    if not idx:
-        return AssetCheckResult(passed=False, metadata={"error": MetadataValue.text("documents_index unavailable")})
+    idx = context.resources.documents_index.get_index()
     row = idx.get_latest_by_task("evaluation", pk)
     if not row:
         return AssetCheckResult(passed=False, metadata={"partition_key": MetadataValue.text(pk)})
@@ -96,8 +87,7 @@ def evaluation_files_exist_check(context) -> AssetCheckResult:
 
 def _open_index_from_context(context) -> SQLiteDocumentsIndex | None:
     try:
-        idx_res = getattr(context.resources, "documents_index", None)
-        return idx_res.get_index() if idx_res else None
+        return context.resources.documents_index.get_index()
     except Exception:
         return None
 

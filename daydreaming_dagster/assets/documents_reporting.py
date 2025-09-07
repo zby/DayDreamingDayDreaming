@@ -10,7 +10,7 @@ from daydreaming_dagster.utils.documents_index import SQLiteDocumentsIndex
 @asset(
     group_name="reporting",
     io_manager_key="error_log_io_manager",
-    required_resource_keys={"data_root"},
+    required_resource_keys={"data_root", "documents_index"},
     compute_kind="python",
 )
 def documents_latest_report(context) -> pd.DataFrame:
@@ -20,8 +20,8 @@ def documents_latest_report(context) -> pd.DataFrame:
     - Output path: data/7_reporting/documents_latest_report.csv via CSVIOManager.
     """
     try:
-        idx_res = getattr(context.resources, "documents_index", None)
-        idx = idx_res.get_index() if idx_res else None
+        idx_res = context.resources.documents_index
+        idx = idx_res.get_index()
         if idx is not None:
             con = idx.connect()
             # Select latest rows by stage/logical key using rowid tie-breaker
@@ -46,22 +46,17 @@ def documents_latest_report(context) -> pd.DataFrame:
             return df
     except Exception as e:
         context.log.warning(f"documents_latest_report: falling back to empty output due to: {e}")
-    # Fallback: empty CSV with headers
-    df = pd.DataFrame(
-        columns=[
-            "doc_id","logical_key_id","stage","task_id","parent_doc_id","template_id","model_id","run_id","prompt_path","parser","status","usage_prompt_tokens","usage_completion_tokens","usage_max_tokens","created_at","doc_dir","raw_chars","parsed_chars","content_hash","meta_small","lineage_prev_doc_id"
-        ]
+    # Fail: index is required
+    from dagster import Failure as _Failure
+    raise _Failure(
+        description="documents_latest_report requires documents_index",
+        metadata={"function": MetadataValue.text("documents_latest_report")},
     )
-    context.add_output_metadata({
-        "rows": MetadataValue.int(0),
-        "source": MetadataValue.text("empty"),
-    })
-    return df
 
 @asset(
     group_name="reporting",
     io_manager_key="error_log_io_manager",
-    required_resource_keys={"data_root"},
+    required_resource_keys={"data_root", "documents_index"},
     compute_kind="python",
 )
 def documents_consistency_report(context) -> pd.DataFrame:
@@ -74,17 +69,8 @@ def documents_consistency_report(context) -> pd.DataFrame:
     """
     idx: SQLiteDocumentsIndex | None = None
     # Open via resource only (DB-only mode)
-    try:
-        idx_res = getattr(context.resources, "documents_index", None)
-        idx = idx_res.get_index() if idx_res else None
-    except Exception:
-        idx = None
-
-    if idx is None:
-        context.log.info("documents_consistency_report: index disabled or unavailable; emitting empty report")
-        return pd.DataFrame(columns=[
-            "doc_id","stage","task_id","doc_dir","missing_raw","missing_parsed","missing_prompt","dir_exists"
-        ])
+    idx_res = context.resources.documents_index
+    idx = idx_res.get_index()
 
     con = idx.connect()
     # Examine recent rows (limit for performance); prefer latest per (stage, logical), then recent
