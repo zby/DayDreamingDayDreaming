@@ -9,10 +9,8 @@ from pathlib import Path
 from jinja2 import Environment
 from .partitions import essay_tasks_partitions
 from ..utils.template_loader import load_generation_template
-from ..utils.raw_readers import read_essay_templates, read_draft_templates
-from ..utils.draft_parsers import get_draft_parser
+from ..utils.raw_readers import read_essay_templates
 from ..utils.dataframe_helpers import get_task_row
-from ..utils.shared_context import MockLoadContext
 from ..utils.raw_write import save_versioned_raw_text
 from ..utils.ids import (
     compute_logical_key_id_draft,
@@ -26,16 +24,61 @@ from ..utils.documents_index import DocumentRow
 JINJA = Environment()
 
 
-def _get_essay_generator_mode(data_root: str | Path, template_id: str) -> str | None:
-    """Lookup essay template generator mode (llm/parser/copy)."""
+def _get_essay_generator_mode(data_root: str | Path, template_id: str) -> str:
+    """Return normalized generator mode for an essay template.
+
+    Allowed values: 'llm' or 'copy'. Any other value (including missing) raises Failure.
+    """
     df = read_essay_templates(Path(data_root), filter_active=False)
-    if df.empty or "generator" not in df.columns:
-        return None
+    if df.empty:
+        raise Failure(
+            description="Essay templates table is empty; cannot resolve generator mode",
+            metadata={
+                "function": MetadataValue.text("_get_essay_generator_mode"),
+                "data_root": MetadataValue.path(str(data_root)),
+                "resolution": MetadataValue.text("Ensure data/1_raw/essay_templates.csv contains active templates with a 'generator' column"),
+            },
+        )
+    if "generator" not in df.columns:
+        raise Failure(
+            description="Essay templates CSV missing required 'generator' column",
+            metadata={
+                "function": MetadataValue.text("_get_essay_generator_mode"),
+                "data_root": MetadataValue.path(str(data_root)),
+                "resolution": MetadataValue.text("Add a 'generator' column with values 'llm' or 'copy'"),
+            },
+        )
     row = df[df["template_id"] == template_id]
     if row.empty:
-        return None
+        raise Failure(
+            description=f"Essay template not found: {template_id}",
+            metadata={
+                "function": MetadataValue.text("_get_essay_generator_mode"),
+                "template_id": MetadataValue.text(str(template_id)),
+                "resolution": MetadataValue.text("Add the template row to essay_templates.csv or correct the essay_template id in tasks"),
+            },
+        )
     val = row.iloc[0].get("generator")
-    return str(val) if val else None
+    if not isinstance(val, str) or not val.strip():
+        raise Failure(
+            description="Essay template has empty/invalid generator value",
+            metadata={
+                "function": MetadataValue.text("_get_essay_generator_mode"),
+                "template_id": MetadataValue.text(str(template_id)),
+                "resolution": MetadataValue.text("Set generator to 'llm' or 'copy'"),
+            },
+        )
+    mode = val.strip().lower()
+    if mode not in ("llm", "copy"):
+        raise Failure(
+            description=f"Essay template declares unsupported generator '{mode}'",
+            metadata={
+                "function": MetadataValue.text("_get_essay_generator_mode"),
+                "template_id": MetadataValue.text(str(template_id)),
+                "resolution": MetadataValue.text("Set generator to 'llm' or 'copy' in data/1_raw/essay_templates.csv"),
+            },
+        )
+    return mode
 
 
     
@@ -150,7 +193,7 @@ def _essay_prompt_impl(context, essay_generation_tasks) -> str:
     template_name = task_row["essay_template"]
 
     generator_mode = _get_essay_generator_mode(context.resources.data_root, template_name)
-    if generator_mode in ("parser", "copy"):
+    if generator_mode == "copy":
         context.add_output_metadata(
             {
                 "function": MetadataValue.text("essay_prompt"),
@@ -211,7 +254,7 @@ def _essay_response_impl(context, essay_prompt, essay_generation_tasks) -> str:
     task_id = context.partition_key
     task_row = get_task_row(essay_generation_tasks, "essay_task_id", task_id, context, "essay_generation_tasks")
     template_name = task_row["essay_template"]
-    mode = _get_essay_generator_mode(context.resources.data_root, template_name) or "llm"
+    mode = _get_essay_generator_mode(context.resources.data_root, template_name)
 
     # Load Phase‑1 draft text; prefer index when available, otherwise fall back to IO/filesystem
     draft_task_id = task_row.get("draft_task_id")
@@ -235,60 +278,15 @@ def _essay_response_impl(context, essay_prompt, essay_generation_tasks) -> str:
         )
         return text
     if mode == "parser":
-        raw_text = draft_text
-        parser_name = None
-        try:
-            ddf = read_draft_templates(Path(context.resources.data_root), filter_active=False)
-            if not ddf.empty and "parser" in ddf.columns:
-                r = ddf[ddf["template_id"] == task_row.get("draft_template")]
-                if not r.empty:
-                    val = r.iloc[0].get("parser")
-                    if isinstance(val, str) and val.strip():
-                        parser_name = val.strip()
-        except Exception:
-            parser_name = None
-        parser_fn = get_draft_parser(parser_name) if parser_name else None
-        if not parser_fn:
-            raise Failure(
-                description="Parser mode requested but parser not configured",
-                metadata={
-                    "function": MetadataValue.text("essay_response"),
-                    "essay_task_id": MetadataValue.text(task_id),
-                    "essay_template": MetadataValue.text(template_name),
-                    "draft_template": MetadataValue.text(str(task_row.get("draft_template"))),
-                },
-            )
-        try:
-            parsed = parser_fn(raw_text)
-        except Exception as e:
-            raise Failure(
-                description="Parser raised while producing essay text",
-                metadata={
-                    "function": MetadataValue.text("essay_response"),
-                    "essay_task_id": MetadataValue.text(task_id),
-                    "parser": MetadataValue.text(str(parser_name)),
-                    "error": MetadataValue.text(str(e)),
-                },
-            ) from e
-        if not isinstance(parsed, str) or not parsed.strip():
-            raise Failure(
-                description="Parser returned empty/invalid text",
-                metadata={
-                    "function": MetadataValue.text("essay_response"),
-                    "essay_task_id": MetadataValue.text(task_id),
-                    "parser": MetadataValue.text(str(parser_name)),
-                },
-            )
-        context.add_output_metadata(
-            {
+        raise Failure(
+            description="Essay generator mode 'parser' is not supported",
+            metadata={
                 "function": MetadataValue.text("essay_response"),
-                "mode": MetadataValue.text("parser"),
                 "essay_task_id": MetadataValue.text(task_id),
-                "source": MetadataValue.text(used_source),
-                "parser": MetadataValue.text(str(parser_name)),
-            }
+                "essay_template": MetadataValue.text(template_name),
+                "resolution": MetadataValue.text("Set generator to 'llm' or 'copy' in data/1_raw/essay_templates.csv"),
+            },
         )
-        return parsed
 
     # Default LLM path (with RAW side-write + truncation guard)
     model_name = task_row["generation_model_name"]
