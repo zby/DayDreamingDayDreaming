@@ -49,20 +49,64 @@ def content_combinations(context) -> List[ContentCombination]:
     # Try explicit selection first
     try:
         sel = read_selected_combo_mappings(data_root)
+        # Debug: log selection file stats
+        selected_path = data_root / "2_tasks" / "selected_combo_mappings.csv"
+        try:
+            stat = selected_path.stat()
+            context.log.info(
+                f"content_combinations: loaded selection CSV at {selected_path} "
+                f"(size={stat.st_size} bytes, mtime={stat.st_mtime})"
+            )
+        except Exception:
+            context.log.info(f"content_combinations: selection path: {selected_path}")
+
         if not sel.empty:
+            # More debug: shape, columns, sample
+            try:
+                sample_ids = (
+                    sel["combo_id"].astype(str).dropna().unique().tolist()[:5]
+                    if "combo_id" in sel.columns
+                    else []
+                )
+                context.log.info(
+                    "content_combinations: selection shape=%s, columns=%s, "
+                    "unique_combo_ids_sample=%s" % (
+                        str(sel.shape),
+                        ",".join(sel.columns.astype(str).tolist()),
+                        sample_ids,
+                    )
+                )
+            except Exception as e:
+                context.log.warning(f"content_combinations: failed selection debug summary: {e}")
             # Build combinations per combo_id using the specified description_level
             all_concepts = {c.concept_id: c for c in read_concepts(data_root, filter_active=False)}
             combos: List[ContentCombination] = []
+            skipped_missing_concept = 0
             for combo_id, group in sel.groupby("combo_id"):
                 # Expect a single level across rows for the combo; take the first
                 level = str(group.iloc[0]["description_level"]) if "description_level" in group.columns else "paragraph"
                 concept_ids = [str(cid) for cid in group["concept_id"].astype(str).tolist()]
                 concepts = [all_concepts[cid] for cid in concept_ids if cid in all_concepts]
                 if len(concepts) != len(concept_ids):
-                    # Skip incomplete combos; rely on selection hygiene
+                    # Skip incomplete combos; log missing ids for debugging
+                    missing = [cid for cid in concept_ids if cid not in all_concepts]
+                    skipped_missing_concept += 1
+                    context.log.warning(
+                        f"content_combinations: skipping combo_id={combo_id} due to missing concepts: {missing}"
+                    )
                     continue
                 combos.append(ContentCombination.from_concepts(concepts, level=level, combo_id=str(combo_id)))
-            context.add_output_metadata({"count": MetadataValue.int(len(combos)), "source": MetadataValue.text("selected")})
+            context.add_output_metadata(
+                {
+                    "count": MetadataValue.int(len(combos)),
+                    "source": MetadataValue.text("selected"),
+                    "selection_path": MetadataValue.path(str(selected_path)),
+                    "selection_rows": MetadataValue.int(int(sel.shape[0])),
+                    "selection_cols": MetadataValue.int(int(sel.shape[1])),
+                    "skipped_combos_missing_concept": MetadataValue.int(skipped_missing_concept),
+                    "combo_ids_sample": MetadataValue.json(sample_ids if 'sample_ids' in locals() else []),
+                }
+            )
             if combos:
                 return combos
     except FileNotFoundError:
