@@ -1,26 +1,23 @@
 #!/usr/bin/env python3
 """
-Parse evaluation scores for all response files and write a consolidated CSV.
+Parse evaluation scores from the docs store and write a consolidated CSV.
 
-This script performs CROSS-EXPERIMENT analysis by scanning ALL evaluation response
-files in the directory, not just those from the current experiment's task definitions.
+This script performs CROSS-EXPERIMENT analysis by scanning ALL evaluation documents
+under data/docs/evaluation, not just those from the current experiment's task definitions.
 This enables historical analysis across multiple experimental runs.
 
 Key cross-experiment features:
-- Scans all *.txt files in responses directory (ignores evaluation_tasks.csv)
-- Parses identifiers from filenames when task metadata is unavailable
-- Handles multiple template types and evaluation strategies from different experiments
-- Graceful fallback parsing for legacy evaluation formats
+- Scans docs/evaluation/<doc_id> for parsed/raw texts and reads metadata.json
+- Uses evaluation_templates.csv to select the parser for each evaluation_template
+- No dependence on evaluation_tasks.csv or legacy responses directory
 
 Defaults:
-- Responses dir: data/4_evaluation/evaluation_responses (read-only)
-- Tasks dir: data/2_tasks (used for metadata enrichment only, not file filtering)
+- Docs store: data/docs/evaluation/<doc_id>/{parsed.txt,metadata.json}
 - Output: data/7_cross_experiment/parsed_scores.csv
 
 Usage examples:
 - uv run scripts/parse_all_scores.py --output data/cross_experiment/parsed_scores.csv
 - uv run scripts/parse_all_scores.py --data-root data --output tmp/parsed_scores.csv
-- uv run scripts/parse_all_scores.py --responses-dir data/4_evaluation/evaluation_responses --output tmp/parsed_scores.csv
 """
 
 from __future__ import annotations
@@ -28,6 +25,7 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Set
+import json
 from datetime import datetime
 
 import pandas as pd
@@ -261,111 +259,105 @@ def parse_strict(text: str, template: str, parser_map: Dict[str, str]) -> Dict[s
 
 
 def parse_all(
-    responses_dir: Path,
+    data_root: Path,
     output_csv: Path,
 ) -> pd.DataFrame:
-    """Parse all evaluation response files and write a consolidated CSV.
-    
-    TASKS-FREE IMPLEMENTATION: Uses only filename parsing, no task CSV dependencies.
-    This enables true cross-experiment analysis without requiring task definitions.
+    """Parse all evaluation scores from the docs store.
+
+    Source: data_root/docs/evaluation/<doc_id>/{parsed.txt,metadata.json}
     """
 
-    # Do not create or modify the responses directory; require it to exist to avoid
-    # interfering with the standard pipeline structure.
-    if not responses_dir.exists() or not responses_dir.is_dir():
-        raise FileNotFoundError(f"Responses directory not found: {responses_dir}")
+    docs_eval = data_root / "docs" / "evaluation"
 
-    # Create only the output directory (outside the pipeline directories, as provided by user)
+    # Create only the output directory
     output_csv.parent.mkdir(parents=True, exist_ok=True)
 
     rows: List[Dict[str, Any]] = []
+    # No legacy parsing; docs store is the single source
+    strategy_map = load_eval_parsing_strategies(data_root)
+    model_map = load_model_mapping(data_root)
 
-    # Load known templates from data root to improve parsing robustness
-    # Expect responses_dir like data/4_evaluation/evaluation_responses
-    # Base data root should be 'data'
-    base_data = responses_dir.parents[1] if len(responses_dir.parents) >= 2 else Path("data")
-    known = load_known_templates(base_data)
-    strategy_map = load_eval_parsing_strategies(base_data)
-    model_map = load_model_mapping(base_data)
-
-    # CROSS-EXPERIMENT: Scan all *.txt files and parse entirely from filenames
-    # No dependency on task CSV files - works across all experiments
-    candidate_ids: List[str] = [p.stem for p in responses_dir.glob("*.txt")]
-
-    for evaluation_task_id in candidate_ids:
-        file_path = responses_dir / f"{evaluation_task_id}.txt"
-        if not file_path.exists():
-            rows.append({
-                "evaluation_task_id": evaluation_task_id,
-                "score": None,
-                "error": f"Missing file: {file_path}",
-                "evaluation_response_path": str(file_path),
-            })
-            continue
-
-        # File times (mtime as proxy for creation time on Linux)
-        try:
-            stat = file_path.stat()
-            # Use nanosecond precision for stable ordering; use mtime as proxy for creation
-            mtime_ns = int(getattr(stat, "st_mtime_ns", int(stat.st_mtime * 1e9)))
-            mtime_epoch = mtime_ns / 1e9
-            mtime_iso = datetime.fromtimestamp(mtime_epoch).isoformat()
-        except Exception:
-            mtime_ns = None
-            mtime_epoch = None
-            mtime_iso = ""
-
-        text = file_path.read_text(encoding="utf-8", errors="ignore")
-
-        # Parse all metadata from filename - no task CSV dependencies
-        id_parts = parse_identifiers_from_eval_task_id(evaluation_task_id, known)
-        tpl = id_parts.get("evaluation_template")
-        if not tpl:
-            result = {"score": None, "error": "Unknown evaluation_template in filename; cannot choose parser"}
-        else:
+    if docs_eval.exists():
+        for doc_dir in sorted([p for p in docs_eval.iterdir() if p.is_dir()]):
+            doc_id = doc_dir.name
+            parsed_fp = doc_dir / "parsed.txt"
+            raw_fp = doc_dir / "raw.txt"
+            meta_fp = doc_dir / "metadata.json"
+            if not parsed_fp.exists() and not raw_fp.exists():
+                continue
             try:
-                result = parse_strict(text, tpl, strategy_map)
+                text_path = parsed_fp if parsed_fp.exists() else raw_fp
+                text = text_path.read_text(encoding="utf-8", errors="ignore")
             except Exception as e:
-                result = {"score": None, "error": f"Parse error: {e}"}
+                rows.append({"doc_id": doc_id, "score": None, "error": f"Read error: {e}", "evaluation_response_path": str(text_path)})
+                continue
+            # metadata
+            parent_doc_id = ""
+            eval_template = None
+            eval_model = None
+            created_at = ""
+            try:
+                if meta_fp.exists():
+                    meta = json.loads(meta_fp.read_text(encoding="utf-8"))
+                    if isinstance(meta, dict):
+                        parent_doc_id = str(meta.get("parent_doc_id") or "")
+                        eval_template = meta.get("evaluation_template") or meta.get("template_id")
+                        eval_model = meta.get("model_id") or meta.get("evaluation_model")
+                        created_at = str(meta.get("created_at") or "")
+            except Exception:
+                pass
 
-        row: Dict[str, Any] = {
-            "evaluation_task_id": evaluation_task_id,
-            "document_id": id_parts.get("document_id"),
-            "score": result["score"],
-            "error": result["error"],
-            "evaluation_template": id_parts.get("evaluation_template"),
-            "evaluation_model": id_parts.get("evaluation_model"),
-            "essay_task_id": id_parts.get("essay_task_id"),
-            "combo_id": id_parts.get("combo_id"),
-            # Canonical going forward: draft_template; keep link_template for compatibility
-            "draft_template": id_parts.get("link_template"),
-            "link_template": id_parts.get("link_template"),
-            "generation_template": id_parts.get("generation_template"),
-            "generation_model": id_parts.get("generation_model"),
-            "evaluation_response_path": str(file_path),
-            "evaluation_response_mtime": mtime_iso,
-            "evaluation_response_mtime_epoch": mtime_epoch,
-            "evaluation_response_mtime_ns": mtime_ns,
-        }
-        rows.append(row)
+            # Choose parser and parse
+            tpl = str(eval_template) if eval_template else None
+            if not tpl:
+                rows.append({
+                    "doc_id": doc_id,
+                    "parent_doc_id": parent_doc_id,
+                    "score": None,
+                    "error": "Missing evaluation_template in metadata.json",
+                    "evaluation_template": None,
+                    "evaluation_model": eval_model,
+                    "evaluation_response_path": str(text_path),
+                    "doc_dir": str(doc_dir),
+                    "created_at": created_at,
+                })
+                continue
+            try:
+                parsed = parse_strict(text, tpl, strategy_map)
+                score = parsed["score"]
+                err = None
+            except Exception as e:
+                score = None
+                err = f"Parse error: {e}"
+            rows.append({
+                "doc_id": doc_id,
+                "parent_doc_id": parent_doc_id,
+                "evaluation_template": tpl,
+                "evaluation_model": eval_model,
+                "evaluation_model_name": model_map.get(str(eval_model), str(eval_model)) if eval_model else None,
+                "score": score,
+                "error": err,
+                "evaluation_response_path": str(text_path),
+                "doc_dir": str(doc_dir),
+                "created_at": created_at,
+            })
+    else:
+        raise FileNotFoundError(f"Docs store not found: {docs_eval}")
 
     df = pd.DataFrame(rows)
 
     # Ensure consistent schema with defaults
     expected_columns = [
-        "evaluation_task_id",
-        "document_id",
-        "essay_task_id",
-        "combo_id",
-        "link_template",
-        "generation_template",
-        "generation_model",
+        "doc_id",
+        "parent_doc_id",
         "evaluation_template",
         "evaluation_model",
         "evaluation_model_name",
         "score",
         "error",
         "evaluation_response_path",
+        "doc_dir",
+        "created_at",
     ]
 
     if "document_id" not in df.columns:
@@ -393,19 +385,16 @@ def parse_all(
 
     # Order columns for readability if present
     column_order = [
-        "document_id",
-        "combo_id",
-        "link_template",
-        "generation_template",
-        "generation_model",
+        "parent_doc_id",
+        "doc_id",
         "evaluation_template",
         "evaluation_model",
         "evaluation_model_name",
         "score",
         "error",
-        "evaluation_task_id",
-        "essay_task_id",
         "evaluation_response_path",
+        "doc_dir",
+        "created_at",
     ]
     existing = [c for c in column_order if c in df.columns]
     df = df[existing + [c for c in df.columns if c not in existing]]
@@ -415,8 +404,7 @@ def parse_all(
         df["score"] = pd.to_numeric(df["score"], errors="coerce")
     # Replace NaN with empty string for text-like columns
     text_like = [
-        "document_id","combo_id","link_template","generation_template","generation_model",
-        "evaluation_template","evaluation_model","evaluation_model_name","evaluation_task_id","essay_task_id","evaluation_response_path","error"
+        "doc_id","parent_doc_id","evaluation_template","evaluation_model","evaluation_model_name","evaluation_response_path","error","doc_dir","created_at"
     ]
     for col in text_like:
         if col in df.columns:
@@ -442,19 +430,14 @@ def parse_all(
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Parse evaluation scores from response files")
+    parser = argparse.ArgumentParser(description="Parse evaluation scores from docs store")
     parser.add_argument(
         "--data-root",
         type=Path,
         default=Path("data"),
         help="Base data root directory (default: data)",
     )
-    parser.add_argument(
-        "--responses-dir",
-        type=Path,
-        default=None,
-        help="Path to evaluation responses directory (default: <data-root>/4_evaluation/evaluation_responses)",
-    )
+    # No legacy flags
     parser.add_argument(
         "--output",
         type=Path,
@@ -465,10 +448,8 @@ def main() -> None:
     args = parser.parse_args()
 
     data_root: Path = args.data_root
-    responses_dir: Path = args.responses_dir or (data_root / "4_evaluation" / "evaluation_responses")
     output_csv: Path = args.output
-
-    parse_all(responses_dir=responses_dir, output_csv=output_csv)
+    parse_all(data_root=data_root, output_csv=output_csv)
 
 
 if __name__ == "__main__":
