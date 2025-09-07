@@ -8,6 +8,7 @@ from dagster import asset, Failure, MetadataValue
 from pathlib import Path
 from .partitions import evaluation_tasks_partitions
 from ..utils.documents_index import DocumentRow
+from ..utils.document import Document
 from ..utils.ids import (
     compute_logical_key_id_evaluation,
 )
@@ -127,7 +128,7 @@ def evaluation_response(context, evaluation_prompt, evaluation_tasks) -> str:
         idx_res = None
 
     if idx_res and getattr(idx_res, "index_enabled", False):
-        import json, time, hashlib
+        import time
         from pathlib import Path as _Path
 
         idx = idx_res.get_index()
@@ -149,55 +150,38 @@ def evaluation_response(context, evaluation_prompt, evaluation_tasks) -> str:
         logical_key_id = compute_logical_key_id_evaluation(str(parent_doc_id or document_id), str(evaluation_template), str(model_id))
         run_id = getattr(context, "run_id", "run")
         attempt = int(time.time_ns())
-        from ..utils.ids import new_doc_id, doc_dir as build_doc_dir
+        from ..utils.ids import new_doc_id
         doc_id = new_doc_id(logical_key_id, run_id, attempt)
 
         docs_root = _Path(idx.docs_root)
-        stage = "evaluation"
-        target_dir = build_doc_dir(docs_root, stage, logical_key_id, doc_id)
-        target_dir.mkdir(parents=True, exist_ok=True)
-
-        def _write_atomic(path: _Path, data: str):
-            tmp = path.with_suffix(path.suffix + ".tmp")
-            tmp.write_text(data, encoding="utf-8")
-            tmp.replace(path)
-
-        raw_text = text
-        _write_atomic(target_dir / "raw.txt", raw_text)
-        _write_atomic(target_dir / "parsed.txt", text)
-        try:
-            if getattr(idx_res, "prompt_copy_enabled", True) and isinstance(evaluation_prompt, str):
-                _write_atomic(target_dir / "prompt.txt", evaluation_prompt)
-        except Exception:
-            pass
-
         metadata = {
             "task_id": task_id,
             "evaluation_template": evaluation_template,
             "model_id": model_id,
             "parent_doc_id": parent_doc_id,
+            "function": "evaluation_response",
         }
-        _write_atomic(target_dir / "metadata.json", json.dumps(metadata, ensure_ascii=False, indent=2))
-
-        content_hash = hashlib.sha256((raw_text or "").encode("utf-8")).hexdigest()
-        rel_dir = target_dir.relative_to(docs_root)
-        row = DocumentRow(
-            doc_id=doc_id,
+        prompt_text = evaluation_prompt if getattr(idx_res, "prompt_copy_enabled", True) and isinstance(evaluation_prompt, str) else None
+        doc = Document(
+            stage="evaluation",
             logical_key_id=logical_key_id,
-            stage=stage,
-            task_id=task_id,
+            doc_id=doc_id,
             parent_doc_id=parent_doc_id,
-            template_id=str(evaluation_template),
-            model_id=str(model_id),
+            raw_text=text,
+            parsed_text=text,
+            prompt_text=prompt_text,
+            metadata=metadata,
+        )
+        target_dir = doc.write_files(docs_root)
+
+        row = doc.to_index_row(
+            docs_root,
+            task_id=task_id,
+            template_id=str(evaluation_template) if evaluation_template is not None else None,
+            model_id=str(model_id) if model_id is not None else None,
             run_id=str(run_id),
             parser=None,
             status="ok",
-            doc_dir=str(rel_dir),
-            raw_chars=len(raw_text or ""),
-            parsed_chars=len(text or ""),
-            content_hash=content_hash,
-            meta_small={"function": "evaluation_response"},
-            lineage_prev_doc_id=None,
         )
         try:
             idx.insert_document(row)

@@ -19,6 +19,7 @@ from ..utils.ids import (
     doc_dir as build_doc_dir,
 )
 from ..utils.documents_index import DocumentRow
+from ..utils.document import Document
 
 # Reuse a single Jinja environment
 JINJA = Environment()
@@ -354,7 +355,7 @@ def essay_response(context, essay_prompt, essay_generation_tasks) -> str:
 
     # Write to documents index
     idx_res = context.resources.documents_index
-    import json, time, hashlib
+    import time
     from pathlib import Path as _Path
 
     task_id = context.partition_key
@@ -384,52 +385,42 @@ def essay_response(context, essay_prompt, essay_generation_tasks) -> str:
     doc_id = new_doc_id(logical_key_id, run_id, attempt)
 
     docs_root = _Path(idx.docs_root)
-    stage = "essay"
-    target_dir = build_doc_dir(docs_root, stage, logical_key_id, doc_id)
-    target_dir.mkdir(parents=True, exist_ok=True)
-
-    def _write_atomic(path: _Path, data: str):
-        tmp = path.with_suffix(path.suffix + ".tmp")
-        tmp.write_text(data, encoding="utf-8")
-        tmp.replace(path)
-
-    raw_text = text
-    _write_atomic(target_dir / "raw.txt", raw_text)
-    _write_atomic(target_dir / "parsed.txt", text)
-    try:
-        # Only write prompt.txt for LLM-generated essays (skip for copy/parser modes)
-        if generator_mode == "llm" and getattr(idx_res, "prompt_copy_enabled", True) and isinstance(essay_prompt, str):
-            _write_atomic(target_dir / "prompt.txt", essay_prompt)
-    except Exception:
-        pass
-
+    # Build document using helper
     metadata = {
         "task_id": task_id,
         "essay_template": essay_template,
         "model_id": model_id,
         "parent_doc_id": parent_doc_id,
+        "function": "essay_response",
     }
-    _write_atomic(target_dir / "metadata.json", json.dumps(metadata, ensure_ascii=False, indent=2))
+    prompt_text = None
+    try:
+        if generator_mode == "llm" and getattr(idx_res, "prompt_copy_enabled", True) and isinstance(essay_prompt, str):
+            prompt_text = essay_prompt
+    except Exception:
+        prompt_text = None
 
-    content_hash = hashlib.sha256((raw_text or "").encode("utf-8")).hexdigest()
-    rel_dir = target_dir.relative_to(docs_root)
-    row = DocumentRow(
-        doc_id=doc_id,
+    doc = Document(
+        stage="essay",
         logical_key_id=logical_key_id,
-        stage=stage,
-        task_id=task_id,
+        doc_id=doc_id,
         parent_doc_id=parent_doc_id,
-        template_id=str(essay_template),
-        model_id=str(model_id),
+        raw_text=text,
+        parsed_text=text,
+        prompt_text=prompt_text,
+        metadata=metadata,
+    )
+    target_dir = doc.write_files(docs_root)
+
+    # Insert into index via helper-produced row
+    row = doc.to_index_row(
+        docs_root,
+        task_id=task_id,
+        template_id=str(essay_template) if essay_template is not None else None,
+        model_id=str(model_id) if model_id is not None else None,
         run_id=str(run_id),
         parser=None,
         status="ok",
-        doc_dir=str(rel_dir),
-        raw_chars=len(raw_text or ""),
-        parsed_chars=len(text or ""),
-        content_hash=content_hash,
-        meta_small={"function": "essay_response"},
-        lineage_prev_doc_id=None,
     )
     try:
         idx.insert_document(row)
