@@ -356,92 +356,92 @@ def essay_response(context, essay_prompt, essay_generation_tasks) -> str:
 
     # Write to documents index
     idx_res = context.resources.documents_index
-        import json, time, hashlib
-        from pathlib import Path as _Path
+    import json, time, hashlib
+    from pathlib import Path as _Path
 
-        task_id = context.partition_key
-        task_row = get_task_row(essay_generation_tasks, "essay_task_id", task_id, context, "essay_generation_tasks")
-        essay_template = task_row.get("essay_template")
-        model_id = task_row.get("generation_model") or task_row.get("generation_model_id")
-        draft_task_id = task_row.get("draft_task_id")
+    task_id = context.partition_key
+    task_row = get_task_row(essay_generation_tasks, "essay_task_id", task_id, context, "essay_generation_tasks")
+    essay_template = task_row.get("essay_template")
+    model_id = task_row.get("generation_model") or task_row.get("generation_model_id")
+    draft_task_id = task_row.get("draft_task_id")
 
-        idx = idx_res.get_index()
-        # Derive parent (draft) doc from draft_task_id via the index (fail fast if missing)
-        parent_row = idx.get_latest_by_task("draft", str(draft_task_id))
-        if not parent_row:
-            raise Failure(
-                description="Draft not found in documents index for essay parent",
-                metadata={
-                    "function": MetadataValue.text("essay_response"),
-                    "essay_task_id": MetadataValue.text(task_id),
-                    "draft_task_id": MetadataValue.text(str(draft_task_id)),
-                },
-            )
-        parent_doc_id = parent_row.get("doc_id")
-        logical_key_id = compute_logical_key_id_essay(str(parent_doc_id), str(essay_template), str(model_id))
-
-        run_id = getattr(context, "run_id", "run")
-        attempt = int(time.time_ns())
-        doc_id = new_doc_id(logical_key_id, run_id, attempt)
-
-        docs_root = _Path(idx.docs_root)
-        stage = "essay"
-        target_dir = build_doc_dir(docs_root, stage, logical_key_id, doc_id)
-        target_dir.mkdir(parents=True, exist_ok=True)
-
-        def _write_atomic(path: _Path, data: str):
-            tmp = path.with_suffix(path.suffix + ".tmp")
-            tmp.write_text(data, encoding="utf-8")
-            tmp.replace(path)
-
-        raw_text = text
-        _write_atomic(target_dir / "raw.txt", raw_text)
-        _write_atomic(target_dir / "parsed.txt", text)
-        try:
-            if getattr(idx_res, "prompt_copy_enabled", True) and isinstance(essay_prompt, str):
-                _write_atomic(target_dir / "prompt.txt", essay_prompt)
-        except Exception:
-            pass
-
-        metadata = {
-            "task_id": task_id,
-            "essay_template": essay_template,
-            "model_id": model_id,
-            "parent_doc_id": parent_doc_id,
-        }
-        _write_atomic(target_dir / "metadata.json", json.dumps(metadata, ensure_ascii=False, indent=2))
-
-        content_hash = hashlib.sha256((raw_text or "").encode("utf-8")).hexdigest()
-        rel_dir = target_dir.relative_to(docs_root)
-        row = DocumentRow(
-            doc_id=doc_id,
-            logical_key_id=logical_key_id,
-            stage=stage,
-            task_id=task_id,
-            parent_doc_id=parent_doc_id,
-            template_id=str(essay_template),
-            model_id=str(model_id),
-            run_id=str(run_id),
-            parser=None,
-            status="ok",
-            doc_dir=str(rel_dir),
-            raw_chars=len(raw_text or ""),
-            parsed_chars=len(text or ""),
-            content_hash=content_hash,
-            meta_small={"function": "essay_response"},
-            lineage_prev_doc_id=None,
+    idx = idx_res.get_index()
+    # Derive parent (draft) doc from draft_task_id via the index (fail fast if missing)
+    parent_row = idx.get_latest_by_task("draft", str(draft_task_id))
+    if not parent_row:
+        raise Failure(
+            description="Draft not found in documents index for essay parent",
+            metadata={
+                "function": MetadataValue.text("essay_response"),
+                "essay_task_id": MetadataValue.text(task_id),
+                "draft_task_id": MetadataValue.text(str(draft_task_id)),
+            },
         )
-        try:
-            idx.insert_document(row)
-            context.add_output_metadata(
-                {
-                    "doc_id": MetadataValue.text(doc_id),
-                    "logical_key_id": MetadataValue.text(logical_key_id),
-                    "doc_dir": MetadataValue.path(str(target_dir)),
-                    "parent_doc_id": MetadataValue.text(str(parent_doc_id) if parent_doc_id else ""),
-                }
-            )
-        except Exception as e:
-            context.log.warning(f"DocumentsIndex insert failed for essay_response {task_id}: {e}")
+    parent_doc_id = parent_row.get("doc_id")
+    logical_key_id = compute_logical_key_id_essay(str(parent_doc_id), str(essay_template), str(model_id))
+
+    run_id = getattr(context, "run_id", "run")
+    attempt = int(time.time_ns())
+    doc_id = new_doc_id(logical_key_id, run_id, attempt)
+
+    docs_root = _Path(idx.docs_root)
+    stage = "essay"
+    target_dir = build_doc_dir(docs_root, stage, logical_key_id, doc_id)
+    target_dir.mkdir(parents=True, exist_ok=True)
+
+    def _write_atomic(path: _Path, data: str):
+        tmp = path.with_suffix(path.suffix + ".tmp")
+        tmp.write_text(data, encoding="utf-8")
+        tmp.replace(path)
+
+    raw_text = text
+    _write_atomic(target_dir / "raw.txt", raw_text)
+    _write_atomic(target_dir / "parsed.txt", text)
+    try:
+        if getattr(idx_res, "prompt_copy_enabled", True) and isinstance(essay_prompt, str):
+            _write_atomic(target_dir / "prompt.txt", essay_prompt)
+    except Exception:
+        pass
+
+    metadata = {
+        "task_id": task_id,
+        "essay_template": essay_template,
+        "model_id": model_id,
+        "parent_doc_id": parent_doc_id,
+    }
+    _write_atomic(target_dir / "metadata.json", json.dumps(metadata, ensure_ascii=False, indent=2))
+
+    content_hash = hashlib.sha256((raw_text or "").encode("utf-8")).hexdigest()
+    rel_dir = target_dir.relative_to(docs_root)
+    row = DocumentRow(
+        doc_id=doc_id,
+        logical_key_id=logical_key_id,
+        stage=stage,
+        task_id=task_id,
+        parent_doc_id=parent_doc_id,
+        template_id=str(essay_template),
+        model_id=str(model_id),
+        run_id=str(run_id),
+        parser=None,
+        status="ok",
+        doc_dir=str(rel_dir),
+        raw_chars=len(raw_text or ""),
+        parsed_chars=len(text or ""),
+        content_hash=content_hash,
+        meta_small={"function": "essay_response"},
+        lineage_prev_doc_id=None,
+    )
+    try:
+        idx.insert_document(row)
+        context.add_output_metadata(
+            {
+                "doc_id": MetadataValue.text(doc_id),
+                "logical_key_id": MetadataValue.text(logical_key_id),
+                "doc_dir": MetadataValue.path(str(target_dir)),
+                "parent_doc_id": MetadataValue.text(str(parent_doc_id) if parent_doc_id else ""),
+            }
+        )
+    except Exception as e:
+        context.log.warning(f"DocumentsIndex insert failed for essay_response {task_id}: {e}")
 
     return text
