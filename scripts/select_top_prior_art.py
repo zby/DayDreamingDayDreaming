@@ -255,6 +255,12 @@ def main() -> int:
     if args.write_drafts:
         essay_out_csv.parent.mkdir(parents=True, exist_ok=True)
         if essay_rows:
+            # Enforce that parent_doc_id is present for all rows in doc-id-first mode
+            if missing_parents:
+                print("ERROR: Could not derive parent_doc_id for the following essay_task_id; ensure essays exist in data/docs/essay before selection:", file=sys.stderr)
+                for m in missing_parents:
+                    print(" -", m, file=sys.stderr)
+                return 2
             pd.DataFrame(essay_rows, columns=[
                 "essay_task_id","parent_doc_id","draft_task_id","combo_id","draft_template",
                 "essay_template","generation_model","generation_model_name"
@@ -271,12 +277,7 @@ def main() -> int:
             print(" -", m, file=sys.stderr)
         if len(missing_essays) > 10:
             print(f" ... {len(missing_essays)-10} more", file=sys.stderr)
-    if missing_parents:
-        print("Warning: could not derive parent_doc_id for some essay_task_id from docs; parent_doc_id will be blank:", file=sys.stderr)
-        for m in missing_parents[:10]:
-            print(" -", m, file=sys.stderr)
-        if len(missing_parents) > 10:
-            print(f" ... {len(missing_parents)-10} more", file=sys.stderr)
+    # parent_doc_id is required; above path returns early if any missing
     # Note: Draft backfill checks removed; selection focuses on essays only.
     return 0
 
