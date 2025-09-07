@@ -41,7 +41,7 @@ Replace “latest-by-task” linking with explicit, pinned doc IDs across stages
   - If `parent_doc_id` missing → fail fast with a clear error (no fallback).
   - Metadata: include `parent_doc_id` in essay metadata.json (keep consistent).
 - evaluation_prompt / evaluation_response
-  - Resolve by `stage='essay'` + `parent_doc_id` (direct path). Optionally allow `source_stage` to override when evaluating drafts directly.
+  - Resolve by `stage='essay'` + `parent_doc_id` (direct path).
   - If `parent_doc_id` missing → fail fast with a clear error (no fallback).
   - Metadata: include `parent_doc_id` = parent essay doc_id.
 
@@ -125,7 +125,7 @@ Phase F — Index removal + filesystem helpers
 ## Risks & Mitigations
 
 - Incomplete curation: users might omit the doc_id. Mitigation: fail early with actionable error and provide helper scripts to fetch valid doc_ids.
-- Stage ambiguity for evaluation targets: Mitigation: include an explicit `source_stage` in evaluation_tasks when needed (defaults to essay when both exist).
+- Stage ambiguity for evaluation targets: Out of scope; evaluations target essays only.
 - Legacy data: tasks produced before this change won’t have doc IDs. Mitigation: allow pinning later via a helper that reads documents index/pointers and writes the pinned IDs back to CSVs.
 
 ## Success Criteria
