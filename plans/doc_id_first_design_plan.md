@@ -55,11 +55,25 @@ Replace “latest-by-task” linking with explicit, pinned doc IDs across stages
  
 
 4) Scripts & CLI UX
-- scripts/register_partitions_for_generations.py
-  - Accept doc IDs in curated inputs:
-    - For essays: `parent_doc_id` column or `parent:` prefix in an input list to pin parent.
-    - For evaluations: `parent_doc_id` column or `doc:` prefix to pin the parent essay doc.
-  - Populate `parent_doc_id` in `data/2_tasks/*.csv` (required in curated flows).
+- scripts/register_partitions_for_generations.py (explicit changes)
+  - Inputs accepted
+    - Essays: accept draft doc IDs to pin lineage via any of:
+      - `--essay-parent-doc-ids <path>` CSV/TSV with a `parent_doc_id` column
+      - `--essay-parent-list <comma-separated>` with entries like `doc:<doc_id>`
+    - Evaluations: accept essay doc IDs (targets) via any of:
+      - `--evaluation-parent-doc-ids <path>` CSV/TSV with a `parent_doc_id` column
+      - `--evaluation-parent-list <comma-separated>` with entries like `doc:<doc_id>`
+  - Columns written
+    - `data/2_tasks/essay_generation_tasks.csv`:
+      - Required: `essay_task_id`, `parent_doc_id`, plus existing template/model fields
+    - `data/2_tasks/evaluation_tasks.csv`:
+      - Required: `evaluation_task_id`, `parent_doc_id`, plus template/model fields
+      - `document_id` kept only for legacy; do not use for resolution
+  - Behavior changes
+    - Build evaluation rows from provided `parent_doc_id` (essay doc), not from `essay_task_id`.
+    - Validate that every output row has a non-empty `parent_doc_id`; fail fast otherwise.
+  - Backward compatibility (optional)
+    - Optional flags to read legacy inputs and emit a clear error suggesting `--evaluation-parent-doc-ids`.
 - scripts/print_latest_doc.py / list_partitions_latest.py
   - Keep as ops tools; document that production flows should pin doc_id via task CSVs.
 
