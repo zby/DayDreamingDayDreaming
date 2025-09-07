@@ -9,9 +9,9 @@ the curated tasks CSV.
 
 Defaults:
 - TOP_N = 10
-- Prior-art templates: gemini-prior-art-eval, gemini-prior-art-eval-v2 (use whichever are present; if both, take max per document)
+- Prior-art templates: gemini-prior-art-eval, gemini-prior-art-eval-v2 (use whichever are present; if both, take max per generation)
 - Parsed scores source: data/7_cross_experiment/parsed_scores.csv (required)
- - Output tasks CSV: data/2_tasks/essay_generation_tasks.csv (always)
+- Output tasks CSV: data/2_tasks/essay_generation_tasks.csv (always)
 
 Usage examples:
   uv run python scripts/select_top_prior_art.py \
@@ -97,7 +97,9 @@ def main() -> int:
         df["evaluation_template"].isin(available)
         & df.get("error").isna()
         & df.get("score").notna()
-        & df["document_id"].notna()
+        & (
+            (df["parent_doc_id"].notna() if "parent_doc_id" in df.columns else df["document_id"].notna())
+        )
     ].copy()
 
     # Exclude evaluations run by Gemini models (empirically noisy for prior-art)
@@ -114,12 +116,16 @@ def main() -> int:
     if filt.empty:
         print("No successful prior-art scores found to select from.", file=sys.stderr)
         return 1
+    # Prefer grouping by parent_doc_id (generation doc) if present; else fallback to document_id
+    key_col = "parent_doc_id" if "parent_doc_id" in filt.columns else "document_id"
+    if key_col == "document_id":
+        print("Warning: parsed_scores missing parent_doc_id; grouping by document_id as fallback", file=sys.stderr)
     best = (
-        filt.groupby("document_id")["score"].max().reset_index().sort_values(
-            by=["score", "document_id"], ascending=[False, True]
+        filt.groupby(key_col)["score"].max().reset_index().sort_values(
+            by=["score", key_col], ascending=[False, True]
         )
     )
-    top_docs = best.head(args.top_n)["document_id"].tolist()
+    top_docs = best.head(args.top_n)[key_col].astype(str).tolist()
 
     # Build curated generation task CSVs (essays, and optionally drafts)
     models_csv = Path("data/1_raw/llm_models.csv")
@@ -231,12 +237,17 @@ def main() -> int:
                 continue
 
             draft_task_id = f"{combo_id}_{draft_template}_{generation_model}"
-            fp, _ = find_document_path(doc, data_root)
-            if not fp:
-                missing_essays.append(str(essay_dir / f"{doc}.txt"))
-            parent_doc_id = _find_parent_doc_id_from_essay_docs(data_root, doc)
-            if not parent_doc_id:
-                missing_parents.append(doc)
+            # Verify presence in docs store for the selected generation
+            essay_doc_path = data_root / "docs" / "essay" / doc / "parsed.txt"
+            if not essay_doc_path.exists():
+                missing_essays.append(str(essay_doc_path))
+            # Determine parent_doc_id for curated tasks
+            if "parent_doc_id" in df.columns:
+                parent_doc_id = doc  # selected generation id is already the parent
+            else:
+                parent_doc_id = _find_parent_doc_id_from_essay_docs(data_root, doc)
+                if not parent_doc_id:
+                    missing_parents.append(doc)
             essay_rows.append({
                 "essay_task_id": doc,
                 "parent_doc_id": parent_doc_id or "",
