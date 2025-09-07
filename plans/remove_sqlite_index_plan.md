@@ -14,7 +14,6 @@ Goal: Keep the same user‑visible behavior and IDs, simplify infra (no DB), red
 
 - Retrieval helpers:
   - `get_latest_by_task(stage, task_id)`
-  - `get_latest_by_logical(logical_key_id)`
   - `get_by_doc_id_and_stage(doc_id, stage)`
   - `read_raw/parsed/prompt` path resolution
 - Append‑only “attempts” per logical key with created_at ordering
@@ -35,7 +34,7 @@ Goal: Keep the same user‑visible behavior and IDs, simplify infra (no DB), red
   - `created_at` (ISO timestamp; write once on create)
 
 3) Pointer files (fast lookups, atomic updates)
-- Latest by logical key (per directory):
+- Latest by logical key (per directory, optional):
   - File: `docs_root/<stage>/<logical_key_id>/_latest.json`
   - Content: `{ "doc_id": ..., "created_at": ..., "parser": null, ... }`
 - Latest by task id (bucketed to avoid huge directories):
@@ -44,12 +43,12 @@ Goal: Keep the same user‑visible behavior and IDs, simplify infra (no DB), red
     - Content: `{ "task_id": ..., "doc_id": ..., "logical_key_id": ..., "created_at": ... }`
   - Rationale: O(1) lookups without scanning; low contention because each task_id updates its own file.
 
-4) Read API (drop‑in replacement)
-- New `FSIndex` class with same minimal surface we use:
+- 4) Read API (drop‑in replacement)
+- New `FSIndex` class with the minimal surface used by runtime assets:
   - `get_latest_by_task(stage, task_id)` → read bucketed JSON; fallback to scan when missing
-  - `get_latest_by_logical(logical_key_id)` → read `_latest.json`; fallback to scan
   - `get_by_doc_id_and_stage(doc_id, stage)` → scan logical dirs under stage until found, with in‑memory cache
   - `read_raw/parsed/prompt(row)` → derive from `doc_dir` (same as today)
+  - Note: `get_latest_by_logical` can be added later for ops tooling; not required by assets.
 - Scans are only on fallback and can be cached per run.
 
 5) Writes (Document helper)
@@ -99,7 +98,7 @@ Phase 4 — Remove SQLite
 
 1) Add FSIndex
 - File: `daydreaming_dagster/utils/fs_index.py`
-- Methods: `get_latest_by_task`, `get_latest_by_logical`, `get_by_doc_id_and_stage`, `read_raw/parsed/prompt`
+- Methods: `get_latest_by_task`, `get_by_doc_id_and_stage`, `read_raw/parsed/prompt`
 - Simple dataclass Row type mirroring `dict` structure used today (doc_id, stage, doc_dir, etc.)
 
 2) Extend Document helper
@@ -133,4 +132,3 @@ Phase 4 — Remove SQLite
 
 - Do we need a global report of all docs across stages? If yes, implement a simple `walk_docs()` in FSIndex that yields rows using metadata.json.
 - Should we encode `task_id` into directory names to avoid maintaining by‑task pointers? We keep directories stable and rely on pointer JSON for clarity and atomicity.
-
