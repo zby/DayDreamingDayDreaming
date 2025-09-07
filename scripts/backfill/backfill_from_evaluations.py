@@ -213,6 +213,7 @@ def parse_combo_id(stem: str) -> Optional[str]:
 class CreatedRefs:
     draft_doc_id: Optional[str]
     essay_doc_id: str
+    essay_task_id: str
 
 
 def backfill_from_evals(
@@ -550,7 +551,8 @@ def backfill_from_evals(
                     meta_small=meta,
                 )
             )
-        ref = CreatedRefs(draft_doc_id=draft_doc_id, essay_doc_id=doc_id)
+        # Cache and return refs, including the essay task id used for this doc
+        ref = CreatedRefs(draft_doc_id=draft_doc_id, essay_doc_id=doc_id, essay_task_id=key_essay)
         created_essays[cache_key] = ref
         created_essays_count += 1
         return ref
@@ -615,6 +617,8 @@ def backfill_from_evals(
             meta = {
                 "source_file": str(ev_path),
                 "parent_doc_id": ref.essay_doc_id,
+                # Record the exact essay task id used as parent for easier audits
+                "parent_task_id": ref.essay_task_id,
             }
             # Write evaluation prompt if present (try exact then versionless)
             ev_prompt = eval_prompts_dir / f"{ev_path.stem}.txt"
@@ -817,6 +821,47 @@ def main(argv: list[str] | None = None) -> int:
     except Exception as _ex:
         print(f"warning: evaluation prompt validation failed to run: {_ex}")
         return 1
+
+    # Repair pass: ensure evaluation metadata.json mirrors DB parent_doc_id and essay task
+    try:
+        idx_fix = SQLiteDocumentsIndex(args.db, args.docs_root)
+        con_fix = idx_fix.connect()
+        con_fix.row_factory = lambda c, r: {c.description[i][0]: r[i] for i in range(len(r))}
+        repaired = 0
+        checked = 0
+        for ev in con_fix.execute(
+            "SELECT doc_id, parent_doc_id FROM documents WHERE stage='evaluation' AND status='ok'"
+        ).fetchall():
+            checked += 1
+            ev_dir = idx_fix.resolve_doc_dir(ev)
+            meta_p = ev_dir / 'metadata.json'
+            try:
+                meta_obj = json.loads(read_text(meta_p) or '{}')
+            except Exception:
+                meta_obj = {}
+            # Look up essay task_id when parent exists
+            parent = ev.get('parent_doc_id')
+            essay_task = None
+            if parent:
+                es = con_fix.execute(
+                    "SELECT task_id FROM documents WHERE doc_id=?", (parent,)
+                ).fetchone()
+                if es:
+                    essay_task = es.get('task_id')
+            changed = False
+            if meta_obj.get('parent_doc_id') != parent:
+                meta_obj['parent_doc_id'] = parent
+                changed = True
+            # Only set parent_task_id if we can resolve it
+            if essay_task and meta_obj.get('parent_task_id') != essay_task:
+                meta_obj['parent_task_id'] = essay_task
+                changed = True
+            if changed:
+                write_text(meta_p, json.dumps(meta_obj, ensure_ascii=False, indent=2))
+                repaired += 1
+        print(f"evaluation_metadata_checked={checked} evaluation_metadata_repaired={repaired}")
+    except Exception as _ex:
+        print(f"warning: evaluation metadata repair failed: {_ex}")
 
     return 0
 
