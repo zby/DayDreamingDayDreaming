@@ -11,7 +11,8 @@ from daydreaming_dagster.utils.evaluation_processing import parse_evaluation_fil
 def test_parse_evaluation_files_empty_tasks():
     """Test parsing with empty evaluation tasks."""
     empty_tasks = pd.DataFrame()
-    result = parse_evaluation_files(empty_tasks, Path("/tmp"), lambda x, y: {"score": 5, "error": None})
+    eval_templates = pd.DataFrame({"template_id": [], "parser": []})
+    result = parse_evaluation_files(empty_tasks, Path("/tmp"), lambda x, y: {"score": 5, "error": None}, evaluation_templates=eval_templates)
     
     assert len(result) == 0
     assert list(result.columns) == ['evaluation_task_id', 'score', 'error']
@@ -23,9 +24,12 @@ def test_parse_evaluation_files_respects_parser_complex(tmp_path: Path):
     task_id = "doc__templateX__modelY"
     (tmp_path / f"{task_id}.txt").write_text("REASONING: ok\nTotal Score: 7/10", encoding="utf-8")
     tasks = pd.DataFrame([
-        {"evaluation_task_id": task_id, "evaluation_template": "templateX", "parser": "complex"}
+        {"evaluation_task_id": task_id, "evaluation_template": "templateX"}
     ])
-    out = parse_evaluation_files(tasks, tmp_path)
+    eval_templates = pd.DataFrame([
+        {"template_id": "templateX", "parser": "complex"}
+    ])
+    out = parse_evaluation_files(tasks, tmp_path, evaluation_templates=eval_templates)
     assert len(out) == 1
     assert out.iloc[0]["score"] == 7.0
     assert out.iloc[0]["used_parser"] == "complex"
@@ -36,9 +40,12 @@ def test_parse_evaluation_files_respects_parser_in_last_line(tmp_path: Path):
     task_id = "doc__templateY__modelZ"
     (tmp_path / f"{task_id}.txt").write_text("Some text\nSCORE: 8", encoding="utf-8")
     tasks = pd.DataFrame([
-        {"evaluation_task_id": task_id, "evaluation_template": "templateY", "parser": "in_last_line"}
+        {"evaluation_task_id": task_id, "evaluation_template": "templateY"}
     ])
-    out = parse_evaluation_files(tasks, tmp_path)
+    eval_templates = pd.DataFrame([
+        {"template_id": "templateY", "parser": "in_last_line"}
+    ])
+    out = parse_evaluation_files(tasks, tmp_path, evaluation_templates=eval_templates)
     assert len(out) == 1
     assert out.iloc[0]["score"] == 8.0
     assert out.iloc[0]["used_parser"] == "in_last_line"

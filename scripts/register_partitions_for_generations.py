@@ -33,6 +33,7 @@ from typing import List
 import pandas as pd
 import re
 from daydreaming_dagster.utils.document_locator import find_document_path
+from daydreaming_dagster.utils.evaluation_parsing_config import load_parser_map
 
 
 def parse_args() -> argparse.Namespace:
@@ -240,6 +241,12 @@ def main() -> int:
 
     # Evaluation axes (with optional overrides)
     eval_tpls, eval_models = _load_active_evaluation_axes(data_root)
+    # Load strict parser map for evaluation templates
+    parser_map: dict[str, str] = {}
+    try:
+        parser_map = load_parser_map(data_root)
+    except Exception as e:
+        print(f"Warning: could not load parser map from evaluation_templates.csv: {e}", file=sys.stderr)
     # Build evaluation tasks from essays only (current design)
     evaluation_rows: List[dict] = []
     if essay_rows and eval_tpls and eval_models:
@@ -265,6 +272,7 @@ def main() -> int:
                         "evaluation_template": tpl,
                         "evaluation_model": model,
                         "evaluation_model_name": model_name_map.get(model, model),
+                        "parser": parser_map.get(tpl),
                         "file_path": file_path,
                         "source_dir": src,
                         "source_asset": "essay_response",
@@ -280,7 +288,7 @@ def main() -> int:
             columns=[
                 "evaluation_task_id","document_id","essay_task_id","draft_task_id","combo_id",
                 "draft_template","essay_template","generation_model","generation_model_name",
-                "evaluation_template","evaluation_model","evaluation_model_name","file_path","source_dir","source_asset",
+                "evaluation_template","evaluation_model","evaluation_model_name","parser","file_path","source_dir","source_asset",
             ],
             dry_run=args.dry_run,
         )

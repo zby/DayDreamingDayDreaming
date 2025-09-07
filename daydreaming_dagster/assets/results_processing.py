@@ -18,7 +18,7 @@ from .raw_data import EVALUATION_TEMPLATES_KEY
     required_resource_keys={"evaluation_response_io_manager"},
     ins={
         "evaluation_tasks": AssetIn(),
-        EVALUATION_TEMPLATES_KEY: AssetIn(),
+        "evaluation_templates": AssetIn(key=EVALUATION_TEMPLATES_KEY),
     },
     description="Parse evaluation responses and enrich with task metadata",
     compute_kind="pandas"
