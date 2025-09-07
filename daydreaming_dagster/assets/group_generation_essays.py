@@ -7,7 +7,6 @@ Asset definitions for the essay (Phase‑2) generation stage.
 from dagster import asset, Failure, MetadataValue
 from pathlib import Path
 from jinja2 import Environment
-import os
 from .partitions import essay_tasks_partitions
 from ..utils.template_loader import load_generation_template
 from ..utils.raw_readers import read_essay_templates, read_draft_templates
@@ -39,77 +38,7 @@ def _get_essay_generator_mode(data_root: str | Path, template_id: str) -> str | 
     return str(val) if val else None
 
 
-def _load_phase1_text(context, draft_task_id: str) -> tuple[str, str]:
-    """Load Phase‑1 (draft) text with versioned/unversioned lookup.
-
-    Returns (normalized_text, source_label).
-    """
-    # Establish expected legacy dir path up front for clearer error metadata
-    draft_dir = Path(context.resources.data_root) / "3_generation" / "draft_responses"
-
-    # DB-first when enabled: resolve latest OK draft by task id
-    try:
-        idx_res = context.resources.documents_index
-        if getattr(idx_res, "index_enabled", False):
-            idx = idx_res.get_index()
-            row = idx.get_latest_by_task("draft", draft_task_id)
-            if row:
-                try:
-                    text = idx.read_parsed(row)
-                except Exception:
-                    text = idx.read_raw(row)
-                return str(text).replace("\r\n", "\n"), "draft_db"
-    except Exception:
-        pass
-    draft_io = getattr(context.resources, "draft_response_io_manager", None)
-    if draft_io is not None:
-        try:
-            text = draft_io.load_input(MockLoadContext(draft_task_id))
-            return str(text).replace("\r\n", "\n"), "draft_response"
-        except Exception:
-            pass
-
-    # If legacy writes are disabled, do not fallback to filesystem
-    legacy_enabled = os.getenv("DD_DOCS_LEGACY_WRITE_ENABLED", "1") in ("1", "true", "True")
-    if legacy_enabled:
-        # Use the precomputed draft_dir
-        try:
-            import os as _os, re as _re
-            _V_RE = _re.compile(rf"^{re.escape(draft_task_id)}_v(\d+)\.txt$")
-            best_ver = -1
-            best_name = None
-            for name in _os.listdir(draft_dir):
-                m = _V_RE.match(name)
-                if not m:
-                    continue
-                try:
-                    v = int(m.group(1))
-                except Exception:
-                    continue
-                if v > best_ver:
-                    best_ver = v
-                    best_name = name
-            if best_name:
-                draft_fp = draft_dir / best_name
-                if draft_fp.exists():
-                    return draft_fp.read_text(encoding="utf-8").replace("\r\n", "\n"), "draft_file_v"
-        except Exception:
-            pass
-        draft_fp_legacy = draft_dir / f"{draft_task_id}.txt"
-        if draft_fp_legacy.exists():
-            return draft_fp_legacy.read_text(encoding="utf-8").replace("\r\n", "\n"), "draft_file"
-
-    raise Failure(
-        description="Draft response not found",
-        metadata={
-            "draft_task_id": MetadataValue.text(str(draft_task_id)),
-            "function": MetadataValue.text("_load_phase1_text"),
-            "expected_dir": MetadataValue.path(str(draft_dir)),
-            "resolution": MetadataValue.text(
-                "Materialize 'draft_response' or write a draft file under data/3_generation/draft_responses/"
-            ),
-        },
-    )
+    
 
 
 def _load_phase1_text_by_parent_doc(context, parent_doc_id: str) -> tuple[str, str]:
@@ -295,7 +224,8 @@ def _essay_response_impl(context, essay_prompt, essay_generation_tasks) -> str:
 
     # Load Phase‑1 draft text; prefer index when available, otherwise fall back to IO/filesystem
     draft_task_id = task_row.get("draft_task_id")
-    draft_text, used_source = _load_phase1_text(context, draft_task_id)
+    # DB-only resolution of Phase-1 text
+    draft_text, used_source = _load_phase1_text_by_draft_task(context, draft_task_id)
 
     if mode == "copy":
         text = draft_text
@@ -428,7 +358,7 @@ def _essay_response_impl(context, essay_prompt, essay_generation_tasks) -> str:
     partitions_def=essay_tasks_partitions,
     group_name="generation_essays",
     io_manager_key="essay_response_io_manager",
-    required_resource_keys={"openrouter_client", "experiment_config", "data_root", "draft_response_io_manager", "documents_index"},
+    required_resource_keys={"openrouter_client", "experiment_config", "data_root", "documents_index"},
 )
 def essay_response(context, essay_prompt, essay_generation_tasks) -> str:
     text = _essay_response_impl(context, essay_prompt, essay_generation_tasks)

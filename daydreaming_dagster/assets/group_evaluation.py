@@ -31,106 +31,39 @@ logger = logging.getLogger(__name__)
 def evaluation_prompt(context, evaluation_tasks) -> str:
     task_id = context.partition_key
     task_row = get_task_row(evaluation_tasks, "evaluation_task_id", task_id, context, "evaluation_tasks")
-    # DB-first: resolve target document by task id/stage
-    doc_text = None
-    used_source = None
+    # DB-only resolution (no filesystem fallback)
     idx_res = getattr(context.resources, "documents_index", None)
-    if idx_res and getattr(idx_res, "index_enabled", False):
-        idx = idx_res.get_index()
-        document_id = task_row.get("document_id")
-        # Robust stage inference: many curated CSVs lack an explicit 'stage' column
-        stage_raw = str(task_row.get("stage") or "").strip().lower()
-        if stage_raw:
-            stage = "essay" if stage_raw.startswith("essay") else "draft"
-        else:
-            # Infer from presence of essay_task_id/source_dir/file_path
-            source_dir = str(task_row.get("source_dir") or "").lower()
-            file_path = str(task_row.get("file_path") or "").lower()
-            if isinstance(task_row.get("essay_task_id"), str) and task_row.get("essay_task_id"):
-                stage = "essay"
-            elif "essay" in source_dir or "essay_responses" in file_path:
-                stage = "essay"
-            else:
-                stage = "draft"
-        context.log.info(
-            f"evaluation_prompt: resolving target from index stage={stage} document_id={document_id}"
+    if not (idx_res and getattr(idx_res, "index_enabled", False)):
+        raise Failure(
+            description="Documents index is required for evaluation_prompt",
+            metadata={
+                "function": MetadataValue.text("evaluation_prompt"),
+                "resolution": MetadataValue.text("Set DD_DOCS_INDEX_ENABLED=1 and backfill if migrating from files"),
+            },
         )
-        key = str(document_id)
-        row = idx.get_latest_by_task(stage, key)
-        if row:
-            try:
-                doc_text = idx.read_parsed(row)
-            except Exception:
-                doc_text = idx.read_raw(row)
-            used_source = f"{stage}_db"
-        else:
-            # Emit helpful diagnostics
-            essay_count = idx.connect().execute(
-                "SELECT COUNT(1) AS c FROM documents WHERE stage='essay' AND task_id=?",
-                (key,),
-            ).fetchone()
-            draft_count = idx.connect().execute(
-                "SELECT COUNT(1) AS c FROM documents WHERE stage='draft' AND task_id=?",
-                (key,),
-            ).fetchone()
-            context.log.warning(
-                "evaluation_prompt: no row found for stage=%s, task_id=%s (essay_count=%s, draft_count=%s)",
-                stage,
-                key,
-                getattr(essay_count, "get", lambda k: essay_count["c"] if isinstance(essay_count, dict) else essay_count)("c") if essay_count else None,
-                getattr(draft_count, "get", lambda k: draft_count["c"] if isinstance(draft_count, dict) else draft_count)("c") if draft_count else None,
-            )
-            # Try the opposite stage just in case inference is wrong
-            alt_stage = "draft" if stage == "essay" else "essay"
-            alt_row = idx.get_latest_by_task(alt_stage, key)
-            if alt_row:
-                try:
-                    doc_text = idx.read_parsed(alt_row)
-                except Exception:
-                    doc_text = idx.read_raw(alt_row)
-                used_source = f"{alt_stage}_db"
-                context.log.info(
-                    f"evaluation_prompt: resolved via alternate stage={alt_stage} for task_id={key}"
-                )
-
-    if doc_text is None:
-        file_path = task_row.get("file_path")
-        # If legacy writes are disabled and DB did not resolve, fail fast
-        import os as _os
-        legacy_enabled = _os.getenv("DD_DOCS_LEGACY_WRITE_ENABLED", "1") in ("1", "true", "True")
-        if not legacy_enabled:
-            raise Failure(
-                description="Evaluation target not found in documents index and legacy filesystem fallback is disabled",
-                metadata={
-                    "evaluation_task_id": MetadataValue.text(task_id),
-                    "document_id": MetadataValue.text(str(task_row.get("document_id"))),
-                },
-            )
-        if not isinstance(file_path, str) or not len(file_path):
-            raise Failure(
-                description=f"Missing or invalid file_path for evaluation task '{task_id}'",
-                metadata={
-                    "evaluation_task_id": MetadataValue.text(task_id),
-                    "file_path": MetadataValue.text(str(file_path)),
-                },
-            )
-        expected_path = Path(file_path)
-        try:
-            doc = expected_path.read_text(encoding="utf-8")
-            if not doc:
-                raise ValueError(f"Empty document content loaded for {file_path}")
-            doc_text = doc
-            used_source = "file"
-        except FileNotFoundError as e:
-            raise Failure(
-                description=f"Missing document for evaluation task '{task_id}'",
-                metadata={
-                    "evaluation_task_id": MetadataValue.text(task_id),
-                    "expected_file_path": MetadataValue.path(str(expected_path)),
-                    "source_asset": MetadataValue.text(str(task_row.get("source_asset"))),
-                    "source_dir": MetadataValue.text(str(task_row.get("source_dir"))),
-                },
-            ) from e
+    idx = idx_res.get_index()
+    document_id = task_row.get("document_id")
+    stage_raw = str(task_row.get("stage") or "").strip().lower()
+    if stage_raw:
+        stage = "essay" if stage_raw.startswith("essay") else "draft"
+    else:
+        stage = "essay" if (isinstance(task_row.get("essay_task_id"), str) and task_row.get("essay_task_id")) else "draft"
+    key = str(document_id)
+    row = idx.get_latest_by_task(stage, key)
+    if not row:
+        raise Failure(
+            description="Target document not found in documents index",
+            metadata={
+                "function": MetadataValue.text("evaluation_prompt"),
+                "stage": MetadataValue.text(stage),
+                "document_task_id": MetadataValue.text(key),
+            },
+        )
+    try:
+        doc_text = idx.read_parsed(row)
+    except Exception:
+        doc_text = idx.read_raw(row)
+    used_source = f"{stage}_db"
 
     eval_df = read_evaluation_templates(Path(context.resources.data_root))
     evaluation_templates_dict: dict[str, str] = {}
@@ -160,7 +93,6 @@ def evaluation_prompt(context, evaluation_tasks) -> str:
             "document_id": MetadataValue.text(str(task_row.get("document_id"))),
             "document_content_length": MetadataValue.int(len(doc_text or "")),
             "evaluation_prompt_length": MetadataValue.int(len(eval_prompt)),
-            **({"target_path": MetadataValue.path(str(task_row.get("file_path")))} if task_row.get("file_path") else {}),
             "source_used": MetadataValue.text(used_source or ""),
             "template_used": MetadataValue.text(task_row["evaluation_template"]),
             "model_planned": MetadataValue.text(task_row["evaluation_model_name"]),
