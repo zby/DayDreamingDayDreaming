@@ -47,6 +47,21 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--dry-run", action="store_true", help="Compute and print actions but make no changes")
     # Reset by default; use --add-only to avoid clearing existing partitions
     p.add_argument("--add-only", action="store_true", help="Do not clear existing dynamic partitions (add-only mode)")
+    # Optionally materialize content_combinations after updating selection
+    materialize_group = p.add_mutually_exclusive_group()
+    materialize_group.add_argument(
+        "--materialize-combos",
+        dest="materialize_combos",
+        action="store_true",
+        help="Materialize the content_combinations asset after updating selection (default: on)",
+    )
+    materialize_group.add_argument(
+        "--no-materialize-combos",
+        dest="materialize_combos",
+        action="store_false",
+        help="Do not materialize content_combinations automatically",
+    )
+    p.set_defaults(materialize_combos=True)
     return p.parse_args()
 
 
@@ -227,6 +242,23 @@ def main() -> int:
 
     # Write selected combo mappings for chosen combinations
     _write_selected_combo_mappings(data_root, sorted(combo_ids), dry_run=args.dry_run)
+    # Optionally materialize content_combinations to ensure Dagster sees the updated selection
+    if args.materialize_combos and not args.dry_run:
+        try:
+            from dagster import materialize, DagsterInstance
+            from daydreaming_dagster.assets.group_task_definitions import content_combinations as combos_asset
+            from daydreaming_dagster.resources.experiment_config import ExperimentConfig
+
+            resources = {
+                "experiment_config": ExperimentConfig(),
+                "data_root": str(data_root),
+            }
+            with DagsterInstance.ephemeral() as instance:
+                result = materialize([combos_asset], resources=resources, instance=instance)
+                if not result.success:
+                    print("Warning: materialize(content_combinations) did not succeed", file=sys.stderr)
+        except Exception as e:
+            print(f"Warning: failed to materialize content_combinations automatically: {e}", file=sys.stderr)
 
     added_essays = 0
     added_drafts = 0
