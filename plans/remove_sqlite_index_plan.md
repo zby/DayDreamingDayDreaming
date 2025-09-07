@@ -50,10 +50,10 @@ Deferred
     - Content: `{ "task_id": ..., "doc_id": ..., "logical_key_id": ..., "created_at": ... }`
   - Rationale: O(1) lookups without scanning; low contention because each task_id updates its own file.
 
-- 4) Read API (drop‑in replacement)
-- New `FSIndex` class with the minimal surface used by runtime assets:
+ - 4) Read API (drop‑in replacement)
+ - New `FSIndex` class with the minimal surface used by runtime assets:
   - `get_latest_by_task(stage, task_id)` → read bucketed JSON; fallback to scan when missing
-  - `get_by_doc_id_and_stage(doc_id, stage)` → scan logical dirs under stage until found, with in‑memory cache
+  - `get_by_doc_id_and_stage(doc_id, stage)` → direct path resolution: `docs_root/<stage>/<doc_id>` (no scan)
   - `read_raw/parsed/prompt(row)` → derive from `doc_dir` (same as today)
   - Note: `get_latest_by_logical` can be added later for ops tooling; not required by assets.
 - Scans are only on fallback and can be cached per run.
