@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from datetime import datetime, UTC
 from pathlib import Path
 from typing import Dict, Optional, Tuple, List
+import json
 import csv
 
 from daydreaming_dagster.utils.documents_index import (
@@ -336,7 +337,8 @@ def backfill_from_evals(
         logical = compute_logical_key_id_draft(combo_id, template_id, gen_model_id)
         attempt_key = f"draft:{draft_path.name}"
         doc_id = new_doc_id(logical, run_id, attempt_key)
-        doc_base = make_doc_dir(docs_root, "draft", logical, doc_id)
+        # Flat layout: data/docs/draft/<doc_id>
+        doc_base = docs_root / "draft" / doc_id
         if not dry_run:
             if raw_content is not None:
                 write_text(doc_base / "raw.txt", raw_content)
@@ -363,7 +365,7 @@ def backfill_from_evals(
                     logical_key_id=logical,
                     stage="draft",
                     task_id=f"{combo_id}_auto_draft",
-                    doc_dir=str(Path("draft") / logical / doc_id),
+                    doc_dir=str(Path("draft") / doc_id),
                     parent_doc_id=None,
                     template_id=template_id,
                     model_id=gen_model_id,
@@ -462,7 +464,8 @@ def backfill_from_evals(
             logical_draft = compute_logical_key_id_draft(combo_id, template_id_draft, gen_model_id)
             attempt_key_draft = f"draft_from_gen:{src_path.name}"
             draft_doc_id = new_doc_id(logical_draft, run_id, attempt_key_draft)
-            draft_base = make_doc_dir(docs_root, "draft", logical_draft, draft_doc_id)
+            # Flat layout: data/docs/draft/<doc_id>
+            draft_base = docs_root / "draft" / draft_doc_id
             if not dry_run:
                 if draft_raw is not None:
                     write_text(draft_base / "raw.txt", draft_raw)
@@ -479,7 +482,7 @@ def backfill_from_evals(
                         logical_key_id=logical_draft,
                         stage="draft",
                         task_id=f"{combo_id}_auto_draft",
-                        doc_dir=str(Path("draft") / logical_draft / draft_doc_id),
+                        doc_dir=str(Path("draft") / draft_doc_id),
                         parent_doc_id=None,
                         template_id=template_id_draft,
                         model_id=gen_model_id,
@@ -495,7 +498,8 @@ def backfill_from_evals(
         logical = compute_logical_key_id_essay(draft_doc_id or combo_id, template_id, model_id)
         attempt_key = f"essay:{src_path.name}"
         doc_id = new_doc_id(logical, run_id, attempt_key)
-        doc_base = make_doc_dir(docs_root, "essay", logical, doc_id)
+        # Flat layout: data/docs/essay/<doc_id>
+        doc_base = docs_root / "essay" / doc_id
         if not dry_run:
             if raw_content is not None:
                 write_text(doc_base / "raw.txt", raw_content)
@@ -530,7 +534,7 @@ def backfill_from_evals(
                     logical_key_id=logical,
                     stage="essay",
                     task_id=key_essay,
-                    doc_dir=str(Path("essay") / logical / doc_id),
+                    doc_dir=str(Path("essay") / doc_id),
                     parent_doc_id=draft_doc_id,
                     template_id=template_id,
                     model_id=model_id,
@@ -598,7 +602,8 @@ def backfill_from_evals(
         logical = compute_logical_key_id_evaluation(ref.essay_doc_id, eval_tmpl_like, eval_model_like)
         attempt_key = f"evaluation:{ev_path.name}"
         doc_id = new_doc_id(logical, run_id, attempt_key)
-        doc_base = make_doc_dir(docs_root, "evaluation", logical, doc_id)
+        # Flat layout: data/docs/evaluation/<doc_id>
+        doc_base = docs_root / "evaluation" / doc_id
         if not dry_run:
             write_text(doc_base / "raw.txt", ev_content)
             write_text(doc_base / "parsed.txt", ev_content)
@@ -622,7 +627,7 @@ def backfill_from_evals(
                     stage="evaluation",
                     # Use versionless stem as evaluation task_id
                     task_id=base_no_ver,
-                    doc_dir=str(Path("evaluation") / logical / doc_id),
+                    doc_dir=str(Path("evaluation") / doc_id),
                     parent_doc_id=ref.essay_doc_id,
                     template_id=eval_tmpl_like or "unknown",
                     model_id=eval_model_like or "unknown",
@@ -662,6 +667,11 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--eval-root", type=Path, default=Path("data/4_evaluation"))
     p.add_argument("--run-id", type=str, default=datetime.now(UTC).strftime("evalbf-%Y%m%d-%H%M%S%z"))
     p.add_argument("--dry-run", action="store_true")
+    p.add_argument(
+        "--auto-skip-eval-prompt-mismatch",
+        action="store_true",
+        help="After relink, automatically mark evaluations as skipped when prompt does not contain essay parsed text",
+    )
     args = p.parse_args(argv)
 
     backfill_from_evals(
@@ -775,7 +785,30 @@ def main(argv: list[str] | None = None) -> int:
             for v in res2['violations'][:10]:
                 print(f"EVAL_VIOLATION: eval={v['evaluation_doc_id']} task={v['evaluation_task_id']} problem={v['problem']} detail={v['detail']}")
         if len(res2.get('violations', [])) > 0:
-            return 2
+            if args.auto_skip_eval_prompt_mismatch:
+                # Mark violations as skipped
+                idx3 = SQLiteDocumentsIndex(args.db, args.docs_root)
+                con3 = idx3.connect()
+                skipped = 0
+                with con3:
+                    for v in res2['violations']:
+                        doc_id = v.get('evaluation_doc_id')
+                        if not doc_id:
+                            continue
+                        row = con3.execute("SELECT meta_small FROM documents WHERE doc_id=?", (doc_id,)).fetchone()
+                        try:
+                            meta_obj = json.loads(row.get('meta_small')) if row and row.get('meta_small') else {}
+                        except Exception:
+                            meta_obj = {}
+                        meta_obj['skipped_reason'] = v.get('problem') or 'prompt_missing_essay'
+                        con3.execute(
+                            "UPDATE documents SET status='skipped', meta_small=? WHERE doc_id=?",
+                            (json.dumps(meta_obj, ensure_ascii=False), doc_id),
+                        )
+                        skipped += 1
+                print(f"auto_skipped_eval_prompt_mismatch={skipped}")
+            else:
+                return 2
     except Exception as _ex:
         print(f"warning: evaluation prompt validation failed to run: {_ex}")
         return 1
