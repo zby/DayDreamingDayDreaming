@@ -132,6 +132,7 @@ def evaluation_response(context, evaluation_prompt, evaluation_tasks) -> str:
     metadata = {
         "task_id": task_id,
         "evaluation_template": evaluation_template,
+        "template_id": evaluation_template,
         "model_id": model_id,
         "parent_doc_id": parent_doc_id,
         "function": "evaluation_response",

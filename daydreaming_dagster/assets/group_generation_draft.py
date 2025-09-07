@@ -307,6 +307,7 @@ def draft_response(context, draft_prompt, draft_generation_tasks) -> str:
         "task_id": task_id,
         "combo_id": combo_id,
         "draft_template": draft_template,
+        "template_id": draft_template,
         "model_id": model_id,
         "usage": None,
         "function": "draft_response",

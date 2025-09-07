@@ -348,6 +348,7 @@ def essay_response(context, essay_prompt, essay_generation_tasks) -> str:
     metadata = {
         "task_id": task_id,
         "essay_template": essay_template,
+        "template_id": essay_template,
         "model_id": model_id,
         "parent_doc_id": parent_doc_id,
         "function": "essay_response",
