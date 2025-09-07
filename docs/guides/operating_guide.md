@@ -204,6 +204,14 @@ This repository now uses a document-centric evaluation flow:
 - `parsed_scores` contains normalized outputs and `generation_response_path` sourced from the document `file_path`. When available, use `parent_doc_id` as the canonical key (first token of `evaluation_task_id`).
 - Pivots and selection scripts should key rows by `parent_doc_id` (the essay document id for evaluations) for deterministic grouping across runs.
 
+Lineage and IDs (doc‑id first)
+- `doc_id`: unique identifier of a concrete document under `data/docs/<stage>/<doc_id>/`.
+- `parent_doc_id`:
+  - Drafts: none (no parent).
+  - Essays: `parent_doc_id` = `doc_id` of the draft refined into the essay.
+  - Evaluations: `parent_doc_id` = `doc_id` of the essay being evaluated.
+- Tasks and assets must pass/require `parent_doc_id` for essays and evaluations (fail fast if missing). This removes all “latest‑by‑task” ambiguity and makes pivots deterministic.
+
 Note on legacy directory scan:
 - Evaluation no longer discovers documents by scanning `data/3_generation/generation_responses/`. To evaluate historical outputs, write standard generation task CSVs (draft/essay) and place/symlink their texts under `draft_responses/` (or legacy `links_responses/`) or `essay_responses/`. Then materialize `evaluation_tasks` to register only those curated documents.
 

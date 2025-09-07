@@ -43,6 +43,23 @@ Deferred
 - `docs_root/<stage>/<doc_id>/`
   - `raw.txt`, `parsed.txt`, optional `prompt.txt`, `metadata.json`
 
+Lineage model and field semantics
+- `doc_id` (primary identifier):
+  - Uniquely identifies a single concrete document artifact written under `docs/<stage>/<doc_id>/`.
+  - Assigned per attempt (derived from logical_key_id + run/attempt); immutable once written.
+  - Appears as the first token of `evaluation_task_id` in the doc‑id‑first scheme.
+- `parent_doc_id` (lineage pointer):
+  - Drafts: `parent_doc_id` is empty/None (no upstream document).
+  - Essays: `parent_doc_id` equals the `doc_id` of the draft from which the essay was generated.
+  - Evaluations: `parent_doc_id` equals the `doc_id` of the essay being evaluated.
+  - Encodes a strict parent→child relation used for deterministic reproduction and auditing; never points to task ids.
+  - Present in tasks (essays/evaluations), in asset metadata, and in `metadata.json` for outputs.
+Validation rules to enforce in assets/scripts
+- `parent_doc_id` must be non‑empty for essays/evaluations and must exist on disk under the expected stage:
+  - Essays: `docs/draft/<parent_doc_id>/...` must exist.
+  - Evaluations: `docs/essay/<parent_doc_id>/...` must exist.
+- Fail fast with clear errors when missing/invalid.
+
 2) metadata.json (extend)
 - Ensure it includes at least:
   - `task_id` (draft_task_id | essay_task_id | evaluation_task_id)
