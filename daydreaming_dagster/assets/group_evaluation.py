@@ -9,6 +9,11 @@ from pathlib import Path
 from .partitions import evaluation_tasks_partitions
 from ..utils.documents_index import DocumentRow
 from ..utils.document import Document
+from ..utils.filesystem_rows import (
+    get_row_by_doc_id as fs_get_row_by_doc_id,
+    read_parsed as fs_read_parsed,
+    read_raw as fs_read_raw,
+)
 from ..utils.ids import (
     compute_logical_key_id_evaluation,
 )
@@ -26,45 +31,38 @@ logger = logging.getLogger(__name__)
     partitions_def=evaluation_tasks_partitions,
     group_name="evaluation",
     io_manager_key="evaluation_prompt_io_manager",
-    required_resource_keys={"data_root", "documents_index"},
+    required_resource_keys={"data_root"},
     deps={EVALUATION_TEMPLATES_KEY},
 )
 def evaluation_prompt(context, evaluation_tasks) -> str:
     task_id = context.partition_key
     task_row = get_task_row(evaluation_tasks, "evaluation_task_id", task_id, context, "evaluation_tasks")
-    # DB-only resolution (no filesystem fallback)
-    idx_res = context.resources.documents_index
-    if not idx_res:
+    parent_doc_id = task_row.get("parent_doc_id")
+    if not (isinstance(parent_doc_id, str) and parent_doc_id.strip()):
         raise Failure(
-            description="Documents index is required for evaluation_prompt",
+            description="Missing parent_doc_id for evaluation task",
             metadata={
                 "function": MetadataValue.text("evaluation_prompt"),
-                "resolution": MetadataValue.text("Ensure documents_index resource is configured and DB is backfilled"),
+                "evaluation_task_id": MetadataValue.text(task_id),
+                "resolution": MetadataValue.text("Provide parent_doc_id (essay doc id) in evaluation_tasks.csv"),
             },
         )
-    idx = idx_res.get_index()
-    document_id = task_row.get("document_id")
-    stage_raw = str(task_row.get("stage") or "").strip().lower()
-    if stage_raw:
-        stage = "essay" if stage_raw.startswith("essay") else "draft"
-    else:
-        stage = "essay" if (isinstance(task_row.get("essay_task_id"), str) and task_row.get("essay_task_id")) else "draft"
-    key = str(document_id)
-    row = idx.get_latest_by_task(stage, key)
+    data_root = Path(getattr(context.resources, "data_root", "data"))
+    docs_root = data_root / "docs"
+    row = fs_get_row_by_doc_id(docs_root, "essay", str(parent_doc_id))
     if not row:
         raise Failure(
-            description="Target document not found in documents index",
+            description="Target essay document not found",
             metadata={
                 "function": MetadataValue.text("evaluation_prompt"),
-                "stage": MetadataValue.text(stage),
-                "document_task_id": MetadataValue.text(key),
+                "parent_doc_id": MetadataValue.text(str(parent_doc_id)),
             },
         )
     try:
-        doc_text = idx.read_parsed(row)
+        doc_text = fs_read_parsed(row)
     except Exception:
-        doc_text = idx.read_raw(row)
-    used_source = f"{stage}_db"
+        doc_text = fs_read_raw(row)
+    used_source = "essay_fs"
 
     eval_df = read_evaluation_templates(Path(context.resources.data_root))
     evaluation_templates_dict: dict[str, str] = {}
@@ -90,8 +88,7 @@ def evaluation_prompt(context, evaluation_tasks) -> str:
     context.add_output_metadata(
         {
             "evaluation_task_id": MetadataValue.text(task_id),
-            "source_stage": MetadataValue.text(str(task_row.get("stage"))),
-            "document_id": MetadataValue.text(str(task_row.get("document_id"))),
+            "parent_doc_id": MetadataValue.text(str(parent_doc_id)),
             "document_content_length": MetadataValue.int(len(doc_text or "")),
             "evaluation_prompt_length": MetadataValue.int(len(eval_prompt)),
             "source_used": MetadataValue.text(used_source or ""),
@@ -132,22 +129,13 @@ def evaluation_response(context, evaluation_prompt, evaluation_tasks) -> str:
         from pathlib import Path as _Path
 
         idx = idx_res.get_index()
-        document_id = task_row.get("document_id")
-        stage_raw = str(task_row.get("stage") or "")
-        target_stage = "essay" if stage_raw.startswith("essay") else "draft"
-        parent_doc_id = None
-        try:
-            parent = idx.get_latest_by_task(target_stage, str(document_id))
-            if parent:
-                parent_doc_id = parent.get("doc_id")
-        except Exception:
-            parent_doc_id = None
+        parent_doc_id = task_row.get("parent_doc_id")
 
         evaluation_template = task_row.get("evaluation_template")
         model_id = task_row.get("evaluation_model") or task_row.get("evaluation_model_id")
 
         # Compute logical key
-        logical_key_id = compute_logical_key_id_evaluation(str(parent_doc_id or document_id), str(evaluation_template), str(model_id))
+        logical_key_id = compute_logical_key_id_evaluation(str(parent_doc_id), str(evaluation_template), str(model_id))
         run_id = getattr(context, "run_id", "run")
         attempt = int(time.time_ns())
         from ..utils.ids import new_doc_id
