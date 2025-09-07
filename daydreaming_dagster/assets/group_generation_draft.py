@@ -254,7 +254,7 @@ def _draft_response_impl(context, draft_prompt, draft_generation_tasks) -> str:
     partitions_def=draft_tasks_partitions,
     group_name="generation_draft",
     io_manager_key="draft_response_io_manager",
-    required_resource_keys={"openrouter_client", "experiment_config", "data_root"},
+    required_resource_keys={"openrouter_client", "experiment_config", "data_root", "documents_index"},
 )
 def draft_response(context, draft_prompt, draft_generation_tasks) -> str:
     """Generate Phase 1 LLM responses for drafts."""
@@ -262,122 +262,121 @@ def draft_response(context, draft_prompt, draft_generation_tasks) -> str:
 
     # Write to documents index (Phase 1)
     idx_res = context.resources.documents_index
-        import json, time, hashlib
-        from pathlib import Path as _Path
+    import json, time, hashlib
+    from pathlib import Path as _Path
 
-        task_id = context.partition_key
-        # Pull task row again to avoid plumb-through changes
-        task_row = get_task_row(draft_generation_tasks, "draft_task_id", task_id, context, "draft_generation_tasks")
-        combo_id = task_row.get("combo_id")
-        draft_template = task_row.get("draft_template")
-        model_id = task_row.get("generation_model") or task_row.get("generation_model_id")
+    task_id = context.partition_key
+    # Pull task row again to avoid plumb-through changes
+    task_row = get_task_row(draft_generation_tasks, "draft_task_id", task_id, context, "draft_generation_tasks")
+    combo_id = task_row.get("combo_id")
+    draft_template = task_row.get("draft_template")
+    model_id = task_row.get("generation_model") or task_row.get("generation_model_id")
 
-        # Compute IDs
-        logical_key_id = compute_logical_key_id_draft(str(combo_id), str(draft_template), str(model_id))
-        run_id = getattr(context, "run_id", "run")
-        attempt = int(time.time_ns())
-        doc_id = new_doc_id(logical_key_id, run_id, attempt)
+    # Compute IDs
+    logical_key_id = compute_logical_key_id_draft(str(combo_id), str(draft_template), str(model_id))
+    run_id = getattr(context, "run_id", "run")
+    attempt = int(time.time_ns())
+    doc_id = new_doc_id(logical_key_id, run_id, attempt)
 
-        # Build doc_dir and write files atomically
-        idx = idx_res.get_index()
-        docs_root = _Path(idx.docs_root)
-        stage = "draft"
-        target_dir = build_doc_dir(docs_root, stage, logical_key_id, doc_id)
-        target_dir.mkdir(parents=True, exist_ok=True)
+    # Build doc_dir and write files atomically
+    idx = idx_res.get_index()
+    docs_root = _Path(idx.docs_root)
+    stage = "draft"
+    target_dir = build_doc_dir(docs_root, stage, logical_key_id, doc_id)
+    target_dir.mkdir(parents=True, exist_ok=True)
 
-        def _write_atomic(path: _Path, data: str):
-            tmp = path.with_suffix(path.suffix + ".tmp")
-            tmp.write_text(data, encoding="utf-8")
-            tmp.replace(path)
+    def _write_atomic(path: _Path, data: str):
+        tmp = path.with_suffix(path.suffix + ".tmp")
+        tmp.write_text(data, encoding="utf-8")
+        tmp.replace(path)
 
-        # Prefer RAW from versioned raw dir if present; fallback to parsed text
-        raw_text = parsed
-        try:
-            data_root = _Path(getattr(context.resources, "data_root", "data"))
-            raw_dir = data_root / "3_generation" / "draft_responses_raw"
-            best = None
-            best_ver = -1
-            prefix = f"{task_id}_v"
-            if raw_dir.exists():
-                for name in raw_dir.iterdir():
-                    if not name.name.startswith(prefix) or name.suffix != ".txt":
-                        continue
-                    try:
-                        v = int(name.stem.split("_v")[-1])
-                    except Exception:
-                        continue
-                    if v > best_ver:
-                        best_ver = v
-                        best = name
-            if best and best.exists():
-                raw_text = best.read_text(encoding="utf-8")
-        except Exception:
-            pass
+    # Prefer RAW from versioned raw dir if present; fallback to parsed text
+    raw_text = parsed
+    try:
+        data_root = _Path(getattr(context.resources, "data_root", "data"))
+        raw_dir = data_root / "3_generation" / "draft_responses_raw"
+        best = None
+        best_ver = -1
+        prefix = f"{task_id}_v"
+        if raw_dir.exists():
+            for name in raw_dir.iterdir():
+                if not name.name.startswith(prefix) or name.suffix != ".txt":
+                    continue
+                try:
+                    v = int(name.stem.split("_v")[-1])
+                except Exception:
+                    continue
+                if v > best_ver:
+                    best_ver = v
+                    best = name
+        if best and best.exists():
+            raw_text = best.read_text(encoding="utf-8")
+    except Exception:
+        pass
 
-        _write_atomic(target_dir / "raw.txt", raw_text)
-        _write_atomic(target_dir / "parsed.txt", parsed)
+    _write_atomic(target_dir / "raw.txt", raw_text)
+    _write_atomic(target_dir / "parsed.txt", parsed)
 
-        # Copy prompt if enabled
-        try:
-            if getattr(idx_res, "prompt_copy_enabled", True) and isinstance(draft_prompt, str):
-                _write_atomic(target_dir / "prompt.txt", draft_prompt)
-        except Exception:
-            pass
+    # Copy prompt if enabled
+    try:
+        if getattr(idx_res, "prompt_copy_enabled", True) and isinstance(draft_prompt, str):
+            _write_atomic(target_dir / "prompt.txt", draft_prompt)
+    except Exception:
+        pass
 
-        # Build metadata.json
-        meta_small = {
-            "function": "draft_response",
-        }
+    # Build metadata.json
+    meta_small = {
+        "function": "draft_response",
+    }
+    info = {}
+    try:
+        # Not available here; left empty for now
         info = {}
-        try:
-            # Not available here; left empty for now
-            info = {}
-        except Exception:
-            info = {}
-        metadata = {
-            "task_id": task_id,
-            "combo_id": combo_id,
-            "draft_template": draft_template,
-            "model_id": model_id,
-            "usage": info.get("usage") if isinstance(info, dict) else None,
-        }
-        _write_atomic(target_dir / "metadata.json", json.dumps(metadata, ensure_ascii=False, indent=2))
+    except Exception:
+        info = {}
+    metadata = {
+        "task_id": task_id,
+        "combo_id": combo_id,
+        "draft_template": draft_template,
+        "model_id": model_id,
+        "usage": info.get("usage") if isinstance(info, dict) else None,
+    }
+    _write_atomic(target_dir / "metadata.json", json.dumps(metadata, ensure_ascii=False, indent=2))
 
-        # Insert DB row
-        content_hash = hashlib.sha256((raw_text or "").encode("utf-8")).hexdigest()
-        rel_dir = target_dir.relative_to(docs_root)
-        row = DocumentRow(
-            doc_id=doc_id,
-            logical_key_id=logical_key_id,
-            stage=stage,
-            task_id=task_id,
-            parent_doc_id=None,
-            template_id=str(draft_template),
-            model_id=str(model_id),
-            run_id=str(run_id),
-            parser=None,
-            status="ok",
-            usage_prompt_tokens=None,
-            usage_completion_tokens=None,
-            usage_max_tokens=None,
-            doc_dir=str(rel_dir),
-            raw_chars=len(raw_text or ""),
-            parsed_chars=len(parsed or ""),
-            content_hash=content_hash,
-            meta_small=meta_small,
-            lineage_prev_doc_id=None,
+    # Insert DB row
+    content_hash = hashlib.sha256((raw_text or "").encode("utf-8")).hexdigest()
+    rel_dir = target_dir.relative_to(docs_root)
+    row = DocumentRow(
+        doc_id=doc_id,
+        logical_key_id=logical_key_id,
+        stage=stage,
+        task_id=task_id,
+        parent_doc_id=None,
+        template_id=str(draft_template),
+        model_id=str(model_id),
+        run_id=str(run_id),
+        parser=None,
+        status="ok",
+        usage_prompt_tokens=None,
+        usage_completion_tokens=None,
+        usage_max_tokens=None,
+        doc_dir=str(rel_dir),
+        raw_chars=len(raw_text or ""),
+        parsed_chars=len(parsed or ""),
+        content_hash=content_hash,
+        meta_small=meta_small,
+        lineage_prev_doc_id=None,
+    )
+    try:
+        idx.insert_document(row)
+        context.add_output_metadata(
+            {
+                "doc_id": MetadataValue.text(doc_id),
+                "logical_key_id": MetadataValue.text(logical_key_id),
+                "doc_dir": MetadataValue.path(str(target_dir)),
+            }
         )
-        try:
-            idx.insert_document(row)
-            context.add_output_metadata(
-                {
-                    "doc_id": MetadataValue.text(doc_id),
-                    "logical_key_id": MetadataValue.text(logical_key_id),
-                    "doc_dir": MetadataValue.path(str(target_dir)),
-                }
-            )
-        except Exception as e:
-            # Do not fail the asset in Phase 1; just log. The legacy path remains authoritative.
-            context.log.warning(f"DocumentsIndex insert failed for draft_response {task_id}: {e}")
+    except Exception as e:
+        context.log.warning(f"DocumentsIndex insert failed for draft_response {task_id}: {e}")
 
     return parsed
