@@ -171,3 +171,46 @@ Phase F — Index removal + filesystem helpers
 5) Docs & Checks
 - Update operating guide with doc_id pinning examples.
 - Make checks warn when running without pinned lineage in non‑dev runs.
+
+## Follow‑Up Plan: Scripts + Pivots (Doc‑ID First)
+
+Goal
+- Ensure cross‑experiment scripts and pivots operate on parent_doc_id (the canonical generation doc id) rather than task ids, so results aggregate deterministically across versions.
+
+Targets
+- scripts/parse_all_scores.py
+- scripts/build_pivot_tables.py
+- scripts/build_evaluation_results_table.py
+- scripts/rebuild_results.sh (invocation order/paths)
+- (audit) scripts/copy_essays_with_drafts.py and scripts/find_legacy_evals.py for task‑id assumptions
+
+Tasks
+1) parse_all_scores (switch to docs/ store)
+- Parse directly from the new store under `data/docs/evaluation/**/`:
+  - Discover eval docs by iterating `data/docs/evaluation/<doc_id>/parsed.txt` (or `raw.txt` if needed).
+  - Load `metadata.json` in the same directory for fields: `parent_doc_id`, `task_id` (evaluation_task_id), `evaluation_template`, `model_id`, `created_at`.
+- Emit `doc_id` (evaluation document id) as the primary key in the CSV.
+- Do not rely on `evaluation_task_id` filename patterns; treat tasks CSV as optional context only.
+- Include `parent_doc_id` from metadata.json; pivots will use it as the stable generation key.
+- Keep existing score and parser fields; add `doc_dir`, `used_response_path`, and `created_at` for traceability.
+
+2) build_pivot_tables (pivot by parent_doc_id)
+- Require and group by `parent_doc_id` (generation doc, stable across attempts) for primary pivots.
+- Keep `doc_id` (evaluation doc) available for evaluation‑centric breakdowns as a secondary key.
+- Do not infer from task ids; rely on parsed_scores parent_doc_id sourced from metadata.json.
+
+3) build_evaluation_results_table (include doc_id and enrich via metadata)
+- Ensure the table includes `doc_id` (evaluation doc) and optionally `parent_doc_id` by loading `metadata.json` for each `doc_id`.
+- Avoid dependence on `evaluation_tasks.csv`; treat tasks as optional context.
+
+4) Selection and copy helpers (audit and align)
+- scripts/copy_essays_with_drafts.py: prefer `parent_doc_id` for locating essays; keep legacy paths for historical runs with a clear warning.
+- scripts/find_legacy_evals.py: update messaging to recommend pinning and highlight missing `parent_doc_id` cases.
+
+5) Docs and examples
+- Update examples in docs/guides/operating_guide.md and selection_and_cube.md to show pivots keyed by `parent_doc_id`.
+- Refresh `rebuild_results.sh` to use the new scripts/flags and ensure the order produces parsed_scores with `parent_doc_id`.
+
+Validation
+- Unit scope: add small tests for `parse_all_scores.py` (CLI function refactored for import) to verify `parent_doc_id` extraction and legacy mapping.
+- Integration scope: run `rebuild_results.sh` on a fixture data_root; check that pivot tables group by `parent_doc_id` and match counts with legacy mode off.

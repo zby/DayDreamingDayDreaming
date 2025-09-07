@@ -7,13 +7,12 @@ updates the corresponding docs/<stage>/<doc_id>/metadata.json to include a "temp
 field if missing or incorrect.
 
 Usage:
-  uv run python scripts/backfill_template_id_in_metadata.py \
+  uv run python scripts/backfill/backfill_template_id_in_metadata.py \
     --data-root data --db data/db/documents.sqlite --dry-run
 
 Options:
   --data-root   Base data directory (default: data)
   --db          Path to documents.sqlite (default: <data-root>/db/documents.sqlite)
-  --stage       Optional stage filter: draft|essay|evaluation
   --limit       Optional limit on number of rows processed
   --dry-run     Show planned changes without writing files
 """
@@ -48,15 +47,11 @@ def _write_metadata(path: Path, data: dict, dry_run: bool) -> bool:
     return True
 
 
-def backfill(data_root: Path, db_path: Path, stage: Optional[str], limit: Optional[int], dry_run: bool) -> dict:
+def backfill(data_root: Path, db_path: Path, limit: Optional[int], dry_run: bool) -> dict:
     con = sqlite3.connect(str(db_path))
     con.row_factory = sqlite3.Row
-    where = []
+    where = ["template_id IS NOT NULL AND template_id != ''"]
     args: list = []
-    if stage:
-        where.append("stage=?")
-        args.append(stage)
-    where.append("template_id IS NOT NULL AND template_id != ''")
     q = "SELECT doc_id, stage, template_id FROM documents"
     if where:
         q += " WHERE " + " AND ".join(where)
@@ -107,7 +102,6 @@ def main() -> None:
     ap = argparse.ArgumentParser(description="Backfill template_id into docs metadata.json from documents DB")
     ap.add_argument("--data-root", type=Path, default=Path("data"))
     ap.add_argument("--db", type=Path, default=None, help="Path to documents.sqlite (default: <data-root>/db/documents.sqlite)")
-    ap.add_argument("--stage", choices=["draft", "essay", "evaluation"], default=None)
     ap.add_argument("--limit", type=int, default=None)
     ap.add_argument("--dry-run", action="store_true")
     args = ap.parse_args()
@@ -117,7 +111,7 @@ def main() -> None:
 
     if not db_path.exists():
         raise FileNotFoundError(f"DB not found: {db_path}")
-    result = backfill(data_root, db_path, args.stage, args.limit, args.dry_run)
+    result = backfill(data_root, db_path, args.limit, args.dry_run)
     print(json.dumps(result, indent=2))
 
 

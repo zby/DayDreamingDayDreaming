@@ -18,8 +18,10 @@ Usage example:
     --input data/2_tasks/essay_generation_tasks.csv
 
 Doc-ID pinning (default):
-- evaluation_tasks.csv is generated with a pinned parent_doc_id for each evaluation task,
-  taken directly from the curated essay_generation_tasks.csv. No extra flags needed.
+- evaluation_tasks.csv is generated with a pinned parent_doc_id (the essay doc id) for each evaluation task,
+  taken directly from the curated essay_generation_tasks.csv. The input MUST include the essay document id
+  column named `essay_doc_id` (temporary alias `parent_doc_id` accepted for backcompat). The script also
+  reads the essay's metadata.json to optionally include `draft_doc_id`.
 """
 
 from __future__ import annotations
@@ -34,7 +36,7 @@ import pandas as pd
 import re
 from daydreaming_dagster.utils.document_locator import find_document_path
 from daydreaming_dagster.utils.evaluation_parsing_config import load_parser_map
-import sqlite3  # legacy helpers kept below will be removed soon
+import json
 
 
 def parse_args() -> argparse.Namespace:
@@ -261,24 +263,42 @@ def main() -> int:
     # Build evaluation tasks pinned by doc_id (default)
     evaluation_rows: List[dict] = []
     if essay_rows and eval_tpls and eval_models:
-        if "parent_doc_id" not in df.columns:
-            print("Input CSV must contain 'parent_doc_id' to build evaluation_tasks.csv with pinned doc IDs", file=sys.stderr)
-            return 1
         model_name_map = _load_models_map(data_root)
+        docs_root = Path(data_root) / "docs"
+        # Require essay doc id column; accept either 'essay_doc_id' or 'parent_doc_id' (temporary naming)
+        essay_doc_col = 'essay_doc_id' if 'essay_doc_id' in df.columns else ('parent_doc_id' if 'parent_doc_id' in df.columns else None)
+        if essay_doc_col is None:
+            print("Input CSV must contain 'essay_doc_id' (or temporary alias 'parent_doc_id') to build evaluation_tasks.csv with pinned doc IDs", file=sys.stderr)
+            return 1
         for _, r in df.iterrows():
-            essay_task_id = str(r["essay_task_id"])
-            parent_doc_id = str(r.get("parent_doc_id") or "").strip()
-            if not parent_doc_id:
-                print(f"Error: missing parent_doc_id for essay_task_id={essay_task_id}", file=sys.stderr)
+            essay_task_id = str(r["essay_task_id"]) if "essay_task_id" in r else ""
+            essay_doc_id = str(r.get(essay_doc_col) or "").strip()
+            if not essay_doc_id:
+                print(f"Error: missing essay doc id in column '{essay_doc_col}' for essay_task_id={essay_task_id}", file=sys.stderr)
                 return 1
             # Locate source document path (optional, for ops UX)
-            fp, src = find_document_path(essay_task_id, data_root)
+            fp, src = find_document_path(essay_task_id, data_root) if essay_task_id else (None, "")
             file_path = str(fp) if fp else ""
+            # Also attempt to read the draft parent doc id from the essay's metadata.json
+            draft_doc_id = None
+            meta_path = docs_root / "essay" / essay_doc_id / "metadata.json"
+            try:
+                if meta_path.exists():
+                    meta = json.loads(meta_path.read_text(encoding="utf-8"))
+                    if isinstance(meta, dict):
+                        val = meta.get("parent_doc_id")
+                        if isinstance(val, str) and val.strip():
+                            draft_doc_id = val.strip()
+            except Exception:
+                draft_doc_id = None
             for tpl in eval_tpls:
                 for model in eval_models:
                     evaluation_rows.append({
-                        "evaluation_task_id": f"{parent_doc_id}__{tpl}__{model}",
-                        "parent_doc_id": parent_doc_id,
+                        # Use essay doc id as the evaluation target (parent for evaluation stage)
+                        "evaluation_task_id": f"{essay_doc_id}__{tpl}__{model}",
+                        "parent_doc_id": essay_doc_id,
+                        # Optional visibility of essay->draft lineage for ops/debugging
+                        "draft_doc_id": draft_doc_id or "",
                         # task context (kept for compatibility in reports)
                         "document_id": essay_task_id,
                         "essay_task_id": essay_task_id,
@@ -308,6 +328,7 @@ def main() -> int:
                 "evaluation_task_id",
                 # pinned lineage
                 "parent_doc_id",
+                "draft_doc_id",
                 # legacy/task context (kept during migration)
                 "document_id","essay_task_id","draft_task_id","combo_id",
                 "draft_template","essay_template","generation_model","generation_model_name",
