@@ -204,8 +204,26 @@ class VersionedTextIOManager(IOManager):
         legacy = self._legacy_path(partition_key)
         if legacy.exists():
             return legacy.read_text()
+        # Final fallback: for draft_prompt, try reading from the docs store by matching task_id
+        try:
+            upstream = getattr(context, "upstream_output", None)
+            asset_name = upstream.asset_key.path[-1] if upstream else None
+            if asset_name == "draft_prompt":
+                docs_draft = Path("data") / "docs" / "draft"
+                for md in (docs_draft.glob("*/metadata.json") if docs_draft.exists() else []):
+                    try:
+                        import json
+                        meta = json.loads(md.read_text(encoding="utf-8"))
+                        if isinstance(meta, dict) and str(meta.get("task_id") or "") == str(partition_key):
+                            prompt_fp = md.parent / "prompt.txt"
+                            if prompt_fp.exists():
+                                return prompt_fp.read_text(encoding="utf-8")
+                    except Exception:
+                        continue
+        except Exception:
+            pass
         raise FileNotFoundError(
-            f"No text found for partition '{partition_key}' under {self.base_path}"
+            f"No text found for partition '{partition_key}' under {self.base_path} and no docs fallback available"
         )
 
 

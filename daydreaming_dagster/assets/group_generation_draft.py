@@ -312,7 +312,8 @@ def draft_response(context, draft_prompt, draft_generation_tasks) -> str:
         "usage": None,
         "function": "draft_response",
     }
-    prompt_text = draft_prompt if getattr(idx_res, "prompt_copy_enabled", True) and isinstance(draft_prompt, str) else None
+    # Copy the prompt alongside the document for traceability when available
+    prompt_text = draft_prompt if isinstance(draft_prompt, str) else None
     doc = Document(
         stage="draft",
         logical_key_id=logical_key_id,
