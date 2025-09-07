@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """
-Backfill template_id into metadata.json for all documents using the SQLite documents table.
+Backfill template_id and model_id into metadata.json for all documents using the SQLite documents table.
 
 Reads rows from the documents DB (data/db/documents.sqlite by default), and for each row
-updates the corresponding docs/<stage>/<doc_id>/metadata.json to include a "template_id"
-field if missing or incorrect.
+updates the corresponding docs/<stage>/<doc_id>/metadata.json to include "template_id"
+and "model_id" fields if missing or incorrect.
 
 Usage:
   uv run python scripts/backfill/backfill_template_id_in_metadata.py \
@@ -50,9 +50,12 @@ def _write_metadata(path: Path, data: dict, dry_run: bool) -> bool:
 def backfill(data_root: Path, db_path: Path, limit: Optional[int], dry_run: bool) -> dict:
     con = sqlite3.connect(str(db_path))
     con.row_factory = sqlite3.Row
-    where = ["template_id IS NOT NULL AND template_id != ''"]
+    where = [
+        "template_id IS NOT NULL AND template_id != ''",
+        "model_id IS NOT NULL AND model_id != ''",
+    ]
     args: list = []
-    q = "SELECT doc_id, stage, template_id FROM documents"
+    q = "SELECT doc_id, stage, template_id, model_id FROM documents"
     if where:
         q += " WHERE " + " AND ".join(where)
     q += " ORDER BY created_at ASC, rowid ASC"
@@ -64,27 +67,44 @@ def backfill(data_root: Path, db_path: Path, limit: Optional[int], dry_run: bool
     skipped = 0
     missing = 0
     mismatched = 0
+    template_added = 0
+    template_overwritten = 0
+    model_added = 0
+    model_overwritten = 0
     processed = 0
     for row in con.execute(q, args):
         processed += 1
         doc_id = str(row["doc_id"])  # type: ignore[index]
         stg = str(row["stage"])     # type: ignore[index]
         tpl = str(row["template_id"])  # type: ignore[index]
+        mdl = str(row["model_id"])      # type: ignore[index]
         meta_path = _doc_dir(docs_root, stg, doc_id) / "metadata.json"
         if not meta_path.parent.exists():
             missing += 1
             continue
         meta = _load_metadata(meta_path)
-        current = str(meta.get("template_id") or "")
-        if not current:
+        changed = False
+        current_tpl = str(meta.get("template_id") or "")
+        current_mdl = str(meta.get("model_id") or "")
+        if not current_tpl:
             meta["template_id"] = tpl
+            template_added += 1
+            changed = True
+        elif current_tpl != tpl:
+            meta["template_id"] = tpl
+            template_overwritten += 1
+            changed = True
+        if not current_mdl:
+            meta["model_id"] = mdl
+            model_added += 1
+            changed = True
+        elif current_mdl != mdl:
+            meta["model_id"] = mdl
+            model_overwritten += 1
+            changed = True
+        if changed:
             if _write_metadata(meta_path, meta, dry_run):
                 updated += 1
-        elif current != tpl:
-            # Keep DB as source of truth; overwrite
-            meta["template_id"] = tpl
-            if _write_metadata(meta_path, meta, dry_run):
-                mismatched += 1
         else:
             skipped += 1
 
@@ -94,6 +114,10 @@ def backfill(data_root: Path, db_path: Path, limit: Optional[int], dry_run: bool
         "mismatched_overwritten": mismatched,
         "skipped": skipped,
         "missing_dirs": missing,
+        "template_added": template_added,
+        "template_overwritten": template_overwritten,
+        "model_added": model_added,
+        "model_overwritten": model_overwritten,
         "dry_run": dry_run,
     }
 
@@ -117,4 +141,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-
