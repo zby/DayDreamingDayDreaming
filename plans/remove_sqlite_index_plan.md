@@ -10,6 +10,13 @@ We currently dual-write generation/evaluation artifacts to `data/docs/<stage>/<l
 
 Goal: Keep the same user‑visible behavior and IDs, simplify infra (no DB), reduce coupling, and make artifacts fully portable.
 
+Current progress
+- Document helper is implemented and used by draft/essay/evaluation assets to write `raw.txt`, `parsed.txt`, optional `prompt.txt`, and `metadata.json` consistently.
+- Assets still insert rows into SQLite; reads for phase linking/reporting still use the DB. This plan removes that dependency.
+
+Deferred
+- Global CSV audit log is deferred; we can add an append‑only journal later if needed.
+
 ## What SQLite Gives Us Today (to replace)
 
 - Retrieval helpers:
@@ -129,6 +136,9 @@ Phase 4 — Remove SQLite
 - Docs and guides updated; no references to DB in runtime paths.
 
 ## Open Questions
+  
+Out‑of‑scope for this iteration
+- Append‑only CSV index (global audit log) — postponed until after FSIndex cutover proves stable.
 
 - Do we need a global report of all docs across stages? If yes, implement a simple `walk_docs()` in FSIndex that yields rows using metadata.json.
 - Should we encode `task_id` into directory names to avoid maintaining by‑task pointers? We keep directories stable and rely on pointer JSON for clarity and atomicity.
