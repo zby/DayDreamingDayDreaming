@@ -47,6 +47,24 @@ def _write_metadata(path: Path, data: dict, dry_run: bool) -> bool:
     return True
 
 
+def _infer_combo_from_task(task_id: str, template_id: str, model_id: str) -> str:
+    try:
+        suffix = f"_{template_id}_{model_id}"
+        if task_id.endswith(suffix):
+            return task_id[: -len(suffix)]
+    except Exception:
+        pass
+    return ""
+
+
+def _get_db_row(con: sqlite3.Connection, doc_id: str, stage: str) -> Optional[sqlite3.Row]:
+    try:
+        cur = con.execute("SELECT * FROM documents WHERE doc_id=? AND stage=? LIMIT 1", (doc_id, stage))
+        return cur.fetchone()
+    except Exception:
+        return None
+
+
 def backfill(data_root: Path, db_path: Path, limit: Optional[int], dry_run: bool) -> dict:
     con = sqlite3.connect(str(db_path))
     con.row_factory = sqlite3.Row
@@ -55,7 +73,7 @@ def backfill(data_root: Path, db_path: Path, limit: Optional[int], dry_run: bool
         "model_id IS NOT NULL AND model_id != ''",
     ]
     args: list = []
-    q = "SELECT doc_id, stage, template_id, model_id FROM documents"
+    q = "SELECT doc_id, stage, template_id, model_id, task_id, parent_doc_id FROM documents"
     if where:
         q += " WHERE " + " AND ".join(where)
     q += " ORDER BY created_at ASC, rowid ASC"
@@ -72,12 +90,16 @@ def backfill(data_root: Path, db_path: Path, limit: Optional[int], dry_run: bool
     model_added = 0
     model_overwritten = 0
     processed = 0
+    combo_added = 0
+    combo_overwritten = 0
     for row in con.execute(q, args):
         processed += 1
         doc_id = str(row["doc_id"])  # type: ignore[index]
         stg = str(row["stage"])     # type: ignore[index]
         tpl = str(row["template_id"])  # type: ignore[index]
         mdl = str(row["model_id"])      # type: ignore[index]
+        task = str(row["task_id"])      # type: ignore[index]
+        parent = str(row["parent_doc_id"]) if row["parent_doc_id"] is not None else ""  # type: ignore[index]
         meta_path = _doc_dir(docs_root, stg, doc_id) / "metadata.json"
         if not meta_path.parent.exists():
             missing += 1
@@ -102,6 +124,75 @@ def backfill(data_root: Path, db_path: Path, limit: Optional[int], dry_run: bool
             meta["model_id"] = mdl
             model_overwritten += 1
             changed = True
+        # combo_id backfill
+        current_combo = str(meta.get("combo_id") or "")
+        combo_val = ""
+        if stg == "draft":
+            combo_val = _infer_combo_from_task(task, tpl, mdl)
+        elif stg == "essay":
+            # Prefer draft metadata; else infer from draft DB row
+            if parent:
+                dmeta_p = _doc_dir(docs_root, "draft", parent) / "metadata.json"
+                if dmeta_p.exists():
+                    try:
+                        dmeta = json.loads(dmeta_p.read_text(encoding="utf-8")) or {}
+                        combo_val = str(dmeta.get("combo_id") or "")
+                    except Exception:
+                        combo_val = ""
+                if not combo_val:
+                    drow = _get_db_row(con, parent, "draft")
+                    if drow is not None:
+                        combo_val = _infer_combo_from_task(str(drow["task_id"]), str(drow["template_id"]), str(drow["model_id"]))
+        elif stg == "evaluation":
+            # Get essay parent, then draft parent
+            essay_doc = parent
+            if essay_doc:
+                # try essay metadata for draft parent
+                emeta_p = _doc_dir(docs_root, "essay", essay_doc) / "metadata.json"
+                draft_parent = ""
+                try:
+                    if emeta_p.exists():
+                        emeta = json.loads(emeta_p.read_text(encoding="utf-8")) or {}
+                        draft_parent = str(emeta.get("parent_doc_id") or "")
+                except Exception:
+                    draft_parent = ""
+                if not draft_parent:
+                    erow = _get_db_row(con, essay_doc, "essay")
+                    if erow is not None:
+                        draft_parent = str(erow["parent_doc_id"] or "")
+                if draft_parent:
+                    dmeta_p = _doc_dir(docs_root, "draft", draft_parent) / "metadata.json"
+                    if dmeta_p.exists():
+                        try:
+                            dmeta = json.loads(dmeta_p.read_text(encoding="utf-8")) or {}
+                            combo_val = str(dmeta.get("combo_id") or "")
+                        except Exception:
+                            combo_val = ""
+                    if not combo_val:
+                        drow = _get_db_row(con, draft_parent, "draft")
+                        if drow is not None:
+                            combo_val = _infer_combo_from_task(str(drow["task_id"]), str(drow["template_id"]), str(drow["model_id"]))
+
+        if combo_val:
+            if not current_combo:
+                meta["combo_id"] = combo_val
+                combo_added += 1
+                changed = True
+            elif current_combo != combo_val:
+                meta["combo_id"] = combo_val
+                combo_overwritten += 1
+                changed = True
+
+        # parent_doc_id backfill for essays
+        current_parent = str(meta.get("parent_doc_id") or "")
+        if stg == "essay" and parent:
+            if not current_parent:
+                meta["parent_doc_id"] = parent
+                changed = True
+            elif current_parent != parent:
+                meta["parent_doc_id"] = parent
+                changed = True
+
         if changed:
             if _write_metadata(meta_path, meta, dry_run):
                 updated += 1
@@ -119,6 +210,8 @@ def backfill(data_root: Path, db_path: Path, limit: Optional[int], dry_run: bool
         "model_added": model_added,
         "model_overwritten": model_overwritten,
         "dry_run": dry_run,
+        "combo_added": combo_added,
+        "combo_overwritten": combo_overwritten,
     }
 
 

@@ -31,7 +31,7 @@ from pathlib import Path
 import json
 import sys
 import pandas as pd
-from daydreaming_dagster.utils.document_locator import find_document_path
+# No external lookups required; operate only on docs metadata for selected records
 
 
 DEFAULT_PRIOR_ART_TEMPLATES = [
@@ -69,21 +69,13 @@ def main() -> int:
         return 2
     df = pd.read_csv(args.parsed_scores)
 
-    # Validate columns and derive document_id if necessary
+    # Validate required columns (doc-id-first)
     if df.empty or "evaluation_template" not in df.columns:
         print("ERROR: parsed_scores is empty or missing 'evaluation_template' column", file=sys.stderr)
         return 2
-    if "document_id" not in df.columns and "evaluation_task_id" not in df.columns:
-        print("ERROR: parsed_scores must include either 'document_id' or 'evaluation_task_id'", file=sys.stderr)
+    if "parent_doc_id" not in df.columns:
+        print("ERROR: parsed_scores must include 'parent_doc_id' for grouping (doc-id-first)", file=sys.stderr)
         return 2
-    if "document_id" not in df.columns and "evaluation_task_id" in df.columns:
-        def _doc_from_tid(tid: str) -> str | None:
-            if not isinstance(tid, str):
-                return None
-            parts = tid.split("__")
-            return parts[0] if len(parts) == 3 else None
-        df = df.copy()
-        df["document_id"] = df["evaluation_task_id"].map(_doc_from_tid)
 
     # Filter to available prior-art templates and successful scores
     available = [tpl for tpl in args.prior_art_templates if tpl in set(df["evaluation_template"].unique())]
@@ -117,31 +109,24 @@ def main() -> int:
         print("No successful prior-art scores found to select from.", file=sys.stderr)
         return 1
     # Prefer grouping by parent_doc_id (generation doc) if present; else fallback to document_id
-    key_col = "parent_doc_id" if "parent_doc_id" in filt.columns else "document_id"
-    if key_col == "document_id":
-        print("Warning: parsed_scores missing parent_doc_id; grouping by document_id as fallback", file=sys.stderr)
+    key_col = "parent_doc_id"
     best = (
         filt.groupby(key_col)["score"].max().reset_index().sort_values(
             by=["score", key_col], ascending=[False, True]
         )
     )
     top_docs = best.head(args.top_n)[key_col].astype(str).tolist()
+    if not top_docs:
+        print("ERROR: No candidates found after filtering and grouping by parent_doc_id.", file=sys.stderr)
+        print(f"Filters: templates={available}, top_n={args.top_n}", file=sys.stderr)
+        return 1
 
     # Build curated generation task CSVs (essays, and optionally drafts)
     models_csv = Path("data/1_raw/llm_models.csv")
     data_root = Path("data")
-    essay_dir = data_root / "3_generation" / "essay_responses"
-    drafts_dir = data_root / "3_generation" / "draft_responses"
-    if not drafts_dir.exists():
-        drafts_dir = data_root / "3_generation" / "links_responses"  # legacy fallback
+    # Legacy response directories are not used in doc-id-first path
     essay_out_csv = Path("data/2_tasks/essay_generation_tasks.csv")
-    link_out_csv = Path("data/2_tasks/draft_generation_tasks.csv")
-    draft_tpl_csv = Path("data/1_raw/draft_templates.csv")
-    if not draft_tpl_csv.exists():
-        alt = Path("data/1_raw/link_templates.csv")  # legacy fallback
-        if alt.exists():
-            draft_tpl_csv = alt
-    essay_tpl_csv = Path("data/1_raw/essay_templates.csv")
+    # No draft tasks output here; we only write curated essay tasks
 
     # Load model mapping id -> provider/model name
     model_map = {}
@@ -153,130 +138,101 @@ def main() -> int:
         except Exception as e:
             print(f"Warning: failed to read model mapping ({e}); will use model ids as names", file=sys.stderr)
 
-    # Load known templates to parse IDs robustly
-    draft_tpls: set[str] = set()
-    essay_tpls: set[str] = set()
-    try:
-        if draft_tpl_csv.exists():
-            ldf = pd.read_csv(draft_tpl_csv)
-            if "template_id" in ldf.columns:
-                draft_tpls = set(ldf["template_id"].astype(str))
-        if essay_tpl_csv.exists():
-            edf = pd.read_csv(essay_tpl_csv)
-            if "template_id" in edf.columns:
-                essay_tpls = set(edf["template_id"].astype(str))
-    except Exception as e:
-        print(f"Warning: failed to read template CSVs ({e}); falling back to naive parsing", file=sys.stderr)
+    # No template CSV parsing in doc-id-first path
 
     essay_rows = []
     missing_essays = []
-    missing_parents = []
-
-    def _find_parent_doc_id_from_essay_docs(data_root: Path, essay_task_id: str) -> str | None:
-        """Scan data/docs/essay/**/metadata.json for a row with task_id == essay_task_id.
-
-        Returns the latest by created_at if multiple, else first found; None if not found.
-        """
-        docs_root = data_root / "docs" / "essay"
-        if not docs_root.exists():
-            return None
-        best = None
-        best_ts = ""
-        # Two-level traversal: stage/essay/<doc_id>/metadata.json (logical_key directory may be omitted)
-        # Our layout is flat by doc_id: essay/<doc_id>/metadata.json
-        for md in docs_root.glob("*/metadata.json"):
-            try:
-                meta = json.loads(md.read_text(encoding="utf-8"))
-            except Exception:
-                continue
-            if not isinstance(meta, dict):
-                continue
-            if str(meta.get("task_id")) != str(essay_task_id):
-                continue
-            created = str(meta.get("created_at") or "")
-            if created >= best_ts:
-                best_ts = created
-                best = str(meta.get("parent_doc_id") or "")
-        return best or None
+    # Collect missing-field diagnostics per selected doc
+    missing_required: list[str] = []
 
     for doc in top_docs:
-        parts = doc.split("_")
-
-        # Try to detect essay vs draft by locating an essay template token
-        essay_template = None
-        draft_template = None
-        generation_model = None
-        combo_id = None
-
-        e_idx = None
-        if essay_tpls:
-            # Consider it an essay doc only if the last token is an essay template
-            last_idx = len(parts) - 1
-            if last_idx >= 0 and parts[last_idx] in essay_tpls:
-                essay_template = parts[last_idx]
-                e_idx = last_idx
-        if e_idx is not None:
-            # Essay doc id: find last draft template before essay (legacy: link template)
-            l_idx = None
-            if draft_tpls:
-                for j in range(e_idx - 1, -1, -1):
-                    if parts[j] in draft_tpls:
-                        draft_template = parts[j]
-                        l_idx = j
-                        break
-            if l_idx is None and len(parts) >= 4:
-                # Fallback naive positions
-                draft_template = parts[-3]
-                l_idx = len(parts) - 3
-            gen_tokens = parts[(l_idx + 1) if l_idx is not None else 0 : e_idx]
-            generation_model = "_".join(gen_tokens) if gen_tokens else None
-            combo_id = "_".join(parts[: (l_idx if l_idx is not None else 0)]) or None
-
-            if not (combo_id and draft_template and generation_model and essay_template):
-                print(f"Skipping malformed essay id: {doc}", file=sys.stderr)
-                continue
-
-            draft_task_id = f"{combo_id}_{draft_template}_{generation_model}"
-            # Verify presence in docs store for the selected generation
-            essay_doc_path = data_root / "docs" / "essay" / doc / "parsed.txt"
-            if not essay_doc_path.exists():
-                missing_essays.append(str(essay_doc_path))
-            # Determine parent_doc_id for curated tasks
-            if "parent_doc_id" in df.columns:
-                parent_doc_id = doc  # selected generation id is already the parent
-            else:
-                parent_doc_id = _find_parent_doc_id_from_essay_docs(data_root, doc)
-                if not parent_doc_id:
-                    missing_parents.append(doc)
-            essay_rows.append({
-                "essay_task_id": doc,
-                "parent_doc_id": parent_doc_id or "",
-                "draft_task_id": draft_task_id,
-                "combo_id": combo_id,
-                "draft_template": draft_template,
-                "essay_template": essay_template,
-                "generation_model": generation_model,
-                "generation_model_name": model_map.get(generation_model, generation_model),
-            })
-        else:
-            # Ignore draft documents for curated essay selection
+        # Doc is the generation (essay) doc_id; use docs store metadata
+        essay_doc_id = str(doc)
+        data_root = Path("data")
+        essay_dir = data_root / "docs" / "essay" / essay_doc_id
+        essay_meta = {}
+        try:
+            mp = essay_dir / "metadata.json"
+            if mp.exists():
+                essay_meta = json.loads(mp.read_text(encoding="utf-8")) or {}
+        except Exception:
+            essay_meta = {}
+        essay_template = str(essay_meta.get("template_id") or essay_meta.get("essay_template") or "")
+        generation_model = str(essay_meta.get("model_id") or "")
+        # Resolve parent draft to get combo_id and draft_template for legacy task ids
+        draft_doc_id = str(essay_meta.get("parent_doc_id") or "")
+        combo_id = ""
+        draft_template = ""
+        if draft_doc_id:
+            draft_meta_path = data_root / "docs" / "draft" / draft_doc_id / "metadata.json"
+            try:
+                if draft_meta_path.exists():
+                    dmeta = json.loads(draft_meta_path.read_text(encoding="utf-8")) or {}
+                    combo_id = str(dmeta.get("combo_id") or "")
+                    draft_template = str(dmeta.get("template_id") or dmeta.get("draft_template") or "")
+                    # If generation_model missing, use the draft model
+                    if not generation_model:
+                        generation_model = str(dmeta.get("model_id") or "")
+            except Exception:
+                pass
+        parent_doc_id = essay_doc_id
+        if not (essay_dir / "parsed.txt").exists():
+            missing_essays.append(str(essay_dir / "parsed.txt"))
+        # Validate required fields
+        missing_fields = []
+        if not essay_template:
+            missing_fields.append("essay_template")
+        if not generation_model:
+            missing_fields.append("generation_model")
+        if not draft_doc_id:
+            missing_fields.append("essay.parent_doc_id (draft parent)")
+        if not combo_id:
+            missing_fields.append("combo_id")
+        if not draft_template:
+            missing_fields.append("draft_template")
+        if missing_fields:
+            missing_required.append(f"{essay_doc_id}: missing {', '.join(missing_fields)}")
             continue
+        # Legacy task ids (still required): compose strictly from docs metadata
+        draft_task_id = f"{combo_id}_{draft_template}_{generation_model}"
+        essay_task_id = f"{draft_task_id}_{essay_template}"
+        essay_rows.append({
+            "essay_task_id": essay_task_id,
+            "parent_doc_id": parent_doc_id,
+            "draft_task_id": draft_task_id,
+            "combo_id": combo_id,
+            "draft_template": draft_template,
+            "essay_template": essay_template,
+            "generation_model": generation_model,
+            "generation_model_name": model_map.get(generation_model, generation_model) if generation_model else "",
+        })
+
+        # No legacy fallback: grouping strictly by parent_doc_id
 
     # Write output (essay tasks only)
     if args.write_drafts:
         essay_out_csv.parent.mkdir(parents=True, exist_ok=True)
         if essay_rows:
-            # Enforce that parent_doc_id is present for all rows in doc-id-first mode
-            if missing_parents:
-                print("ERROR: Could not derive parent_doc_id for the following essay_task_id; ensure essays exist in data/docs/essay before selection:", file=sys.stderr)
-                for m in missing_parents:
-                    print(" -", m, file=sys.stderr)
+            if missing_required:
+                print("ERROR: missing required metadata to compose legacy task IDs:", file=sys.stderr)
+                for msg in missing_required:
+                    print(" -", msg, file=sys.stderr)
                 return 2
             pd.DataFrame(essay_rows, columns=[
                 "essay_task_id","parent_doc_id","draft_task_id","combo_id","draft_template",
                 "essay_template","generation_model","generation_model_name"
             ]).drop_duplicates(subset=["essay_task_id"]).to_csv(essay_out_csv, index=False)
             print(f"Wrote {len(essay_rows)} curated essay tasks to {essay_out_csv}")
+        else:
+            print(
+                "ERROR: No essay rows constructed. Ensure docs metadata contains essay.template_id, essay.model_id, essay.parent_doc_id and draft.combo_id, draft.template_id.",
+                file=sys.stderr,
+            )
+            if missing_required:
+                print("Details (per selected parent_doc_id):", file=sys.stderr)
+                for msg in missing_required:
+                    print(" -", msg, file=sys.stderr)
+            return 2
     else:
         print(f"Dry run: selected {len(essay_rows)} essay tasks; no file written")
 
