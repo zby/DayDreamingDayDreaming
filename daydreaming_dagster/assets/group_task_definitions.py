@@ -26,6 +26,7 @@ from .partitions import (
     evaluation_tasks_partitions,
 )
 from ..utils.combo_ids import ComboIDManager
+from ..utils.ids import reserve_doc_id
 from ..utils.selected_combos import validate_selected_is_subset
 from ..utils.document_locator import find_document_path
 from pathlib import Path
@@ -195,6 +196,9 @@ def draft_generation_tasks(context, content_combinations: List[ContentCombinatio
                     }
                 )
     df = pd.DataFrame(rows)
+    if not df.empty:
+        run_id = getattr(getattr(context, "run", object()), "run_id", None) or getattr(context, "run_id", None)
+        df["doc_id"] = df["draft_task_id"].astype(str).apply(lambda tid: reserve_doc_id("draft", tid, run_id=str(run_id) if run_id else None))
     # refresh dynamic partitions
     existing = context.instance.get_dynamic_partitions(draft_tasks_partitions.name)
     if existing:
@@ -255,6 +259,9 @@ def essay_generation_tasks(context, content_combinations: List[ContentCombinatio
                     }
                 )
     df = pd.DataFrame(rows)
+    if not df.empty:
+        run_id = getattr(getattr(context, "run", object()), "run_id", None) or getattr(context, "run_id", None)
+        df["doc_id"] = df["essay_task_id"].astype(str).apply(lambda tid: reserve_doc_id("essay", tid, run_id=str(run_id) if run_id else None))
     # refresh dynamic partitions
     existing = context.instance.get_dynamic_partitions(essay_tasks_partitions.name)
     if existing:
@@ -385,6 +392,13 @@ def evaluation_tasks(
                     }
                 )
     tasks_df = pd.DataFrame(rows)
+    if not tasks_df.empty:
+        run_id = getattr(getattr(context, "run", object()), "run_id", None) or getattr(context, "run_id", None)
+        tasks_df["doc_id"] = tasks_df["evaluation_task_id"].astype(str).apply(lambda tid: reserve_doc_id("evaluation", tid, run_id=str(run_id) if run_id else None))
+        # For doc-id-first migration, parent_doc_id represents the essay document id
+        # Here, document_id is the essay_task_id; we expose it as parent_doc_id for convenience
+        if "document_id" in tasks_df.columns:
+            tasks_df["parent_doc_id"] = tasks_df["document_id"].astype(str)
     existing = context.instance.get_dynamic_partitions(evaluation_tasks_partitions.name)
     if existing:
         for p in existing:

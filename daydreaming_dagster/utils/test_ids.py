@@ -4,6 +4,7 @@ from daydreaming_dagster.utils.ids import (
     compute_logical_key_id_essay,
     compute_logical_key_id_evaluation,
     new_doc_id,
+    reserve_doc_id,
 )
 
 
@@ -30,3 +31,10 @@ class TestIDs:
         assert x != y and x != z and y != z
         assert len(x) == 16
 
+    def test_reserve_doc_id_basic(self):
+        a = reserve_doc_id("draft", "comboA__tmplX__model1")
+        b = reserve_doc_id("draft", "comboA__tmplX__model1")
+        c = reserve_doc_id("draft", "comboA__tmplX__model1", run_id="r1")
+        assert a == b  # stable without run_id/salt
+        assert len(a) == 16
+        assert a != c  # run_id perturbs id
