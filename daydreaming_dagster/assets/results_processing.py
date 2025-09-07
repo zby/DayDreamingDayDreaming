@@ -9,6 +9,7 @@ from ..utils.evaluation_processing import (
     calculate_evaluation_metadata,
     add_evaluation_file_paths,
 )
+from .raw_data import EVALUATION_TEMPLATES_KEY
 
 
 @asset(
@@ -17,11 +18,12 @@ from ..utils.evaluation_processing import (
     required_resource_keys={"evaluation_response_io_manager"},
     ins={
         "evaluation_tasks": AssetIn(),
+        EVALUATION_TEMPLATES_KEY: AssetIn(),
     },
     description="Parse evaluation responses and enrich with task metadata",
     compute_kind="pandas"
 )
-def parsed_scores(context, evaluation_tasks: pd.DataFrame) -> pd.DataFrame:
+def parsed_scores(context, evaluation_tasks: pd.DataFrame, evaluation_templates: pd.DataFrame) -> pd.DataFrame:
     """Parse evaluation responses to extract scores and enrich with metadata."""
     # Validate inputs
     if evaluation_tasks is None:
@@ -30,7 +32,12 @@ def parsed_scores(context, evaluation_tasks: pd.DataFrame) -> pd.DataFrame:
     # Get base path and parse responses using evaluation processing utility
     base_path = Path(context.resources.evaluation_response_io_manager.base_path)
     # Parser selection is resolved at parse time from evaluation_templates.csv
-    parsed_df = parse_evaluation_files(evaluation_tasks, base_path, context=context)
+    parsed_df = parse_evaluation_files(
+        evaluation_tasks,
+        base_path,
+        context=context,
+        evaluation_templates=evaluation_templates,
+    )
 
     # Join with evaluation task metadata (denormalized)
     base_cols = [

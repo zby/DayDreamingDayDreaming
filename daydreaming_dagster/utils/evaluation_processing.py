@@ -2,14 +2,20 @@
 
 import pandas as pd
 from pathlib import Path
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 from dagster import MetadataValue
 
 from .eval_response_parser import parse_llm_response
 from .evaluation_parsing_config import ALLOWED_PARSERS, require_parser_for_template, load_parser_map
 
 
-def parse_evaluation_files(evaluation_tasks: pd.DataFrame, base_path: Path, parse_function=None, context=None) -> pd.DataFrame:
+def parse_evaluation_files(
+    evaluation_tasks: pd.DataFrame,
+    base_path: Path,
+    parse_function=None,
+    context=None,
+    evaluation_templates: Optional[pd.DataFrame] = None,
+) -> pd.DataFrame:
     """Parse evaluation response files and extract structured data.
     
     Args:
@@ -26,9 +32,20 @@ def parse_evaluation_files(evaluation_tasks: pd.DataFrame, base_path: Path, pars
     
     # Use default parsing function if none provided
     if parse_function is None:
-        # Load parser map from evaluation_templates.csv at parse-time
-        data_root = base_path.parents[1] if len(base_path.parents) >= 2 else Path("data")
-        parser_map = load_parser_map(data_root)
+        # Build parser map from provided evaluation_templates, else fallback to CSV
+        if evaluation_templates is not None:
+            if "template_id" not in evaluation_templates.columns or "parser" not in evaluation_templates.columns:
+                raise ValueError("evaluation_templates must include 'template_id' and 'parser' columns")
+            parser_map = (
+                evaluation_templates[["template_id", "parser"]]
+                .dropna(subset=["template_id", "parser"])  # ensure both present
+                .astype({"template_id": str, "parser": str})
+                .set_index("template_id")["parser"].str.strip().str.lower()
+                .to_dict()
+            )
+        else:
+            data_root = base_path.parents[1] if len(base_path.parents) >= 2 else Path("data")
+            parser_map = load_parser_map(data_root)
 
         def _default_parse(text: str, task_row: pd.Series) -> Dict[str, Any]:
             tpl = task_row.get('evaluation_template')
