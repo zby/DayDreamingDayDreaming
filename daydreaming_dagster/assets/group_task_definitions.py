@@ -28,7 +28,6 @@ from .partitions import (
 from ..utils.combo_ids import ComboIDManager
 from ..utils.ids import reserve_doc_id
 from ..utils.selected_combos import validate_selected_is_subset
-from ..utils.document_locator import find_document_path
 from pathlib import Path
 import pandas as pd
 from typing import List

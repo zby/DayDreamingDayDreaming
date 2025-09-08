@@ -47,9 +47,6 @@ from daydreaming_dagster.assets.group_task_definitions import (
 from daydreaming_dagster.assets.group_cross_experiment import (
     filtered_evaluation_results,
     template_version_comparison_pivot,
-    draft_generation_results_append,
-    essay_generation_results_append,
-    evaluation_results_append,
 )
 from daydreaming_dagster.resources.llm_client import LLMClientResource
 from daydreaming_dagster.resources.experiment_config import ExperimentConfig
@@ -99,14 +96,9 @@ defs = Definitions(
         final_results,
         perfect_score_paths,
         
-        # Cross-experiment analysis assets
+        # Cross-experiment analysis assets (derive views on demand; no auto-appenders)
         filtered_evaluation_results,
         template_version_comparison_pivot,
-        
-        # Auto-materializing results tracking assets
-        draft_generation_results_append,
-        essay_generation_results_append,
-        evaluation_results_append,
         documents_latest_report,
         documents_consistency_report,
         # Source assets (CSV-only)

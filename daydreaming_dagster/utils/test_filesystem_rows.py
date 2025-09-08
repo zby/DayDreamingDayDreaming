@@ -1,7 +1,7 @@
 from pathlib import Path
 import json
 
-from .filesystem_rows import get_row_by_doc_id, read_metadata
+from daydreaming_dagster.utils.filesystem_rows import get_row_by_doc_id, read_metadata
 
 
 def test_read_metadata_present(tmp_path: Path):
@@ -66,4 +66,3 @@ def test_read_metadata_invalid_json_strict_raises(tmp_path: Path):
     except Exception:
         raised = True
     assert raised is True
-
