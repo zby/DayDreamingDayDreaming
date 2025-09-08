@@ -22,6 +22,7 @@ Doc-ID pinning (default):
   taken directly from the curated essay_generation_tasks.csv. The input MUST include the essay document id
   column named `essay_doc_id` (temporary alias `parent_doc_id` accepted for backcompat). The script also
   reads the essay's metadata.json to optionally include `draft_doc_id`.
+ - All task CSVs will include a `doc_id` column reserved deterministically from their task IDs.
 """
 
 from __future__ import annotations
@@ -34,10 +35,10 @@ from typing import List
 
 import pandas as pd
 import re
-from daydreaming_dagster.utils.document_locator import find_document_path
 from daydreaming_dagster.utils.evaluation_parsing_config import load_parser_map
 import json
 import pandas as pd
+from daydreaming_dagster.utils.ids import reserve_doc_id
 
 
 def parse_args() -> argparse.Namespace:
@@ -296,6 +297,22 @@ def main() -> int:
 
     # Write selected combo mappings for chosen combinations
     _write_selected_combo_mappings(data_root, sorted(combo_ids), dry_run=args.dry_run)
+    # Ensure essay_generation_tasks.csv includes doc_id (reserve if missing)
+    try:
+        df_out = df.copy()
+        if "doc_id" not in df_out.columns:
+            df_out["doc_id"] = ""
+        def _ensure_doc(row: pd.Series) -> str:
+            v = str(row.get("doc_id") or "")
+            return v if v and v.lower() != "nan" else reserve_doc_id("essay", str(row["essay_task_id"]))
+        df_out["doc_id"] = df_out.apply(_ensure_doc, axis=1)
+        if args.dry_run:
+            print(f"[dry-run] Would write essay_generation_tasks with doc_id to {essay_out_csv}")
+        else:
+            df_out.to_csv(essay_out_csv, index=False)
+            print(f"Wrote {essay_out_csv} with doc_id column ({len(df_out)} rows)")
+    except Exception as e:
+        print(f"Warning: could not write essay_generation_tasks.csv with doc_id: {e}", file=sys.stderr)
     # Always report missing concepts in the current selection to catch mismatches early
     _report_missing_concepts_in_selection(data_root)
     # Optionally materialize content_combinations to ensure Dagster sees the updated selection
@@ -349,12 +366,15 @@ def main() -> int:
                 print(" - total missing template_ids:", len(missing_tpls))
         except Exception:
             pass
+        # Reserve doc_ids for drafts
+        for r in draft_rows:
+            r["doc_id"] = reserve_doc_id("draft", str(r["draft_task_id"]))
         added_drafts = _write_table(
             link_out_csv,
             draft_rows,
             key="draft_task_id",
             columns=[
-                "draft_task_id","combo_id","draft_template","generation_model","generation_model_name",
+                "draft_task_id","combo_id","draft_template","generation_model","generation_model_name","doc_id",
             ],
             dry_run=args.dry_run,
         )
@@ -443,6 +463,9 @@ def main() -> int:
     eval_out_csv = data_root / "2_tasks" / "evaluation_tasks.csv"
     added_evals = 0
     if evaluation_rows:
+        # Reserve doc_ids for evaluations
+        for r in evaluation_rows:
+            r["doc_id"] = reserve_doc_id("evaluation", str(r["evaluation_task_id"]))
         added_evals = _write_table(
             eval_out_csv,
             evaluation_rows,
@@ -452,6 +475,7 @@ def main() -> int:
                 # pinned lineage
                 "parent_doc_id",
                 "draft_doc_id",
+                "doc_id",
                 # legacy/task context (kept during migration)
                 "document_id","essay_task_id","draft_task_id","combo_id",
                 "draft_template","essay_template","generation_model","generation_model_name",
