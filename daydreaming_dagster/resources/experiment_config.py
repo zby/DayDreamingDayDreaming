@@ -12,10 +12,10 @@ class ExperimentConfig(ConfigurableResource):
     generation_max_tokens: int = 8192
     # Draft/essay specific max tokens (canonical)
     draft_generation_max_tokens: int = 20480
-    essay_generation_max_tokens: int = 4096
+    essay_generation_max_tokens: int = 20480
     # Validation rule: minimum number of non-empty lines required in drafts
     min_draft_lines: int = 3
-    evaluation_max_tokens: int = 2048
+    evaluation_max_tokens: int = 20480
 
     # COMMENTED OUT: Variance tracking configuration (future feature)
     # num_evaluation_runs: int = 3  # Number of evaluation runs per generation response for variance tracking
