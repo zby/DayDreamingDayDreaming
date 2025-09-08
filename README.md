@@ -88,11 +88,11 @@ uv run dagster asset materialize --select "parsed_scores,final_results" -f daydr
 
 **Asset Group Breakdown**:
 - `group:raw_data`: concepts, models, templates (loads from `data/1_raw/`; re‑materialize after edits)
-- `group:task_definitions`: content_combinations, draft_generation_tasks, essay_generation_tasks, evaluation_tasks (auto-materialize; creates `data/2_tasks/`)
-- `group:generation_draft`: draft_prompt, draft_response (creates `data/3_generation/draft_*`; legacy `links_*` supported for transition)
-- `group:generation_essays`: essay_prompt, essay_response (creates `data/3_generation/essay_*`)
-- `group:evaluation`: evaluation_prompt, evaluation_response (creates `data/4_evaluation/`)
-- `group:results_processing`: parsed_scores, analysis, and final_results (creates `data/5_parsing/`, `data/6_summary/`)
+- `group:task_definitions`: content_combinations, draft_generation_tasks, essay_generation_tasks, evaluation_tasks (auto-materialize; writes `data/2_tasks/*.csv` with `doc_id` columns)
+- `group:generation_draft`: draft_prompt, draft_response (writes documents under `data/docs/draft/<doc_id>`)
+- `group:generation_essays`: essay_prompt, essay_response (writes documents under `data/docs/essay/<doc_id>`)
+- `group:evaluation`: evaluation_prompt, evaluation_response (writes documents under `data/docs/evaluation/<doc_id>`)
+- `group:results_processing`: parsed_scores, analysis, and final_results (writes `data/5_parsing/`, `data/6_summary/`)
 
 **Why the specific asset dependencies matter**:
 - `draft_templates` and `essay_templates` load their CSVs and template files and determine activeness
@@ -310,15 +310,12 @@ Active draft templates are controlled in `data/1_raw/draft_templates.csv` via th
 - Built-in validation: depends on template; Phase‑1 parsing and minimum‑lines validation happen earlier.
 
 ### Output Data
-- **Tasks**: `data/2_tasks/` (generated combinations and tasks)
-- **Two-Phase Generation**: `data/3_generation/` (drafts and essays)
-  - `draft_prompts/`, `draft_responses/` (Phase 1 outputs; legacy `links_*` supported)
-  - `draft_responses_raw/` (RAW LLM outputs for Phase‑1; saved with versioning; useful when parsing fails)
-  - `essay_prompts/`, `essay_responses/` (Phase 2 outputs)
-  - `parsed_generation_responses/` (legacy; two-phase writes directly to `draft_*` and `essay_*`)
-- **Legacy Generation**: `data/3_generation/` (single-phase outputs, still supported)
-  - `generation_prompts/`, `generation_responses/`
-- **Results**: `data/5_parsing/` (processed results)
+- **Tasks**: `data/2_tasks/*.csv` (generated combinations and tasks; include `doc_id` for each row)
+- **Docs Store (primary)**: `data/docs/<stage>/<doc_id>/`
+  - Contains `raw.txt`, `parsed.txt`, optional `prompt.txt`, and `metadata.json`
+  - Stages: `draft`, `essay`, `evaluation`
+- **Optional RAW side-writes**: `data/3_generation/*_raw/` (enabled via ExperimentConfig; useful for debugging truncation/parser issues)
+- **Results**: `data/5_parsing/` (processed results) and `data/6_summary/` (summaries)
 - **Global Mapping**: `data/combo_mappings.csv` (append-only mapping of stable combo IDs to their concept components)
 
 ## Key Features
