@@ -116,7 +116,7 @@ def parse_evaluation_file_from_filename(filename: str, base_path: Path, parser_m
     """
     from .eval_response_parser import parse_llm_response
     
-    # Parse identifiers from filename (similar to parse_all_scores.py logic)
+    # Parse identifiers from filename (similar to aggregate_scores.py logic)
     parts = filename.split('_')
     
     # Find evaluation template and model (from right side)

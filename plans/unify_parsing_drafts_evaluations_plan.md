@@ -22,7 +22,7 @@ Benefits:
   - Evaluation: `daydreaming_dagster/assets/group_evaluation.py` parses the LLM response using `require_parser_for_template()` + `parse_llm_response()`, and writes raw.txt, parsed.txt, prompt.txt, and metadata.json via `Document`.
   - Drafts: `daydreaming_dagster/assets/group_generation_draft.py` already parses per `draft_templates.csv:parser` (identity when missing) and writes parsed.txt.
 - Aggregation/analysis scripts
-  - `scripts/parse_all_scores.py`: read parsed.txt only. If missing, treat as error. No raw.txt fallback once migration completes.
+- `scripts/aggregate_scores.py`: read parsed.txt only. If missing, treat as error. No raw.txt fallback once migration completes.
 - Tests and docs
   - Unit tests cover evaluation parsing strategies
   - Docs reflect docs‑store outputs; evaluation parsed.txt now standard.
@@ -51,7 +51,7 @@ Benefits:
 - `daydreaming_dagster/utils/draft_parsers.py`
   - Registry for draft‑phase parsers; identity when unspecified.
 
-- `scripts/parse_all_scores.py`
+- `scripts/aggregate_scores.py`
   - Require parsed.txt; drop raw.txt fallback after backfill.
   - Fast‑path numeric‑only parsed.txt; otherwise extract score from a trailing `SCORE: <float>` line.
   - Do not consult parser maps in the aggregator (runtime already produced parsed.txt).
@@ -66,12 +66,12 @@ Benefits:
 ## Migration Plan
 
 - Backfill: run `scripts/backfill/backfill_evaluation_parsed_texts.py` to create parsed.txt for all existing evaluation docs. The backfill writes number‑only parsed.txt.
-- Update aggregator: modify `scripts/parse_all_scores.py` to require parsed.txt and remove raw fallback; read numeric‑only directly, else extract from a `SCORE:` line.
+- Update aggregator: modify `scripts/aggregate_scores.py` to require parsed.txt and remove raw fallback; read numeric‑only directly, else extract from a `SCORE:` line.
 - Verify: run the aggregator over the corpus and ensure zero missing‑parsed cases.
 - Update documentation
 
 ### Implementation Tasks (explicit)
-- Update `scripts/parse_all_scores.py` as above; ensure stable schema and clear error reporting when parsed.txt is missing/unparsable.
+- Update `scripts/aggregate_scores.py` as above; ensure stable schema and clear error reporting when parsed.txt is missing/unparsable.
 - Keep runtime assets unchanged (already writing parsed.txt for drafts/evaluations).
 
 ## Testing

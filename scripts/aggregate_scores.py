@@ -16,8 +16,8 @@ Defaults:
 - Output: data/7_cross_experiment/parsed_scores.csv
 
 Usage examples:
-- uv run scripts/parse_all_scores.py --output data/cross_experiment/parsed_scores.csv
-- uv run scripts/parse_all_scores.py --data-root data --output tmp/parsed_scores.csv
+- uv run scripts/aggregate_scores.py --output data/cross_experiment/parsed_scores.csv
+- uv run scripts/aggregate_scores.py --data-root data --output tmp/parsed_scores.csv
 """
 
 from __future__ import annotations

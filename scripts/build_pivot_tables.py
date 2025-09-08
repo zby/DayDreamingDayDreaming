@@ -3,7 +3,7 @@
 Build cross-experiment pivot table of essay scores by evaluation template+model.
 
 Inputs:
-- Parsed scores CSV (typically produced by scripts/parse_all_scores.py)
+- Parsed scores CSV (typically produced by scripts/aggregate_scores.py)
 
 Output (written under data/7_cross_experiment/):
 - evaluation_scores_by_template_model.csv
@@ -88,7 +88,7 @@ def main() -> None:
         "--parsed-scores",
         type=Path,
         required=True,
-        help="Path to parsed scores CSV (from scripts/parse_all_scores.py)",
+        help="Path to parsed scores CSV (from scripts/aggregate_scores.py)",
     )
     parser.add_argument(
         "--out-dir",

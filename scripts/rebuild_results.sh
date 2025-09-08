@@ -37,7 +37,7 @@ python scripts/build_evaluation_results_table.py
 
 # Parse scores across all evaluation responses into 7_cross_experiment
 echo "🧮 Parsing evaluation scores (cross-experiment)..."
-python scripts/parse_all_scores.py --output data/7_cross_experiment/parsed_scores.csv
+python scripts/aggregate_scores.py --output data/7_cross_experiment/parsed_scores.csv
 
 # Ensure canonical draft_* columns exist in generated tables
 echo "🧭 Normalizing columns to draft_* schema..."

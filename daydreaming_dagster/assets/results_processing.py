@@ -2,7 +2,7 @@ from dagster import asset, MetadataValue, AssetIn
 from pathlib import Path
 import pandas as pd
 import numpy as np
-from scripts.parse_all_scores import parse_all as parse_all_scores
+from scripts.aggregate_scores import parse_all as parse_all_scores
 import json
 
 
