@@ -13,6 +13,9 @@ def find_document_path(document_id: str, data_root: Path) -> Tuple[Path | None, 
     filesystem_rows helpers. This function will be removed once remaining call sites
     migrate to doc-id–first resolution.
 
+    TODO-REMOVE-BY: 2025-01-01 — delete after cross_experiment and task_definitions
+    switch fully to doc-id/doc store resolution.
+
     Order of search (first hit wins):
     1) data/3_generation/essay_responses/{document_id}.txt
     2) data/3_generation/draft_responses/{document_id}.txt

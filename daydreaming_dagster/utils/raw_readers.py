@@ -5,7 +5,6 @@ from typing import List
 import pandas as pd
 
 from ..models import Concept
-from .csv_reading import read_csv_with_context
 
 
 def read_concepts(data_root: Path, filter_active: bool = True) -> List[Concept]:
