@@ -30,13 +30,10 @@ from datetime import datetime
 
 import pandas as pd
 
-from daydreaming_dagster.utils.eval_response_parser import parse_llm_response
-from daydreaming_dagster.utils.evaluation_parsing_config import load_parser_map, require_parser_for_template
+"""parsed.txt-only aggregator: no parser maps or raw fallback"""
 
 
-def load_eval_parsing_strategies(base_data: Path) -> Dict[str, str]:
-    # Backwards-compatible name; now strictly reads 'parser' column
-    return load_parser_map(base_data)
+# Aggregator does not use evaluation parser maps; runtime/backfill produce parsed.txt
 
 
 def load_known_templates(base_data: Path) -> Dict[str, Set[str]]:
@@ -240,19 +237,7 @@ def parse_identifiers_from_eval_task_id(
     return result
 
 
-def detect_parsing_strategy(evaluation_template: Optional[str], strategy_map: Optional[Dict[str, str]] = None) -> str:
-    # Deprecated: use require_parser_for_template
-    if evaluation_template is None:
-        raise ValueError("evaluation_template is required in strict mode")
-    if not strategy_map or evaluation_template not in strategy_map:
-        raise ValueError(f"No parser configured for template '{evaluation_template}'")
-    return strategy_map[evaluation_template]
-
-
-def parse_strict(text: str, template: str, parser_map: Dict[str, str]) -> Dict[str, Any]:
-    parser = require_parser_for_template(template, parser_map)
-    res = parse_llm_response(text, parser)
-    return {"score": res["score"], "error": None}
+# No raw parsing helpers in aggregator (parsed.txt-only)
 
 
 # Removed load_tasks function - no longer needed for tasks-free implementation
@@ -273,20 +258,45 @@ def parse_all(
     output_csv.parent.mkdir(parents=True, exist_ok=True)
 
     rows: List[Dict[str, Any]] = []
-    # No legacy parsing; docs store is the single source
-    strategy_map = load_eval_parsing_strategies(data_root)
+    # parsed.txt-only; do not consult parsers or raw fallbacks
     model_map = load_model_mapping(data_root)
 
     if docs_eval.exists():
         for doc_dir in sorted([p for p in docs_eval.iterdir() if p.is_dir()]):
             doc_id = doc_dir.name
             parsed_fp = doc_dir / "parsed.txt"
-            raw_fp = doc_dir / "raw.txt"
             meta_fp = doc_dir / "metadata.json"
-            if not parsed_fp.exists() and not raw_fp.exists():
+            if not parsed_fp.exists():
+                # Record missing parsed and continue
+                parent_doc_id = ""
+                eval_template = None
+                eval_model = None
+                created_at = ""
+                try:
+                    if meta_fp.exists():
+                        meta = json.loads(meta_fp.read_text(encoding="utf-8"))
+                        if isinstance(meta, dict):
+                            parent_doc_id = str(meta.get("parent_doc_id") or "")
+                            eval_template = meta.get("evaluation_template") or meta.get("template_id")
+                            eval_model = meta.get("model_id") or meta.get("evaluation_model")
+                            created_at = str(meta.get("created_at") or "")
+                except Exception:
+                    pass
+                rows.append({
+                    "doc_id": doc_id,
+                    "parent_doc_id": parent_doc_id,
+                    "evaluation_template": eval_template,
+                    "evaluation_model": eval_model,
+                    "evaluation_model_name": model_map.get(str(eval_model), str(eval_model)) if eval_model else None,
+                    "score": None,
+                    "error": "missing parsed.txt",
+                    "evaluation_response_path": str(parsed_fp),
+                    "doc_dir": str(doc_dir),
+                    "created_at": created_at,
+                })
                 continue
             try:
-                text_path = parsed_fp if parsed_fp.exists() else raw_fp
+                text_path = parsed_fp
                 text = text_path.read_text(encoding="utf-8", errors="ignore")
             except Exception as e:
                 rows.append({"doc_id": doc_id, "score": None, "error": f"Read error: {e}", "evaluation_response_path": str(text_path)})
@@ -307,32 +317,33 @@ def parse_all(
             except Exception:
                 pass
 
-            # Choose parser and parse
-            tpl = str(eval_template) if eval_template else None
-            if not tpl:
-                rows.append({
-                    "doc_id": doc_id,
-                    "parent_doc_id": parent_doc_id,
-                    "score": None,
-                    "error": "Missing evaluation_template in metadata.json",
-                    "evaluation_template": None,
-                    "evaluation_model": eval_model,
-                    "evaluation_response_path": str(text_path),
-                    "doc_dir": str(doc_dir),
-                    "created_at": created_at,
-                })
-                continue
-            try:
-                parsed = parse_strict(text, tpl, strategy_map)
-                score = parsed["score"]
-                err = None
-            except Exception as e:
-                score = None
-                err = f"Parse error: {e}"
+            # parsed.txt-only extraction: numeric-only or trailing SCORE: <float>
+            import re
+            stripped = text.strip()
+            score = None
+            err = None
+            if re.fullmatch(r"-?\d+(?:\.\d+)?", stripped):
+                try:
+                    score = float(stripped)
+                except Exception:
+                    score = None
+                    err = "Invalid numeric format in parsed.txt"
+            else:
+                try:
+                    matches = re.findall(r"(?im)^\s*SCORE:\s*(-?\d+(?:\.\d+)?)\s*$", text)
+                    if matches:
+                        score = float(matches[-1])
+                        err = None
+                    else:
+                        score = None
+                        err = "No SCORE found in parsed.txt"
+                except Exception as e:
+                    score = None
+                    err = f"Parse error: {e}"
             rows.append({
                 "doc_id": doc_id,
                 "parent_doc_id": parent_doc_id,
-                "evaluation_template": tpl,
+                "evaluation_template": eval_template,
                 "evaluation_model": eval_model,
                 "evaluation_model_name": model_map.get(str(eval_model), str(eval_model)) if eval_model else None,
                 "score": score,
