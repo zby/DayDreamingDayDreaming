@@ -388,6 +388,7 @@ For detailed architecture and implementation information, see:
 
 - [Architecture Overview](docs/architecture.md) - Detailed system design and components
 - [LLM Concurrency Guide](docs/llm_concurrency_guide.md) - LLM API optimization patterns
+- [Docs Store Guide](docs/guides/docs_store.md) - Doc-id filesystem layout, invariants, and helpers
 - [CLAUDE.md](CLAUDE.md) - Development guidelines and project instructions
 
 ## Stable Combo IDs
