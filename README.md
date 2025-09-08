@@ -318,6 +318,17 @@ Active draft templates are controlled in `data/1_raw/draft_templates.csv` via th
 - **Results**: `data/5_parsing/` (processed results) and `data/6_summary/` (summaries)
 - **Global Mapping**: `data/combo_mappings.csv` (append-only mapping of stable combo IDs to their concept components)
 
+### Prompt Persistence (Docs IO)
+- Prompts are saved directly under the docs store via a small IO manager:
+  - `data/docs/draft/<doc_id>/prompt.txt`
+  - `data/docs/essay/<doc_id>/prompt.txt`
+  - `data/docs/evaluation/<doc_id>/prompt.txt`
+- The IO manager (`DocsPromptIOManager`) resolves `<doc_id>` from the corresponding tasks CSV in `data/2_tasks/` by matching the partition key:
+  - draft_prompt → `draft_generation_tasks.csv` (`draft_task_id`, `doc_id`)
+  - essay_prompt → `essay_generation_tasks.csv` (`essay_task_id`, `doc_id`)
+  - evaluation_prompt → `evaluation_tasks.csv` (`evaluation_task_id`, `doc_id`)
+- Responses are written to the docs store by the assets themselves (not via IO managers). Scripts and downstream assets read from the docs store using `metadata.json` and file paths.
+
 ## Key Features
 
 - **🚀 Two-Phase Generation**: Innovative separated brainstorming and essay composition with quality validation
