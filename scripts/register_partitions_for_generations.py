@@ -53,7 +53,7 @@ def parse_args() -> argparse.Namespace:
         "--materialize-combos",
         dest="materialize_combos",
         action="store_true",
-        help="Materialize the content_combinations asset after updating selection (default: on)",
+        help="Materialize content_combinations (and core task assets) after updating selection in the ACTIVE Dagster instance (default: on)",
     )
     materialize_group.add_argument(
         "--no-materialize-combos",
@@ -167,14 +167,7 @@ def _load_active_evaluation_axes(data_root: Path) -> tuple[list[str], list[str]]
     return tpl_ids, model_ids
 
 
-def _open_documents_db(data_root: Path) -> sqlite3.Connection | None:
-    """(Deprecated) Open the documents SQLite DB if present. Not used in doc-id-first flow."""
-    return None
-
-
-def _resolve_latest_essay_doc_id(con: sqlite3.Connection, essay_task_id: str) -> str | None:
-    """(Deprecated) DB-based resolution removed. Use parent_doc_id from curated CSV."""
-    return None
+# Deprecated DB helpers removed — filesystem + curated CSVs are the only sources now.
 
 
 def _write_table(out_csv: Path, rows: List[dict], key: str, columns: List[str], dry_run: bool = False) -> int:
@@ -201,10 +194,11 @@ def main() -> int:
     if args.input.suffix.lower() != ".csv":
         print(f"Expected a CSV input (essay_generation_tasks.csv). Got: {args.input}", file=sys.stderr)
         return 1
+    input_abs = str(Path(args.input).resolve())
     try:
         df = pd.read_csv(args.input)
     except Exception as e:
-        print(f"Failed to read {args.input}: {e}", file=sys.stderr)
+        print(f"Failed to read input CSV: {input_abs} — {e}", file=sys.stderr)
         return 1
     required = {"essay_task_id", "draft_task_id", "combo_id", "draft_template", "generation_model"}
     missing = sorted(list(required - set(df.columns)))
@@ -238,7 +232,7 @@ def main() -> int:
         print(
             "Error: input CSV is missing required column 'essay_doc_id' (temporary alias: 'parent_doc_id').\n"
             "       Each row must include the essay document id to pin evaluation lineage (doc-id first).\n"
-            f"       File: {args.input}",
+            f"       File: {input_abs}",
             file=sys.stderr,
         )
         return 1
@@ -252,7 +246,8 @@ def main() -> int:
             f"       Column '{docs_col}' has {missing_count} empty/missing values.\n"
             f"       Sample essay_task_id(s) missing ids: {sample}.\n"
             "       Ensure essay responses were produced and recorded, then populate 'essay_doc_id' in the input CSV.\n"
-            "       Tip: you can read doc IDs from data/docs/essay/*/metadata.json or from essay_response run metadata.",
+            "       Tip: you can read doc IDs from data/docs/essay/*/metadata.json or from essay_response run metadata.\n"
+            f"       File: {input_abs}",
             file=sys.stderr,
         )
         return 1
@@ -269,21 +264,35 @@ def main() -> int:
     _write_selected_combo_mappings(data_root, sorted(combo_ids), dry_run=args.dry_run)
     # Optionally materialize content_combinations to ensure Dagster sees the updated selection
     if args.materialize_combos and not args.dry_run:
+        # Materialize into the ACTIVE instance (DAGSTER_HOME), so the UI sees updated assets
         try:
             from dagster import materialize, DagsterInstance
-            from daydreaming_dagster.assets.group_task_definitions import content_combinations as combos_asset
+            from daydreaming_dagster.assets.group_task_definitions import (
+                content_combinations as combos_asset,
+                draft_generation_tasks as draft_tasks_asset,
+                essay_generation_tasks as essay_tasks_asset,
+                evaluation_tasks as eval_tasks_asset,
+            )
             from daydreaming_dagster.resources.experiment_config import ExperimentConfig
+            from daydreaming_dagster.resources.io_managers import CSVIOManager
 
             resources = {
                 "experiment_config": ExperimentConfig(),
                 "data_root": str(data_root),
+                # Ensure CSV outputs for task assets land under data_root/2_tasks
+                "csv_io_manager": CSVIOManager(base_path=data_root / "2_tasks"),
             }
-            with DagsterInstance.ephemeral() as instance:
-                result = materialize([combos_asset], resources=resources, instance=instance)
-                if not result.success:
-                    print("Warning: materialize(content_combinations) did not succeed", file=sys.stderr)
+            instance = DagsterInstance.get()
+            # First ensure content_combinations is refreshed for the active selection
+            res1 = materialize([combos_asset], resources=resources, instance=instance)
+            if not res1.success:
+                print("Warning: materialize(content_combinations) did not succeed", file=sys.stderr)
+            # Then refresh the task assets so dynamic partitions and CSVs are consistent
+            res2 = materialize([draft_tasks_asset, essay_tasks_asset, eval_tasks_asset], resources=resources, instance=instance)
+            if not res2.success:
+                print("Warning: materialize(task assets) did not fully succeed", file=sys.stderr)
         except Exception as e:
-            print(f"Warning: failed to materialize content_combinations automatically: {e}", file=sys.stderr)
+            print(f"Warning: failed to materialize assets in active instance: {e}", file=sys.stderr)
 
     added_essays = 0
     added_drafts = 0
