@@ -135,21 +135,19 @@ def evaluation_response(context, evaluation_prompt, evaluation_tasks) -> str:
             },
         )
     docs_root = _Path(getattr(context.resources, "data_root", "data")) / "docs"
-    # Parse evaluation response using configured parser; write parsed.txt with a normalized SCORE line
+    # Parse evaluation response using configured parser; write numeric-only parsed.txt
     normalized = str(text).replace("\r\n", "\n")
-    parsed_out = normalized
+    parsed_out = None
     score_val = None
     try:
         parser_map = load_parser_map(_Path(getattr(context.resources, "data_root", "data")))
         strategy = require_parser_for_template(str(evaluation_template), parser_map)
         res = parse_llm_response(normalized, strategy)
         score_val = res.get("score")
-        # Ensure a SCORE line is present in parsed output for downstream tools
         if isinstance(score_val, (int, float)):
-            if "SCORE:" not in normalized.upper():
-                parsed_out = normalized.rstrip() + "\n\nSCORE: " + str(score_val)
+            parsed_out = f"{float(score_val)}\n"
     except Exception:
-        # Leave parsed_out as normalized if parsing fails; downstream will surface the error when reading
+        # If parsing fails, do not synthesize a SCORE line; downstream will surface the error.
         score_val = None
     metadata = {
         "task_id": task_id,
@@ -165,7 +163,7 @@ def evaluation_response(context, evaluation_prompt, evaluation_tasks) -> str:
         doc_id=doc_id,
         parent_doc_id=parent_doc_id,
         raw_text=normalized,
-        parsed_text=parsed_out,
+        parsed_text=parsed_out,  # do not write parsed.txt when parsing fails
         prompt_text=prompt_text,
         metadata=metadata,
     )

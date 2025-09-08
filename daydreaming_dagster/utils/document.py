@@ -24,7 +24,7 @@ class Document:
     doc_id: str
     parent_doc_id: str | None
     raw_text: str
-    parsed_text: str
+    parsed_text: str | None
     prompt_text: str | None = None
     metadata: dict | None = None
 
@@ -40,7 +40,8 @@ class Document:
         base = self.target_dir(docs_root)
         base.mkdir(parents=True, exist_ok=True)
         _write_atomic(base / "raw.txt", self.raw_text)
-        _write_atomic(base / "parsed.txt", self.parsed_text)
+        if isinstance(self.parsed_text, str):
+            _write_atomic(base / "parsed.txt", self.parsed_text)
         if isinstance(self.prompt_text, str):
             _write_atomic(base / "prompt.txt", self.prompt_text)
         if isinstance(self.metadata, dict):
