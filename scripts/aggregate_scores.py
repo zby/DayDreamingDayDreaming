@@ -288,7 +288,6 @@ def parse_all(
                     "score": None,
                     "error": "missing parsed.txt",
                     "evaluation_response_path": str(parsed_fp),
-                    "doc_dir": str(doc_dir),
                 })
                 continue
             try:
@@ -342,7 +341,6 @@ def parse_all(
                 "score": score,
                 "error": err,
                 "evaluation_response_path": str(text_path),
-                "doc_dir": str(doc_dir),
             })
     else:
         raise FileNotFoundError(f"Docs store not found: {docs_eval}")
@@ -358,7 +356,6 @@ def parse_all(
         "score",
         "error",
         "evaluation_response_path",
-        "doc_dir",
     ]
     # No document_id column — doc_id is canonical
 
@@ -378,7 +375,6 @@ def parse_all(
         "score",
         "error",
         "evaluation_response_path",
-        "doc_dir",
     ]
     existing = [c for c in column_order if c in df.columns]
     df = df[existing + [c for c in df.columns if c not in existing]]
@@ -388,7 +384,7 @@ def parse_all(
         df["score"] = pd.to_numeric(df["score"], errors="coerce")
     # Replace NaN with empty string for text-like columns
     text_like = [
-        "doc_id","parent_doc_id","evaluation_template","evaluation_model","evaluation_response_path","error","doc_dir"
+        "doc_id","parent_doc_id","evaluation_template","evaluation_model","evaluation_response_path","error"
     ]
     for col in text_like:
         if col in df.columns:
