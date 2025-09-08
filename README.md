@@ -149,7 +149,7 @@ uv run python scripts/register_partitions_for_generations.py \
 ```
 
 This cleans `data/2_tasks` by default (preserving `selected_generations.txt`/`.csv`; use `--no-clean-2-tasks` to skip) and writes curated task CSVs.
-Drafts use `data/2_tasks/selected_combo_mappings.csv` (strict subset of `data/combo_mappings.csv`) as the single source of content combinations.
+Drafts use `data/2_tasks/selected_combo_mappings.csv` as the single source of content combinations. By default this file is regenerated from the currently active concepts (using `ExperimentConfig.description_level` and `k_max`) and assigned a stable `combo_id` via `data/combo_mappings.csv`. For curated runs, you can write a subset (row‑subset of `data/combo_mappings.csv`) using `scripts/select_combos.py` and materialize everything except the `selected_combo_mappings` asset to avoid overwriting the curated selection.
 Then trigger only those partitions in the UI or via CLI.
 
 ### Cross‑Experiment Views

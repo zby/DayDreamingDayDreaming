@@ -1,20 +1,20 @@
 template_id,template_name,description,active,parser
 creative-synthesis-v2,Creative Synthesis V2 (as draft),Legacy essay template reused for Phase-1 draft,False,
 creative-synthesis-v6,Creative Synthesis V6 (as draft),Legacy essay template reused for Phase-1 draft,false,essay_block
-creative-synthesis-v7,Creative Synthesis V7 (as draft),Legacy essay template reused for Phase-1 draft,True,essay_block
+creative-synthesis-v7,Creative Synthesis V7 (as draft),Legacy essay template reused for Phase-1 draft,False,essay_block
 creative-synthesis-v9,Creative Synthesis V9,Enhanced two-phase generation - Links Phase,false,
 creative-synthesis-v10,Creative Synthesis V10,Enhanced two-phase generation - Links Phase,false,
-pair-explorer,Pair Explorer,Explore and generate links between pairs of concepts,false,
-pair-explorer-recursive-v5,Pair Explorer Recursive V5,Advanced recursive exploration with enhanced link generation,false,
-recursive-light,Recursive Light,Precision mechanism design with recursion and lightweight strategy synthesis,false,
+pair-explorer,Pair Explorer,Explore and generate links between pairs of concepts,True,
+pair-explorer-recursive-v5,Pair Explorer Recursive V5,Advanced recursive exploration with enhanced link generation,True,
+recursive-light,Recursive Light,Precision mechanism design with recursion and lightweight strategy synthesis,True,
 recursive-precise-v2,Recursive Precise V2,Decision-tree approach with systematic validation and graph growth,false,
 recursive_construction,Recursive Construction,Problem-first constructive synthesis with online recursion,False,
 recursive-construction,Recursive Construction V1,Problem-first constructive synthesis with online recursion,False,
 rolling-summary-v1,Rolling Summary V1,Readable idea-thread recursion with enforced link types,False,
 rolling-summary-simplified-v1,Rolling Summary Simplified V1,Cumulative idea thread; 3–5 sentence Effect; +1 sentence growth per step,False,
 connective-thread-simplified-v1,Connective Thread Simplified V1,Single-thread integration as-if rolled; 4–6 short paragraphs,False,
-deliberate-rolling-thread-v2,Deliberate Rolling Thread V2,Tagged rolling idea (free-form thinking) with per-step <essay-idea>,true,essay_idea_last
-deliberate-rolling-thread-v3,Deliberate Rolling Thread V3,Tagged rolling idea (free-form thinking) with per-step <essay-idea>,true,essay_idea_last
+deliberate-rolling-thread-v2,Deliberate Rolling Thread V2,Tagged rolling idea (free-form thinking) with per-step <essay-idea>,False,essay_idea_last
+deliberate-rolling-thread-v3,Deliberate Rolling Thread V3,Tagged rolling idea (free-form thinking) with per-step <essay-idea>,False,essay_idea_last
 application-implementation-v2,Application Implementation V2 (as draft),Legacy essay template reused for Phase-1 draft,False,
 essay-inventive-synthesis-v3,Essay Inventive Synthesis V3 (as draft),Legacy essay template reused for Phase-1 draft,False,
 gwern_original,Gwern Original (as draft),Legacy essay template reused for Phase-1 draft,False,

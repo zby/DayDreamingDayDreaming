@@ -244,7 +244,9 @@ What it does
 - Writes curated rows into:
   - `data/2_tasks/draft_generation_tasks.csv` (optional; disable `--no-write-drafts`)
   - `data/2_tasks/essay_generation_tasks.csv`
-- Creates `data/2_tasks/selected_combo_mappings.csv` by filtering `data/combo_mappings.csv` to the selected `combo_id`s. The `content_combinations` asset consumes the `selected_combo_mappings` DataFrame in‑graph (include it in the same materialize call) so Phase‑1 prompts render independent of current `k_max`.
+- Selected combinations
+  - Default path: the `selected_combo_mappings` asset regenerates a single selection from the current active concepts (using `description_level` and `k_max` from `ExperimentConfig`) and allocates a stable `combo_id` via `data/combo_mappings.csv`.
+  - Curated path: the register script writes `data/2_tasks/selected_combo_mappings.csv` by filtering `data/combo_mappings.csv` to the chosen `combo_id`s. In this mode, materialize the rest of `group:task_definitions` and skip `selected_combo_mappings` to avoid overwriting the curated file.
 - Registers dynamic partitions (reset by default) for `draft_tasks`, `essay_tasks`, and `evaluation_tasks` (active templates × evaluation models). Use `--no-reset-partitions` for additive registration.
 - Cleans `data/2_tasks` by default (use `--no-clean-2-tasks` to skip) and writes only curated task CSVs. The `selected_generations` list (txt/csv) is preserved.
 

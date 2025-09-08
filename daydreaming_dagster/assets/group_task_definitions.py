@@ -136,34 +136,44 @@ def content_combinations(context) -> List[ContentCombination]:
 @asset(
     group_name="task_definitions",
     io_manager_key="csv_io_manager",
+    required_resource_keys={"experiment_config", "data_root"},
 )
 def selected_combo_mappings(context) -> pd.DataFrame:
-    """Write curated selected combo mappings CSV.
+    """Regenerate selected combo mappings from active concepts (deterministic ID).
 
-    - If `data/combo_mappings.csv` exists, copy all rows to `data/2_tasks/selected_combo_mappings.csv`.
-    - Otherwise, write a minimal non-empty CSV with required columns.
-    Returns the output path as a string.
+    - Reads active concepts from data/1_raw/concepts_metadata.csv
+    - Uses ExperimentConfig.description_level (default: paragraph) and k_max
+    - Allocates a stable combo_id via ComboIDManager (writes/uses data/combo_mappings.csv)
+    - Writes data/2_tasks/selected_combo_mappings.csv with one row per concept
     """
     data_root = Path(getattr(context.resources, "data_root", "data"))
-    superset = data_root / "combo_mappings.csv"
-    out = data_root / "2_tasks" / "selected_combo_mappings.csv"
-    out.parent.mkdir(parents=True, exist_ok=True)
-    try:
-        import pandas as pd
-        if superset.exists():
-            df = pd.read_csv(superset)
-        else:
-            df = pd.DataFrame([
-                {"combo_id": "example", "concept_id": "concept-x", "description_level": "paragraph", "k_max": 2}
-            ])
-        context.add_output_metadata({"path": MetadataValue.path(str(out))})
-        return df
-    except Exception as e:
-        import pandas as pd
-        context.log.info(f"Failed to derive from superset: {e}; writing placeholder selection")
-        return pd.DataFrame([
-            {"combo_id": "example", "concept_id": "concept-x", "description_level": "paragraph", "k_max": 2}
-        ])
+    cfg = context.resources.experiment_config
+    level = getattr(cfg, "description_level", "paragraph")
+    k_max = int(getattr(cfg, "k_max", 2))
+
+    concepts = read_concepts(data_root, filter_active=True)
+    if not concepts:
+        context.add_output_metadata({"count": MetadataValue.int(0), "reason": MetadataValue.text("no active concepts")})
+        return pd.DataFrame(columns=["combo_id","version","concept_id","description_level","k_max","created_at"])  # empty
+
+    selected = concepts[: max(1, min(k_max, len(concepts)))]
+    manager = ComboIDManager(str(data_root / "combo_mappings.csv"))
+    combo_id = manager.get_or_create_combo_id([c.concept_id for c in selected], level, k_max)
+
+    rows: list[dict] = []
+    now = None
+    for c in sorted([c.concept_id for c in selected]):
+        rows.append({
+            "combo_id": combo_id,
+            "version": "v1",
+            "concept_id": c,
+            "description_level": level,
+            "k_max": int(k_max),
+            "created_at": now or "",
+        })
+    df = pd.DataFrame(rows)
+    context.add_output_metadata({"count": MetadataValue.int(len(df)), "combo_id": MetadataValue.text(combo_id)})
+    return df
 
 
 @asset(
