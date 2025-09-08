@@ -371,7 +371,7 @@ data/
 │   └── evaluation_tasks.csv
 ├── 3_generation/               # LLM generation results (two‑phase)
 │   ├── draft_prompts/          # Phase‑1 prompts
-│   ├── draft_responses/        # Phase‑1 parsed outputs ({draft_task_id}_vN.txt)
+│   ├── draft_responses/        # Historical Phase‑1 parsed outputs (scripts may still read latest version)
 │   ├── draft_responses_raw/    # Phase‑1 RAW LLM outputs (always saved)
 │   ├── essay_prompts/          # Phase‑2 prompts
 │   └── essay_responses/        # Phase‑2 outputs
@@ -398,8 +398,8 @@ data/
 - Task CSVs in `data/2_tasks/` are rewritten by their assets on materialization.
 - Dynamic partitions for tasks are managed by the task definition assets (`draft_generation_tasks`, `essay_generation_tasks`, `evaluation_tasks`).
 - Prompts are allowed to overwrite to reflect current templates.
-- Responses are write-once by default; existing response files will not be overwritten. Delete files to regenerate or change the partition key.
-- Reruns write `{id}_vN.txt` (N increments); readers pick the latest version automatically. No overwrite flags are required.
+- Runtime persistence uses the docs store: `data/docs/<stage>/<doc_id>` with metadata. RAW side‑writes (for debugging) may be versioned using utility functions in `utils/versioned_files.py`.
+- Legacy directories under `data/3_generation/` are retained for historical analysis; scripts may read the latest versioned file when present. New runs write canonical artifacts to the docs store.
 
 ## Performance and Scalability
 

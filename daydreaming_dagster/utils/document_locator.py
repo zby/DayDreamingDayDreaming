@@ -7,7 +7,11 @@ from .versioned_files import latest_versioned_path
 
 def find_document_path(document_id: str, data_root: Path) -> Tuple[Path | None, str]:
     """
-    Locate a generation document by ID across current and legacy locations.
+    BACKCOMPAT(PATHS): Legacy helper. Locate a generation document by task-id across
+    historical locations under data/3_generation. Do not use in new code — prefer
+    the docs store (`data/docs/<stage>/<doc_id>`) and metadata.json lookups via
+    filesystem_rows helpers. This function will be removed once remaining call sites
+    migrate to doc-id–first resolution.
 
     Order of search (first hit wins):
     1) data/3_generation/essay_responses/{document_id}.txt

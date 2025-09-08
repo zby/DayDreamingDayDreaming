@@ -294,24 +294,134 @@ def main() -> int:
     # parent_doc_id is required; above path returns early if any missing
     # Note: Draft backfill checks removed; selection focuses on essays only.
     # Template warnings (non-fatal)
+    def _examples_for_template(df, tpl: str, cols: list[str]) -> list[str]:
+        try:
+            present = [c for c in cols if c in df.columns]
+            if not present:
+                return []
+            mask = False
+            for c in present:
+                mask = (df[c].astype(str) == tpl) if mask is False else (mask | (df[c].astype(str) == tpl))
+            sub = df[mask]
+            if sub.empty:
+                return []
+            # Prefer evaluation doc_id from parsed_scores (the concrete evaluation document)
+            for pref in ("doc_id", "parent_doc_id", "document_id"):
+                if pref in sub.columns:
+                    vals = sub[pref].astype(str).head(5).tolist()
+                    if vals:
+                        return vals
+            # Fallback tuple sample
+            cols_show = [c for c in ["evaluation_template","evaluation_model","document_id","parent_doc_id"] if c in sub.columns]
+            out = []
+            for _, r in sub.head(5).iterrows():
+                parts = [f"{c}={str(r[c])}" for c in cols_show]
+                out.append(", ".join(parts))
+            return out
+        except Exception:
+            return []
+
+    # Helper: build essay examples by draft template from curated rows
+    essays_by_draft_tpl = {}
+    essay_doc_ids_by_draft_tpl = {}
+    for r in essay_rows:
+        dt = r.get("draft_template")
+        if dt:
+            essays_by_draft_tpl.setdefault(str(dt), []).append(str(r.get("essay_task_id")))
+            # parent_doc_id holds the essay doc_id in curated rows
+            ed = r.get("parent_doc_id") or r.get("essay_doc_id")
+            if ed:
+                essay_doc_ids_by_draft_tpl.setdefault(str(dt), []).append(str(ed))
+
+    def _eval_doc_examples_from_docs(docs_root: Path, essay_doc_ids: list[str], limit: int = 5) -> list[str]:
+        try:
+            eval_root = docs_root / "evaluation"
+            if not eval_root.exists():
+                return []
+            out = []
+            # Quick scan limited to first N essays and first K evals
+            wanted = set(essay_doc_ids)
+            count = 0
+            for d in eval_root.iterdir():
+                if not d.is_dir():
+                    continue
+                meta = d / "metadata.json"
+                if not meta.exists():
+                    continue
+                import json as _json
+                m = _json.loads(meta.read_text(encoding="utf-8")) or {}
+                if str(m.get("parent_doc_id")) in wanted:
+                    out.append(d.name)
+                    count += 1
+                    if count >= limit:
+                        break
+            return out
+        except Exception:
+            return []
+
     if missing_draft_tpl_files:
         print("Warning: draft templates referenced but draft template files not found:", file=sys.stderr)
         for t in list(sorted(missing_draft_tpl_files))[:10]:
             print(" -", t, file=sys.stderr)
+            ex = _examples_for_template(df, t, ["link_template", "draft_template"])
+            if ex:
+                print("   examples:", file=sys.stderr)
+                for e in ex:
+                    print("     ", e, file=sys.stderr)
+            else:
+                # Fall back to showing curated essay_task_id examples for this draft template
+                es = essays_by_draft_tpl.get(t) or []
+                # Prefer evaluation doc_ids from docs store when available for these essays
+                if es:
+                    eds = essay_doc_ids_by_draft_tpl.get(t) or []
+                    doc_ids = _eval_doc_examples_from_docs(data_root / "docs", eds)
+                    if doc_ids:
+                        print("   evaluation doc_id examples:", file=sys.stderr)
+                        for e in doc_ids[:5]:
+                            print("     ", e, file=sys.stderr)
+                if es:
+                    print("   essay_task_id examples:", file=sys.stderr)
+                    for e in es[:5]:
+                        print("     ", e, file=sys.stderr)
         if len(missing_draft_tpl_files) > 10:
             print(f" ... {len(missing_draft_tpl_files)-10} more", file=sys.stderr)
     if missing_essay_tpl_files:
         print("Warning: essay templates referenced but essay template files not found:", file=sys.stderr)
         for t in list(sorted(missing_essay_tpl_files))[:10]:
             print(" -", t, file=sys.stderr)
+            ex = _examples_for_template(df, t, ["essay_template", "generation_template"])
+            if ex:
+                print("   examples:", file=sys.stderr)
+                for e in ex:
+                    print("     ", e, file=sys.stderr)
         if len(missing_essay_tpl_files) > 10:
             print(f" ... {len(missing_essay_tpl_files)-10} more", file=sys.stderr)
     if missing_draft_tpl_csv:
         print("Warning: draft templates referenced but not registered in draft_templates.csv:", file=sys.stderr)
-        print(" - first 10:", list(sorted(missing_draft_tpl_csv))[:10], file=sys.stderr)
+        show = list(sorted(missing_draft_tpl_csv))[:10]
+        print(" - first 10:", show, file=sys.stderr)
+        for t in show:
+            ex = _examples_for_template(df, t, ["link_template", "draft_template"])
+            if ex:
+                print("   examples:", file=sys.stderr)
+                for e in ex:
+                    print("     ", e, file=sys.stderr)
+            else:
+                es = essays_by_draft_tpl.get(t) or []
+                if es:
+                    print("   essay_task_id examples:", file=sys.stderr)
+                    for e in es[:5]:
+                        print("     ", e, file=sys.stderr)
     if missing_essay_tpl_csv:
         print("Warning: essay templates referenced but not registered in essay_templates.csv:", file=sys.stderr)
-        print(" - first 10:", list(sorted(missing_essay_tpl_csv))[:10], file=sys.stderr)
+        show = list(sorted(missing_essay_tpl_csv))[:10]
+        print(" - first 10:", show, file=sys.stderr)
+        for t in show:
+            ex = _examples_for_template(df, t, ["essay_template", "generation_template"])
+            if ex:
+                print("   examples:", file=sys.stderr)
+                for e in ex:
+                    print("     ", e, file=sys.stderr)
     return 0
 
 

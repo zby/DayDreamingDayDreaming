@@ -169,7 +169,8 @@ def draft_generation_results_append(context, draft_generation_tasks):
         return "no_task_found"
     task_row = task_rows.iloc[0]
     
-    # Resolve via filesystem
+    # BACKCOMPAT(PATHS): find_document_path scans legacy 3_generation dirs by task id.
+    # Prefer docs store lookups by doc_id/metadata when available.
     fp, src_dir = find_document_path(task_id, Path(getattr(context.resources, "data_root", "data")))
     response_exists = bool(fp and fp.exists())
     
@@ -225,6 +226,7 @@ def essay_generation_results_append(context, essay_generation_tasks):
         return "no_task_found"
     task_row = task_rows.iloc[0]
     
+    # BACKCOMPAT(PATHS): legacy scan by task id; prefer docs store in new code.
     fp, src_dir = find_document_path(task_id, Path(getattr(context.resources, "data_root", "data")))
     response_exists = bool(fp and fp.exists())
     

@@ -392,9 +392,16 @@ def main() -> int:
             if not essay_doc_id:
                 print(f"Error: missing essay doc id in column '{essay_doc_col}' for essay_task_id={essay_task_id}", file=sys.stderr)
                 return 1
-            # Locate source document path (optional, for ops UX)
-            fp, src = find_document_path(essay_task_id, data_root) if essay_task_id else (None, "")
-            file_path = str(fp) if fp else ""
+            # Prefer docs store path for essay (parsed.txt if present, else raw.txt)
+            doc_dir = docs_root / "essay" / essay_doc_id
+            parsed_fp = doc_dir / "parsed.txt"
+            raw_fp = doc_dir / "raw.txt"
+            if parsed_fp.exists():
+                file_path = str(parsed_fp)
+            elif raw_fp.exists():
+                file_path = str(raw_fp)
+            else:
+                file_path = ""
             # Also attempt to read the draft parent doc id from the essay's metadata.json
             draft_doc_id = None
             meta_path = docs_root / "essay" / essay_doc_id / "metadata.json"
@@ -429,7 +436,7 @@ def main() -> int:
                         "evaluation_model_name": model_name_map.get(model, model),
                         "parser": parser_map.get(tpl),
                         "file_path": file_path,
-                        "source_dir": src,
+                        "source_dir": "docs/essay" if doc_dir.exists() else "",
                         "source_asset": "essay_response",
                     })
     # Write evaluation tasks CSV

@@ -4,7 +4,7 @@ Group: task_definitions
 Assets that define generation/evaluation tasks from templates and models.
 """
 
-from dagster import asset, MetadataValue
+from dagster import asset, MetadataValue, Failure
 from ..models import ContentCombination
 from .raw_data import (
     DRAFT_TEMPLATES_KEY,
@@ -314,71 +314,84 @@ def evaluation_tasks(
             parser_map = {}
 
     data_root_path = Path(data_root)
-    docs: List[dict] = []
-    essay_dir = data_root_path / "3_generation" / "essay_responses"
-    if not essay_generation_tasks.empty:
-        for _, row in essay_generation_tasks.iterrows():
-            essay_task_id = row["essay_task_id"]
-            fp, src = find_document_path(essay_task_id, data_root_path)
-            docs.append(
-                {
-                    "document_id": essay_task_id,
-                    "stage": "essay2p",
-                    "origin": "two_phase",
-                    "file_path": str(fp) if fp else str(essay_dir / f"{essay_task_id}.txt"),
-                    "combo_id": row["combo_id"],
-                    "draft_template": row.get("draft_template"),
-                    "essay_template": row["essay_template"],
-                    "generation_model_id": row["generation_model"],
-                    "generation_model_name": row["generation_model_name"],
-                    "draft_task_id": row.get("draft_task_id"),
-                    "essay_task_id": essay_task_id,
-                    "source_asset": "essay_response",
-                    "source_dir": src or "essay_responses",
-                }
-            )
-    # Evaluations target essays only. Drafts are not included here; if you need
-    # to evaluate a draft-like artifact, materialize an essay with generator=copy
-    # and use the essay doc id.
-    document_index = pd.DataFrame(docs)
+    # Require essay doc ids (doc-id–first). Accept essay_doc_id or parent_doc_id.
+    if essay_generation_tasks.empty:
+        return pd.DataFrame(columns=[
+            "evaluation_task_id","parent_doc_id","document_id","essay_task_id","combo_id",
+            "draft_template","essay_template","generation_model","generation_model_name",
+            "evaluation_template","evaluation_model","evaluation_model_name","parser","file_path","source_dir","source_asset",
+        ])
+    # Accept any of these columns as the essay document id (doc-id–first):
+    #  - essay_doc_id (preferred), parent_doc_id (temporary alias), or doc_id (from essay_generation_tasks)
+    if "essay_doc_id" in essay_generation_tasks.columns:
+        doc_col = "essay_doc_id"
+    elif "parent_doc_id" in essay_generation_tasks.columns:
+        doc_col = "parent_doc_id"
+    elif "doc_id" in essay_generation_tasks.columns:
+        doc_col = "doc_id"
+    else:
+        doc_col = None
+    if doc_col is None:
+        raise Failure(
+            description="evaluation_tasks requires essay doc IDs (doc-id–first)",
+            metadata={
+                "required_column": MetadataValue.text("essay_doc_id (or parent_doc_id)"),
+                "present_columns": MetadataValue.json(list(map(str, essay_generation_tasks.columns))),
+                "resolution": MetadataValue.text("Populate essay_doc_id in data/2_tasks/essay_generation_tasks.csv and re-run."),
+            },
+        )
+    missing_mask = essay_generation_tasks[doc_col].astype(str).map(lambda s: (not s.strip()) or s.lower() == "nan")
+    if bool(missing_mask.any()):
+        sample = essay_generation_tasks.loc[missing_mask, "essay_task_id"].astype(str).head(5).tolist() if "essay_task_id" in essay_generation_tasks.columns else []
+        raise Failure(
+            description="Missing essay doc_id values in essay_generation_tasks",
+            metadata={
+                "missing_count": MetadataValue.int(int(missing_mask.sum())),
+                "sample_essay_task_ids": MetadataValue.json(sample),
+                "resolution": MetadataValue.text("Ensure essays exist and their doc_ids are populated in the input CSV."),
+            },
+        )
+    # Build evaluation rows directly from essays and active evaluation axes
     rows: List[dict] = []
-    for _, doc in document_index.iterrows():
-        document_id = doc["document_id"]
+    docs_root = data_root_path / "docs"
+    for _, erow in essay_generation_tasks.iterrows():
+        essay_task_id = str(erow.get("essay_task_id") or "")
+        parent_doc_id = str(erow.get(doc_col))
+        # Optional path from docs store
+        doc_dir = docs_root / "essay" / parent_doc_id
+        parsed_fp = doc_dir / "parsed.txt"
+        raw_fp = doc_dir / "raw.txt"
+        file_path = str(parsed_fp) if parsed_fp.exists() else (str(raw_fp) if raw_fp.exists() else "")
         for _, eval_model_row in evaluation_models.iterrows():
             eval_model_id = eval_model_row["id"]
             eval_model_name = eval_model_row["model"]
             for eval_template_id in eval_templates:
-                evaluation_task_id = f"{document_id}__{eval_template_id}__{eval_model_id}"
-                rows.append(
-                    {
-                        "evaluation_task_id": evaluation_task_id,
-                        "document_id": document_id,
-                        "stage": doc.get("stage"),
-                        "origin": doc.get("origin"),
-                        "file_path": doc.get("file_path"),
-                        "combo_id": doc.get("combo_id"),
-                        "draft_template": doc.get("draft_template"),
-                        "essay_template": doc.get("essay_template"),
-                        "generation_model": doc.get("generation_model_id"),
-                        "generation_model_name": doc.get("generation_model_name"),
-                        "draft_task_id": doc.get("draft_task_id"),
-                        "essay_task_id": doc.get("essay_task_id"),
-                        "source_asset": doc.get("source_asset"),
-                        "source_dir": doc.get("source_dir"),
-                        "evaluation_template": eval_template_id,
-                        "evaluation_model": eval_model_id,
-                        "evaluation_model_name": eval_model_name,
-                        "parser": parser_map.get(str(eval_template_id)),
-                    }
-                )
+                evaluation_task_id = f"{parent_doc_id}__{eval_template_id}__{eval_model_id}"
+                rows.append({
+                    "evaluation_task_id": evaluation_task_id,
+                    "parent_doc_id": parent_doc_id,
+                    # legacy context for compatibility
+                    "document_id": essay_task_id,
+                    "essay_task_id": essay_task_id,
+                    "combo_id": erow.get("combo_id"),
+                    "draft_template": erow.get("draft_template"),
+                    "essay_template": erow.get("essay_template"),
+                    "generation_model": erow.get("generation_model"),
+                    "generation_model_name": erow.get("generation_model_name"),
+                    "evaluation_template": eval_template_id,
+                    "evaluation_model": eval_model_id,
+                    "evaluation_model_name": eval_model_name,
+                    "parser": parser_map.get(str(eval_template_id)),
+                    "file_path": file_path,
+                    "source_dir": "docs/essay" if doc_dir.exists() else "",
+                    "source_asset": "essay_response",
+                })
     tasks_df = pd.DataFrame(rows)
     if not tasks_df.empty:
         run_id = getattr(getattr(context, "run", object()), "run_id", None) or getattr(context, "run_id", None)
-        tasks_df["doc_id"] = tasks_df["evaluation_task_id"].astype(str).apply(lambda tid: reserve_doc_id("evaluation", tid, run_id=str(run_id) if run_id else None))
-        # For doc-id-first migration, parent_doc_id represents the essay document id
-        # Here, document_id is the essay_task_id; we expose it as parent_doc_id for convenience
-        if "document_id" in tasks_df.columns:
-            tasks_df["parent_doc_id"] = tasks_df["document_id"].astype(str)
+        tasks_df["doc_id"] = tasks_df["evaluation_task_id"].astype(str).apply(
+            lambda tid: reserve_doc_id("evaluation", tid, run_id=str(run_id) if run_id else None)
+        )
     existing = context.instance.get_dynamic_partitions(evaluation_tasks_partitions.name)
     if existing:
         for p in existing:
