@@ -104,8 +104,17 @@ def _load_phase1_text_by_parent_doc(context, parent_doc_id: str) -> tuple[str, s
         )
     try:
         text = fs_read_parsed(row)
-    except Exception:
-        text = fs_read_raw(row)
+    except Exception as e:
+        base = docs_root / "draft" / str(parent_doc_id)
+        raise Failure(
+            description="Missing or unreadable parsed.txt for parent draft document",
+            metadata={
+                "function": MetadataValue.text("_load_phase1_text_by_parent_doc"),
+                "parent_doc_id": MetadataValue.text(str(parent_doc_id)),
+                "draft_doc_dir": MetadataValue.path(str(base)),
+                "error": MetadataValue.text(str(e)),
+            },
+        )
     return str(text).replace("\r\n", "\n"), "draft_fs_parent"
 
 

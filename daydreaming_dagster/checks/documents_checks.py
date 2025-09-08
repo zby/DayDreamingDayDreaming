@@ -63,7 +63,7 @@ def draft_files_exist_check(context) -> AssetCheckResult:
     if not doc_id:
         return AssetCheckResult(passed=False, metadata={"reason": MetadataValue.text("missing doc_id in tasks or key not found"), "task_id": MetadataValue.text(str(pk))})
     base = data_root / "docs" / "draft" / str(doc_id)
-    ok = (base / "parsed.txt").exists() or (base / "raw.txt").exists()
+    ok = (base / "parsed.txt").exists()
     return AssetCheckResult(passed=bool(ok), metadata={"doc_dir": MetadataValue.path(str(base))})
 
 
@@ -78,7 +78,7 @@ def essay_files_exist_check(context) -> AssetCheckResult:
     if not doc_id:
         return AssetCheckResult(passed=False, metadata={"reason": MetadataValue.text("missing doc_id in tasks or key not found"), "task_id": MetadataValue.text(str(pk))})
     base = data_root / "docs" / "essay" / str(doc_id)
-    ok = (base / "parsed.txt").exists() or (base / "raw.txt").exists()
+    ok = (base / "parsed.txt").exists()
     return AssetCheckResult(passed=bool(ok), metadata={"doc_dir": MetadataValue.path(str(base))})
 
 
@@ -93,7 +93,7 @@ def evaluation_files_exist_check(context) -> AssetCheckResult:
     if not doc_id:
         return AssetCheckResult(passed=False, metadata={"reason": MetadataValue.text("missing doc_id in tasks or key not found"), "task_id": MetadataValue.text(str(pk))})
     base = data_root / "docs" / "evaluation" / str(doc_id)
-    ok = (base / "parsed.txt").exists() or (base / "raw.txt").exists()
+    ok = (base / "parsed.txt").exists()
     return AssetCheckResult(passed=bool(ok), metadata={"doc_dir": MetadataValue.path(str(base))})
 
 

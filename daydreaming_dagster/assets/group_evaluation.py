@@ -59,8 +59,17 @@ def evaluation_prompt(context, evaluation_tasks) -> str:
         )
     try:
         doc_text = fs_read_parsed(row)
-    except Exception:
-        doc_text = fs_read_raw(row)
+    except Exception as e:
+        base = docs_root / "essay" / str(parent_doc_id)
+        raise Failure(
+            description="Missing or unreadable parsed.txt for target essay document",
+            metadata={
+                "function": MetadataValue.text("evaluation_prompt"),
+                "parent_doc_id": MetadataValue.text(str(parent_doc_id)),
+                "essay_doc_dir": MetadataValue.path(str(base)),
+                "error": MetadataValue.text(str(e)),
+            },
+        )
     used_source = "essay_fs"
 
     eval_df = read_evaluation_templates(Path(context.resources.data_root))
