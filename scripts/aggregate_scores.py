@@ -282,18 +282,17 @@ def parse_all(
                             created_at = str(meta.get("created_at") or "")
                 except Exception:
                     pass
-                rows.append({
-                    "doc_id": doc_id,
-                    "parent_doc_id": parent_doc_id,
-                    "evaluation_template": eval_template,
-                    "evaluation_model": eval_model,
-                    "evaluation_model_name": model_map.get(str(eval_model), str(eval_model)) if eval_model else None,
-                    "score": None,
-                    "error": "missing parsed.txt",
-                    "evaluation_response_path": str(parsed_fp),
-                    "doc_dir": str(doc_dir),
-                    "created_at": created_at,
-                })
+            rows.append({
+                "doc_id": doc_id,
+                "parent_doc_id": parent_doc_id,
+                "evaluation_template": eval_template,
+                "evaluation_model": eval_model,
+                "score": None,
+                "error": "missing parsed.txt",
+                "evaluation_response_path": str(parsed_fp),
+                "doc_dir": str(doc_dir),
+                "created_at": created_at,
+            })
                 continue
             try:
                 text_path = parsed_fp
@@ -345,7 +344,6 @@ def parse_all(
                 "parent_doc_id": parent_doc_id,
                 "evaluation_template": eval_template,
                 "evaluation_model": eval_model,
-                "evaluation_model_name": model_map.get(str(eval_model), str(eval_model)) if eval_model else None,
                 "score": score,
                 "error": err,
                 "evaluation_response_path": str(text_path),
@@ -363,7 +361,6 @@ def parse_all(
         "parent_doc_id",
         "evaluation_template",
         "evaluation_model",
-        "evaluation_model_name",
         "score",
         "error",
         "evaluation_response_path",
@@ -383,11 +380,7 @@ def parse_all(
         else:
             df["document_id"] = None
 
-    # evaluation_model_name from mapping
-    if "evaluation_model" in df.columns:
-        df["evaluation_model_name"] = df["evaluation_model"].map(model_map).fillna(df.get("evaluation_model"))
-    else:
-        df["evaluation_model_name"] = None
+    # evaluation_model_name no longer included in output
 
     # Fill missing expected columns with None to stabilize schema
     for col in expected_columns:
@@ -400,7 +393,6 @@ def parse_all(
         "doc_id",
         "evaluation_template",
         "evaluation_model",
-        "evaluation_model_name",
         "score",
         "error",
         "evaluation_response_path",
@@ -415,7 +407,7 @@ def parse_all(
         df["score"] = pd.to_numeric(df["score"], errors="coerce")
     # Replace NaN with empty string for text-like columns
     text_like = [
-        "doc_id","parent_doc_id","evaluation_template","evaluation_model","evaluation_model_name","evaluation_response_path","error","doc_dir","created_at"
+        "doc_id","parent_doc_id","evaluation_template","evaluation_model","evaluation_response_path","error","doc_dir","created_at"
     ]
     for col in text_like:
         if col in df.columns:
