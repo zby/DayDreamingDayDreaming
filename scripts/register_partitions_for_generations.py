@@ -232,6 +232,31 @@ def main() -> int:
         })
         combo_ids.add(str(r["combo_id"]))
 
+    # EARLY VALIDATION: require essay document ids for evaluation lineage before any writes
+    docs_col = "essay_doc_id" if "essay_doc_id" in df.columns else ("parent_doc_id" if "parent_doc_id" in df.columns else None)
+    if docs_col is None:
+        print(
+            "Error: input CSV is missing required column 'essay_doc_id' (temporary alias: 'parent_doc_id').\n"
+            "       Each row must include the essay document id to pin evaluation lineage (doc-id first).\n"
+            f"       File: {args.input}",
+            file=sys.stderr,
+        )
+        return 1
+    # Check non-empty values (treat 'nan' as empty)
+    missing_mask = df[docs_col].astype(str).map(lambda s: not bool(s.strip()) or s.lower() == "nan")
+    missing_count = int(missing_mask.sum())
+    if missing_count:
+        sample = df.loc[missing_mask, "essay_task_id"].astype(str).head(5).tolist() if "essay_task_id" in df.columns else []
+        print(
+            "Error: essay document ids are required but missing for some rows.\n"
+            f"       Column '{docs_col}' has {missing_count} empty/missing values.\n"
+            f"       Sample essay_task_id(s) missing ids: {sample}.\n"
+            "       Ensure essay responses were produced and recorded, then populate 'essay_doc_id' in the input CSV.\n"
+            "       Tip: you can read doc IDs from data/docs/essay/*/metadata.json or from essay_response run metadata.",
+            file=sys.stderr,
+        )
+        return 1
+
     # Write/merge outputs
     essay_out_csv = data_root / "2_tasks" / "essay_generation_tasks.csv"
     link_out_csv = data_root / "2_tasks" / "draft_generation_tasks.csv"
