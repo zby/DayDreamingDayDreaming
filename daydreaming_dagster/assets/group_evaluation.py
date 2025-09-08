@@ -102,7 +102,7 @@ def evaluation_prompt(context, evaluation_tasks) -> str:
     partitions_def=evaluation_tasks_partitions,
     group_name="evaluation",
     io_manager_key="evaluation_response_io_manager",
-    required_resource_keys={"openrouter_client", "data_root"},
+    required_resource_keys={"openrouter_client", "data_root", "experiment_config"},
     deps=["evaluation_prompt", "evaluation_tasks"],
 )
 def evaluation_response(context, evaluation_prompt, evaluation_tasks) -> str:
