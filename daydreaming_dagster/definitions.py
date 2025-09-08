@@ -58,6 +58,7 @@ from daydreaming_dagster.resources.io_managers import (
     CSVIOManager,
     InMemoryIOManager,
 )
+from daydreaming_dagster.resources.docs_prompt_io_manager import DocsPromptIOManager
 from pathlib import Path
 
 
@@ -125,15 +126,35 @@ defs = Definitions(
         # Infrastructure configuration
         "data_root": "data",
         
-        # Simplified I/O managers - no complex source mappings or filtering
+        # IO managers
         "csv_io_manager": CSVIOManager(base_path=Path("data") / "2_tasks"),
         "in_memory_io_manager": InMemoryIOManager(),
-        # Prompts and responses use in-memory IO managers for runtime; tests may override these
-        "draft_prompt_io_manager": InMemoryIOManager(),
+        # Prompts persist to docs store; responses are written to docs store by assets
+        "draft_prompt_io_manager": DocsPromptIOManager(
+            docs_root=Path("data") / "docs",
+            tasks_root=Path("data") / "2_tasks",
+            stage="draft",
+            tasks_csv_name="draft_generation_tasks.csv",
+            id_col="draft_task_id",
+        ),
+        "essay_prompt_io_manager": DocsPromptIOManager(
+            docs_root=Path("data") / "docs",
+            tasks_root=Path("data") / "2_tasks",
+            stage="essay",
+            tasks_csv_name="essay_generation_tasks.csv",
+            id_col="essay_task_id",
+        ),
+        "evaluation_prompt_io_manager": DocsPromptIOManager(
+            docs_root=Path("data") / "docs",
+            tasks_root=Path("data") / "2_tasks",
+            stage="evaluation",
+            tasks_csv_name="evaluation_tasks.csv",
+            id_col="evaluation_task_id",
+        ),
+        # Responses: no need to persist via IO manager — assets write to docs store
+        # Use in-memory manager only if downstream assets in-process; tests may override
         "draft_response_io_manager": InMemoryIOManager(),
-        "essay_prompt_io_manager": InMemoryIOManager(),
         "essay_response_io_manager": InMemoryIOManager(),
-        "evaluation_prompt_io_manager": InMemoryIOManager(),
         "evaluation_response_io_manager": InMemoryIOManager(),
         "error_log_io_manager": CSVIOManager(base_path=Path("data") / "7_reporting"),
         "parsing_results_io_manager": CSVIOManager(base_path=Path("data") / "5_parsing"),

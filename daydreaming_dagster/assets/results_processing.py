@@ -15,7 +15,7 @@ from .raw_data import EVALUATION_TEMPLATES_KEY
 @asset(
     group_name="results_processing",
     io_manager_key="parsing_results_io_manager",
-    required_resource_keys={"evaluation_response_io_manager"},
+    required_resource_keys={"data_root"},
     ins={
         "evaluation_tasks": AssetIn(),
         "evaluation_templates": AssetIn(key=EVALUATION_TEMPLATES_KEY),
@@ -30,7 +30,7 @@ def parsed_scores(context, evaluation_tasks: pd.DataFrame, evaluation_templates:
         raise Failure("evaluation_tasks are required")
     
     # Get base path and parse responses using evaluation processing utility
-    base_path = Path(context.resources.evaluation_response_io_manager.base_path)
+    base_path = Path(getattr(context.resources, "data_root", "data")) / "4_evaluation" / "evaluation_responses"
     # Parser selection is resolved at parse time from evaluation_templates.csv
     parsed_df = parse_evaluation_files(
         evaluation_tasks,
