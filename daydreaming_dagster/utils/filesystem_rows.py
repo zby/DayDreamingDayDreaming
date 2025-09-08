@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 from typing import Optional
+import json
 
 
 def _doc_dir(docs_root: Path, stage: str, doc_id: str) -> Path:
@@ -40,3 +41,20 @@ def read_prompt(row: dict) -> str:
     base = Path(row["doc_dir"])
     return _read_text(base, "prompt.txt")
 
+
+def read_metadata(row: dict, *, strict: bool = False) -> dict:
+    """Load metadata.json for a given docs-store row.
+
+    Returns an empty dict when metadata.json is missing or invalid, unless strict=True
+    in which case it raises the underlying exception.
+    """
+    base = Path(row["doc_dir"]) if isinstance(row, dict) else Path(str(row))
+    fp = base / "metadata.json"
+    try:
+        if not fp.exists():
+            return {}
+        return json.loads(fp.read_text(encoding="utf-8")) or {}
+    except Exception:
+        if strict:
+            raise
+        return {}
