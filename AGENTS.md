@@ -72,6 +72,28 @@
   - Docs-only changes: stage only `docs/` or specific markdown files.
 - Never mix functional changes and formatting in the same commit; format in a follow-up commit.
 
+## Change Hygiene & Backcompat
+
+- After larger changes, always do a cleanup pass before finishing:
+  - Remove any scaffolding/bloat you introduced while iterating (debug prints, unused helpers/flags, dead code).
+  - Update or remove obsolete docs/comments; add concise notes where behavior changed.
+  - Verify the narrowest relevant tests pass; add missing unit tests for new logic.
+- Clearly mark any temporary compatibility code to make it easy to scan and retire:
+  - Use grep-friendly tags in comments at the declaration site(s):
+    - `BACKCOMPAT:` short rationale; link to plan/issue; target removal version/date.
+    - `TEMPORARY:` scope and removal trigger.
+    - `TODO-REMOVE-BY: YYYY-MM-DD` (or release/milestone).
+  - Example:
+    ```python
+    # BACKCOMPAT: accept legacy column 'parent_doc_id' until 2025-10-01
+    # TODO-REMOVE-BY: 2025-10-01 — switch callers to 'essay_doc_id' exclusively
+    essay_doc_col = 'essay_doc_id' if 'essay_doc_id' in df.columns else ('parent_doc_id' if 'parent_doc_id' in df.columns else None)
+    ```
+  - Prefer feature flags or narrow branches over sprawling legacy paths; do not expand backcompat surface area.
+- PRs should include a brief "Cleanup & Backcompat" note summarizing:
+  - What was removed; what remains temporarily; when/how it will be removed; and links to tracking items.
+- Periodically sweep for tags `BACKCOMPAT|TEMPORARY|TODO-REMOVE-BY|DEPRECATED|LEGACY|MIGRATION` and retire code on schedule.
+
 ## Security & Configuration Tips
 - Secrets: never commit API keys or real outputs; use a local `.env` and environment variables (`OPENROUTER_API_KEY`, `DAGSTER_HOME`).
   - Set `DAGSTER_HOME` as an absolute path, e.g., `export DAGSTER_HOME=$(pwd)/dagster_home`.
