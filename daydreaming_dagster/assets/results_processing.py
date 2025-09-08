@@ -1,4 +1,4 @@
-from dagster import asset, MetadataValue
+from dagster import asset, MetadataValue, AssetIn
 from pathlib import Path
 import pandas as pd
 import numpy as np
@@ -10,10 +10,14 @@ import json
     group_name="results_processing",
     io_manager_key="parsing_results_io_manager",
     required_resource_keys={"data_root"},
-    description="Parse evaluation scores from docs store (data/docs/evaluation/<doc_id>/parsed.txt)",
+    ins={
+        # Limit to the current experiment's evaluation tasks
+        "evaluation_tasks": AssetIn(),
+    },
+    description="Parse evaluation scores from docs store for current evaluation_tasks only",
     compute_kind="pandas",
 )
-def parsed_scores(context) -> pd.DataFrame:
+def parsed_scores(context, evaluation_tasks: pd.DataFrame) -> pd.DataFrame:
     """Parse evaluation scores from the docs store and write a consolidated DataFrame.
 
     Reads data/docs/evaluation/<doc_id>/{parsed.txt,metadata.json} and uses
@@ -22,6 +26,14 @@ def parsed_scores(context) -> pd.DataFrame:
     data_root = Path(getattr(context.resources, "data_root", "data"))
     out_csv = data_root / "5_parsing" / "parsed_scores.csv"
     df = parse_all_scores(data_root, out_csv)
+    # Filter to current evaluation tasks only (doc-id-first)
+    try:
+        if isinstance(evaluation_tasks, pd.DataFrame) and not evaluation_tasks.empty and "doc_id" in evaluation_tasks.columns:
+            keep = set(evaluation_tasks["doc_id"].astype(str).dropna().tolist())
+            if "doc_id" in df.columns and keep:
+                df = df[df["doc_id"].astype(str).isin(keep)].reset_index(drop=True)
+    except Exception:
+        pass
     # Enrich with generation metadata by reading docs store metadata for parents
     # Expected fields by downstream: combo_id, draft_template, generation_template, generation_model, stage, generation_response_path
     docs_root = data_root / "docs"
