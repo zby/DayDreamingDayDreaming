@@ -276,7 +276,8 @@ def draft_response(context, draft_prompt, draft_generation_tasks) -> str:
             },
         )
 
-    # Prefer RAW from versioned raw dir if present; fallback to parsed text
+    # FALLBACK(OPS): prefer RAW from versioned raw dir if present; if missing, use parsed text.
+    # This is a developer convenience; prefer ensuring RAW side-write exists for reproducibility.
     raw_text = parsed
     try:
         data_root = _Path(getattr(context.resources, "data_root", "data"))

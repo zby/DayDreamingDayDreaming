@@ -335,6 +335,20 @@ def main() -> int:
     # Do not write essay_generation_tasks.csv here; treat it as source of truth
 
     if draft_rows:
+        # Integrity WARNINGS ONLY (no filtering here): report missing template files for awareness
+        try:
+            tpl_root = data_root / "1_raw" / "generation_templates" / "draft"
+            missing_tpls = sorted({
+                str(r.get("draft_template") or "")
+                for r in draft_rows
+                if r.get("draft_template") and not (tpl_root / f"{r.get('draft_template')}.txt").exists()
+            })
+            if missing_tpls and not args.dry_run:
+                print("Warning: draft task rows reference draft templates without files present:")
+                print(" - missing template_ids (first 10):", missing_tpls[:10])
+                print(" - total missing template_ids:", len(missing_tpls))
+        except Exception:
+            pass
         added_drafts = _write_table(
             link_out_csv,
             draft_rows,

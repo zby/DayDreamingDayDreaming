@@ -29,7 +29,9 @@ def find_document_path(document_id: str, data_root: Path) -> Tuple[Path | None, 
     if latest_draft is not None:
         return latest_draft, "draft_responses"
 
-    # Fall back to unversioned across known locations
+    # BACKCOMPAT(PATHS): Fall back to unversioned files across known legacy locations.
+    # Prefer maintaining canonical essay/draft_responses with versioned files; these
+    # legacy paths remain for historical analyses and should not expand.
     candidates = [
         (essay_dir / f"{document_id}.txt", "essay_responses"),
         (draft_dir / f"{document_id}.txt", "draft_responses"),

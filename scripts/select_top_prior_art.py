@@ -144,6 +144,40 @@ def main() -> int:
     missing_essays = []
     # Collect missing-field diagnostics per selected doc
     missing_required: list[str] = []
+    # Warn if referenced templates do not have files or are not registered in CSVs
+    draft_tpl_root = data_root / "1_raw" / "generation_templates" / "draft"
+    essay_tpl_root = data_root / "1_raw" / "generation_templates" / "essay"
+    draft_tpl_csv = data_root / "1_raw" / "draft_templates.csv"
+    essay_tpl_csv = data_root / "1_raw" / "essay_templates.csv"
+    known_draft_tpls: set[str] = set()
+    known_essay_tpls: set[str] = set()
+    essay_tpl_generators: dict[str, str] = {}
+    try:
+        if draft_tpl_csv.exists():
+            df = pd.read_csv(draft_tpl_csv)
+            if "template_id" in df.columns:
+                known_draft_tpls = set(df["template_id"].astype(str))
+    except Exception:
+        pass
+    try:
+        if essay_tpl_csv.exists():
+            df = pd.read_csv(essay_tpl_csv)
+            if "template_id" in df.columns:
+                known_essay_tpls = set(df["template_id"].astype(str))
+            # Build generator map if present
+            if "generator" in df.columns:
+                essay_tpl_generators = (
+                    df[["template_id", "generator"]]
+                    .dropna(subset=["template_id"])  # keep valid ids
+                    .astype({"template_id": str})
+                    .set_index("template_id")["generator"].astype(str).str.lower().to_dict()
+                )
+    except Exception:
+        pass
+    missing_draft_tpl_files: set[str] = set()
+    missing_essay_tpl_files: set[str] = set()
+    missing_draft_tpl_csv: set[str] = set()
+    missing_essay_tpl_csv: set[str] = set()
 
     for doc in top_docs:
         # Doc is the generation (essay) doc_id; use docs store metadata
@@ -175,6 +209,19 @@ def main() -> int:
                         generation_model = str(dmeta.get("model_id") or "")
             except Exception:
                 pass
+        # Template existence warnings (files and CSV registration)
+        if draft_template:
+            if not (draft_tpl_root / f"{draft_template}.txt").exists():
+                missing_draft_tpl_files.add(draft_template)
+            if known_draft_tpls and draft_template not in known_draft_tpls:
+                missing_draft_tpl_csv.add(draft_template)
+        if essay_template:
+            gen_mode = (essay_tpl_generators.get(essay_template) or "").strip().lower()
+            # If essay generator mode is 'copy', template text is not required
+            if gen_mode != "copy" and not (essay_tpl_root / f"{essay_template}.txt").exists():
+                missing_essay_tpl_files.add(essay_template)
+            if known_essay_tpls and essay_template not in known_essay_tpls:
+                missing_essay_tpl_csv.add(essay_template)
         parent_doc_id = essay_doc_id
         if not (essay_dir / "parsed.txt").exists():
             missing_essays.append(str(essay_dir / "parsed.txt"))
@@ -246,6 +293,25 @@ def main() -> int:
             print(f" ... {len(missing_essays)-10} more", file=sys.stderr)
     # parent_doc_id is required; above path returns early if any missing
     # Note: Draft backfill checks removed; selection focuses on essays only.
+    # Template warnings (non-fatal)
+    if missing_draft_tpl_files:
+        print("Warning: draft templates referenced but draft template files not found:", file=sys.stderr)
+        for t in list(sorted(missing_draft_tpl_files))[:10]:
+            print(" -", t, file=sys.stderr)
+        if len(missing_draft_tpl_files) > 10:
+            print(f" ... {len(missing_draft_tpl_files)-10} more", file=sys.stderr)
+    if missing_essay_tpl_files:
+        print("Warning: essay templates referenced but essay template files not found:", file=sys.stderr)
+        for t in list(sorted(missing_essay_tpl_files))[:10]:
+            print(" -", t, file=sys.stderr)
+        if len(missing_essay_tpl_files) > 10:
+            print(f" ... {len(missing_essay_tpl_files)-10} more", file=sys.stderr)
+    if missing_draft_tpl_csv:
+        print("Warning: draft templates referenced but not registered in draft_templates.csv:", file=sys.stderr)
+        print(" - first 10:", list(sorted(missing_draft_tpl_csv))[:10], file=sys.stderr)
+    if missing_essay_tpl_csv:
+        print("Warning: essay templates referenced but not registered in essay_templates.csv:", file=sys.stderr)
+        print(" - first 10:", list(sorted(missing_essay_tpl_csv))[:10], file=sys.stderr)
     return 0
 
 

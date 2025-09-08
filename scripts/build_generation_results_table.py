@@ -13,7 +13,7 @@ What it does:
       • `data/7_cross_experiment/draft_generation_results.csv`
       • `data/7_cross_experiment/essay_generation_results.csv`
     with metadata consistent with auto-tracking assets
-- Legacy single-phase (optional):
+- BACKCOMPAT (historical only):
   - Scans `data/3_generation/generation_responses/` for `.txt` files
   - Matches files to `data/2_tasks/generation_tasks.csv` when available; otherwise parses filenames
   - Appends rows to `data/7_cross_experiment/generation_results.csv`
@@ -22,7 +22,7 @@ When to use:
 - Initial migration to cross-experiment tracking
 - Recovery after table corruption
 - Rebuilding tables when adding new columns
-- Analyzing existing historical single-phase data
+- Analyzing existing historical single-phase data (new runs should materialize essays; use essay generator=copy to mirror single-phase)
 
 Notes:
 - The active pipeline uses a two-phase system with auto-materializing tracking. This

@@ -327,7 +327,7 @@ Active draft templates are controlled in `data/1_raw/draft_templates.csv` via th
 - **Selective Loading**: Optional filtering for faster development and testing
 - **Robust Parser**: Automatic detection and parsing of various LLM evaluation response formats
 - **Scalable Processing**: Memory-efficient sequential processing handles large datasets
-- **Backward Compatibility**: Legacy single-phase generation still supported
+- **Backward Compatibility**: Legacy single-phase directories are readable for historical analysis, but new runs always materialize essays (use an essay template with generator=copy to mirror single-phase).
 - **Isolated Testing**: Complete test environment separation from production data
 
 ## Troubleshooting

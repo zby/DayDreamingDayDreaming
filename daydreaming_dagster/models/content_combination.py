@@ -116,16 +116,22 @@ class ContentCombination:
     
     @staticmethod
     def _resolve_content(concept: Concept, level: str) -> str:
-        """Resolve content with fallback: requested → paragraph → sentence → name."""
+        """Resolve content with fallback: requested → paragraph → sentence → name.
+
+        FALLBACK(DATA): This is a data-quality fallback chain for concept
+        descriptions. Prefer improving `concepts_metadata.csv` and description
+        files so the requested level exists. Keep this fallback narrow and
+        deterministic; do not add additional levels here without updating docs.
+        """
         if level in concept.descriptions and concept.descriptions[level]:
             return concept.descriptions[level]
         
-        # Fallback logic
+        # FALLBACK(DATA): degrade to paragraph → sentence when requested level missing
         for fallback_level in ["paragraph", "sentence"]:
             if fallback_level in concept.descriptions and concept.descriptions[fallback_level]:
                 return concept.descriptions[fallback_level]
-        
-        return concept.name  # Final fallback
+        # Final fallback: concept name only
+        return concept.name
     
     @staticmethod
     def _get_available_levels(concepts: List[Concept]) -> Dict[str, List[str]]:

@@ -134,7 +134,12 @@ def _validate_score_range(score: float) -> None:
 
 
 def _parse_complex_format(response_text: str) -> dict:
-    """Parse evaluation responses using legacy template format (complex patterns)."""
+    """Parse evaluation responses using legacy template format (complex patterns).
+
+    BACKCOMPAT(PARSER): Legacy parsing retained for older evaluation templates.
+    Prefer migrating templates to emit a single explicit "SCORE:" line and use
+    the simplified `in_last_line` strategy. Do not extend this parser further.
+    """
     # Normalize the response text and limit search to last 30 lines to avoid accidental matches
     lines = response_text.strip().split('\n')
     last_lines = lines[-30:] if len(lines) > 30 else lines

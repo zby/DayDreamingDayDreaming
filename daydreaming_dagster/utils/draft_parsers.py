@@ -74,7 +74,8 @@ def parse_essay_block(text: str) -> str:
     m = ESSAY_BLOCK_RE.search(text)
     if m:
         return m.group(1).strip()
-    # Fallback: if no closing tag, capture from the first <essay> to EOF
+    # FALLBACK(PARSER): if closing tag missing, capture from the first <essay> to EOF.
+    # Prefer fixing upstream template/data to always emit well-formed blocks.
     start = text.find("<essay>")
     if start != -1:
         return text[start + len("<essay>"):].strip()

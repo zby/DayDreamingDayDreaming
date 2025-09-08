@@ -32,7 +32,9 @@ def parse_evaluation_files(
     
     # Use default parsing function if none provided
     if parse_function is None:
-        # Build parser map from provided evaluation_templates, else fallback to CSV
+        # PARSER CONFIG: Prefer explicit parser_map from provided evaluation_templates.
+        # FALLBACK(CONFIG): If not provided, load from CSV via load_parser_map(data_root).
+        # Do not attempt automatic data fixes here; fail fast if required templates/parsers are missing.
         if evaluation_templates is not None:
             if "template_id" not in evaluation_templates.columns or "parser" not in evaluation_templates.columns:
                 raise ValueError("evaluation_templates must include 'template_id' and 'parser' columns")

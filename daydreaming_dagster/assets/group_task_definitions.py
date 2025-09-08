@@ -117,7 +117,8 @@ def content_combinations(context) -> List[ContentCombination]:
         # Log and fall back
         context.log.warning(f"content_combinations: selection load failed: {e}; falling back to active concepts")
 
-    # Fallback: derive a single combo from currently active concepts
+    # FALLBACK(OPS): derive a single combo from currently active concepts when no curated selection is present.
+    # Prefer maintaining curated selected_combo_mappings.csv; keep this narrow, deterministic fallback for dev only.
     cfg = context.resources.experiment_config
     level = getattr(cfg, "description_level", "paragraph")
     k_max = int(getattr(cfg, "k_max", 2))
@@ -336,30 +337,9 @@ def evaluation_tasks(
                     "source_dir": src or "essay_responses",
                 }
             )
-    draft_dir = data_root_path / "3_generation" / "draft_responses"
-    if not draft_generation_tasks.empty:
-        for _, row in draft_generation_tasks.iterrows():
-            draft_task_id = row.get("draft_task_id")
-            if not isinstance(draft_task_id, str) or not draft_task_id:
-                continue
-            fp, src = find_document_path(draft_task_id, data_root_path)
-            docs.append(
-                {
-                    "document_id": draft_task_id,
-                    "stage": "essay1p",
-                    "origin": "draft",
-                    "file_path": str(fp) if fp else str(draft_dir / f"{draft_task_id}.txt"),
-                    "combo_id": row.get("combo_id"),
-                    "draft_template": row.get("draft_template"),
-                    "essay_template": None,
-                    "generation_model_id": row.get("generation_model"),
-                    "generation_model_name": row.get("generation_model_name"),
-                    "draft_task_id": draft_task_id,
-                    "essay_task_id": None,
-                    "source_asset": "draft_response",
-                    "source_dir": src or "draft_responses",
-                }
-            )
+    # Evaluations target essays only. Drafts are not included here; if you need
+    # to evaluate a draft-like artifact, materialize an essay with generator=copy
+    # and use the essay doc id.
     document_index = pd.DataFrame(docs)
     rows: List[dict] = []
     for _, doc in document_index.iterrows():
@@ -445,7 +425,7 @@ def document_index(context, essay_generation_tasks: pd.DataFrame, draft_generati
                     "source_dir": "essay_responses",
                 }
             )
-    # Drafts treated as one-phase
+    # OPS-ONLY: include drafts for ops browsing; evaluations do not consume drafts directly.
     if not draft_generation_tasks.empty:
         draft_dir = data_root / "3_generation" / "draft_responses"
         for _, row in draft_generation_tasks.iterrows():

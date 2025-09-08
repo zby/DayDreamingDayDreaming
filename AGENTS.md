@@ -94,6 +94,19 @@
   - What was removed; what remains temporarily; when/how it will be removed; and links to tracking items.
 - Periodically sweep for tags `BACKCOMPAT|TEMPORARY|TODO-REMOVE-BY|DEPRECATED|LEGACY|MIGRATION` and retire code on schedule.
 
+### Policy: Fallbacks and Data Quality
+
+- Do not implement automatic data fixes in runtime code (e.g., silently correcting/mutating CSVs or inputs). Prefer explicit failures with actionable error messages and plan a proper data migration.
+- Limit fallbacks to cases where they are absolutely necessary to keep development unblocked. When adding any fallback:
+  - Tag the code with a grep-friendly marker describing why it exists and how it will be removed:
+    - `FALLBACK(DATA):` when compensating for missing/low-quality data.
+    - `FALLBACK(PARSER):` when tolerating imperfect format output from a template.
+    - `FALLBACK(OPS):` when providing a minimal developer-only path (not production).
+    - Include `TODO-REMOVE-BY:` with a date/milestone.
+  - Keep the fallback narrow and deterministic; avoid expanding behavior.
+  - Prefer fail-fast in assets; fallbacks may live in dev-only scripts or controlled branches with clear logging.
+- Do not write to inputs (e.g., task CSVs) as part of fallback behavior. Any data repair must be a planned, explicit ops step or a standalone script run intentionally by a human.
+
 ## Security & Configuration Tips
 - Secrets: never commit API keys or real outputs; use a local `.env` and environment variables (`OPENROUTER_API_KEY`, `DAGSTER_HOME`).
   - Set `DAGSTER_HOME` as an absolute path, e.g., `export DAGSTER_HOME=$(pwd)/dagster_home`.

@@ -135,10 +135,10 @@ def parse_identifiers_from_eval_task_id(
 ) -> Dict[str, Any]:
     """Parse identifiers from an evaluation_task_id string using the new scheme.
 
-    New format (split tasks, 2025-09):
-      evaluation_task_id = {document_id}__{eval_template}__{eval_model}
-      document_id        = essay_task_id (two-phase) or link_task_id (draft-as-one-phase)
-      essay_task_id      = {combo_id}_{link_template}_{generation_model}_{essay_template}
+    Canonical format (doc-id first):
+      evaluation_task_id = {parent_doc_id}__{eval_template}__{eval_model}
+      parent_doc_id      = essay doc_id (evaluations always target essays; copy generator mirrors single-phase)
+      essay_task_id      = {combo_id}_{draft_template}_{generation_model}_{essay_template}
 
     We extract:
       - essay_task_id
@@ -214,7 +214,7 @@ def parse_identifiers_from_eval_task_id(
                         combo_parts = doc_parts[:l_idx]
                         combo_id = "_".join(combo_parts) if combo_parts else None
                     break
-        # Draft-as-one-phase case: no essay_template found, but may have link_template + model
+    # Legacy case: if no essay_template found, may have draft_template + model
         if essay_template is None and link_templates:
             for i in range(len(doc_parts)-1, -1, -1):
                 if doc_parts[i] in link_templates:
