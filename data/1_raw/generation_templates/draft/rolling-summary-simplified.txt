@@ -1,0 +1,19 @@
+# Rolling Summary — Simplified
+
+Goal: Build one clear idea thread in order C1..Cn. Keep outputs to single lines.
+
+0) Inputs (names only)
+- {% for concept in concepts %}{{ concept.name }}{% if not loop.last %}\n- {% endif %}{% endfor %}
+
+1) Seed from C1
+- Idea So Far — 1: one line derived faithfully from C1
+
+2) Steps (i = 2..n)
+For each concept Ci, output exactly:
+
+### Step i: Concept Ci
+- Effect: one line on how Ci changes the idea
+- Idea So Far — i: one line summary after attaching Ci
+
+3) Wrap‑up (≤50 words)
+- Name the 1–2 most helpful attachments and why.

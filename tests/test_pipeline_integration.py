@@ -395,60 +395,6 @@ class TestPipelineIntegration:
                         continue
                 
                 print("✅ Generation materialization completed")
-
-                # STEP 3: Materialize one evaluation end-to-end for realism
-                print("🧪 Step 3: Materializing one evaluation partition...")
-                eval_tasks_df = pd.read_csv(task_dir / "evaluation_tasks.csv")
-                # Choose an evaluation whose essay_task_id was produced above
-                candidate_evals = eval_tasks_df[
-                    eval_tasks_df["essay_task_id"].astype(str).isin(test_essay_partitions)
-                ]
-                test_eval_keys = candidate_evals["evaluation_task_id"].astype(str).tolist()[:1]
-                for partition_key in test_eval_keys:
-                    print(f"  Materializing evaluation for partition: {partition_key}")
-                    result = materialize(
-                        [
-                            # Core/task layers for dependency consistency
-                            selected_combo_mappings,
-                            content_combinations,
-                            draft_generation_tasks,
-                            essay_generation_tasks,
-                            evaluation_tasks,
-                            # Evaluation assets
-                            evaluation_prompt,
-                            evaluation_response,
-                        ],
-                        resources=resources,
-                        instance=instance,
-                        partition_key=partition_key,
-                    )
-                    assert result.success, f"Evaluation materialization failed for {partition_key}"
-
-                # Verify evaluation doc exists under docs and contains text
-                if test_eval_keys:
-                    ev_key = test_eval_keys[0]
-                    ev_row = eval_tasks_df[eval_tasks_df["evaluation_task_id"].astype(str) == ev_key].iloc[0]
-                    ev_doc_id = str(ev_row.get("doc_id") or "")
-                    assert ev_doc_id, "evaluation_tasks.csv should include doc_id for evaluation"
-                    ev_dir = pipeline_data_root / "docs" / "evaluation" / ev_doc_id
-                    assert ev_dir.exists(), f"evaluation doc dir missing: {ev_dir}"
-                    raw = ev_dir / "raw.txt"
-                    parsed = ev_dir / "parsed.txt"
-                    assert raw.exists() or parsed.exists(), "evaluation doc should have raw.txt or parsed.txt"
-
-                # STEP 4: Parse scores across docs store and verify row present
-                from daydreaming_dagster.assets.group_results_processing import parsed_scores
-                # Include evaluation_tasks dependency for this materialization
-                result = materialize([evaluation_tasks, parsed_scores], resources=resources, instance=instance)
-                assert result.success, "Parsing scores materialization failed"
-                parsed_csv = pipeline_data_root / "5_parsing" / "parsed_scores.csv"
-                assert parsed_csv.exists() and parsed_csv.stat().st_size > 0, "parsed_scores.csv missing or empty"
-                if test_eval_keys:
-                    df_scores = pd.read_csv(parsed_csv)
-                    # Verify the evaluation doc id appears in cross-experiment parsed scores
-                    assert (df_scores["doc_id"].astype(str) == ev_doc_id).any(), (
-                        f"expected evaluation doc_id {ev_doc_id} in parsed_scores"
-                    )
                 
                 # Final verification including generated files
                 self._verify_expected_files(

@@ -1,0 +1,44 @@
+Prompt: Inventive Synthesis from Foundational Concepts
+
+You are an expert in interdisciplinary synthesis and conceptual invention.
+
+You are given the following set of fundamental concepts:
+
+{% for concept in concepts %}
+**{{ concept.name }}**
+
+{{ concept.content }}
+
+---
+
+{% endfor %}
+
+Your task is to write an original essay that:
+
+    Frames a novel problem or opportunity in a chosen field (technology, business, science, etc.), drawing motivation from the limitations or untapped potential you observe in current practice.
+
+    Synthesizes the four concepts above into a concrete, innovative proposal—this could be a system, process, organizational strategy, or theoretical framework. Explain how each concept contributes to the design or justification of your invention.
+
+    Describes the proposed mechanism or architecture in clear, actionable terms. Give it a catchy or descriptive name.
+
+    Discusses the practical implications and potential impact of your proposal, including benefits, possible costs ("taxes" or trade-offs), and how it might change the landscape if widely adopted.
+
+    Traces the originality of your proposal: Briefly acknowledge which elements build on existing ideas, and which aspects represent genuinely new synthesis, combinations, or strategic framing.
+
+Write in an engaging, accessible style. Feel free to draw analogies from neuroscience, business, engineering, or everyday life, as appropriate for your argument.
+
+Example insertion for a new set of concepts:
+
+    Stigmergy
+
+    Delayed Gratification
+
+    Option Value
+
+    Path Dependence
+
+The LLM should then produce an essay that invents a novel system (e.g., a new organizational workflow, algorithm, or investment approach) that could only plausibly arise by weaving those four ideas into a single, original vision.
+
+Summary:
+
+    Don't just summarize; invent. Synthesize the concepts into a concrete mechanism or architecture, frame it as a solution to a real-world problem, and clearly articulate what's original about your proposal. Bonus points for naming it and discussing both its impact and limitations.

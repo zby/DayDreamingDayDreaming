@@ -1,0 +1,76 @@
+# Essay Synthesis — v15.1 (plain-language)
+
+**Role:** Analyst–writer synthesizing ideas into a decision-useful essay.
+
+**Your task:** Using the Phase-1 links below as *inspiration only*, write a **standalone essay** that selects **one keystone idea** and builds a coherent argument around it with concrete steps, small tests, safety bounds, and practicality. **Do not** enumerate or quote the notes; integrate them naturally.
+
+---
+
+## Inputs (verbatim, inspiration only — do not quote)
+{{ links_block }}
+
+---
+
+## Output rules (strict)
+- **Print the essay only** (no "Inputs/Notes/Checklist" headings; no meta-commentary).
+- Start with an **H1 title**, then **4–6** H2 sections.
+- Keep total length **2,200–2,600 words**.
+- Use consistent wording. Default to plain language.
+- Prefer specific, non-stock examples; if numbers lack sources, mark them *(hypothetical)*.
+
+---
+
+## What to cover (weave into sections; do not label these explicitly)
+
+### 1) Keystone in the lead
+Open with a clear thesis naming the **single keystone idea** you will defend.  
+Selection hint: if available in the notes, prefer an idea that includes **(i)** an exploration or background process, **(ii)** a clear check/gate for what counts as promising (e.g., novelty, uncertainty, learning gain), and **(iii)** obvious safety bounds or a stop rule. Say which **success measure** you expect this idea to move and why.
+
+### 2) How it works (move → what changes → cues → success)
+Explain the idea in concrete terms:
+- **Move/step** you take and the **resource/advantage** that makes it bite.  
+- **What changes**, **what cues/feedback/criteria** guide you, and **when to stop or reset**.  
+- One tight paragraph contrasting the **closest existing approach** (what's different in practice: the move, the cues, the goal, or the data you rely on).
+
+### 3) Small tests and early measure (make it checkable)
+- Propose **two small tests (≤48h each)** a small team could run; say **what would make the idea fail** and what **success signal** you expect.  
+- Define **one mid-term measure** (weeks–months) whose **ratio or trend** would show compounding; give the exact formula and threshold.
+
+### 4) Safety bounds, failure modes, and limits
+- Concrete **safety bounds** and **stop conditions** (how to detect runaway or collapse).  
+- **Where this breaks down** (domains/timescales/assumptions) and why; include any **ethical or operational limits**.
+
+### 5) Practicality & design choices
+- Resources/costs, likely bottlenecks, and paths to payback tied to the idea.  
+- Key trade-offs and a plausible **v1** (what you'd simplify or postpone).
+
+### 6) Related work (compact)
+- Briefly compare with **2–3 closest approaches** and state the **practical delta** (changed move, cues, goal, or data pipeline).
+
+### 7) Strategy (lightweight)
+- **Implications (2–3 bullets):** how adopting the keystone changes what to build next, what to measure, or where to invest effort.  
+- Optionally name **one universal pattern** the essay surfaced (1–2 lines, domain-neutral).
+
+---
+
+## Silent element alignment (do not print)
+If the notes contain any of the following, **use them briefly** where they make the story tighter:
+- Background/idle exploration distinct from day-to-day execution.  
+- Gate/check for promising ideas (novelty, information-gain, uncertainty, compression-gain) with thresholds.  
+- External memory for ideas/results.  
+- Replay/consolidation (offline checking/compressing of candidates).  
+- A forward-loop where wins feed new exploration or training.  
+- Budgets & stop rules (time/compute/quality thresholds).
+
+If one element is **missing** but needed, add a **minimal version** and justify briefly.
+
+---
+
+## Silent checklist (do not print)
+- **Coherence:** one keystone through-line; consistent terms across sections.  
+- **Completeness:** move, enabler, what changes, cues/feedback, stop/reset, success measure present.  
+- **Checkability:** ≥2 small tests with failure criteria; one mid-term compounding measure.  
+- **Risk discipline:** explicit safety bounds and limits.  
+- **Comparative clarity:** succinct deltas vs closest approaches.  
+- **Element alignment:** background exploration, gate, memory, replay, forward loop, budgets/stop rules appear when available and strengthen the argument.  
+- **Readable form:** strong title; 4–6 H2s; integrates notes—no bullet-dumping or quoting.
