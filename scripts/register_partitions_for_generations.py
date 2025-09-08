@@ -22,7 +22,9 @@ Doc-ID pinning (default):
   taken directly from the curated essay_generation_tasks.csv. The input MUST include the essay document id
   column named `essay_doc_id` (temporary alias `parent_doc_id` accepted for backcompat). The script also
   reads the essay's metadata.json to optionally include `draft_doc_id`.
- - All task CSVs will include a `doc_id` column reserved deterministically from their task IDs.
+- This script reserves and writes `doc_id` for draft_generation_tasks.csv and evaluation_tasks.csv only.
+  It does NOT modify essay_generation_tasks.csv. It FAILS if the curated essay tasks are missing a `doc_id`
+  column or if any `doc_id` is empty. Recommended: set doc_id = parent_doc_id in curated essays.
 """
 
 from __future__ import annotations
@@ -287,6 +289,27 @@ def main() -> int:
         )
         return 1
 
+    # NEW: Require doc_id column for essay tasks to support prompt persistence via DocsPromptIOManager
+    if "doc_id" not in df.columns:
+        print(
+            "Error: input CSV is missing required column 'doc_id'.\n"
+            "       Essay tasks must include their own doc_id so prompts can be persisted to data/docs/essay/<doc_id>.\n"
+            "       Tip: for curated tasks, set doc_id = parent_doc_id.\n"
+            f"       File: {input_abs}",
+            file=sys.stderr,
+        )
+        return 1
+    doc_missing_mask = df["doc_id"].astype(str).map(lambda s: not bool(s.strip()) or s.lower() == "nan")
+    if int(doc_missing_mask.sum()) > 0:
+        sample = df.loc[doc_missing_mask, "essay_task_id"].astype(str).head(5).tolist() if "essay_task_id" in df.columns else []
+        print(
+            "Error: some rows in essay_generation_tasks.csv have empty 'doc_id' values.\n"
+            f"       Missing count: {int(doc_missing_mask.sum())}. Sample essay_task_id(s): {sample}\n"
+            f"       File: {input_abs}",
+            file=sys.stderr,
+        )
+        return 1
+
     # Write/merge outputs
     essay_out_csv = data_root / "2_tasks" / "essay_generation_tasks.csv"
     link_out_csv = data_root / "2_tasks" / "draft_generation_tasks.csv"
@@ -297,22 +320,7 @@ def main() -> int:
 
     # Write selected combo mappings for chosen combinations
     _write_selected_combo_mappings(data_root, sorted(combo_ids), dry_run=args.dry_run)
-    # Ensure essay_generation_tasks.csv includes doc_id (reserve if missing)
-    try:
-        df_out = df.copy()
-        if "doc_id" not in df_out.columns:
-            df_out["doc_id"] = ""
-        def _ensure_doc(row: pd.Series) -> str:
-            v = str(row.get("doc_id") or "")
-            return v if v and v.lower() != "nan" else reserve_doc_id("essay", str(row["essay_task_id"]))
-        df_out["doc_id"] = df_out.apply(_ensure_doc, axis=1)
-        if args.dry_run:
-            print(f"[dry-run] Would write essay_generation_tasks with doc_id to {essay_out_csv}")
-        else:
-            df_out.to_csv(essay_out_csv, index=False)
-            print(f"Wrote {essay_out_csv} with doc_id column ({len(df_out)} rows)")
-    except Exception as e:
-        print(f"Warning: could not write essay_generation_tasks.csv with doc_id: {e}", file=sys.stderr)
+    # Do NOT modify essay_generation_tasks.csv here (BACKCOMPAT: scripted curation is the source of truth)
     # Always report missing concepts in the current selection to catch mismatches early
     _report_missing_concepts_in_selection(data_root)
     # Optionally materialize content_combinations to ensure Dagster sees the updated selection

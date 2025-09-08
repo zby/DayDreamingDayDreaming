@@ -20,6 +20,8 @@ from jinja2 import Environment
 from ..utils.dataframe_helpers import get_task_row
 from ..utils.raw_readers import read_evaluation_templates
 from .raw_data import EVALUATION_TEMPLATES_KEY
+from ..utils.evaluation_parsing_config import load_parser_map, require_parser_for_template
+from ..utils.eval_response_parser import parse_llm_response
 
 logger = logging.getLogger(__name__)
 
@@ -132,6 +134,22 @@ def evaluation_response(context, evaluation_prompt, evaluation_tasks) -> str:
             },
         )
     docs_root = _Path(getattr(context.resources, "data_root", "data")) / "docs"
+    # Parse evaluation response using configured parser; write parsed.txt with a normalized SCORE line
+    normalized = str(text).replace("\r\n", "\n")
+    parsed_out = normalized
+    score_val = None
+    try:
+        parser_map = load_parser_map(_Path(getattr(context.resources, "data_root", "data")))
+        strategy = require_parser_for_template(str(evaluation_template), parser_map)
+        res = parse_llm_response(normalized, strategy)
+        score_val = res.get("score")
+        # Ensure a SCORE line is present in parsed output for downstream tools
+        if isinstance(score_val, (int, float)):
+            if "SCORE:" not in normalized.upper():
+                parsed_out = normalized.rstrip() + "\n\nSCORE: " + str(score_val)
+    except Exception:
+        # Leave parsed_out as normalized if parsing fails; downstream will surface the error when reading
+        score_val = None
     metadata = {
         "task_id": task_id,
         "evaluation_template": evaluation_template,
@@ -145,8 +163,8 @@ def evaluation_response(context, evaluation_prompt, evaluation_tasks) -> str:
         stage="evaluation",
         doc_id=doc_id,
         parent_doc_id=parent_doc_id,
-        raw_text=text,
-        parsed_text=text,
+        raw_text=normalized,
+        parsed_text=parsed_out,
         prompt_text=prompt_text,
         metadata=metadata,
     )

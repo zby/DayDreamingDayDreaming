@@ -265,10 +265,14 @@ def main() -> int:
                 for msg in missing_required:
                     print(" -", msg, file=sys.stderr)
                 return 2
-            pd.DataFrame(essay_rows, columns=[
+            # Ensure doc-id-first: include doc_id for essays.
+            # For curated tasks, the essay doc_id is exactly parent_doc_id from docs metadata.
+            df_out = pd.DataFrame(essay_rows, columns=[
                 "essay_task_id","parent_doc_id","draft_task_id","combo_id","draft_template",
                 "essay_template","generation_model","generation_model_name"
-            ]).drop_duplicates(subset=["essay_task_id"]).to_csv(essay_out_csv, index=False)
+            ]).drop_duplicates(subset=["essay_task_id"]).copy()
+            df_out["doc_id"] = df_out["parent_doc_id"].astype(str)
+            df_out.to_csv(essay_out_csv, index=False)
             print(f"Wrote {len(essay_rows)} curated essay tasks to {essay_out_csv}")
         else:
             print(
