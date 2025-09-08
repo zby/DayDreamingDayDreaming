@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import List
 import pandas as pd
+from .csv_reading import read_csv_with_context
 
 from ..models import Concept
 
@@ -10,7 +11,7 @@ from ..models import Concept
 def read_concepts(data_root: Path, filter_active: bool = True) -> List[Concept]:
     base = Path(data_root) / "1_raw" / "concepts"
     metadata_path = Path(data_root) / "1_raw" / "concepts_metadata.csv"
-    df = pd.read_csv(metadata_path)
+    df = read_csv_with_context(metadata_path)
     if filter_active and "active" in df.columns:
         df = df[df["active"] == True]
 
@@ -38,13 +39,13 @@ def read_concepts(data_root: Path, filter_active: bool = True) -> List[Concept]:
 
 def read_llm_models(data_root: Path) -> pd.DataFrame:
     fp = Path(data_root) / "1_raw" / "llm_models.csv"
-    return pd.read_csv(fp)
+    return read_csv_with_context(fp)
 
 
 def read_draft_templates(data_root: Path, filter_active: bool = True) -> pd.DataFrame:
     base = Path(data_root) / "1_raw"
     csv_path = base / "draft_templates.csv"
-    df = pd.read_csv(csv_path)
+    df = read_csv_with_context(csv_path)
     if filter_active and "active" in df.columns:
         df = df[df["active"] == True]
     return df
@@ -53,7 +54,7 @@ def read_draft_templates(data_root: Path, filter_active: bool = True) -> pd.Data
 def read_essay_templates(data_root: Path, filter_active: bool = True) -> pd.DataFrame:
     base = Path(data_root) / "1_raw"
     csv_path = base / "essay_templates.csv"
-    df = pd.read_csv(csv_path)
+    df = read_csv_with_context(csv_path)
     if filter_active and "active" in df.columns:
         df = df[df["active"] == True]
     return df
@@ -62,4 +63,4 @@ def read_essay_templates(data_root: Path, filter_active: bool = True) -> pd.Data
 def read_evaluation_templates(data_root: Path) -> pd.DataFrame:
     base = Path(data_root) / "1_raw"
     csv_path = base / "evaluation_templates.csv"
-    return pd.read_csv(csv_path)
+    return read_csv_with_context(csv_path)
