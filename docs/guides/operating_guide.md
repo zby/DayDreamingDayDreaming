@@ -177,20 +177,12 @@ Optionally stash selection files for traceability:
 
 ### Auto-Materializing Assets
 
-The pipeline includes several auto-materializing assets that provide automatic data processing:
+Only `raw_data` and `task_definitions` use eager auto‑materialization during development:
 
-#### Raw + Task Definitions
-- Raw loaders (`group:raw_data`) are configured with `AutomationCondition.eager()`. To reflect file edits under `data/1_raw/**/*` during development, manually re‑materialize these assets.
-- Task definitions (`group:task_definitions`) are also eager; re‑materializing raw assets will refresh them.
+- Raw loaders (`group:raw_data`) can be re‑materialized after editing files under `data/1_raw/**/*`.
+- Task definitions (`group:task_definitions`) refresh when raw assets update.
 
-#### Results Tracking (Cross-Experiment)
-- **`generation_results_append`**: Automatically appends a row to `generation_results.csv` when any generation completes (works with both two-phase and legacy generation)
-- **`evaluation_results_append`**: Automatically appends a row to `evaluation_results.csv` when any `evaluation_response` completes
-
-These assets use Dagster's eager auto-materialization policy to run automatically without manual intervention. The auto-materialization ensures that:
-- Two-phase generation results are immediately available to evaluation assets
-- Cross-experiment tracking tables are always up-to-date
-- Backward compatibility is maintained seamlessly
+Cross‑experiment tracking no longer uses auto‑appenders. Use analysis assets (`filtered_evaluation_results`, `template_version_comparison_pivot`) and scripts for backfills under `data/7_cross_experiment/`.
 
 ---
 

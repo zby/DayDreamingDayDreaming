@@ -152,13 +152,12 @@ This cleans `data/2_tasks` by default (preserving `selected_generations.txt`/`.c
 Drafts use `data/2_tasks/selected_combo_mappings.csv` (strict subset of `data/combo_mappings.csv`) as the single source of content combinations.
 Then trigger only those partitions in the UI or via CLI.
 
-### Automatic Results Tracking **NEW**
+### Cross‑Experiment Views
 
-The pipeline now includes automatic cross-experiment tracking:
+Cross‑experiment analysis is derived directly from the docs store (data/docs/**) and task CSVs:
 
-- **Auto-materializing assets**: New responses are automatically tracked in comprehensive CSV tables
-- **Cross-experiment analysis**: Compare results across different experiments and template versions
-- **Bulk migration tools**: Scripts to populate tracking tables from existing data
+- Use assets: `filtered_evaluation_results`, `template_version_comparison_pivot`.
+- Use scripts for backfills or one‑off tables under data/7_cross_experiment/ (no auto‑appenders).
 
 **Initial setup** (populate tables from existing data):
 ```bash
@@ -173,18 +172,7 @@ The pipeline now includes automatic cross-experiment tracking:
 # - evaluation_scores_by_template_model.csv  (pivot: rows=essay_task, cols=evaluation_template__evaluation_model)
 ```
 
-**Automatic Materialization**: The pipeline includes auto-materializing assets that automatically trigger when their dependencies are updated:
-
-- `draft_generation_results_append`: Automatically adds new rows when `draft_response` completes
-- `essay_generation_results_append`: Automatically adds new rows when `essay_response` completes  
-- `evaluation_results_append`: Automatically adds new rows when `evaluation_response` completes
-
-**Requirements for Auto-Materialization**:
-1. Set `DAGSTER_HOME=$(pwd)/dagster_home` (uses project configuration with auto-materialization enabled)
-2. Start Dagster with daemon enabled: `uv run dagster dev -f daydreaming_dagster/definitions.py`
-3. The Dagster daemon will automatically detect and materialize assets with `AutomationCondition.eager()`
-
-**Ongoing automatic tracking**: No manual intervention needed - new responses are automatically added to tracking tables when generated.
+Note: Auto‑materializing appenders were removed. Derive views on demand from the docs store and tasks.
 
 ### Raw CSV Change Handling (Schedule)
 
@@ -239,7 +227,7 @@ essay_dir = Path(data_root) / "3_generation" / "essay_responses"
 latest = latest_versioned_path(essay_dir, task_id)
 ```
 
-These functions are used by core utilities like `document_locator` and `evaluation_processing`, and should be preferred for any new versioned I/O.
+These functions are used by core utilities like `evaluation_processing`, and should be preferred for any new versioned I/O.
 
 **Important**: Set `DAGSTER_HOME=$(pwd)/dagster_home` to use the project's Dagster configuration, which includes auto-materialization settings. Without this, Dagster uses temporary storage and ignores the project configuration.
 

@@ -95,7 +95,6 @@ Assets are organized into logical groups for easy selection and understanding:
 | **`results_summary`** | final_results, perfect_score_paths, generation_scores_pivot, evaluation_model_template_pivot | Final aggregated results |
 | **`results_analysis`** | evaluator_agreement_analysis, comprehensive_variance_analysis | Statistical analysis |
 | **`cross_experiment`** | filtered_evaluation_results, template_version_comparison_pivot | Cross-experiment analysis |
-| **`cross_experiment_tracking`** | generation_results_append, evaluation_results_append | Auto-materializing result tracking |
 
 ## Data Flow Architecture
 
@@ -204,46 +203,21 @@ data/1_raw/generation_templates/
 - **Score formats**: Standard numeric (8.5) and three-digit averages (456 → 5.0)
 - **Error handling**: Continues processing when individual files fail to parse
 
-### 7. Cross-Experiment Tracking (`cross_experiment.py`)
+### 7. Cross-Experiment Analysis (`cross_experiment.py`)
 
-**Assets**: `generation_results_append`, `evaluation_results_append`, `filtered_evaluation_results`, `template_version_comparison_pivot`
+**Assets**: `filtered_evaluation_results`, `template_version_comparison_pivot`
 
-**Purpose**: Automatic tracking and cross-experiment analysis of all LLM responses
+**Purpose**: Derive cross‑experiment views directly from the docs store and task CSVs (no auto‑appenders).
 
-**Auto-Materializing Tracking**:
-- **`generation_results_append`**: Automatically appends rows to `generation_results.csv` when any `generation_response` completes
-- **`evaluation_results_append`**: Automatically appends rows to `evaluation_results.csv` when any `evaluation_response` completes
-- **Thread-safe CSV operations**: Uses file locking to handle concurrent updates
-- **Immediate execution**: Uses `AutomationCondition.eager()` for instant updates
+**Analysis**:
+- Template comparison across experiments
+- Model performance trends
+- Light filtering hooks (expandable)
 
-**Tracking Tables**:
-- **Generation Results**: Metadata for draft generation
-  - Columns: `generation_task_id`, `combo_id`, `generation_template_id`, `generation_model`, `generation_status`, `generation_timestamp`, `response_file`, `response_size_bytes`
-- **Evaluation Results**: Complete evaluation metadata with draft context
-  - Columns: `evaluation_task_id`, `generation_task_id`, `combo_id`, `generation_template`, `generation_model`, `evaluation_template`, `evaluation_model`, `evaluation_status`, `evaluation_timestamp`, `eval_response_file`, `eval_response_size_bytes`
-
-**Cross-Experiment Analysis**:
-- **Template comparison**: Compare different template versions across experiments
-- **Model performance**: Track model behavior across different concept combinations
-- **Filtering capabilities**: Configurable filters for focused analysis
-
-**Implementation Details**:
-```python
-@asset(
-    partitions_def=generation_tasks_partitions,
-    deps=["generation_response"],
-    automation_condition=AutomationCondition.eager(),
-    group_name="cross_experiment_tracking"
-)
-def generation_results_append(context, generation_tasks):
-    # Automatically appends when a generation_response completes
-    append_to_results_csv("data/7_cross_experiment/generation_results.csv", new_row)
-```
-
-**Bulk Table Generation**:
-- **Scripts**: `scripts/build_generation_results_table.py`, `scripts/build_evaluation_results_table.py`
-- **Purpose**: Initial migration and table rebuilding from existing response files
-- **Thread-safe utility**: `append_to_results_csv()` function with file locking
+**Backfills and Tables**:
+- Scripts: `scripts/build_generation_results_table.py`, `scripts/build_evaluation_results_table.py`
+- Purpose: Initial migration and one‑off table rebuilding from existing files
+- Utility: `append_to_results_csv()` (locking) used by scripts only
 
 ## Resource Architecture
 
@@ -306,7 +280,7 @@ def llm_client_resource(context) -> LLMClientResource:
 
 **Usage**:
 - Preferred for RAW/parsed prompt and response files to avoid duplicated regex logic.
-- Utilities like `document_locator` and `evaluation_processing` already use this helper.
+- Utilities like `evaluation_processing` already use this helper.
 
 ## Partitioning Architecture
 
