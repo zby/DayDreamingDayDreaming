@@ -37,6 +37,7 @@ import re
 from daydreaming_dagster.utils.document_locator import find_document_path
 from daydreaming_dagster.utils.evaluation_parsing_config import load_parser_map
 import json
+import pandas as pd
 
 
 def parse_args() -> argparse.Namespace:
@@ -140,6 +141,39 @@ def _write_selected_combo_mappings(data_root: Path, combo_ids: List[str], dry_ru
     curated.to_csv(out, index=False)
     print(f"Wrote selected combo mappings: {out} ({len(curated)} rows)")
     return len(curated)
+
+
+def _report_missing_concepts_in_selection(data_root: Path) -> None:
+    """Scan selected_combo_mappings.csv for concept_ids not present in concepts_metadata.csv.
+
+    Always prints a short report if the selected file exists. Does not exit non-zero.
+    """
+    sel_path = data_root / "2_tasks" / "selected_combo_mappings.csv"
+    meta_path = data_root / "1_raw" / "concepts_metadata.csv"
+    if not sel_path.exists() or not meta_path.exists():
+        return
+    try:
+        sel = pd.read_csv(sel_path)
+        meta = pd.read_csv(meta_path)
+    except Exception as e:
+        print(f"Warning: could not read selection/metadata CSVs for missing-concepts report: {e}", file=sys.stderr)
+        return
+    if "concept_id" not in sel.columns or "combo_id" not in sel.columns or "concept_id" not in meta.columns:
+        return
+    selected_ids = set(sel["concept_id"].astype(str))
+    known_ids = set(meta["concept_id"].astype(str))
+    missing_ids = sorted(selected_ids - known_ids)
+    if not missing_ids:
+        print("Selected combos: no missing concept_ids detected (selection is consistent with concepts_metadata.csv)")
+        return
+    bad_combos = (
+        sel[sel["concept_id"].astype(str).isin(missing_ids)]["combo_id"].astype(str).dropna().unique().tolist()
+    )
+    bad_combos.sort()
+    print("WARNING: Missing concept_ids in selection detected:")
+    print(" - missing concept_ids (first 20):", missing_ids[:20])
+    print(f" - total missing concept_ids: {len(missing_ids)}")
+    print(f" - combos referencing missing concepts ({len(bad_combos)}):", bad_combos[:20])
 
 def _load_active_evaluation_axes(data_root: Path) -> tuple[list[str], list[str]]:
     """Return (evaluation_template_ids, evaluation_model_ids) that are active."""
@@ -262,6 +296,8 @@ def main() -> int:
 
     # Write selected combo mappings for chosen combinations
     _write_selected_combo_mappings(data_root, sorted(combo_ids), dry_run=args.dry_run)
+    # Always report missing concepts in the current selection to catch mismatches early
+    _report_missing_concepts_in_selection(data_root)
     # Optionally materialize content_combinations to ensure Dagster sees the updated selection
     if args.materialize_combos and not args.dry_run:
         # Materialize into the ACTIVE instance (DAGSTER_HOME), so the UI sees updated assets
