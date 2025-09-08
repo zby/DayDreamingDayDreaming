@@ -5,6 +5,7 @@ Assets that define generation/evaluation tasks from templates and models.
 """
 
 from dagster import asset, MetadataValue, Failure
+from dagster._core.errors import DagsterInvalidPropertyError
 from ..models import ContentCombination
 from .raw_data import (
     DRAFT_TEMPLATES_KEY,
@@ -207,8 +208,10 @@ def draft_generation_tasks(context, content_combinations: List[ContentCombinatio
                 )
     df = pd.DataFrame(rows)
     if not df.empty:
-        run_id = getattr(getattr(context, "run", object()), "run_id", None) or getattr(context, "run_id", None)
-        df["doc_id"] = df["draft_task_id"].astype(str).apply(lambda tid: reserve_doc_id("draft", tid, run_id=str(run_id) if run_id else None))
+        # Stable doc ids per task_id across runs
+        df["doc_id"] = df["draft_task_id"].astype(str).apply(
+            lambda tid: reserve_doc_id("draft", tid)
+        )
     # refresh dynamic partitions
     existing = context.instance.get_dynamic_partitions(draft_tasks_partitions.name)
     if existing:
@@ -218,9 +221,12 @@ def draft_generation_tasks(context, content_combinations: List[ContentCombinatio
         context.instance.add_dynamic_partitions(
             draft_tasks_partitions.name, df["draft_task_id"].tolist()
         )
-    context.add_output_metadata({"task_count": MetadataValue.int(len(df))})
+    try:
+        context.add_output_metadata({"task_count": MetadataValue.int(len(df))})
+    except (AttributeError, DagsterInvalidPropertyError):
+        # Direct invocation (unit tests) may not support attaching metadata
+        pass
     return df
-
 
 @asset(
     group_name="task_definitions",
@@ -229,49 +235,68 @@ def draft_generation_tasks(context, content_combinations: List[ContentCombinatio
     required_resource_keys={"data_root"},
 )
 def essay_generation_tasks(context, content_combinations: List[ContentCombination], draft_generation_tasks: pd.DataFrame) -> pd.DataFrame:
+    """Build essay generation tasks strictly from existing draft tasks.
+
+    For each draft_generation_task row and each active essay template, create a
+    corresponding essay_generation_task. This ensures the UI materialization
+    expands drafts × templates, rather than re-deriving from combinations.
+    """
     data_root = Path(context.resources.data_root)
     templates_df = read_essay_templates(data_root)
-    models_df = read_llm_models(data_root)
 
     if "active" in templates_df.columns:
         templates_df = templates_df[templates_df["active"] == True]
-    gen_models = models_df[models_df["for_generation"] == True]
 
-    rows: List[dict] = []
-    # For two-phase pairing, attempt to link draft task for same combo
-    draft_index = None
-    if not draft_generation_tasks.empty:
-        draft_index = draft_generation_tasks.set_index(["combo_id", "draft_template", "generation_model"])  # type: ignore
+    # Create DataFrame with expected columns (matching script output)
+    cols = [
+        "essay_task_id",
+        "parent_doc_id", 
+        "essay_doc_id",
+        "draft_task_id",
+        "combo_id",
+        "draft_template",
+        "essay_template",
+        "generation_model",
+        "generation_model_name",
+        "doc_id",
+    ]
+    df = pd.DataFrame(columns=cols)
+    
+    # If no drafts or templates, return empty DataFrame
+    if draft_generation_tasks is None or draft_generation_tasks.empty or templates_df.empty:
+        return df
 
-    for combo in content_combinations:
-        for _, t in templates_df.iterrows():
-            for _, m in gen_models.iterrows():
-                draft_template = t.get("from_draft_template") or t.get("draft_template")
-                draft_task_id = None
-                if draft_template and draft_index is not None:
-                    key = (combo.combo_id, draft_template, m["id"])
-                    if key in draft_index.index:
-                        draft_task_id = draft_index.loc[key]["draft_task_id"]  # type: ignore
-                # Construct essay task id: prefer to derive from draft_task_id when available
-                if draft_task_id:
-                    essay_task_id = f"{draft_task_id}__{t['template_id']}"
-                else:
-                    essay_task_id = f"{combo.combo_id}__{t['template_id']}__{m['id']}"
-                rows.append(
-                    {
-                        "essay_task_id": essay_task_id,
-                        "combo_id": combo.combo_id,
-                        "draft_template": draft_template,
-                        "essay_template": t["template_id"],
-                        "generation_model": m["id"],
-                        "generation_model_name": m["model"],
-                        "draft_task_id": draft_task_id,
-                    }
-                )
-    df = pd.DataFrame(rows)
-    if not df.empty:
-        run_id = getattr(getattr(context, "run", object()), "run_id", None) or getattr(context, "run_id", None)
-        df["doc_id"] = df["essay_task_id"].astype(str).apply(lambda tid: reserve_doc_id("essay", tid, run_id=str(run_id) if run_id else None))
+    # Cross product: each draft task × each active essay template
+    for _, drow in draft_generation_tasks.iterrows():
+        combo_id = str(drow.get("combo_id"))
+        draft_task_id = drow.get("draft_task_id")
+        gen_model_id = drow.get("generation_model")
+        gen_model_name = drow.get("generation_model_name", gen_model_id)
+        draft_doc_id = drow.get("doc_id")
+        for _, trow in templates_df.iterrows():
+            essay_template_id = trow["template_id"]
+            # Compose essay_task_id from the upstream draft_task_id when present
+            if isinstance(draft_task_id, str) and draft_task_id:
+                essay_task_id = f"{draft_task_id}__{essay_template_id}"
+            
+            # Reserve essay doc_id
+            essay_doc_id = reserve_doc_id("essay", essay_task_id)
+            
+            # Add row directly to DataFrame
+            new_row = pd.DataFrame([{
+                "essay_task_id": essay_task_id,
+                "parent_doc_id": draft_doc_id,  # Points to draft doc_id
+                "essay_doc_id": essay_doc_id,   # Essay's own doc_id
+                "draft_task_id": draft_task_id,
+                "combo_id": combo_id,
+                "draft_template": drow.get("draft_template"),
+                "essay_template": essay_template_id,
+                "generation_model": gen_model_id,
+                "generation_model_name": gen_model_name,
+                "doc_id": essay_doc_id,  # Set doc_id to essay_doc_id
+            }])
+            df = pd.concat([df, new_row], ignore_index=True)
+
     # refresh dynamic partitions
     existing = context.instance.get_dynamic_partitions(essay_tasks_partitions.name)
     if existing:
@@ -281,7 +306,10 @@ def essay_generation_tasks(context, content_combinations: List[ContentCombinatio
         context.instance.add_dynamic_partitions(
             essay_tasks_partitions.name, df["essay_task_id"].tolist()
         )
-    context.add_output_metadata({"task_count": MetadataValue.int(len(df))})
+    try:
+        context.add_output_metadata({"task_count": MetadataValue.int(len(df))})
+    except Exception:
+        pass
     return df
 
 
