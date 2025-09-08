@@ -271,7 +271,6 @@ def parse_all(
                 parent_doc_id = ""
                 eval_template = None
                 eval_model = None
-                created_at = ""
                 try:
                     if meta_fp.exists():
                         meta = json.loads(meta_fp.read_text(encoding="utf-8"))
@@ -279,20 +278,18 @@ def parse_all(
                             parent_doc_id = str(meta.get("parent_doc_id") or "")
                             eval_template = meta.get("evaluation_template") or meta.get("template_id")
                             eval_model = meta.get("model_id") or meta.get("evaluation_model")
-                            created_at = str(meta.get("created_at") or "")
                 except Exception:
                     pass
-            rows.append({
-                "doc_id": doc_id,
-                "parent_doc_id": parent_doc_id,
-                "evaluation_template": eval_template,
-                "evaluation_model": eval_model,
-                "score": None,
-                "error": "missing parsed.txt",
-                "evaluation_response_path": str(parsed_fp),
-                "doc_dir": str(doc_dir),
-                "created_at": created_at,
-            })
+                rows.append({
+                    "doc_id": doc_id,
+                    "parent_doc_id": parent_doc_id,
+                    "evaluation_template": eval_template,
+                    "evaluation_model": eval_model,
+                    "score": None,
+                    "error": "missing parsed.txt",
+                    "evaluation_response_path": str(parsed_fp),
+                    "doc_dir": str(doc_dir),
+                })
                 continue
             try:
                 text_path = parsed_fp
@@ -304,7 +301,6 @@ def parse_all(
             parent_doc_id = ""
             eval_template = None
             eval_model = None
-            created_at = ""
             try:
                 if meta_fp.exists():
                     meta = json.loads(meta_fp.read_text(encoding="utf-8"))
@@ -312,7 +308,6 @@ def parse_all(
                         parent_doc_id = str(meta.get("parent_doc_id") or "")
                         eval_template = meta.get("evaluation_template") or meta.get("template_id")
                         eval_model = meta.get("model_id") or meta.get("evaluation_model")
-                        created_at = str(meta.get("created_at") or "")
             except Exception:
                 pass
 
@@ -348,7 +343,6 @@ def parse_all(
                 "error": err,
                 "evaluation_response_path": str(text_path),
                 "doc_dir": str(doc_dir),
-                "created_at": created_at,
             })
     else:
         raise FileNotFoundError(f"Docs store not found: {docs_eval}")
@@ -365,20 +359,8 @@ def parse_all(
         "error",
         "evaluation_response_path",
         "doc_dir",
-        "created_at",
     ]
-
-    if "document_id" not in df.columns:
-        # Derive from evaluation_task_id if possible (new format)
-        if "evaluation_task_id" in df.columns:
-            def _doc_from_tid(tid: str) -> Optional[str]:
-                if not isinstance(tid, str):
-                    return None
-                parts = tid.split("__")
-                return parts[0] if len(parts) == 3 else None
-            df["document_id"] = df["evaluation_task_id"].map(_doc_from_tid)
-        else:
-            df["document_id"] = None
+    # No document_id column — doc_id is canonical
 
     # evaluation_model_name no longer included in output
 
@@ -397,7 +379,6 @@ def parse_all(
         "error",
         "evaluation_response_path",
         "doc_dir",
-        "created_at",
     ]
     existing = [c for c in column_order if c in df.columns]
     df = df[existing + [c for c in df.columns if c not in existing]]
@@ -407,7 +388,7 @@ def parse_all(
         df["score"] = pd.to_numeric(df["score"], errors="coerce")
     # Replace NaN with empty string for text-like columns
     text_like = [
-        "doc_id","parent_doc_id","evaluation_template","evaluation_model","evaluation_response_path","error","doc_dir","created_at"
+        "doc_id","parent_doc_id","evaluation_template","evaluation_model","evaluation_response_path","error","doc_dir"
     ]
     for col in text_like:
         if col in df.columns:
