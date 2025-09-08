@@ -6,24 +6,14 @@ from .raw_data import EVALUATION_TEMPLATES_KEY
 from ..utils.raw_readers import read_evaluation_templates
 
 
-def is_two_phase_template(template_name: str) -> bool:
-    """Check if a template is a two-phase (draft+essay) template by looking for draft/ subdirectory."""
-    draft_path = Path("data") / "1_raw" / "generation_templates" / "draft" / f"{template_name}.txt"
-    return draft_path.exists()
+def get_generation_response_path(combo_id: str, draft_template: str, essay_template: str, model_name: str) -> str:
+    """Construct the essay response path for a given row (doc-id first).
 
-
-def get_generation_response_path(combo_id: str, draft_template: str | None, essay_template: str, model_name: str) -> str:
-    """Construct the essay/generation response path for a given row.
-
-    For two-phase (essay) generations, filenames are:
-      data/3_generation/essay_responses/{combo_id}_{draft_template}_{model_name}_{essay_template}.txt
-
-    For legacy single-phase, we fall back to:
-      data/3_generation/generation_responses/{combo_id}_{essay_template}_{model_name}.txt
+    Evaluations are always performed on essays. Even for "single-phase" style work,
+    we use an essay template with generator=copy to materialize the essay from the
+    draft. Therefore, the canonical path is always under essay_responses.
     """
-    if draft_template:
-        return f"data/3_generation/essay_responses/{combo_id}_{draft_template}_{model_name}_{essay_template}.txt"
-    return f"data/3_generation/generation_responses/{combo_id}_{essay_template}_{model_name}.txt"
+    return f"data/3_generation/essay_responses/{combo_id}_{draft_template}_{model_name}_{essay_template}.txt"
 
 
 @asset(
@@ -322,12 +312,28 @@ def perfect_score_paths(context, parsed_scores: pd.DataFrame) -> pd.DataFrame:
     paths_data = []
     
     for _, row in perfect_scores.iterrows():
-        # Generation path: prefer direct essay_task_id if available; otherwise, build via helper if draft_template is present
-        if 'essay_task_id' in row and isinstance(row['essay_task_id'], str) and len(row['essay_task_id']):
+        # Generation path: prefer parsed 'generation_response_path' or explicit essay_task_id
+        generation_path = None
+        if 'generation_response_path' in row and isinstance(row['generation_response_path'], str) and row['generation_response_path']:
+            generation_path = row['generation_response_path']
+        elif 'essay_task_id' in row and isinstance(row['essay_task_id'], str) and row['essay_task_id']:
             generation_path = f"data/3_generation/essay_responses/{row['essay_task_id']}.txt"
         else:
+            # Build from components; require draft_template in doc-id-first architecture
             draft_tpl = row.get('draft_template') if 'draft_template' in row else None
-            generation_path = get_generation_response_path(row['combo_id'], draft_tpl, row['generation_template'], row['generation_model'])
+            if not isinstance(draft_tpl, str) or not draft_tpl:
+                raise Failure(
+                    description="Cannot reconstruct essay path: missing draft_template",
+                    metadata={
+                        "combo_id": MetadataValue.text(str(row.get('combo_id'))),
+                        "generation_template": MetadataValue.text(str(row.get('generation_template'))),
+                        "generation_model": MetadataValue.text(str(row.get('generation_model'))),
+                        "resolution": MetadataValue.text("Ensure parsed_scores includes 'draft_template' and essay_task_id, or provide generation_response_path."),
+                    },
+                )
+            generation_path = get_generation_response_path(
+                str(row['combo_id']), str(draft_tpl), str(row['generation_template']), str(row['generation_model'])
+            )
 
         # Evaluation path: use parsed column when present
         evaluation_path = row['evaluation_response_path'] if 'evaluation_response_path' in row else f"data/4_evaluation/evaluation_responses/{row['combo_id']}_{row['generation_template']}_{row['generation_model']}_{row.get('evaluation_template', 'daydreaming-verification-v2')}_{row['evaluation_model']}.txt"
