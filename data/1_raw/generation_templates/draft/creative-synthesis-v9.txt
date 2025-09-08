@@ -25,7 +25,7 @@
 
 ## For each link, output exactly one block:
 
-### Link L{{loop.index}}: C*A* → C*B*
+### Link loop.index: C*A* → C*B*
 - **Link type (pick one):**  
   1) Structure-Preserving Analogy  
   2) Mechanism Composition  
