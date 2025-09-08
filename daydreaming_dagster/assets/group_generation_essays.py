@@ -253,7 +253,7 @@ def _essay_response_impl(context, essay_prompt, essay_generation_tasks) -> str:
     # Default LLM path (with RAW side-write + truncation guard)
     model_name = task_row["generation_model_name"]
     llm_client = context.resources.openrouter_client
-    max_tokens = getattr(context.resources.experiment_config, "essay_generation_max_tokens", None) or 40960
+    max_tokens = context.resources.experiment_config.essay_generation_max_tokens
     text, info = llm_client.generate_with_info(essay_prompt, model=model_name, max_tokens=max_tokens)
 
     normalized = str(text).replace("\r\n", "\n")

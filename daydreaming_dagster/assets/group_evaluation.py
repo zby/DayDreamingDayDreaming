@@ -110,7 +110,8 @@ def evaluation_response(context, evaluation_prompt, evaluation_tasks) -> str:
     task_row = get_task_row(evaluation_tasks, "evaluation_task_id", task_id, context, "evaluation_tasks")
     model_name = task_row["evaluation_model_name"]
     llm_client = context.resources.openrouter_client
-    text, info = llm_client.generate_with_info(evaluation_prompt, model=model_name)
+    max_tokens = getattr(context.resources.experiment_config, "evaluation_max_tokens", None)
+    text, info = llm_client.generate_with_info(evaluation_prompt, model=model_name, max_tokens=max_tokens)
     context.add_output_metadata({
         "evaluation_task_id": MetadataValue.text(task_id),
         "model_used": MetadataValue.text(model_name),

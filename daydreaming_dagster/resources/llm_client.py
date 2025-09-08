@@ -23,7 +23,6 @@ class LLMClientResource(ConfigurableResource):
     api_key: Optional[str] = None
     base_url: str = "https://openrouter.ai/api/v1"
     max_retries: int = 5
-    default_max_tokens: int = 8192
     # Rate limiting: VERY CONSERVATIVE for free tier APIs (some models allow only 1 call per minute)
     rate_limit_calls: int = 1
     rate_limit_period: int = 60  # 1 call per minute
@@ -57,8 +56,9 @@ class LLMClientResource(ConfigurableResource):
         Info includes keys like 'finish_reason' and 'truncated' (True if finish_reason == 'length').
         """
         self._ensure_initialized()
-        effective_max_tokens = max_tokens or self.default_max_tokens
-        info = self._make_api_call_info(prompt, model, temperature, effective_max_tokens)
+        if not isinstance(max_tokens, int) or max_tokens <= 0:
+            raise ValueError("LLMClientResource.generate_with_info requires an explicit positive max_tokens")
+        info = self._make_api_call_info(prompt, model, temperature, max_tokens)
         return info.get("text", ""), info
 
     def _make_api_call_info(self, prompt: str, model: str, temperature: float, max_tokens: int) -> dict:

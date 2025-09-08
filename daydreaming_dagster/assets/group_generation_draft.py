@@ -102,7 +102,7 @@ def _draft_response_impl(context, draft_prompt, draft_generation_tasks) -> str:
 
     llm_client = context.resources.openrouter_client
     experiment_config = context.resources.experiment_config
-    max_tokens = getattr(experiment_config, "draft_generation_max_tokens", None) or 20480
+    max_tokens = experiment_config.draft_generation_max_tokens
     # Unified client path
     text, info = llm_client.generate_with_info(draft_prompt, model=model_name, max_tokens=max_tokens)
 
