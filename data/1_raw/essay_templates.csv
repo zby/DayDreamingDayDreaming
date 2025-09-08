@@ -1,32 +1,9 @@
 template_id,template_name,description,active,generator
 creative-synthesis-v10,Creative Synthesis V10,Enhanced two-phase generation - Essay Phase,false,llm
-creative-synthesis-v11,Creative Synthesis V11,Enhanced with critical judgment for fabricated details - Essay Phase,false,llm
-creative-synthesis-v12,Creative Synthesis V12,Focus on coherent single-theme essays rather than comprehensive coverage - Essay Phase,false,llm
-synthesis-technical,Synthesis Technical,Technical keystone mechanism focus with precise terminology,false,llm
-synthesis-plain,Synthesis Plain,Plain-language keystone focus accessible to non-technical readers,false,llm
 synthesis-theme-narrative-v16,Essay Synthesis V16,Main theme narrative approach with focused development,false,llm
 synthesis-theme-narrative-v17,Essay Synthesis V17,Consistent naming,false,llm
 synthesis-theme-narrative-v18,Essay Synthesis V18,Twice-shorter main theme narrative (600±200 words),false,llm
 synthesis-theme-narrative-v19,Essay Synthesis V19,Main theme narrative tuned for rolling-thread notes (600±200),false,llm
 parsed-from-links-v1,Parsed From Links (Final Idea),Parse final <essay-idea> from links output; no LLM,true,copy
-creative-synthesis,Creative Synthesis (Copy Draft),Copy draft text as final essay (no LLM),false,copy
-creative-synthesis-v2,Creative Synthesis V2 (Copy Draft),Copy draft text as final essay (no LLM),false,copy
-creative-synthesis-v3,Creative Synthesis V3 (Copy Draft),Copy draft text as final essay (no LLM),false,copy
-creative-synthesis-v4,Creative Synthesis V4 (Copy Draft),Copy draft text as final essay (no LLM),false,copy
-creative-synthesis-v5,Creative Synthesis V5 (Copy Draft),Copy draft text as final essay (no LLM),false,copy
-creative-synthesis-v6,Creative Synthesis V6 (Copy Draft),Copy draft text as final essay (no LLM),false,copy
-creative-synthesis-v7,Creative Synthesis V7 (Copy Draft),Copy draft text as final essay (no LLM),false,copy
 creative-synthesis-v8,Creative Synthesis V8,Two phase,false,llm
 creative-synthesis-v9,Creative Synthesis V9,Two phase,false,llm
-application-implementation,Application Implementation (Copy Draft),Copy draft text as final essay (no LLM),false,copy
-application-implementation-v2,Application Implementation V2 (Copy Draft),Copy draft text as final essay (no LLM),false,copy
-essay-inventive-synthesis,Essay Inventive Synthesis (Copy Draft),Copy draft text as final essay (no LLM),false,copy
-essay-inventive-synthesis-v3,Essay Inventive Synthesis V3 (Copy Draft),Copy draft text as final essay (no LLM),false,copy
-gwern_original,Gwern Original (Copy Draft),Copy draft text as final essay (no LLM),false,copy
-problem-solving,Problem Solving (Copy Draft),Copy draft text as final essay (no LLM),false,copy
-problem-solving-v2,Problem Solving V2 (Copy Draft),Copy draft text as final essay (no LLM),false,copy
-research-discovery,Research Discovery (Copy Draft),Copy draft text as final essay (no LLM),false,copy
-research-discovery-v2,Research Discovery V2 (Copy Draft),Copy draft text as final essay (no LLM),false,copy
-research-discovery-v3,Research Discovery V3 (Copy Draft),Copy draft text as final essay (no LLM),false,copy
-systematic-analytical,Systematic Analytical (Copy Draft),Copy draft text as final essay (no LLM),false,copy
-systematic-analytical-v2,Systematic Analytical V2 (Copy Draft),Copy draft text as final essay (no LLM),false,copy
