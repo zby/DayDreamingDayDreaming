@@ -7,7 +7,7 @@ import os
 from daydreaming_dagster.assets.group_generation_draft import draft_response as draft_response_asset
 from daydreaming_dagster.assets.group_generation_essays import essay_response as essay_response_asset
 from daydreaming_dagster.assets.group_evaluation import evaluation_response as evaluation_response_asset
-from daydreaming_dagster.utils.document_locator import find_document_path
+import pandas as pd
 
 
 def _latest_versioned(path: Path, stem: str) -> Path | None:
@@ -36,18 +36,35 @@ def _get_pk(context):
     return getattr(context, "partition_key", None) or getattr(context, "asset_partition_key", None)
 
 
+def _resolve_doc_id(tasks_csv: Path, key_col: str, key: str) -> str | None:
+    try:
+        if not tasks_csv.exists():
+            return None
+        df = pd.read_csv(tasks_csv)
+        if key_col not in df.columns or "doc_id" not in df.columns:
+            return None
+        row = df[df[key_col].astype(str) == str(key)]
+        if row.empty:
+            return None
+        val = row.iloc[0].get("doc_id")
+        return str(val) if isinstance(val, (str, int)) and str(val) else None
+    except Exception:
+        return None
+
+
 @asset_check(asset=draft_response_asset, required_resource_keys={"data_root"})
 def draft_files_exist_check(context) -> AssetCheckResult:
     pk = _get_pk(context)
     if not pk:
         return AssetCheckResult(passed=True, metadata={"skipped": MetadataValue.text("no partition context")})
-    # Filesystem check
-    fp, src = find_document_path(pk, Path(getattr(context.resources, "data_root", "data")))
-    base = fp.parent if fp else Path("/")
-    raw = fp
-    if raw.exists():
-        return AssetCheckResult(passed=True, metadata={"doc_dir": MetadataValue.path(str(base))})
-    return AssetCheckResult(passed=False, metadata={"doc_dir": MetadataValue.path(str(base))})
+    data_root = Path(getattr(context.resources, "data_root", "data"))
+    tasks_csv = data_root / "2_tasks" / "draft_generation_tasks.csv"
+    doc_id = _resolve_doc_id(tasks_csv, "draft_task_id", pk)
+    if not doc_id:
+        return AssetCheckResult(passed=False, metadata={"reason": MetadataValue.text("missing doc_id in tasks or key not found"), "task_id": MetadataValue.text(str(pk))})
+    base = data_root / "docs" / "draft" / str(doc_id)
+    ok = (base / "parsed.txt").exists() or (base / "raw.txt").exists()
+    return AssetCheckResult(passed=bool(ok), metadata={"doc_dir": MetadataValue.path(str(base))})
 
 
 @asset_check(asset=essay_response_asset, required_resource_keys={"data_root"})
@@ -55,12 +72,14 @@ def essay_files_exist_check(context) -> AssetCheckResult:
     pk = _get_pk(context)
     if not pk:
         return AssetCheckResult(passed=True, metadata={"skipped": MetadataValue.text("no partition context")})
-    fp, src = find_document_path(pk, Path(getattr(context.resources, "data_root", "data")))
-    base = fp.parent if fp else Path("/")
-    raw = fp
-    if raw.exists():
-        return AssetCheckResult(passed=True, metadata={"doc_dir": MetadataValue.path(str(base))})
-    return AssetCheckResult(passed=False, metadata={"doc_dir": MetadataValue.path(str(base))})
+    data_root = Path(getattr(context.resources, "data_root", "data"))
+    tasks_csv = data_root / "2_tasks" / "essay_generation_tasks.csv"
+    doc_id = _resolve_doc_id(tasks_csv, "essay_task_id", pk)
+    if not doc_id:
+        return AssetCheckResult(passed=False, metadata={"reason": MetadataValue.text("missing doc_id in tasks or key not found"), "task_id": MetadataValue.text(str(pk))})
+    base = data_root / "docs" / "essay" / str(doc_id)
+    ok = (base / "parsed.txt").exists() or (base / "raw.txt").exists()
+    return AssetCheckResult(passed=bool(ok), metadata={"doc_dir": MetadataValue.path(str(base))})
 
 
 @asset_check(asset=evaluation_response_asset, required_resource_keys={"data_root"})
@@ -68,11 +87,14 @@ def evaluation_files_exist_check(context) -> AssetCheckResult:
     pk = _get_pk(context)
     if not pk:
         return AssetCheckResult(passed=True, metadata={"skipped": MetadataValue.text("no partition context")})
-    base = Path(getattr(context.resources, "data_root", "data")) / "4_evaluation" / "evaluation_responses"
-    raw = base / f"{pk}.txt"
-    if raw.exists():
-        return AssetCheckResult(passed=True, metadata={"doc_dir": MetadataValue.path(str(base))})
-    return AssetCheckResult(passed=False, metadata={"doc_dir": MetadataValue.path(str(base))})
+    data_root = Path(getattr(context.resources, "data_root", "data"))
+    tasks_csv = data_root / "2_tasks" / "evaluation_tasks.csv"
+    doc_id = _resolve_doc_id(tasks_csv, "evaluation_task_id", pk)
+    if not doc_id:
+        return AssetCheckResult(passed=False, metadata={"reason": MetadataValue.text("missing doc_id in tasks or key not found"), "task_id": MetadataValue.text(str(pk))})
+    base = data_root / "docs" / "evaluation" / str(doc_id)
+    ok = (base / "parsed.txt").exists() or (base / "raw.txt").exists()
+    return AssetCheckResult(passed=bool(ok), metadata={"doc_dir": MetadataValue.path(str(base))})
 
 
 # DB row-present checks removed under filesystem-only design
