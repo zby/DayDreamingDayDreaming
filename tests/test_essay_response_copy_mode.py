@@ -2,6 +2,7 @@ import pandas as pd
 from pathlib import Path
 
 from daydreaming_dagster.assets.group_generation_essays import _essay_response_impl as essay_response_impl
+from daydreaming_dagster.resources.experiment_config import ExperimentConfig
 
 
 class _FakeLogger:
@@ -28,6 +29,8 @@ class _FakeContext:
         self.resources = _Res()
         self.resources.data_root = str(data_root)
         self.resources.draft_response_io_manager = draft_io
+        # Provide experiment configuration expected by assets
+        self.resources.experiment_config = ExperimentConfig()
         # LLM present but unused in copy mode
         class _LLM:
             def generate(self, *_args, **_kwargs):

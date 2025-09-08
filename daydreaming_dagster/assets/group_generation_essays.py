@@ -163,6 +163,23 @@ def _essay_prompt_impl(context, essay_generation_tasks) -> str:
         )
     draft_text, used_source = _load_phase1_text_by_parent_doc(context, str(parent_doc_id))
     draft_lines = [line.strip() for line in draft_text.split("\n") if line.strip()]
+    # Enforce non-empty upstream draft text to avoid empty prompts
+    # experiment_config is required via asset definition
+    min_lines = int(context.resources.experiment_config.min_draft_lines)
+    if len(draft_lines) < max(1, min_lines):
+        data_root = Path(getattr(context.resources, "data_root", "data"))
+        draft_dir = data_root / "docs" / "draft" / str(parent_doc_id)
+        raise Failure(
+            description="Upstream draft text is empty/too short for essay prompt",
+            metadata={
+                "function": MetadataValue.text("essay_prompt"),
+                "essay_task_id": MetadataValue.text(task_id),
+                "parent_doc_id": MetadataValue.text(str(parent_doc_id)),
+                "draft_line_count": MetadataValue.int(len(draft_lines)),
+                "min_required_lines": MetadataValue.int(min_lines),
+                "draft_doc_dir": MetadataValue.path(str(draft_dir)),
+            },
+        )
 
     try:
         tmpl = load_generation_template(template_name, "essay")
@@ -176,9 +193,18 @@ def _essay_prompt_impl(context, essay_generation_tasks) -> str:
                 "error": MetadataValue.text(str(e)),
             },
         )
+    # Provide both preferred and legacy variables to templates
+    # - draft_lines: list[str] of non-empty lines
+    # - draft_block: entire upstream draft text as a block
+    # - links_block: legacy alias used by older templates
     env = JINJA
     template = env.from_string(tmpl)
-    prompt = template.render(draft_lines=draft_lines)
+    draft_block = draft_text
+    prompt = template.render(
+        draft_lines=draft_lines,
+        draft_block=draft_block,
+        links_block=draft_block,
+    )
     context.add_output_metadata(
         {
             "function": MetadataValue.text("essay_prompt"),
@@ -195,7 +221,7 @@ def _essay_prompt_impl(context, essay_generation_tasks) -> str:
     partitions_def=essay_tasks_partitions,
     group_name="generation_essays",
     io_manager_key="essay_prompt_io_manager",
-    required_resource_keys={"data_root"},
+    required_resource_keys={"data_root", "experiment_config"},
 )
 def essay_prompt(context, essay_generation_tasks) -> str:
     return _essay_prompt_impl(context, essay_generation_tasks)
@@ -224,6 +250,24 @@ def _essay_response_impl(context, essay_prompt, essay_generation_tasks) -> str:
             },
         )
     draft_text, used_source = _load_phase1_text_by_parent_doc(context, str(parent_doc_id))
+    # Ensure upstream draft has content even in copy mode
+    # experiment_config is required by the caller asset
+    min_lines = int(context.resources.experiment_config.min_draft_lines)
+    dlines = [line.strip() for line in str(draft_text).split("\n") if line.strip()]
+    if len(dlines) < max(1, min_lines):
+        data_root = Path(getattr(context.resources, "data_root", "data"))
+        draft_dir = data_root / "docs" / "draft" / str(parent_doc_id)
+        raise Failure(
+            description="Upstream draft text is empty/too short for essay generation",
+            metadata={
+                "function": MetadataValue.text("_essay_response_impl"),
+                "essay_task_id": MetadataValue.text(task_id),
+                "parent_doc_id": MetadataValue.text(str(parent_doc_id)),
+                "draft_line_count": MetadataValue.int(len(dlines)),
+                "min_required_lines": MetadataValue.int(min_lines),
+                "draft_doc_dir": MetadataValue.path(str(draft_dir)),
+            },
+        )
 
     if mode == "copy":
         text = draft_text
