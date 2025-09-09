@@ -7,12 +7,6 @@ Assets that define generation/evaluation tasks from templates and models.
 from dagster import asset, MetadataValue, Failure
 from dagster._core.errors import DagsterInvalidPropertyError
 from ..models import ContentCombination
-from .raw_data import (
-    DRAFT_TEMPLATES_KEY,
-    ESSAY_TEMPLATES_KEY,
-    EVALUATION_TEMPLATES_KEY,
-    LLM_MODELS_KEY,
-)
 from ..utils.raw_readers import (
     read_draft_templates,
     read_essay_templates,
@@ -32,7 +26,7 @@ from ..utils.cohorts import (
     compute_cohort_id,
     write_manifest,
 )
-from ..utils.selected_combos import validate_selected_is_subset
+# validate_selected_is_subset not used in this module
 from pathlib import Path
 import pandas as pd
 from typing import List
@@ -288,7 +282,7 @@ def selected_combo_mappings(context) -> pd.DataFrame:
 @asset(
     group_name="task_definitions",
     io_manager_key="csv_io_manager",
-    deps={DRAFT_TEMPLATES_KEY, LLM_MODELS_KEY, "cohort_membership"},
+    deps={"cohort_membership"},
     required_resource_keys={"data_root"},
 )
 def draft_generation_tasks(
@@ -335,46 +329,22 @@ def draft_generation_tasks(
         )
         return out
 
-    # Fallback: derive from active axes (legacy behavior preserved)
-    templates_df = read_draft_templates(data_root)
-    models_df = read_llm_models(data_root)
-    if "active" in templates_df.columns:
-        templates_df = templates_df[templates_df["active"] == True]
-    gen_models = models_df[models_df["for_generation"] == True]
-    rows: List[dict] = []
-    for combo in content_combinations:
-        for _, t in templates_df.iterrows():
-            for _, m in gen_models.iterrows():
-                task_id = f"{combo.combo_id}__{t['template_id']}__{m['id']}"
-                rows.append(
-                    {
-                        "draft_task_id": task_id,
-                        "combo_id": combo.combo_id,
-                        "draft_template": t["template_id"],
-                        "generation_model": m["id"],
-                        "generation_model_name": m["model"],
-                    }
-                )
-    df = pd.DataFrame(rows)
-    if not df.empty:
-        df["gen_id"] = df["draft_task_id"].astype(str).apply(
-            lambda tid: reserve_gen_id("draft", tid, run_id=str(resolved_cohort) if resolved_cohort else None)
-        )
-        if resolved_cohort:
-            df["cohort_id"] = str(resolved_cohort)
-        # Add-only registration
-        existing = set(context.instance.get_dynamic_partitions(draft_gens_partitions.name))
-        keys = [str(x) for x in df["gen_id"].astype(str).tolist()]
-        to_add = [k for k in keys if k and k not in existing]
-        if to_add:
-            context.instance.add_dynamic_partitions(draft_gens_partitions.name, to_add)
-    context.add_output_metadata({"task_count": MetadataValue.int(len(df)), "source": MetadataValue.text("legacy_axes")})
-    return df
+    # Single-path policy: require cohort_membership
+    raise Failure(
+        description="cohort_membership is empty or not materialized; cannot project draft tasks",
+        metadata={
+            "function": MetadataValue.text("draft_generation_tasks"),
+            "resolution": MetadataValue.text(
+                "Materialize 'cohort_id,cohort_membership' first. Example: \n"
+                "uv run dagster asset materialize --select cohort_id,cohort_membership -f daydreaming_dagster/definitions.py"
+            ),
+        },
+    )
 
 @asset(
     group_name="task_definitions",
     io_manager_key="csv_io_manager",
-    deps={ESSAY_TEMPLATES_KEY, LLM_MODELS_KEY, "cohort_membership"},
+    deps={"cohort_membership"},
     required_resource_keys={"data_root"},
 )
 def essay_generation_tasks(
@@ -426,63 +396,23 @@ def essay_generation_tasks(
         )
         return out
 
-    # Legacy fallback
-    # Legacy fallback
-    templates_df = read_essay_templates(data_root)
-    if "active" in templates_df.columns:
-        templates_df = templates_df[templates_df["active"] == True]
-    cols = [
-        "essay_task_id",
-        "parent_gen_id",
-        "draft_task_id",
-        "combo_id",
-        "draft_template",
-        "essay_template",
-        "generation_model",
-        "generation_model_name",
-        "gen_id",
-        "cohort_id",
-    ]
-    df = pd.DataFrame(columns=cols)
-    if draft_generation_tasks is None or draft_generation_tasks.empty or templates_df.empty:
-        return df
-    for _, drow in draft_generation_tasks.iterrows():
-        combo_id = str(drow.get("combo_id"))
-        draft_task_id = drow.get("draft_task_id")
-        gen_model_id = drow.get("generation_model")
-        gen_model_name = drow.get("generation_model_name", gen_model_id)
-        draft_gen_id = drow.get("gen_id")
-        for _, trow in templates_df.iterrows():
-            essay_template_id = trow["template_id"]
-            if isinstance(draft_task_id, str) and draft_task_id:
-                essay_task_id = f"{draft_task_id}__{essay_template_id}"
-            gen_id = reserve_gen_id("essay", essay_task_id, run_id=str(resolved_cohort) if resolved_cohort else None)
-            row_dict = {
-                "essay_task_id": essay_task_id,
-                "parent_gen_id": draft_gen_id,
-                "draft_task_id": draft_task_id,
-                "combo_id": combo_id,
-                "draft_template": drow.get("draft_template"),
-                "essay_template": essay_template_id,
-                "generation_model": gen_model_id,
-                "generation_model_name": gen_model_name,
-                "gen_id": gen_id,
-                "cohort_id": str(resolved_cohort) if resolved_cohort else "",
-            }
-            df = pd.concat([df, pd.DataFrame([row_dict])], ignore_index=True)
-    existing = set(context.instance.get_dynamic_partitions(essay_gens_partitions.name))
-    keys = [str(x) for x in df["gen_id"].astype(str).tolist()]
-    to_add = [k for k in keys if k and k not in existing]
-    if to_add:
-        context.instance.add_dynamic_partitions(essay_gens_partitions.name, to_add)
-    context.add_output_metadata({"task_count": MetadataValue.int(len(df)), "source": MetadataValue.text("legacy_axes"), "partitions_added": MetadataValue.int(len(to_add))})
-    return df
+    # Single-path policy: require cohort_membership
+    raise Failure(
+        description="cohort_membership is empty or not materialized; cannot project essay tasks",
+        metadata={
+            "function": MetadataValue.text("essay_generation_tasks"),
+            "resolution": MetadataValue.text(
+                "Materialize 'cohort_id,cohort_membership' first. Example: \n"
+                "uv run dagster asset materialize --select cohort_id,cohort_membership -f daydreaming_dagster/definitions.py"
+            ),
+        },
+    )
 
 
 @asset(
     group_name="task_definitions",
     io_manager_key="csv_io_manager",
-    deps={EVALUATION_TEMPLATES_KEY, ESSAY_TEMPLATES_KEY, LLM_MODELS_KEY, "cohort_membership"},
+    deps={"cohort_membership"},
     required_resource_keys={"data_root"},
 )
 def evaluation_tasks(
@@ -595,176 +525,17 @@ def evaluation_tasks(
         context.add_output_metadata({"task_count": MetadataValue.int(len(out)), "source": MetadataValue.text("cohort_membership"), "partitions_added": MetadataValue.int(len(to_add))})
         return out
 
-    models_df = read_llm_models(Path(data_root))
-    evaluation_models = models_df[models_df["for_evaluation"] == True]
-    evaluation_templates_df = read_evaluation_templates(Path(data_root))
-    if "active" in evaluation_templates_df.columns:
-        evaluation_templates_df = evaluation_templates_df[evaluation_templates_df["active"] == True]
-    eval_templates = list(evaluation_templates_df["template_id"].tolist())
-    # Optional parser column: build lookup to propagate into tasks
-    parser_map: dict[str, str] = {}
-    if "parser" in evaluation_templates_df.columns:
-        try:
-            parser_map = (
-                evaluation_templates_df[["template_id", "parser"]]
-                .dropna(subset=["template_id"])  # keep valid template ids
-                .astype({"template_id": str})
-                .set_index("template_id")["parser"]
-                .astype(str)
-                .to_dict()
-            )
-        except Exception:
-            parser_map = {}
-
-    data_root_path = Path(data_root)
-    # Require essay gen ids (gen-id–first). Accept essay_gen_id or parent_gen_id.
-    if essay_generation_tasks.empty:
-        return pd.DataFrame(columns=[
-            "evaluation_task_id","parent_gen_id","document_id","essay_task_id","combo_id",
-            "draft_template","essay_template","generation_model","generation_model_name",
-            "evaluation_template","evaluation_model","evaluation_model_name","parser","file_path","source_dir","source_asset",
-        ])
-    # Accept any of these columns as the essay generation id (gen-id–first):
-    #  - essay_gen_id (preferred), parent_gen_id (temporary alias), or gen_id (from essay_generation_tasks)
-    if "essay_gen_id" in essay_generation_tasks.columns:
-        doc_col = "essay_gen_id"
-    elif "parent_gen_id" in essay_generation_tasks.columns:
-        doc_col = "parent_gen_id"
-    elif "gen_id" in essay_generation_tasks.columns:
-        doc_col = "gen_id"
-    else:
-        doc_col = None
-    if doc_col is None:
-        raise Failure(
-            description="evaluation_tasks requires essay gen IDs (gen-id–first)",
-            metadata={
-                "required_column": MetadataValue.text("essay_gen_id (or parent_gen_id)"),
-                "present_columns": MetadataValue.json(list(map(str, essay_generation_tasks.columns))),
-                "resolution": MetadataValue.text("Populate essay_gen_id in data/2_tasks/essay_generation_tasks.csv and re-run."),
-            },
-        )
-    missing_mask = essay_generation_tasks[doc_col].astype(str).map(lambda s: (not s.strip()) or s.lower() == "nan")
-    if bool(missing_mask.any()):
-        sample = essay_generation_tasks.loc[missing_mask, "essay_task_id"].astype(str).head(5).tolist() if "essay_task_id" in essay_generation_tasks.columns else []
-        raise Failure(
-            description="Missing essay gen_id values in essay_generation_tasks",
-            metadata={
-                "missing_count": MetadataValue.int(int(missing_mask.sum())),
-                "sample_essay_task_ids": MetadataValue.json(sample),
-                "resolution": MetadataValue.text("Ensure essays exist and their gen_ids are populated in the input CSV."),
-            },
-        )
-    # Build evaluation rows directly from essays and active evaluation axes
-    rows: List[dict] = []
-    docs_root = data_root_path / "gens"
-    for _, erow in essay_generation_tasks.iterrows():
-        essay_task_id = str(erow.get("essay_task_id") or "")
-        parent_doc_id = str(erow.get(doc_col))
-        # Optional path from docs store
-        doc_dir = docs_root / "essay" / parent_doc_id
-        parsed_fp = doc_dir / "parsed.txt"
-        raw_fp = doc_dir / "raw.txt"
-        file_path = str(parsed_fp) if parsed_fp.exists() else (str(raw_fp) if raw_fp.exists() else "")
-        for _, eval_model_row in evaluation_models.iterrows():
-            eval_model_id = eval_model_row["id"]
-            eval_model_name = eval_model_row["model"]
-            for eval_template_id in eval_templates:
-                evaluation_task_id = f"{parent_doc_id}__{eval_template_id}__{eval_model_id}"
-                rows.append({
-                    "evaluation_task_id": evaluation_task_id,
-                    "parent_gen_id": parent_doc_id,
-                    # legacy context for compatibility
-                    "document_id": essay_task_id,
-                    "essay_task_id": essay_task_id,
-                    "combo_id": erow.get("combo_id"),
-                    "draft_template": erow.get("draft_template"),
-                    "essay_template": erow.get("essay_template"),
-                    "generation_model": erow.get("generation_model"),
-                    "generation_model_name": erow.get("generation_model_name"),
-                    "evaluation_template": eval_template_id,
-                    "evaluation_model": eval_model_id,
-                    "evaluation_model_name": eval_model_name,
-                    "parser": parser_map.get(str(eval_template_id)),
-                    "file_path": file_path,
-                    "source_dir": "docs/essay" if doc_dir.exists() else "",
-                    "source_asset": "essay_response",
-                })
-    tasks_df = pd.DataFrame(rows)
-    if not tasks_df.empty:
-        # Determine cohort id: env override or compute deterministically from tasks manifest
-        env_cohort = get_env_cohort_id()
-        if env_cohort:
-            resolved = env_cohort
-        else:
-            # Build a manifest consistent with cohort asset using task-derived combos
-            try:
-                combos = sorted(
-                    [str(c) for c in pd.unique(essay_generation_tasks.get("combo_id", pd.Series(dtype=str)).astype(str))]
-                )
-                if not combos:
-                    combos = sorted(
-                        [str(c) for c in pd.unique(draft_generation_tasks.get("combo_id", pd.Series(dtype=str)).astype(str))]
-                    )
-            except Exception:
-                combos = []
-            try:
-                models_df = read_llm_models(Path(data_root))
-                gen_models = sorted(models_df[models_df["for_generation"] == True]["id"].astype(str).tolist())
-                eval_models = sorted(models_df[models_df["for_evaluation"] == True]["id"].astype(str).tolist())
-            except Exception:
-                gen_models, eval_models = [], []
-            try:
-                dtpl = read_draft_templates(Path(data_root))
-                if "active" in dtpl.columns:
-                    dtpl = dtpl[dtpl["active"] == True]
-                draft_templates = sorted(dtpl["template_id"].astype(str).tolist()) if not dtpl.empty else []
-            except Exception:
-                draft_templates = []
-            try:
-                etpl = read_essay_templates(Path(data_root))
-                if "active" in etpl.columns:
-                    etpl = etpl[etpl["active"] == True]
-                essay_templates = sorted(etpl["template_id"].astype(str).tolist()) if not etpl.empty else []
-            except Exception:
-                essay_templates = []
-            try:
-                vtpl = read_evaluation_templates(Path(data_root))
-                if "active" in vtpl.columns:
-                    vtpl = vtpl[vtpl["active"] == True]
-                evaluation_templates = sorted(vtpl["template_id"].astype(str).tolist()) if not vtpl.empty else []
-            except Exception:
-                evaluation_templates = []
-
-            manifest = {
-                "combos": combos,
-                "templates": {
-                    "draft": draft_templates,
-                    "essay": essay_templates,
-                    "evaluation": evaluation_templates,
-                },
-                "llms": {"generation": gen_models, "evaluation": eval_models},
-            }
-            resolved = compute_cohort_id("cohort", manifest)
-            try:
-                write_manifest(str(data_root), resolved, manifest)
-            except Exception:
-                pass
-
-        tasks_df["gen_id"] = tasks_df["evaluation_task_id"].astype(str).apply(
-            lambda tid: reserve_gen_id("evaluation", tid, run_id=resolved)
-        )
-        if resolved:
-            tasks_df["cohort_id"] = resolved
-    existing = context.instance.get_dynamic_partitions(evaluation_gens_partitions.name)
-    if existing:
-        for p in existing:
-            context.instance.delete_dynamic_partition(evaluation_gens_partitions.name, p)
-    if not tasks_df.empty:
-        context.instance.add_dynamic_partitions(
-            evaluation_gens_partitions.name, tasks_df["gen_id"].astype(str).tolist()
-        )
-    context.add_output_metadata({"task_count": MetadataValue.int(len(tasks_df))})
-    return tasks_df
+    # Single-path policy: require cohort_membership
+    raise Failure(
+        description="cohort_membership is empty or not materialized; cannot project evaluation tasks",
+        metadata={
+            "function": MetadataValue.text("evaluation_tasks"),
+            "resolution": MetadataValue.text(
+                "Materialize 'cohort_id,cohort_membership' first. Example: \n"
+                "uv run dagster asset materialize --select cohort_id,cohort_membership -f daydreaming_dagster/definitions.py"
+            ),
+        },
+    )
 
 
 # document_index asset removed (not used by runtime pipeline)
