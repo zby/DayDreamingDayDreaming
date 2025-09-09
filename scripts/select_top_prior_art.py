@@ -229,8 +229,8 @@ def main() -> int:
             missing_fields.append("essay_template")
         if not generation_model:
             missing_fields.append("generation_model")
-        if not draft_doc_id:
-            missing_fields.append("essay.parent_doc_id (draft parent)")
+        if not draft_gen_id:
+            missing_fields.append("essay.parent_gen_id (draft parent)")
         if not combo_id:
             missing_fields.append("combo_id")
         if not draft_template:
