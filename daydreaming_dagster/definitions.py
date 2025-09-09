@@ -37,6 +37,7 @@ from daydreaming_dagster.checks.documents_checks import (
 from daydreaming_dagster.assets.raw_data import RAW_SOURCE_ASSETS, TASK_SOURCE_ASSETS
 from daydreaming_dagster.schedules.raw_schedule import raw_schedule
 from daydreaming_dagster.assets.group_task_definitions import (
+    cohort_id,
     selected_combo_mappings,
     content_combinations,
     draft_generation_tasks,
@@ -70,6 +71,7 @@ EXECUTOR = (
 defs = Definitions(
     assets=[
         # Core processing assets
+        cohort_id,
         selected_combo_mappings,
         content_combinations,
         draft_generation_tasks,

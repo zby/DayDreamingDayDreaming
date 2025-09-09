@@ -27,12 +27,106 @@ from .partitions import (
     evaluation_gens_partitions,
 )
 from ..utils.ids import reserve_gen_id
-from ..utils.cohorts import get_env_cohort_id
+from ..utils.cohorts import (
+    get_env_cohort_id,
+    compute_cohort_id,
+    write_manifest,
+)
 from ..utils.selected_combos import validate_selected_is_subset
 from pathlib import Path
 import pandas as pd
 from typing import List
 
+
+@asset(
+    group_name="task_definitions",
+    io_manager_key="io_manager",
+    required_resource_keys={"data_root"},
+)
+def cohort_id(context, content_combinations: List[ContentCombination]) -> str:
+    """Compute a deterministic cohort_id from the current manifest and persist it.
+
+    Manifest includes the selected combos, active templates, and active LLM models.
+    Allows explicit override via config (cohort_id_asset.override) or env (DD_COHORT).
+    Writes data/cohorts/<cohort_id>/manifest.json and returns the cohort_id.
+    """
+    data_root = Path(getattr(context.resources, "data_root", "data"))
+
+    # Build manifest components deterministically
+    try:
+        draft_templates_df = read_draft_templates(data_root)
+        if "active" in draft_templates_df.columns:
+            draft_templates_df = draft_templates_df[draft_templates_df["active"] == True]
+        draft_templates = sorted(draft_templates_df["template_id"].astype(str).tolist()) if not draft_templates_df.empty else []
+    except Exception:
+        draft_templates = []
+
+    try:
+        essay_templates_df = read_essay_templates(data_root)
+        if "active" in essay_templates_df.columns:
+            essay_templates_df = essay_templates_df[essay_templates_df["active"] == True]
+        essay_templates = sorted(essay_templates_df["template_id"].astype(str).tolist()) if not essay_templates_df.empty else []
+    except Exception:
+        essay_templates = []
+
+    try:
+        evaluation_templates_df = read_evaluation_templates(data_root)
+        if "active" in evaluation_templates_df.columns:
+            evaluation_templates_df = evaluation_templates_df[evaluation_templates_df["active"] == True]
+        evaluation_templates = sorted(evaluation_templates_df["template_id"].astype(str).tolist()) if not evaluation_templates_df.empty else []
+    except Exception:
+        evaluation_templates = []
+
+    try:
+        models_df = read_llm_models(data_root)
+        gen_models = sorted(models_df[models_df["for_generation"] == True]["id"].astype(str).tolist())
+        eval_models = sorted(models_df[models_df["for_evaluation"] == True]["id"].astype(str).tolist())
+    except Exception:
+        gen_models, eval_models = [], []
+
+    combos = sorted([str(c.combo_id) for c in (content_combinations or [])])
+
+    manifest = {
+        "combos": combos,
+        "templates": {
+            "draft": draft_templates,
+            "essay": essay_templates,
+            "evaluation": evaluation_templates,
+        },
+        "llms": {
+            "generation": gen_models,
+            "evaluation": eval_models,
+        },
+    }
+
+    override = None
+    # Allow config override when provided (UI/run config). Prefer asset_config for assets; fallback to op_config for compatibility.
+    try:
+        if hasattr(context, "asset_config") and context.asset_config:
+            override = context.asset_config.get("override")
+        elif hasattr(context, "op_config") and context.op_config:
+            override = context.op_config.get("override")
+    except Exception:
+        override = None
+    # Env override as secondary path
+    env_override = get_env_cohort_id()
+
+    cohort_id = compute_cohort_id("cohort", manifest, explicit=(override or env_override))
+    write_manifest(str(data_root), cohort_id, manifest)
+
+    context.add_output_metadata(
+        {
+            "cohort_id": MetadataValue.text(cohort_id),
+            "combos": MetadataValue.int(len(combos)),
+            "draft_templates": MetadataValue.int(len(draft_templates)),
+            "essay_templates": MetadataValue.int(len(essay_templates)),
+            "evaluation_templates": MetadataValue.int(len(evaluation_templates)),
+            "generation_models": MetadataValue.int(len(gen_models)),
+            "evaluation_models": MetadataValue.int(len(eval_models)),
+            "manifest_path": MetadataValue.path(str((data_root / "cohorts" / cohort_id / "manifest.json").resolve())),
+        }
+    )
+    return cohort_id
 
 @asset(
     group_name="task_definitions",
@@ -180,7 +274,10 @@ def selected_combo_mappings(context) -> pd.DataFrame:
     deps={DRAFT_TEMPLATES_KEY, LLM_MODELS_KEY},
     required_resource_keys={"data_root"},
 )
-def draft_generation_tasks(context, content_combinations: List[ContentCombination]) -> pd.DataFrame:
+def draft_generation_tasks(
+    context,
+    content_combinations: List[ContentCombination],
+) -> pd.DataFrame:
     data_root = Path(context.resources.data_root)
     templates_df = read_draft_templates(data_root)
     models_df = read_llm_models(data_root)
@@ -205,17 +302,17 @@ def draft_generation_tasks(context, content_combinations: List[ContentCombinatio
                 )
     df = pd.DataFrame(rows)
     if not df.empty:
-        # Optional cohort id from env/config; when present, bind to gen ids
-        cohort_id = get_env_cohort_id()
-        if cohort_id:
-            df["gen_id"] = df["draft_task_id"].astype(str).apply(
-                lambda tid: reserve_gen_id("draft", tid, run_id=cohort_id)
-            )
-            df["cohort_id"] = cohort_id
-        else:
-            df["gen_id"] = df["draft_task_id"].astype(str).apply(
-                lambda tid: reserve_gen_id("draft", tid)
-            )
+        # Resolve cohort id: env override first, else compute via cohort_id asset
+        env_cohort = get_env_cohort_id()
+        try:
+            computed = cohort_id(context, content_combinations) if not env_cohort else env_cohort
+        except Exception:
+            computed = env_cohort
+        df["gen_id"] = df["draft_task_id"].astype(str).apply(
+            lambda tid: reserve_gen_id("draft", tid, run_id=computed)
+        )
+        if computed:
+            df["cohort_id"] = computed
     # refresh dynamic partitions
     existing = context.instance.get_dynamic_partitions(draft_gens_partitions.name)
     if existing:
@@ -238,7 +335,11 @@ def draft_generation_tasks(context, content_combinations: List[ContentCombinatio
     deps={ESSAY_TEMPLATES_KEY, LLM_MODELS_KEY},
     required_resource_keys={"data_root"},
 )
-def essay_generation_tasks(context, content_combinations: List[ContentCombination], draft_generation_tasks: pd.DataFrame) -> pd.DataFrame:
+def essay_generation_tasks(
+    context,
+    content_combinations: List[ContentCombination],
+    draft_generation_tasks: pd.DataFrame,
+) -> pd.DataFrame:
     """Build essay generation tasks strictly from existing draft tasks.
 
     For each draft_generation_task row and each active essay template, create a
@@ -270,7 +371,13 @@ def essay_generation_tasks(context, content_combinations: List[ContentCombinatio
         return df
 
     # Cross product: each draft task × each active essay template
-    cohort_id = get_env_cohort_id()
+    # Resolve cohort id once up front
+    env_cohort = get_env_cohort_id()
+    try:
+        resolved_cohort = cohort_id(context, content_combinations) if not env_cohort else env_cohort
+    except Exception:
+        resolved_cohort = env_cohort
+
     for _, drow in draft_generation_tasks.iterrows():
         combo_id = str(drow.get("combo_id"))
         draft_task_id = drow.get("draft_task_id")
@@ -284,7 +391,7 @@ def essay_generation_tasks(context, content_combinations: List[ContentCombinatio
                 essay_task_id = f"{draft_task_id}__{essay_template_id}"
             
             # Reserve essay gen_id (bind to cohort if present)
-            gen_id = reserve_gen_id("essay", essay_task_id, run_id=cohort_id) if cohort_id else reserve_gen_id("essay", essay_task_id)
+            gen_id = reserve_gen_id("essay", essay_task_id, run_id=resolved_cohort)
             
             # Add row directly to DataFrame
             row_dict = {
@@ -298,8 +405,8 @@ def essay_generation_tasks(context, content_combinations: List[ContentCombinatio
                 "generation_model_name": gen_model_name,
                 "gen_id": gen_id,
             }
-            if cohort_id:
-                row_dict["cohort_id"] = cohort_id
+            if resolved_cohort:
+                row_dict["cohort_id"] = resolved_cohort
             new_row = pd.DataFrame([row_dict])
             df = pd.concat([df, new_row], ignore_index=True)
 
@@ -431,18 +538,70 @@ def evaluation_tasks(
                 })
     tasks_df = pd.DataFrame(rows)
     if not tasks_df.empty:
-        # Bind eval ids to cohort if present
-        cohort_id = get_env_cohort_id()
-        if cohort_id:
-            tasks_df["gen_id"] = tasks_df["evaluation_task_id"].astype(str).apply(
-                lambda tid: reserve_gen_id("evaluation", tid, run_id=cohort_id)
-            )
-            tasks_df["cohort_id"] = cohort_id
+        # Determine cohort id: env override or compute deterministically from tasks manifest
+        env_cohort = get_env_cohort_id()
+        if env_cohort:
+            resolved = env_cohort
         else:
-            run_id = getattr(getattr(context, "run", object()), "run_id", None) or getattr(context, "run_id", None)
-            tasks_df["gen_id"] = tasks_df["evaluation_task_id"].astype(str).apply(
-                lambda tid: reserve_gen_id("evaluation", tid, run_id=str(run_id) if run_id else None)
-            )
+            # Build a manifest consistent with cohort asset using task-derived combos
+            try:
+                combos = sorted(
+                    [str(c) for c in pd.unique(essay_generation_tasks.get("combo_id", pd.Series(dtype=str)).astype(str))]
+                )
+                if not combos:
+                    combos = sorted(
+                        [str(c) for c in pd.unique(draft_generation_tasks.get("combo_id", pd.Series(dtype=str)).astype(str))]
+                    )
+            except Exception:
+                combos = []
+            try:
+                models_df = read_llm_models(Path(data_root))
+                gen_models = sorted(models_df[models_df["for_generation"] == True]["id"].astype(str).tolist())
+                eval_models = sorted(models_df[models_df["for_evaluation"] == True]["id"].astype(str).tolist())
+            except Exception:
+                gen_models, eval_models = [], []
+            try:
+                dtpl = read_draft_templates(Path(data_root))
+                if "active" in dtpl.columns:
+                    dtpl = dtpl[dtpl["active"] == True]
+                draft_templates = sorted(dtpl["template_id"].astype(str).tolist()) if not dtpl.empty else []
+            except Exception:
+                draft_templates = []
+            try:
+                etpl = read_essay_templates(Path(data_root))
+                if "active" in etpl.columns:
+                    etpl = etpl[etpl["active"] == True]
+                essay_templates = sorted(etpl["template_id"].astype(str).tolist()) if not etpl.empty else []
+            except Exception:
+                essay_templates = []
+            try:
+                vtpl = read_evaluation_templates(Path(data_root))
+                if "active" in vtpl.columns:
+                    vtpl = vtpl[vtpl["active"] == True]
+                evaluation_templates = sorted(vtpl["template_id"].astype(str).tolist()) if not vtpl.empty else []
+            except Exception:
+                evaluation_templates = []
+
+            manifest = {
+                "combos": combos,
+                "templates": {
+                    "draft": draft_templates,
+                    "essay": essay_templates,
+                    "evaluation": evaluation_templates,
+                },
+                "llms": {"generation": gen_models, "evaluation": eval_models},
+            }
+            resolved = compute_cohort_id("cohort", manifest)
+            try:
+                write_manifest(str(data_root), resolved, manifest)
+            except Exception:
+                pass
+
+        tasks_df["gen_id"] = tasks_df["evaluation_task_id"].astype(str).apply(
+            lambda tid: reserve_gen_id("evaluation", tid, run_id=resolved)
+        )
+        if resolved:
+            tasks_df["cohort_id"] = resolved
     existing = context.instance.get_dynamic_partitions(evaluation_gens_partitions.name)
     if existing:
         for p in existing:
