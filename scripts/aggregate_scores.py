@@ -246,6 +246,8 @@ def parse_identifiers_from_eval_task_id(
 def parse_all(
     data_root: Path,
     output_csv: Path,
+    *,
+    strict: bool = False,
 ) -> pd.DataFrame:
     """Parse all evaluation scores from the gens store.
 
@@ -261,6 +263,7 @@ def parse_all(
     # parsed.txt-only; do not consult parsers or raw fallbacks
     model_map = load_model_mapping(data_root)
 
+    warnings: list[str] = []
     if docs_eval.exists():
         for doc_dir in sorted([p for p in docs_eval.iterdir() if p.is_dir()]):
             gen_id = doc_dir.name
@@ -276,8 +279,14 @@ def parse_all(
                         meta = json.loads(meta_fp.read_text(encoding="utf-8"))
                         if isinstance(meta, dict):
                             parent_gen_id = str(meta.get("parent_gen_id") or "")
-                            eval_template = meta.get("evaluation_template") or meta.get("template_id")
-                            eval_model = meta.get("model_id") or meta.get("evaluation_model")
+                            eval_template = meta.get("evaluation_template")
+                            eval_model = meta.get("model_id")
+                            req = ["parent_gen_id", "evaluation_template", "model_id"]
+                            present = [k for k in req if meta.get(k)]
+                            if len(present) < len(req):
+                                warnings.append(f"Warning: {meta_fp} missing keys: {sorted(set(req) - set(present))}")
+                                if strict and len(present) == 0:
+                                    raise RuntimeError(f"Strict mode: required metadata keys absent in {meta_fp}")
                 except Exception:
                     pass
                 rows.append({
@@ -305,8 +314,14 @@ def parse_all(
                     meta = json.loads(meta_fp.read_text(encoding="utf-8"))
                     if isinstance(meta, dict):
                         parent_gen_id = str(meta.get("parent_gen_id") or "")
-                        eval_template = meta.get("evaluation_template") or meta.get("template_id")
-                        eval_model = meta.get("model_id") or meta.get("evaluation_model")
+                        eval_template = meta.get("evaluation_template")
+                        eval_model = meta.get("model_id")
+                        req = ["parent_gen_id", "evaluation_template", "model_id"]
+                        present = [k for k in req if meta.get(k)]
+                        if len(present) < len(req):
+                            warnings.append(f"Warning: {meta_fp} missing keys: {sorted(set(req) - set(present))}")
+                            if strict and len(present) == 0:
+                                raise RuntimeError(f"Strict mode: required metadata keys absent in {meta_fp}")
             except Exception:
                 pass
 
@@ -397,6 +412,13 @@ def parse_all(
 
     df.to_csv(output_csv, index=False)
     print(f"Wrote {len(df)} rows to {output_csv}")
+    if warnings:
+        # Deduplicate warnings
+        seen = set()
+        for w in warnings:
+            if w not in seen:
+                print(w)
+                seen.add(w)
     if "score" in df.columns:
         valid = df[df["score"].notna()]["score"]
         if len(valid) > 0:
@@ -424,12 +446,21 @@ def main() -> None:
         default=Path('data/7_cross_experiment/parsed_scores.csv'),
         help="Output CSV path; default is data/7_cross_experiment/parsed_scores.csv",
     )
+    parser.add_argument(
+        "--strict",
+        action="store_true",
+        help="Fail if required metadata keys are completely absent in a metadata.json",
+    )
 
     args = parser.parse_args()
 
     data_root: Path = args.data_root
     output_csv: Path = args.output
-    parse_all(data_root=data_root, output_csv=output_csv)
+    try:
+        parse_all(data_root=data_root, output_csv=output_csv, strict=args.strict)
+    except RuntimeError as e:
+        print(str(e))
+        raise SystemExit(2)
 
 
 if __name__ == "__main__":
