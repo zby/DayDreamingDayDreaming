@@ -27,6 +27,7 @@ from .partitions import (
     evaluation_gens_partitions,
 )
 from ..utils.ids import reserve_gen_id
+from ..utils.cohorts import get_env_cohort_id
 from ..utils.selected_combos import validate_selected_is_subset
 from pathlib import Path
 import pandas as pd
@@ -204,10 +205,17 @@ def draft_generation_tasks(context, content_combinations: List[ContentCombinatio
                 )
     df = pd.DataFrame(rows)
     if not df.empty:
-        # Stable gen ids per task_id across runs
-        df["gen_id"] = df["draft_task_id"].astype(str).apply(
-            lambda tid: reserve_gen_id("draft", tid)
-        )
+        # Optional cohort id from env/config; when present, bind to gen ids
+        cohort_id = get_env_cohort_id()
+        if cohort_id:
+            df["gen_id"] = df["draft_task_id"].astype(str).apply(
+                lambda tid: reserve_gen_id("draft", tid, run_id=cohort_id)
+            )
+            df["cohort_id"] = cohort_id
+        else:
+            df["gen_id"] = df["draft_task_id"].astype(str).apply(
+                lambda tid: reserve_gen_id("draft", tid)
+            )
     # refresh dynamic partitions
     existing = context.instance.get_dynamic_partitions(draft_gens_partitions.name)
     if existing:
@@ -262,6 +270,7 @@ def essay_generation_tasks(context, content_combinations: List[ContentCombinatio
         return df
 
     # Cross product: each draft task × each active essay template
+    cohort_id = get_env_cohort_id()
     for _, drow in draft_generation_tasks.iterrows():
         combo_id = str(drow.get("combo_id"))
         draft_task_id = drow.get("draft_task_id")
@@ -274,11 +283,11 @@ def essay_generation_tasks(context, content_combinations: List[ContentCombinatio
             if isinstance(draft_task_id, str) and draft_task_id:
                 essay_task_id = f"{draft_task_id}__{essay_template_id}"
             
-            # Reserve essay gen_id
-            gen_id = reserve_gen_id("essay", essay_task_id)
+            # Reserve essay gen_id (bind to cohort if present)
+            gen_id = reserve_gen_id("essay", essay_task_id, run_id=cohort_id) if cohort_id else reserve_gen_id("essay", essay_task_id)
             
             # Add row directly to DataFrame
-            new_row = pd.DataFrame([{
+            row_dict = {
                 "essay_task_id": essay_task_id,
                 "parent_gen_id": draft_gen_id,  # Points to draft gen_id
                 "draft_task_id": draft_task_id,
@@ -288,7 +297,10 @@ def essay_generation_tasks(context, content_combinations: List[ContentCombinatio
                 "generation_model": gen_model_id,
                 "generation_model_name": gen_model_name,
                 "gen_id": gen_id,
-            }])
+            }
+            if cohort_id:
+                row_dict["cohort_id"] = cohort_id
+            new_row = pd.DataFrame([row_dict])
             df = pd.concat([df, new_row], ignore_index=True)
 
     # refresh dynamic partitions
@@ -419,10 +431,18 @@ def evaluation_tasks(
                 })
     tasks_df = pd.DataFrame(rows)
     if not tasks_df.empty:
-        run_id = getattr(getattr(context, "run", object()), "run_id", None) or getattr(context, "run_id", None)
-        tasks_df["gen_id"] = tasks_df["evaluation_task_id"].astype(str).apply(
-            lambda tid: reserve_gen_id("evaluation", tid, run_id=str(run_id) if run_id else None)
-        )
+        # Bind eval ids to cohort if present
+        cohort_id = get_env_cohort_id()
+        if cohort_id:
+            tasks_df["gen_id"] = tasks_df["evaluation_task_id"].astype(str).apply(
+                lambda tid: reserve_gen_id("evaluation", tid, run_id=cohort_id)
+            )
+            tasks_df["cohort_id"] = cohort_id
+        else:
+            run_id = getattr(getattr(context, "run", object()), "run_id", None) or getattr(context, "run_id", None)
+            tasks_df["gen_id"] = tasks_df["evaluation_task_id"].astype(str).apply(
+                lambda tid: reserve_gen_id("evaluation", tid, run_id=str(run_id) if run_id else None)
+            )
     existing = context.instance.get_dynamic_partitions(evaluation_gens_partitions.name)
     if existing:
         for p in existing:

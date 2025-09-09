@@ -406,6 +406,7 @@ def essay_response(context, essay_prompt, essay_generation_tasks) -> str:
         task_id=str(task_row.get("essay_task_id") or ""),
         function="essay_response",
         run_id=str(run_id) if run_id else None,
+        cohort_id=str(task_row.get("cohort_id")).strip() if isinstance(task_row.get("cohort_id"), str) else None,
         extra={
             "essay_template": essay_template,
         },

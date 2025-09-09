@@ -13,6 +13,7 @@ def build_generation_metadata(
     task_id: Optional[str],
     function: str,
     run_id: Optional[str] = None,
+    cohort_id: Optional[str] = None,
     usage: Optional[dict] = None,
     extra: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
@@ -38,9 +39,10 @@ def build_generation_metadata(
     }
     if run_id:
         md["run_id"] = str(run_id)
+    if cohort_id:
+        md["cohort_id"] = str(cohort_id)
     if usage is not None:
         md["usage"] = usage
     if extra:
         md.update(extra)
     return md
-

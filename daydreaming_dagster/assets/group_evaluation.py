@@ -166,6 +166,7 @@ def evaluation_response(context, evaluation_prompt, evaluation_tasks) -> str:
         task_id=str(task_row.get("evaluation_task_id") or ""),
         function="evaluation_response",
         run_id=str(run_id) if run_id else None,
+        cohort_id=str(task_row.get("cohort_id")).strip() if isinstance(task_row.get("cohort_id"), str) else None,
         extra={
             "evaluation_template": evaluation_template,
         },
