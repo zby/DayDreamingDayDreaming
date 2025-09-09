@@ -349,7 +349,8 @@ def main() -> int:
             if not res1.success:
                 print("Warning: materialize(content_combinations) did not succeed", file=sys.stderr)
             # Then refresh the task assets so dynamic partitions and CSVs are consistent
-            res2 = materialize([draft_tasks_asset, essay_tasks_asset, eval_tasks_asset], resources=resources, instance=instance)
+            # Include content_combinations in this call so its in-memory output is available
+            res2 = materialize([combos_asset, draft_tasks_asset, essay_tasks_asset, eval_tasks_asset], resources=resources, instance=instance)
             if not res2.success:
                 print("Warning: materialize(task assets) did not fully succeed", file=sys.stderr)
         except Exception as e:
@@ -509,8 +510,8 @@ def main() -> int:
         if not args.dry_run:
             print("No evaluation rows to write (check active evaluation templates/models)")
 
-    # Partition keys for evaluation
-    eval_ids = [row["evaluation_task_id"] for row in evaluation_rows] if evaluation_rows else []
+    # Partition keys for evaluation (use doc_id, not evaluation_task_id)
+    eval_ids = [row["doc_id"] for row in evaluation_rows] if evaluation_rows else []
 
     # Optionally write partition lists
     # No key-list outputs in simplified mode
