@@ -68,6 +68,7 @@ def test_essay_response_copy_mode_returns_draft_content(tmp_path: Path):
     draft_dir.mkdir(parents=True, exist_ok=True)
     essay_template = "copy-from-drafts-v1"
     essay_task_id = f"essay_for_{parent_doc_id}_{essay_template}"
+    essay_doc_id = "e_doc_999"
 
     draft_content = "Line A\nLine B\nLine C\n"
     (draft_dir / "parsed.txt").write_text(draft_content, encoding="utf-8")
@@ -80,12 +81,13 @@ def test_essay_response_copy_mode_returns_draft_content(tmp_path: Path):
                 "draft_template": "deliberate-rolling-thread-v2",
                 "essay_template": essay_template,
                 "generation_model_name": "unused",
+                "doc_id": essay_doc_id,
             }
         ]
     )
 
     ctx = _FakeContext(
-        partition_key=essay_task_id,
+        partition_key=essay_doc_id,
         data_root=tmp_path,
         draft_io=_FakeDraftIO(draft_content),
     )

@@ -114,7 +114,7 @@ def _draft_response_impl(context, draft_prompt, draft_generation_tasks) -> str:
     raw_dir = Path(raw_dir_override) if raw_dir_override else data_root / "3_generation" / "draft_responses_raw"
     raw_path_str = None
     if save_raw:
-        raw_path_str = save_versioned_raw_text(raw_dir, task_id, normalized, logger=context.log)
+        raw_path_str = save_versioned_raw_text(raw_dir, str(doc_id), normalized, logger=context.log)
 
     # Validate minimum lines after ensuring RAW is persisted
     response_lines = [line.strip() for line in normalized.split("\n") if line.strip()]
