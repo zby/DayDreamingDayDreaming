@@ -487,9 +487,7 @@ class TestPipelineIntegration:
             temp_data_dir.mkdir()
             (temp_data_dir / "1_raw").mkdir()
             (temp_data_dir / "2_tasks").mkdir()
-            (temp_data_dir / "3_generation").mkdir()
-            (temp_data_dir / "3_generation" / "generation_prompts").mkdir()
-            (temp_data_dir / "3_generation" / "generation_responses").mkdir()
+            # gens store used; legacy single-phase dirs not needed
             # removed parsed_generation_responses directory creation
             (temp_data_dir / "4_evaluation").mkdir()
             (temp_data_dir / "4_evaluation" / "evaluation_prompts").mkdir()
