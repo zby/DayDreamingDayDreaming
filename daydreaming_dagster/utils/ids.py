@@ -28,18 +28,18 @@ def _to_base36(num: int) -> str:
     return "".join(reversed(chars))
 
 
-"""ID helpers for doc-id-first execution (no logical keys)."""
+"""ID helpers for gen-id-first execution (no logical keys)."""
 
 
-def doc_dir(root: str | "os.PathLike[str]", stage: str, doc_id: str):
+def gen_dir(root: str | "os.PathLike[str]", stage: str, gen_id: str):
     from pathlib import Path
 
-    # Flat layout by stage and doc_id only
-    return Path(root) / stage / doc_id
+    # Flat layout by stage and gen_id only
+    return Path(root) / stage / gen_id
 
 
-def reserve_doc_id(stage: str, task_id: str, *, run_id: str | None = None, salt: str | None = None, length: int = 16) -> str:
-    """Reserve a deterministic 16-char base36 document id for a task row.
+def reserve_gen_id(stage: str, task_id: str, *, run_id: str | None = None, salt: str | None = None, length: int = 16) -> str:
+    """Reserve a deterministic 16-char base36 generation id for a task row.
 
     Inputs are combined and hashed; no logical key is computed or stored.
     If run_id/salt are omitted, the id remains stable for the same (stage, task_id).

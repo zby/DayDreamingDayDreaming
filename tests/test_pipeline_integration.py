@@ -329,8 +329,8 @@ class TestPipelineIntegration:
                 
                 # Get task IDs for generation
                 gen_tasks_df = pd.read_csv(task_dir / "draft_generation_tasks.csv")
-                # Use doc_id (doc-id partitioning)
-                test_gen_partitions = gen_tasks_df["doc_id"].astype(str).tolist()[:2]  # Limit to 2 for testing
+                # Use gen_id (gen-id partitioning)
+                test_gen_partitions = gen_tasks_df["gen_id"].astype(str).tolist()[:2]  # Limit to 2 for testing
                 
                 # Materialize a few generation tasks for testing
                 from daydreaming_dagster.assets.group_generation_draft import (
@@ -371,10 +371,10 @@ class TestPipelineIntegration:
                 
                 # Materialize essay generation for corresponding essay task partitions
                 essay_tasks_df = pd.read_csv(task_dir / "essay_generation_tasks.csv")
-                # Choose essay doc_ids whose parent_doc_id corresponds to the successful draft doc_ids
+                # Choose essay gen_ids whose parent_gen_id corresponds to the successful draft gen_ids
                 test_essay_partitions = essay_tasks_df[
-                    essay_tasks_df["parent_doc_id"].astype(str).isin([str(x) for x in succeeded_gen_partitions])
-                ]["doc_id"].astype(str).tolist()[:2]
+                    essay_tasks_df["parent_gen_id"].astype(str).isin([str(x) for x in succeeded_gen_partitions])
+                ]["gen_id"].astype(str).tolist()[:2]
                 
                 for partition_key in test_essay_partitions:
                     print(f"  Materializing essays for partition: {partition_key}")

@@ -58,9 +58,9 @@ def draft_files_exist_check(context) -> AssetCheckResult:
     if not pk:
         return AssetCheckResult(passed=True, metadata={"skipped": MetadataValue.text("no partition context")})
     data_root = Path(getattr(context.resources, "data_root", "data"))
-    base = data_root / "docs" / "draft" / str(pk)
+    base = data_root / "gens" / "draft" / str(pk)
     ok = (base / "parsed.txt").exists()
-    return AssetCheckResult(passed=bool(ok), metadata={"doc_dir": MetadataValue.path(str(base))})
+    return AssetCheckResult(passed=bool(ok), metadata={"gen_dir": MetadataValue.path(str(base))})
 
 
 @asset_check(asset=essay_response_asset, required_resource_keys={"data_root"})
@@ -69,9 +69,9 @@ def essay_files_exist_check(context) -> AssetCheckResult:
     if not pk:
         return AssetCheckResult(passed=True, metadata={"skipped": MetadataValue.text("no partition context")})
     data_root = Path(getattr(context.resources, "data_root", "data"))
-    base = data_root / "docs" / "essay" / str(pk)
+    base = data_root / "gens" / "essay" / str(pk)
     ok = (base / "parsed.txt").exists()
-    return AssetCheckResult(passed=bool(ok), metadata={"doc_dir": MetadataValue.path(str(base))})
+    return AssetCheckResult(passed=bool(ok), metadata={"gen_dir": MetadataValue.path(str(base))})
 
 
 @asset_check(asset=evaluation_response_asset, required_resource_keys={"data_root"})
@@ -80,9 +80,9 @@ def evaluation_files_exist_check(context) -> AssetCheckResult:
     if not pk:
         return AssetCheckResult(passed=True, metadata={"skipped": MetadataValue.text("no partition context")})
     data_root = Path(getattr(context.resources, "data_root", "data"))
-    base = data_root / "docs" / "evaluation" / str(pk)
+    base = data_root / "gens" / "evaluation" / str(pk)
     ok = (base / "parsed.txt").exists()
-    return AssetCheckResult(passed=bool(ok), metadata={"doc_dir": MetadataValue.path(str(base))})
+    return AssetCheckResult(passed=bool(ok), metadata={"gen_dir": MetadataValue.path(str(base))})
 
 
 # DB row-present checks removed under filesystem-only design

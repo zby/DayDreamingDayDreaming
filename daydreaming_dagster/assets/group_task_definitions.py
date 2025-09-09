@@ -22,12 +22,12 @@ from ..utils.raw_readers import (
 )
 from ..utils.selected_combos import read_selected_combo_mappings
 from .partitions import (
-    draft_docs_partitions,
-    essay_docs_partitions,
-    evaluation_docs_partitions,
+    draft_gens_partitions,
+    essay_gens_partitions,
+    evaluation_gens_partitions,
 )
 from ..utils.combo_ids import ComboIDManager
-from ..utils.ids import reserve_doc_id
+from ..utils.ids import reserve_gen_id
 from ..utils.selected_combos import validate_selected_is_subset
 from pathlib import Path
 import pandas as pd
@@ -208,18 +208,18 @@ def draft_generation_tasks(context, content_combinations: List[ContentCombinatio
                 )
     df = pd.DataFrame(rows)
     if not df.empty:
-        # Stable doc ids per task_id across runs
-        df["doc_id"] = df["draft_task_id"].astype(str).apply(
-            lambda tid: reserve_doc_id("draft", tid)
+        # Stable gen ids per task_id across runs
+        df["gen_id"] = df["draft_task_id"].astype(str).apply(
+            lambda tid: reserve_gen_id("draft", tid)
         )
     # refresh dynamic partitions
-    existing = context.instance.get_dynamic_partitions(draft_docs_partitions.name)
+    existing = context.instance.get_dynamic_partitions(draft_gens_partitions.name)
     if existing:
         for p in existing:
-            context.instance.delete_dynamic_partition(draft_docs_partitions.name, p)
+            context.instance.delete_dynamic_partition(draft_gens_partitions.name, p)
     if not df.empty:
         context.instance.add_dynamic_partitions(
-            draft_docs_partitions.name, df["doc_id"].astype(str).tolist()
+            draft_gens_partitions.name, df["gen_id"].astype(str).tolist()
         )
     try:
         context.add_output_metadata({"task_count": MetadataValue.int(len(df))})
@@ -247,18 +247,18 @@ def essay_generation_tasks(context, content_combinations: List[ContentCombinatio
     if "active" in templates_df.columns:
         templates_df = templates_df[templates_df["active"] == True]
 
-    # Create DataFrame with expected columns (matching script output)
+    # Create DataFrame with expected columns (gen-id first)
     cols = [
         "essay_task_id",
-        "parent_doc_id", 
-        "essay_doc_id",
+        "parent_gen_id",
+        "essay_gen_id",
         "draft_task_id",
         "combo_id",
         "draft_template",
         "essay_template",
         "generation_model",
         "generation_model_name",
-        "doc_id",
+        "gen_id",
     ]
     df = pd.DataFrame(columns=cols)
     
@@ -272,39 +272,39 @@ def essay_generation_tasks(context, content_combinations: List[ContentCombinatio
         draft_task_id = drow.get("draft_task_id")
         gen_model_id = drow.get("generation_model")
         gen_model_name = drow.get("generation_model_name", gen_model_id)
-        draft_doc_id = drow.get("doc_id")
+        draft_gen_id = drow.get("gen_id")
         for _, trow in templates_df.iterrows():
             essay_template_id = trow["template_id"]
             # Compose essay_task_id from the upstream draft_task_id when present
             if isinstance(draft_task_id, str) and draft_task_id:
                 essay_task_id = f"{draft_task_id}__{essay_template_id}"
             
-            # Reserve essay doc_id
-            essay_doc_id = reserve_doc_id("essay", essay_task_id)
+            # Reserve essay gen_id
+            essay_gen_id = reserve_gen_id("essay", essay_task_id)
             
             # Add row directly to DataFrame
             new_row = pd.DataFrame([{
                 "essay_task_id": essay_task_id,
-                "parent_doc_id": draft_doc_id,  # Points to draft doc_id
-                "essay_doc_id": essay_doc_id,   # Essay's own doc_id
+                "parent_gen_id": draft_gen_id,  # Points to draft gen_id
+                "essay_gen_id": essay_gen_id,   # Essay's own gen_id
                 "draft_task_id": draft_task_id,
                 "combo_id": combo_id,
                 "draft_template": drow.get("draft_template"),
                 "essay_template": essay_template_id,
                 "generation_model": gen_model_id,
                 "generation_model_name": gen_model_name,
-                "doc_id": essay_doc_id,  # Set doc_id to essay_doc_id
+                "gen_id": essay_gen_id,  # Set gen_id to essay_gen_id
             }])
             df = pd.concat([df, new_row], ignore_index=True)
 
     # refresh dynamic partitions
-    existing = context.instance.get_dynamic_partitions(essay_docs_partitions.name)
+    existing = context.instance.get_dynamic_partitions(essay_gens_partitions.name)
     if existing:
         for p in existing:
-            context.instance.delete_dynamic_partition(essay_docs_partitions.name, p)
+            context.instance.delete_dynamic_partition(essay_gens_partitions.name, p)
     if not df.empty:
         context.instance.add_dynamic_partitions(
-            essay_docs_partitions.name, df["doc_id"].astype(str).tolist()
+            essay_gens_partitions.name, df["gen_id"].astype(str).tolist()
         )
     try:
         context.add_output_metadata({"task_count": MetadataValue.int(len(df))})
@@ -326,7 +326,7 @@ def evaluation_tasks(
 ) -> pd.DataFrame:
     from ..utils.raw_readers import read_llm_models, read_evaluation_templates
 
-    # use evaluation_docs_partitions for partition registration
+    # use evaluation_gens_partitions for partition registration
 
     data_root = Path(context.resources.data_root)
     models_df = read_llm_models(Path(data_root))
@@ -351,46 +351,46 @@ def evaluation_tasks(
             parser_map = {}
 
     data_root_path = Path(data_root)
-    # Require essay doc ids (doc-id–first). Accept essay_doc_id or parent_doc_id.
+    # Require essay gen ids (gen-id–first). Accept essay_gen_id or parent_gen_id.
     if essay_generation_tasks.empty:
         return pd.DataFrame(columns=[
-            "evaluation_task_id","parent_doc_id","document_id","essay_task_id","combo_id",
+            "evaluation_task_id","parent_gen_id","document_id","essay_task_id","combo_id",
             "draft_template","essay_template","generation_model","generation_model_name",
             "evaluation_template","evaluation_model","evaluation_model_name","parser","file_path","source_dir","source_asset",
         ])
-    # Accept any of these columns as the essay document id (doc-id–first):
-    #  - essay_doc_id (preferred), parent_doc_id (temporary alias), or doc_id (from essay_generation_tasks)
-    if "essay_doc_id" in essay_generation_tasks.columns:
-        doc_col = "essay_doc_id"
-    elif "parent_doc_id" in essay_generation_tasks.columns:
-        doc_col = "parent_doc_id"
-    elif "doc_id" in essay_generation_tasks.columns:
-        doc_col = "doc_id"
+    # Accept any of these columns as the essay generation id (gen-id–first):
+    #  - essay_gen_id (preferred), parent_gen_id (temporary alias), or gen_id (from essay_generation_tasks)
+    if "essay_gen_id" in essay_generation_tasks.columns:
+        doc_col = "essay_gen_id"
+    elif "parent_gen_id" in essay_generation_tasks.columns:
+        doc_col = "parent_gen_id"
+    elif "gen_id" in essay_generation_tasks.columns:
+        doc_col = "gen_id"
     else:
         doc_col = None
     if doc_col is None:
         raise Failure(
-            description="evaluation_tasks requires essay doc IDs (doc-id–first)",
+            description="evaluation_tasks requires essay gen IDs (gen-id–first)",
             metadata={
-                "required_column": MetadataValue.text("essay_doc_id (or parent_doc_id)"),
+                "required_column": MetadataValue.text("essay_gen_id (or parent_gen_id)"),
                 "present_columns": MetadataValue.json(list(map(str, essay_generation_tasks.columns))),
-                "resolution": MetadataValue.text("Populate essay_doc_id in data/2_tasks/essay_generation_tasks.csv and re-run."),
+                "resolution": MetadataValue.text("Populate essay_gen_id in data/2_tasks/essay_generation_tasks.csv and re-run."),
             },
         )
     missing_mask = essay_generation_tasks[doc_col].astype(str).map(lambda s: (not s.strip()) or s.lower() == "nan")
     if bool(missing_mask.any()):
         sample = essay_generation_tasks.loc[missing_mask, "essay_task_id"].astype(str).head(5).tolist() if "essay_task_id" in essay_generation_tasks.columns else []
         raise Failure(
-            description="Missing essay doc_id values in essay_generation_tasks",
+            description="Missing essay gen_id values in essay_generation_tasks",
             metadata={
                 "missing_count": MetadataValue.int(int(missing_mask.sum())),
                 "sample_essay_task_ids": MetadataValue.json(sample),
-                "resolution": MetadataValue.text("Ensure essays exist and their doc_ids are populated in the input CSV."),
+                "resolution": MetadataValue.text("Ensure essays exist and their gen_ids are populated in the input CSV."),
             },
         )
     # Build evaluation rows directly from essays and active evaluation axes
     rows: List[dict] = []
-    docs_root = data_root_path / "docs"
+    docs_root = data_root_path / "gens"
     for _, erow in essay_generation_tasks.iterrows():
         essay_task_id = str(erow.get("essay_task_id") or "")
         parent_doc_id = str(erow.get(doc_col))
@@ -406,7 +406,7 @@ def evaluation_tasks(
                 evaluation_task_id = f"{parent_doc_id}__{eval_template_id}__{eval_model_id}"
                 rows.append({
                     "evaluation_task_id": evaluation_task_id,
-                    "parent_doc_id": parent_doc_id,
+                    "parent_gen_id": parent_doc_id,
                     # legacy context for compatibility
                     "document_id": essay_task_id,
                     "essay_task_id": essay_task_id,
@@ -426,16 +426,16 @@ def evaluation_tasks(
     tasks_df = pd.DataFrame(rows)
     if not tasks_df.empty:
         run_id = getattr(getattr(context, "run", object()), "run_id", None) or getattr(context, "run_id", None)
-        tasks_df["doc_id"] = tasks_df["evaluation_task_id"].astype(str).apply(
-            lambda tid: reserve_doc_id("evaluation", tid, run_id=str(run_id) if run_id else None)
+        tasks_df["gen_id"] = tasks_df["evaluation_task_id"].astype(str).apply(
+            lambda tid: reserve_gen_id("evaluation", tid, run_id=str(run_id) if run_id else None)
         )
-    existing = context.instance.get_dynamic_partitions(evaluation_docs_partitions.name)
+    existing = context.instance.get_dynamic_partitions(evaluation_gens_partitions.name)
     if existing:
         for p in existing:
-            context.instance.delete_dynamic_partition(evaluation_docs_partitions.name, p)
+            context.instance.delete_dynamic_partition(evaluation_gens_partitions.name, p)
     if not tasks_df.empty:
         context.instance.add_dynamic_partitions(
-            evaluation_docs_partitions.name, tasks_df["doc_id"].astype(str).tolist()
+            evaluation_gens_partitions.name, tasks_df["gen_id"].astype(str).tolist()
         )
     context.add_output_metadata({"task_count": MetadataValue.int(len(tasks_df))})
     return tasks_df

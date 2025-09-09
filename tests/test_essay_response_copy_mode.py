@@ -62,13 +62,13 @@ def _write_minimal_essay_templates_csv(dir_path: Path):
 def test_essay_response_copy_mode_returns_draft_content(tmp_path: Path):
     _write_minimal_essay_templates_csv(tmp_path)
 
-    # Prepare a parent draft doc on filesystem
-    parent_doc_id = "docX"
-    draft_dir = tmp_path / "docs" / "draft" / parent_doc_id
+    # Prepare a parent draft generation on filesystem
+    parent_gen_id = "genX"
+    draft_dir = tmp_path / "gens" / "draft" / parent_gen_id
     draft_dir.mkdir(parents=True, exist_ok=True)
     essay_template = "copy-from-drafts-v1"
-    essay_task_id = f"essay_for_{parent_doc_id}_{essay_template}"
-    essay_doc_id = "e_doc_999"
+    essay_task_id = f"essay_for_{parent_gen_id}_{essay_template}"
+    essay_gen_id = "e_gen_999"
 
     draft_content = "Line A\nLine B\nLine C\n"
     (draft_dir / "parsed.txt").write_text(draft_content, encoding="utf-8")
@@ -77,17 +77,17 @@ def test_essay_response_copy_mode_returns_draft_content(tmp_path: Path):
         [
             {
                 "essay_task_id": essay_task_id,
-                "parent_doc_id": parent_doc_id,
+                "parent_gen_id": parent_gen_id,
                 "draft_template": "deliberate-rolling-thread-v2",
                 "essay_template": essay_template,
                 "generation_model_name": "unused",
-                "doc_id": essay_doc_id,
+                "gen_id": essay_gen_id,
             }
         ]
     )
 
     ctx = _FakeContext(
-        partition_key=essay_doc_id,
+        partition_key=essay_gen_id,
         data_root=tmp_path,
         draft_io=_FakeDraftIO(draft_content),
     )
@@ -96,6 +96,6 @@ def test_essay_response_copy_mode_returns_draft_content(tmp_path: Path):
 
     assert result == draft_content
     mode = ctx._meta.get("mode")
-    src_parent = ctx._meta.get("parent_doc_id")
+    src_parent = ctx._meta.get("parent_gen_id")
     assert (getattr(mode, "text", mode)) == "copy"
-    assert (getattr(src_parent, "text", src_parent)) == parent_doc_id
+    assert (getattr(src_parent, "text", src_parent)) == parent_gen_id

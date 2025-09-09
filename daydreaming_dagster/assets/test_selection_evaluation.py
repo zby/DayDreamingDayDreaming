@@ -68,7 +68,7 @@ def test_select_top_n_and_build_eval_tasks():
             rows.append(
                 {
                     "evaluation_task_id": f"{doc_id}__{eval_template}__{model_id}",
-                    "parent_doc_id": doc_id,
+                    "parent_gen_id": doc_id,
                     "evaluation_template": eval_template,
                     "evaluation_model": model_id,
                     "evaluation_model_name": model_name,
@@ -83,4 +83,4 @@ def test_select_top_n_and_build_eval_tasks():
         assert is_valid_evaluation_task_id(tid), f"Bad evaluation_task_id: {tid}"
 
     # Ensure only selected docs are present
-    assert set(evaluation_tasks_df["parent_doc_id"]) == set(selected_docs)
+    assert set(evaluation_tasks_df["parent_gen_id"]) == set(selected_docs)

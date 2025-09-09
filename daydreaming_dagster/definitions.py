@@ -55,7 +55,7 @@ from daydreaming_dagster.resources.io_managers import (
     CSVIOManager,
     InMemoryIOManager,
 )
-from daydreaming_dagster.resources.docs_prompt_io_manager import DocsPromptIOManager
+from daydreaming_dagster.resources.gens_prompt_io_manager import GensPromptIOManager
 from pathlib import Path
 
 
@@ -121,27 +121,27 @@ defs = Definitions(
         # IO managers
         "csv_io_manager": CSVIOManager(base_path=Path("data") / "2_tasks"),
         "in_memory_io_manager": InMemoryIOManager(),
-        # Prompts persist to docs store; responses are written to docs store by assets
-        "draft_prompt_io_manager": DocsPromptIOManager(
-            docs_root=Path("data") / "docs",
+        # Prompts persist to gens store; responses are written to gens store by assets
+        "draft_prompt_io_manager": GensPromptIOManager(
+            gens_root=Path("data") / "gens",
             tasks_root=Path("data") / "2_tasks",
             stage="draft",
             tasks_csv_name=None,
-            id_col="doc_id",
+            id_col="gen_id",
         ),
-        "essay_prompt_io_manager": DocsPromptIOManager(
-            docs_root=Path("data") / "docs",
+        "essay_prompt_io_manager": GensPromptIOManager(
+            gens_root=Path("data") / "gens",
             tasks_root=Path("data") / "2_tasks",
             stage="essay",
             tasks_csv_name=None,
-            id_col="doc_id",
+            id_col="gen_id",
         ),
-        "evaluation_prompt_io_manager": DocsPromptIOManager(
-            docs_root=Path("data") / "docs",
+        "evaluation_prompt_io_manager": GensPromptIOManager(
+            gens_root=Path("data") / "gens",
             tasks_root=Path("data") / "2_tasks",
             stage="evaluation",
             tasks_csv_name=None,
-            id_col="doc_id",
+            id_col="gen_id",
         ),
         # Responses: no need to persist via IO manager — assets write to docs store
         # Use in-memory manager only if downstream assets in-process; tests may override

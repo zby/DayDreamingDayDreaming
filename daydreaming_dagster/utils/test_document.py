@@ -1,18 +1,18 @@
 from __future__ import annotations
 
 from pathlib import Path
-from daydreaming_dagster.utils.document import Document
+from daydreaming_dagster.utils.document import Generation
 
 
 class TestDocument:
     def test_write_and_to_index_row(self, tmp_path: Path):
-        docs_root = tmp_path / "docs"
+        docs_root = tmp_path / "gens"
 
         # Build a simple draft document
-        doc = Document(
+        doc = Generation(
             stage="draft",
-            doc_id="doc123",
-            parent_doc_id=None,
+            gen_id="gen123",
+            parent_gen_id=None,
             raw_text="raw content",
             parsed_text="parsed content",
             prompt_text="prompt content",

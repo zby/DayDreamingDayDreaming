@@ -17,6 +17,7 @@
   - Drafts: `uv run dagster asset materialize --select "group:generation_draft" --partition <draft_task_id> -f daydreaming_dagster/definitions.py` (legacy: `group:generation_links` with `link_task_id`).
   - Essays: `uv run dagster asset materialize --select "group:generation_essays" --partition <essay_task_id> -f daydreaming_dagster/definitions.py`.
 - Tests: `.venv/bin/pytest` (unit: `.venv/bin/pytest daydreaming_dagster/`, integration: `.venv/bin/pytest tests/`).
+- Sandbox note: avoid `uv run pytest` — uv may attempt to write to a global cache outside the sandbox; `.venv/bin/pytest` runs entirely inside the project venv and avoids this issue.
 - Format/lint: `uv run black .` and `uv run ruff check`.
 
 ## Coding Style & Naming Conventions

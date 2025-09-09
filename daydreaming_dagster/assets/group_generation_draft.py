@@ -8,20 +8,20 @@ from dagster import asset, Failure, MetadataValue
 import pandas as pd
 from pathlib import Path
 from jinja2 import Environment, TemplateSyntaxError
-from .partitions import draft_docs_partitions
+from .partitions import draft_gens_partitions
 from ..utils.template_loader import load_generation_template
 from ..utils.raw_readers import read_draft_templates
 from ..utils.draft_parsers import get_draft_parser
 from ..utils.dataframe_helpers import get_task_row
 from ..utils.raw_write import save_versioned_raw_text
-from ..utils.document import Document
+from ..utils.document import Generation
 
 # Reuse a single Jinja environment
 JINJA = Environment()
 
 
 @asset(
-    partitions_def=draft_docs_partitions,
+    partitions_def=draft_gens_partitions,
     group_name="generation_draft",
     io_manager_key="draft_prompt_io_manager",
 )
@@ -31,10 +31,10 @@ def draft_prompt(
     content_combinations,
 ) -> str:
     """Generate Phase 1 prompts for draft generation."""
-    doc_id = context.partition_key
+    gen_id = context.partition_key
 
     task_row = get_task_row(
-        draft_generation_tasks, "doc_id", doc_id, context, "draft_generation_tasks"
+        draft_generation_tasks, "gen_id", gen_id, context, "draft_generation_tasks"
     )
     combo_id = task_row["combo_id"]
     template_name = task_row["draft_template"]
@@ -90,14 +90,14 @@ def draft_prompt(
 
     prompt = template.render(concepts=content_combination.contents)
 
-    context.log.info(f"Generated draft prompt for doc {doc_id} using template {template_name}")
+    context.log.info(f"Generated draft prompt for gen {gen_id} using template {template_name}")
     return prompt
 
 
 def _draft_response_impl(context, draft_prompt, draft_generation_tasks) -> str:
     """Generate Phase 1 LLM responses for drafts (core implementation)."""
-    doc_id = context.partition_key
-    task_row = get_task_row(draft_generation_tasks, "doc_id", doc_id, context, "draft_generation_tasks")
+    gen_id = context.partition_key
+    task_row = get_task_row(draft_generation_tasks, "gen_id", gen_id, context, "draft_generation_tasks")
     model_name = task_row["generation_model_name"]
 
     llm_client = context.resources.openrouter_client
@@ -114,17 +114,17 @@ def _draft_response_impl(context, draft_prompt, draft_generation_tasks) -> str:
     raw_dir = Path(raw_dir_override) if raw_dir_override else data_root / "3_generation" / "draft_responses_raw"
     raw_path_str = None
     if save_raw:
-        raw_path_str = save_versioned_raw_text(raw_dir, str(doc_id), normalized, logger=context.log)
+        raw_path_str = save_versioned_raw_text(raw_dir, str(gen_id), normalized, logger=context.log)
 
     # Validate minimum lines after ensuring RAW is persisted
     response_lines = [line.strip() for line in normalized.split("\n") if line.strip()]
     min_lines = getattr(experiment_config, "min_draft_lines", 3)
     if len(response_lines) < int(min_lines):
         raise Failure(
-            description=f"Draft response insufficient for doc {doc_id}",
+            description=f"Draft response insufficient for gen {gen_id}",
             metadata={
                 "function": MetadataValue.text("draft_response"),
-                "doc_id": MetadataValue.text(str(doc_id)),
+                "gen_id": MetadataValue.text(str(gen_id)),
                 "model_name": MetadataValue.text(model_name),
                 "response_line_count": MetadataValue.int(len(response_lines)),
                 "minimum_required": MetadataValue.int(int(min_lines)),
@@ -146,10 +146,10 @@ def _draft_response_impl(context, draft_prompt, draft_generation_tasks) -> str:
             completion_tokens = usage.get("completion_tokens")
             requested_max = usage.get("max_tokens")
         raise Failure(
-            description=f"Draft response truncated for doc {doc_id}",
+            description=f"Draft response truncated for gen {gen_id}",
             metadata={
                 "function": MetadataValue.text("draft_response"),
-                "doc_id": MetadataValue.text(str(doc_id)),
+                "gen_id": MetadataValue.text(str(gen_id)),
                 "model_name": MetadataValue.text(model_name),
                 "finish_reason": MetadataValue.text(str(finish_reason)),
                 "truncated": MetadataValue.bool(True),
@@ -185,7 +185,7 @@ def _draft_response_impl(context, draft_prompt, draft_generation_tasks) -> str:
                 description=(f"Parser '{parser_name}' not found in registry for draft template"),
                 metadata={
                     "function": MetadataValue.text("draft_response"),
-                    "doc_id": MetadataValue.text(str(doc_id)),
+                    "gen_id": MetadataValue.text(str(gen_id)),
                     "draft_template": MetadataValue.text(str(draft_template)),
                     "parser": MetadataValue.text(str(parser_name)),
                     "resolution": MetadataValue.text("Use a registered parser name in data/1_raw/draft_templates.csv or leave blank for identity."),
@@ -199,7 +199,7 @@ def _draft_response_impl(context, draft_prompt, draft_generation_tasks) -> str:
                 desc += f" (RAW: {raw_path_str})"
             meta = {
                 "function": MetadataValue.text("draft_response"),
-                "doc_id": MetadataValue.text(str(doc_id)),
+                "gen_id": MetadataValue.text(str(gen_id)),
                 "draft_template": MetadataValue.text(str(draft_template)),
                 "parser": MetadataValue.text(str(parser_name)),
                 "error": MetadataValue.text(str(e)),
@@ -216,7 +216,7 @@ def _draft_response_impl(context, draft_prompt, draft_generation_tasks) -> str:
                 description="Parser returned empty/invalid text",
                 metadata={
                     "function": MetadataValue.text("draft_response"),
-                    "doc_id": MetadataValue.text(str(doc_id)),
+                    "gen_id": MetadataValue.text(str(gen_id)),
                     "draft_template": MetadataValue.text(str(draft_template)),
                     "parser": MetadataValue.text(str(parser_name)),
                 },
@@ -224,7 +224,7 @@ def _draft_response_impl(context, draft_prompt, draft_generation_tasks) -> str:
 
     # Final metadata and output
     context.log.info(
-        f"Generated draft response for doc {doc_id} using model {model_name} ({len(response_lines)} raw lines); parser={parser_used}"
+        f"Generated draft response for gen {gen_id} using model {model_name} ({len(response_lines)} raw lines); parser={parser_used}"
     )
     meta = {
         "function": MetadataValue.text("draft_response"),
@@ -246,7 +246,7 @@ def _draft_response_impl(context, draft_prompt, draft_generation_tasks) -> str:
 
 
 @asset(
-    partitions_def=draft_docs_partitions,
+    partitions_def=draft_gens_partitions,
     group_name="generation_draft",
     io_manager_key="draft_response_io_manager",
     required_resource_keys={"openrouter_client", "experiment_config", "data_root"},
@@ -255,31 +255,31 @@ def draft_response(context, draft_prompt, draft_generation_tasks) -> str:
     """Generate Phase 1 LLM responses for drafts."""
     parsed = _draft_response_impl(context, draft_prompt, draft_generation_tasks)
 
-    # Write doc files under data_root/docs/draft using Document helper
+    # Write generation files under data_root/gens/draft using Generation helper
     import time
     from pathlib import Path as _Path
 
-    doc_id = context.partition_key
+    gen_id = context.partition_key
     # Pull task row again to avoid plumb-through changes
-    task_row = get_task_row(draft_generation_tasks, "doc_id", doc_id, context, "draft_generation_tasks")
+    task_row = get_task_row(draft_generation_tasks, "gen_id", gen_id, context, "draft_generation_tasks")
     combo_id = task_row.get("combo_id")
     draft_template = task_row.get("draft_template")
     model_id = task_row.get("generation_model") or task_row.get("generation_model_id")
-    # Partition key is the doc_id
-    if not (isinstance(doc_id, str) and doc_id.strip()):
+    # Partition key is the gen_id
+    if not (isinstance(gen_id, str) and gen_id.strip()):
         raise Failure(
-            description="Missing doc_id for draft task",
+            description="Missing gen_id for draft task",
             metadata={
                 "function": MetadataValue.text("draft_response"),
-                "doc_id": MetadataValue.text(str(doc_id)),
-                "resolution": MetadataValue.text("Ensure draft_generation_tasks.csv includes a doc_id column"),
+                "gen_id": MetadataValue.text(str(gen_id)),
+                "resolution": MetadataValue.text("Ensure draft_generation_tasks.csv includes a gen_id column"),
             },
         )
 
     raw_text = parsed
 
-    # Build document and write files
-    docs_root = _Path(getattr(context.resources, "data_root", "data")) / "docs"
+    # Build generation and write files
+    gens_root = _Path(getattr(context.resources, "data_root", "data")) / "gens"
     metadata_json = {
         "task_id": task_row.get("draft_task_id") or "",
         "combo_id": combo_id,
@@ -291,20 +291,20 @@ def draft_response(context, draft_prompt, draft_generation_tasks) -> str:
     }
     # Copy the prompt alongside the document for traceability when available
     prompt_text = draft_prompt if isinstance(draft_prompt, str) else None
-    doc = Document(
+    doc = Generation(
         stage="draft",
-        doc_id=doc_id,
-        parent_doc_id=None,
+        gen_id=gen_id,
+        parent_gen_id=None,
         raw_text=raw_text,
         parsed_text=parsed,
         prompt_text=prompt_text,
         metadata=metadata_json,
     )
-    target_dir = doc.write_files(docs_root)
+    target_dir = doc.write_files(gens_root)
     context.add_output_metadata(
         {
-            "doc_id": MetadataValue.text(str(doc_id)),
-            "doc_dir": MetadataValue.path(str(target_dir)),
+            "gen_id": MetadataValue.text(str(gen_id)),
+            "gen_dir": MetadataValue.path(str(target_dir)),
         }
     )
 

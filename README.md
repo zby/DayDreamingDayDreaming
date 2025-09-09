@@ -72,15 +72,15 @@ uv run dagster asset materialize --select "group:task_definitions" -f daydreamin
 
 # Step 2: Generate LLM responses using two-phase generation
 # Now you can run individual partitions or use the UI to run all
-# Tip: get a draft partition key (doc_id) from draft_generation_tasks.csv
+# Tip: get a draft partition key (gen_id) from draft_generation_tasks.csv
 # Example (Phase 1):
-# DRAFT_DOC=$(awk -F, 'NR==1{for(i=1;i<=NF;i++)h[$i]=i} NR==2{print $h["doc_id"]}' data/2_tasks/draft_generation_tasks.csv)
-# uv run dagster asset materialize --select "group:generation_draft" --partition "$DRAFT_DOC" -f daydreaming_dagster/definitions.py
+# DRAFT_GEN=$(awk -F, 'NR==1{for(i=1;i<=NF;i++)h[$i]=i} NR==2{print $h["gen_id"]}' data/2_tasks/draft_generation_tasks.csv)
+# uv run dagster asset materialize --select "group:generation_draft" --partition "$DRAFT_GEN" -f daydreaming_dagster/definitions.py
 
-# Then get an essay partition key (doc_id) whose parent_doc_id matches the draft
+# Then get an essay partition key (gen_id) whose parent_gen_id matches the draft
 # Example (Phase 2):
-# ESSAY_DOC=$(awk -F, -v dd="$DRAFT_DOC" 'NR==1{for(i=1;i<=NF;i++)h[$i]=i} NR>1 && $h["parent_doc_id"]==dd {print $h["doc_id"]; exit}' data/2_tasks/essay_generation_tasks.csv)
-# uv run dagster asset materialize --select "group:generation_essays" --partition "$ESSAY_DOC" -f daydreaming_dagster/definitions.py
+# ESSAY_GEN=$(awk -F, -v dd="$DRAFT_GEN" 'NR==1{for(i=1;i<=NF;i++)h[$i]=i} NR>1 && $h["parent_gen_id"]==dd {print $h["gen_id"]; exit}' data/2_tasks/essay_generation_tasks.csv)
+# uv run dagster asset materialize --select "group:generation_essays" --partition "$ESSAY_GEN" -f daydreaming_dagster/definitions.py
 
 # Step 3: Process results (after sufficient generation/evaluation data)
 uv run dagster asset materialize --select "parsed_scores,final_results" -f daydreaming_dagster/definitions.py
@@ -88,10 +88,10 @@ uv run dagster asset materialize --select "parsed_scores,final_results" -f daydr
 
 **Asset Group Breakdown**:
 - `group:raw_data`: concepts, models, templates (loads from `data/1_raw/`; re‑materialize after edits)
-- `group:task_definitions`: content_combinations, draft_generation_tasks, essay_generation_tasks, evaluation_tasks (auto-materialize; writes `data/2_tasks/*.csv` with `doc_id` columns)
-- `group:generation_draft`: draft_prompt, draft_response (writes documents under `data/docs/draft/<doc_id>`)
-- `group:generation_essays`: essay_prompt, essay_response (writes documents under `data/docs/essay/<doc_id>`)
-- `group:evaluation`: evaluation_prompt, evaluation_response (writes documents under `data/docs/evaluation/<doc_id>`)
+- `group:task_definitions`: content_combinations, draft_generation_tasks, essay_generation_tasks, evaluation_tasks (auto-materialize; writes `data/2_tasks/*.csv` with `gen_id` columns)
+- `group:generation_draft`: draft_prompt, draft_response (writes generations under `data/gens/draft/<gen_id>`)
+- `group:generation_essays`: essay_prompt, essay_response (writes generations under `data/gens/essay/<gen_id>`)
+- `group:evaluation`: evaluation_prompt, evaluation_response (writes generations under `data/gens/evaluation/<gen_id>`)
 - `group:results_processing`: parsed_scores, analysis, and final_results (writes `data/5_parsing/`, `data/6_summary/`)
 
 **Why the specific asset dependencies matter**:
@@ -99,7 +99,7 @@ uv run dagster asset materialize --select "parsed_scores,final_results" -f daydr
 - `evaluation_templates` loads evaluation CSV + files
 - Using asset groups or dependency resolution (`+`) automatically includes these dependencies
 
-**Dynamic Partitioning**: Partitions are created/updated by the task assets. Partition keys are doc_id for all stages (`draft_docs`, `essay_docs`, `evaluation_docs`).
+**Dynamic Partitioning**: Partitions are created/updated by the task assets. Partition keys are gen_id for all stages (`draft_gens`, `essay_gens`, `evaluation_gens`).
 
 ### Running All LLM Partitions
 
@@ -154,7 +154,7 @@ Then trigger only those partitions in the UI or via CLI.
 
 ### Cross‑Experiment Views
 
-Cross‑experiment analysis is derived directly from the docs store (data/docs/**) and task CSVs:
+Cross‑experiment analysis is derived directly from the gens store (data/gens/**) and task CSVs:
 
 - Use assets: `filtered_evaluation_results`, `template_version_comparison_pivot`.
 - Use scripts for backfills or one‑off tables under data/7_cross_experiment/ (no auto‑appenders).
@@ -298,21 +298,21 @@ Active draft templates are controlled in `data/1_raw/draft_templates.csv` via th
 - Built-in validation: depends on template; Phase‑1 parsing and minimum‑lines validation happen earlier.
 
 ### Output Data
-- **Tasks**: `data/2_tasks/*.csv` (generated combinations and tasks; include `doc_id` for each row)
-- **Docs Store (primary)**: `data/docs/<stage>/<doc_id>/`
+- **Tasks**: `data/2_tasks/*.csv` (generated combinations and tasks; include `gen_id` for each row)
+- **Gens Store (primary)**: `data/gens/<stage>/<gen_id>/`
   - Contains `raw.txt`, `parsed.txt`, optional `prompt.txt`, and `metadata.json`
   - Stages: `draft`, `essay`, `evaluation`
 - **Optional RAW side-writes**: `data/3_generation/*_raw/` (enabled via ExperimentConfig; useful for debugging truncation/parser issues)
 - **Results**: `data/5_parsing/` (processed results) and `data/6_summary/` (summaries)
 - **Global Mapping**: `data/combo_mappings.csv` (append-only mapping of stable combo IDs to their concept components)
 
-### Prompt Persistence (Docs IO)
-- Prompts are saved directly under the docs store via a small IO manager:
-  - `data/docs/draft/<doc_id>/prompt.txt`
-  - `data/docs/essay/<doc_id>/prompt.txt`
-  - `data/docs/evaluation/<doc_id>/prompt.txt`
-- The IO manager (`DocsPromptIOManager`) accepts `doc_id` partition keys directly and writes prompts to `data/docs/<stage>/<doc_id>/prompt.txt`.
-- Responses are written to the docs store by the assets themselves (not via IO managers). Scripts and downstream assets read from the docs store using `metadata.json` and file paths.
+### Prompt Persistence (Gens IO)
+- Prompts are saved directly under the gens store via a small IO manager:
+  - `data/gens/draft/<gen_id>/prompt.txt`
+  - `data/gens/essay/<gen_id>/prompt.txt`
+  - `data/gens/evaluation/<gen_id>/prompt.txt`
+- The IO manager (`GensPromptIOManager`) accepts `gen_id` partition keys directly and writes prompts to `data/gens/<stage>/<gen_id>/prompt.txt`.
+- Responses are written to the gens store by the assets themselves (not via IO managers). Scripts and downstream assets read from the gens store using `metadata.json` and file paths.
 
 ## Key Features
 
@@ -358,7 +358,7 @@ Active draft templates are controlled in `data/1_raw/draft_templates.csv` via th
    ```
   DagsterUnknownPartitionError: Could not find a partition with key `combo_v1_<hex>_...` (or legacy `combo_001_...`)
    ```
-  **Solution**: Make sure task CSV files exist by running step 1 first. Use `awk -F, 'NR==1{for(i=1;i<=NF;i++)h[$i]=i} NR==2{print $h["doc_id"]}' data/2_tasks/draft_generation_tasks.csv` to retrieve a valid draft partition key (doc_id).
+  **Solution**: Make sure task CSV files exist by running step 1 first. Use `awk -F, 'NR==1{for(i=1;i<=NF;i++)h[$i]=i} NR==2{print $h["gen_id"]}' data/2_tasks/draft_generation_tasks.csv` to retrieve a valid draft partition key (gen_id).
 
 4. **Partitioned Asset Group Error**:
    ```
@@ -384,7 +384,7 @@ For detailed architecture and implementation information, see:
 
 - [Architecture Overview](docs/architecture.md) - Detailed system design and components
 - [LLM Concurrency Guide](docs/llm_concurrency_guide.md) - LLM API optimization patterns
-- [Docs Store Guide](docs/guides/docs_store.md) - Doc-id filesystem layout, invariants, and helpers
+- [Gens Store Guide](docs/guides/docs_store.md) - Gen-id filesystem layout, invariants, and helpers
 - [CLAUDE.md](CLAUDE.md) - Development guidelines and project instructions
 
 ## Stable Combo IDs

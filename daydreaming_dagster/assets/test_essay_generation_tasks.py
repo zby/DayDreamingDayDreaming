@@ -1,6 +1,6 @@
 import pandas as pd
 from dagster import build_asset_context
-from daydreaming_dagster.utils.ids import reserve_doc_id
+from daydreaming_dagster.utils.ids import reserve_gen_id
 
 
 def test_essay_generation_tasks_crosses_drafts_with_active_templates(monkeypatch):
@@ -23,8 +23,8 @@ def test_essay_generation_tasks_crosses_drafts_with_active_templates(monkeypatch
             },
         ]
     )
-    # Add required doc_id column (deterministic from task id)
-    draft_df["doc_id"] = draft_df["draft_task_id"].apply(lambda t: reserve_doc_id("draft", t))
+    # Add required gen_id column (deterministic from task id)
+    draft_df["gen_id"] = draft_df["draft_task_id"].apply(lambda t: reserve_gen_id("draft", t))
 
     # Active essay templates (2)
     essay_templates_df = pd.DataFrame(
@@ -58,10 +58,10 @@ def test_essay_generation_tasks_crosses_drafts_with_active_templates(monkeypatch
     # Model/name propagated from draft tasks
     assert set(result[result["combo_id"] == "comboA"]["generation_model"]) == {"modelX"}
     assert set(result[result["combo_id"] == "comboB"]["generation_model_name"]) == {"provider/modelY"}
-    # doc_id reserved for each essay row and parent_doc_id propagated from draft
-    assert result["doc_id"].notna().all()
-    assert result["doc_id"].astype(str).str.len().ge(1).all()
-    assert result["parent_doc_id"].notna().all()
-    # parent_doc_id must map to the draft doc ids
-    expected_parent_ids = set(draft_df.set_index("draft_task_id")["doc_id"].tolist())
-    assert set(result["parent_doc_id"]) <= expected_parent_ids
+    # gen_id reserved for each essay row and parent_gen_id propagated from draft
+    assert result["gen_id"].notna().all()
+    assert result["gen_id"].astype(str).str.len().ge(1).all()
+    assert result["parent_gen_id"].notna().all()
+    # parent_gen_id must map to the draft gen ids
+    expected_parent_ids = set(draft_df.set_index("draft_task_id")["gen_id"].tolist())
+    assert set(result["parent_gen_id"]) <= expected_parent_ids

@@ -10,12 +10,12 @@ from daydreaming_dagster.resources.io_managers import CSVIOManager
 
 
 def test_documents_latest_report_smoke(tmp_path: Path):
-    # Prepare temp data-root and docs
+    # Prepare temp data-root and gens store
     data_root = tmp_path
-    docs_root = data_root / "docs" / "draft" / "docX"
-    docs_root.mkdir(parents=True, exist_ok=True)
-    (docs_root / "parsed.txt").write_text("Hello", encoding="utf-8")
-    (data_root / "docs" / "draft" / "docX" / "metadata.json").write_text('{"task_id":"taskX","created_at":"2024-01-01T00:00:00Z"}', encoding="utf-8")
+    gens_root = data_root / "gens" / "draft" / "genX"
+    gens_root.mkdir(parents=True, exist_ok=True)
+    (gens_root / "parsed.txt").write_text("Hello", encoding="utf-8")
+    (gens_root / "metadata.json").write_text('{"task_id":"taskX","created_at":"2024-01-01T00:00:00Z"}', encoding="utf-8")
 
     # Resources
     resources = {

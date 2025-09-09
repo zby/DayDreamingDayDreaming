@@ -14,12 +14,12 @@ import json
     compute_kind="python",
 )
 def documents_latest_report(context) -> pd.DataFrame:
-    """Export a small CSV snapshot of recent docs by scanning filesystem metadata.
+    """Export a small CSV snapshot of recent generations by scanning filesystem metadata.
 
     Output path: data/7_reporting/documents_latest_report.csv via CSVIOManager.
     """
     data_root = Path(getattr(context.resources, "data_root", "data"))
-    docs_root = data_root / "docs"
+    docs_root = data_root / "gens"
     records: list[dict] = []
     for stage in ("draft", "essay", "evaluation"):
         base = docs_root / stage
@@ -40,11 +40,11 @@ def documents_latest_report(context) -> pd.DataFrame:
             except Exception:
                 pass
             records.append({
-                "doc_id": doc_dir.name,
+                "gen_id": doc_dir.name,
                 "stage": stage,
                 "task_id": task_id,
                 "created_at": created_at,
-                "doc_dir": str(doc_dir),
+                "gen_dir": str(doc_dir),
             })
     df = pd.DataFrame(records)
     context.add_output_metadata({
@@ -60,15 +60,15 @@ def documents_latest_report(context) -> pd.DataFrame:
     compute_kind="python",
 )
 def documents_consistency_report(context) -> pd.DataFrame:
-    """Scan the documents index and report simple consistency issues per row.
+    """Scan the gens store and report simple consistency issues per row.
 
     Columns:
-    - doc_id, stage, task_id, doc_dir
+    - gen_id, stage, task_id, gen_dir
     - missing_raw, missing_parsed, missing_prompt
     - dir_exists
     """
     data_root = Path(getattr(context.resources, "data_root", "data"))
-    docs_root = data_root / "docs"
+    docs_root = data_root / "gens"
     records: list[dict] = []
     for stage in ("draft", "essay", "evaluation"):
         base = docs_root / stage
@@ -90,10 +90,10 @@ def documents_consistency_report(context) -> pd.DataFrame:
             except Exception:
                 pass
             records.append({
-                "doc_id": doc_dir.name,
+                "gen_id": doc_dir.name,
                 "stage": stage,
                 "task_id": task_id,
-                "doc_dir": str(doc_dir),
+                "gen_dir": str(doc_dir),
                 "missing_raw": not raw.exists(),
                 "missing_parsed": not parsed.exists(),
                 "missing_prompt": not prompt.exists(),

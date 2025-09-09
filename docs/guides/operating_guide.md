@@ -188,21 +188,21 @@ Cross‑experiment tracking no longer uses auto‑appenders. Use analysis assets
 
 ## Unified Evaluation Update (2025-09)
 
-This repository now uses a document-centric evaluation flow:
+This repository now uses a generation-centric evaluation flow:
 
 - `document_index` unifies drafts, two-phase essays, and legacy one-phase documents with normalized columns and concrete `file_path`.
-- `evaluation_tasks` creates partitions with IDs formatted as `{parent_doc_id}__{evaluation_template}__{evaluation_model_id}` (doc‑id first).
+- `evaluation_tasks` creates partitions with IDs formatted as `{parent_gen_id}__{evaluation_template}__{evaluation_model_id}` (gen‑id first).
 - `evaluation_prompt` loads the source document by `file_path` and renders the evaluation template (`response=<document text>`). No cross-partition IO is required for evaluation.
-- `parsed_scores` contains normalized outputs and `generation_response_path` sourced from the document `file_path`. When available, use `parent_doc_id` as the canonical key (first token of `evaluation_task_id`).
-- Pivots and selection scripts should key rows by `parent_doc_id` (the essay document id for evaluations) for deterministic grouping across runs.
+- `parsed_scores` contains normalized outputs and `generation_response_path` sourced from the document `file_path`. When available, use `parent_gen_id` as the canonical key (first token of `evaluation_task_id`).
+- Pivots and selection scripts should key rows by `parent_gen_id` (the essay generation id for evaluations) for deterministic grouping across runs.
 
-Lineage and IDs (doc‑id first)
-- `doc_id`: unique identifier of a concrete document under `data/docs/<stage>/<doc_id>/`.
-- `parent_doc_id`:
+Lineage and IDs (gen‑id first)
+- `gen_id`: unique identifier of a concrete generation under `data/gens/<stage>/<gen_id>/`.
+- `parent_gen_id`:
   - Drafts: none (no parent).
-  - Essays: `parent_doc_id` = `doc_id` of the draft refined into the essay.
-  - Evaluations: `parent_doc_id` = `doc_id` of the essay being evaluated.
-- Tasks and assets must pass/require `parent_doc_id` for essays and evaluations (fail fast if missing). This removes all “latest‑by‑task” ambiguity and makes pivots deterministic.
+  - Essays: `parent_gen_id` = `gen_id` of the draft refined into the essay.
+  - Evaluations: `parent_gen_id` = `gen_id` of the essay being evaluated.
+- Tasks and assets must pass/require `parent_gen_id` for essays and evaluations (fail fast if missing). This removes all “latest‑by‑task” ambiguity and makes pivots deterministic.
 
 Note on legacy directory scan:
 - Evaluation no longer discovers documents by scanning `data/3_generation/generation_responses/`. To evaluate historical outputs, write standard generation task CSVs (draft/essay) and place/symlink their texts under `draft_responses/` (or legacy `links_responses/`) or `essay_responses/`. Then materialize `evaluation_tasks` to register only those curated documents.
@@ -213,10 +213,10 @@ To run a specific evaluation (e.g., `novelty`) only on chosen documents (e.g., p
 
 1. Ensure the evaluation template exists and is active in `data/1_raw/evaluation_templates.csv`.
 2. Materialize `evaluation_tasks` once to register partitions.
-3. Materialize only the desired partitions by key (doc‑id first):
+3. Materialize only the desired partitions by key (gen‑id first):
    ```bash
    uv run dagster asset materialize --select "evaluation_prompt,evaluation_response" \
-     --partition "{parent_doc_id}__novelty__{evaluation_model_id}" \
+     --partition "{parent_gen_id}__novelty__{evaluation_model_id}" \
      -f daydreaming_dagster/definitions.py
    ```
 4. Re-run `parsed_scores` to ingest the new results.
@@ -225,7 +225,7 @@ For cross-experiment winners, place or symlink their generation texts under the 
 
 ### Curated Selection Quick Start (Drafts, Essays, Evaluations)
 
-Use two scripts to select targets, then register only those partitions (no need to change `k_max`). If `data/7_cross_experiment/parsed_scores.csv` is missing, rebuild cross‑experiment tables (including `parsed_scores.csv`) with `./scripts/rebuild_results.sh` first. In all examples below, treat `parent_doc_id` as the canonical key for evaluation pivots and selections.
+Use two scripts to select targets, then register only those partitions (no need to change `k_max`). If `data/7_cross_experiment/parsed_scores.csv` is missing, rebuild cross‑experiment tables (including `parsed_scores.csv`) with `./scripts/rebuild_results.sh` first. In all examples below, treat `parent_gen_id` as the canonical key for evaluation pivots and selections.
 
 1) Select top‑N prior‑art winners (editable list)
 ```bash

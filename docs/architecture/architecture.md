@@ -372,8 +372,8 @@ data/
 - Task CSVs in `data/2_tasks/` are rewritten by their assets on materialization.
 - Dynamic partitions for tasks are managed by the task definition assets (`draft_generation_tasks`, `essay_generation_tasks`, `evaluation_tasks`).
 - Prompts are allowed to overwrite to reflect current templates.
-- Runtime persistence uses the docs store: `data/docs/<stage>/<doc_id>` with metadata. RAW side‑writes (for debugging) may be versioned using utility functions in `utils/versioned_files.py`.
-- Legacy directories under `data/3_generation/` are retained for historical analysis; scripts may read the latest versioned file when present. New runs write canonical artifacts to the docs store.
+- Runtime persistence uses the gens store: `data/gens/<stage>/<gen_id>` with metadata. RAW side‑writes (for debugging) may be versioned using utility functions in `utils/versioned_files.py`.
+- Legacy directories under `data/3_generation/` are retained for historical analysis; scripts may read the latest versioned file when present. New runs write canonical artifacts to the gens store.
 
 ## Performance and Scalability
 

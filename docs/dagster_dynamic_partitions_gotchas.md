@@ -10,7 +10,7 @@ Current Model
 Gotchas (and fixes)
 - Registration order: start Dagster with the daemon; raw + task assets auto-update when `data/1_raw/**/*` changes. If needed, seed `group:task_definitions` once before generation/evaluation assets.
 - Key consistency: task IDs are the ground truth. Use `draft_task_id` for drafts (legacy `link_task_id`) and `essay_task_id` for essays.
-- Cross‑phase reads: assets like `essay_prompt` and `evaluation_prompt` load upstream text by `parent_doc_id` directly from the filesystem (`data/docs/<stage>/<doc_id>`); no cross‑partition IO‑manager context is needed.
+- Cross‑phase reads: assets like `essay_prompt` and `evaluation_prompt` load upstream text by `parent_gen_id` directly from the filesystem (`data/gens/<stage>/<gen_id>`); no cross‑partition IO‑manager context is needed.
 - Stale CSVs: if a downstream asset expects new columns in `parsed_scores` (e.g., `draft_template`) and fails, rematerialize upstream with a clear error. Example: `uv run dagster asset materialize --select parsed_scores -f daydreaming_dagster/definitions.py`.
 - File names: draft files are saved by `draft_task_id` (legacy `link_task_id`); essay files by `essay_task_id`. Scripts that pair them must derive the draft/link id from essay_task_id.
 

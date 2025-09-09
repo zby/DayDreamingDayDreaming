@@ -71,7 +71,7 @@ def test_draft_parser_failure_saves_raw_then_fails(tmp_path: Path):
     _write_draft_templates_csv(tmp_path, template_id, parser="essay_block")
 
     draft_task_id = f"comboX_{template_id}_sonnet-4"
-    doc_id = "d_doc_123"
+    gen_id = "d_gen_123"
     tasks = pd.DataFrame(
         [
             {
@@ -80,7 +80,7 @@ def test_draft_parser_failure_saves_raw_then_fails(tmp_path: Path):
                 "draft_template": template_id,
                 "generation_model": "sonnet-4",
                 "generation_model_name": "sonnet-4",
-                "doc_id": doc_id,
+                "gen_id": gen_id,
             }
         ]
     )
@@ -88,7 +88,7 @@ def test_draft_parser_failure_saves_raw_then_fails(tmp_path: Path):
     # RAW content with >=3 lines to pass early validation, but no <essay> tags for the parser
     raw_text = "Line A\nLine B\nLine C\n"
     ctx = _FakeContext(
-        partition_key=doc_id,
+        partition_key=gen_id,
         data_root=tmp_path,
         experiment_config=_Cfg(),
         llm=_FakeLLM(raw_text),
@@ -101,7 +101,7 @@ def test_draft_parser_failure_saves_raw_then_fails(tmp_path: Path):
     # And RAW should be saved to data/3_generation/draft_responses_raw/<id>_v1.txt
     raw_dir = tmp_path / "3_generation" / "draft_responses_raw"
     assert raw_dir.exists(), "RAW directory not created"
-    files = list(raw_dir.glob(f"{doc_id}_v*.txt"))
+    files = list(raw_dir.glob(f"{gen_id}_v*.txt"))
     assert files, "RAW file not written"
     content = files[0].read_text(encoding="utf-8")
     assert content == raw_text

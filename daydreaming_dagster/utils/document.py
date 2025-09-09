@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 import json
-from .ids import doc_dir as build_doc_dir
+from .ids import gen_dir as build_gen_dir
 
 
 def _write_atomic(path: Path, data: str) -> None:
@@ -13,31 +13,30 @@ def _write_atomic(path: Path, data: str) -> None:
 
 
 @dataclass
-class Document:
-    """Domain object representing a generated document artifact.
+class Generation:
+    """Domain object representing a generated artifact (a generation).
 
-    This class encapsulates filesystem writes for raw/parsed/prompt/metadata and
-    conversion into a DocumentRow for the SQLite index. It does not depend on Dagster.
+    Encapsulates filesystem writes for raw/parsed/prompt/metadata.
     """
 
     stage: str
-    doc_id: str
-    parent_doc_id: str | None
+    gen_id: str
+    parent_gen_id: str | None
     raw_text: str
     parsed_text: str | None
     prompt_text: str | None = None
     metadata: dict | None = None
 
-    def target_dir(self, docs_root: Path) -> Path:
-        """Resolve the canonical doc directory from docs_root using repo helper."""
-        return build_doc_dir(Path(docs_root), self.stage, self.doc_id)
+    def target_dir(self, gens_root: Path) -> Path:
+        """Resolve the canonical generation directory from gens_root."""
+        return build_gen_dir(Path(gens_root), self.stage, self.gen_id)
 
-    def write_files(self, docs_root: Path) -> Path:
+    def write_files(self, gens_root: Path) -> Path:
         """Write raw.txt, parsed.txt, optional prompt.txt and metadata.json.
 
         Returns the target directory path.
         """
-        base = self.target_dir(docs_root)
+        base = self.target_dir(gens_root)
         base.mkdir(parents=True, exist_ok=True)
         _write_atomic(base / "raw.txt", self.raw_text)
         if isinstance(self.parsed_text, str):

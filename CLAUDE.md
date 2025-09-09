@@ -4,29 +4,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-This is a Python experiment that tests whether pre-June 2025 LLMs can "reinvent" Gwern's Daydreaming Loop concept when provided with minimal contextual hints through a focused combinatorial testing approach. The system tests k_max-sized concept combinations to elicit the Day-Dreaming idea from offline LLMs using automated LLM-based evaluation.
+This is a Python experiment testing whether pre-June 2025 LLMs can "reinvent" Gwern's Daydreaming Loop concept through combinatorial testing. The system uses Dagster for data pipeline orchestration with asset-based architecture.
 
-## Architecture
-
-### Core Architecture
-
-The project uses **Dagster** for data pipeline orchestration, with a modern asset-based approach:
-
-- **Assets**: Data artifacts with lineage tracking and dependency management
-- **Resources**: Configurable services (LLM clients, experiment configuration, I/O managers)
-- **Partitions**: Dynamic partitioning for scalable LLM task processing
-
-### Project Structure
-
-- `daydreaming_dagster/` - Main Dagster package with assets, resources, and definitions
-- `tests/` - Integration tests (mostly what we have)
-- `data/` - Data pipeline stages (1_raw, 2_tasks, 5_parsing, experiments)
-
-# Package Management
-
-This project uses **uv** for fast Python package management and dependency resolution.
-
-## Common Development Commands
+## Development Commands
 
 ### Installation
 ```bash
@@ -42,145 +22,19 @@ uv run dagster asset materialize --select "asset_name"     # Materialize specifi
 
 ### Testing & Code Quality
 ```bash
-uv run pytest                                 # Run all tests
-uv run pytest daydreaming_dagster/           # Unit tests only
-uv run pytest tests/                         # Integration tests only
-uv run black .                               # Format code
-uv run ruff check                            # Check code style
+.venv/bin/pytest                              # Run all tests (preferred)
+.venv/bin/pytest daydreaming_dagster/         # Unit tests only
+.venv/bin/pytest tests/                       # Integration tests only
+uv run black .                                # Format code
+uv run ruff check                             # Check code style
 ```
 
-## Test-Driven Development (TDD)
+Note: prefer `.venv/bin/pytest` instead of `uv run pytest` — uv may attempt to write to a global cache outside the sandboxed filesystem, which can fail under restricted execution.
 
-This project follows strict TDD practices:
+## Key Guidelines
 
-    Always write tests first - Use the test-writer subagent for creating failing tests
-    Red-Green-Refactor cycle - Tests must fail before implementation begins
-    No implementation without tests - Every feature needs failing tests first
-
-#### Available Subagents
-
-    test-writer: Creates failing tests for new features and bug reproduction. Use when you need comprehensive test coverage before implementation.
-
-#### TDD Workflow
-
-1. Define feature requirements or bug reports
-2. **CRITICAL**: Ensure no implementation exists yet - if you've already implemented the feature, revert/undo the changes first
-3. Invoke test-writer to create failing tests
-4. Verify tests fail for the correct reasons (RED phase)
-5. Implement code to make tests pass (GREEN phase)  
-6. Refactor while keeping tests green (REFACTOR phase)
-
-#### ⚠️ Important TDD Constraints
-
-**The test-writer agent requires unchanged code**: If you've already implemented a feature, you MUST revert those changes before using test-writer. The agent creates tests that expect to fail, but if the implementation already exists, the tests will pass immediately, breaking the TDD cycle.
-
-**Example Problem**:
-```
-❌ WRONG: Implement enhanced error handling → Use test-writer → Tests pass (not TDD)
-✅ CORRECT: Use test-writer → Tests fail → Implement enhanced error handling → Tests pass
-```
-
-**Recovery Strategy**: If you accidentally implement before testing:
-1. Identify what needs to be reverted (git diff, git status)
-2. Revert the implementation changes (git stash, manual undo, etc.)
-3. Use test-writer to create failing tests
-4. Re-implement the feature to make tests pass
-
-
-## Testing Structure
-
-### Test Organization
-
-#### Unit Tests (Fast, Isolated)
-- **Location**: Colocated with the modules they test
-- **Purpose**: Test individual functions/classes in isolation
-- **Data Access**: **MUST NOT** access files in the `data/` directory
-- **Dependencies**: Use mocking for external dependencies (APIs, file systems, etc.)
-- **Performance**: Should run quickly (<1 second per test)
-
-#### Integration Tests (Component Interaction)
-- **Location**: `tests/` directory only
-- **Purpose**: Test component interactions and workflows with real data
-- **Data Access**: **CAN** read from `data/` directory when testing data-dependent functionality
-- **Data Requirements**: **MUST FAIL** if required data files are missing (no graceful skipping)
-- **API Restrictions**: **MUST NOT** make real API calls (use proper mocking)
-
-
-## Design Principles
-
-**Dependency Injection**: Dependencies are passed as constructor parameters rather than created internally for better testability and modularity.
-
-**Selective Loading**: The pipeline supports filtering templates for faster development using `template_names_filter` parameter. Concepts are filtered using the `active` column in `concepts_metadata.csv`.
-
-**Jinja2 Templates**: Prompt templates are stored as text files using Jinja2 syntax. Templates receive a `concepts` list with `name`, `concept_id`, and `content` keys.
-
-**Memory-Efficient Processing**: Assets process data sequentially to handle large datasets without memory constraints. Files are read one at a time rather than loading all into memory.
-
-**Proper Dagster I/O Architecture**: All file access uses configured I/O managers rather than hardcoded paths, ensuring test isolation and production flexibility.
-
-**Robust Parser Architecture**: The evaluation response parser handles multiple LLM response formats:
-- Multi-line score detection (searches last 3 non-empty lines)
-- Markdown formatting support (`**SCORE: 7**`)  
-- Multiple score formats (standard numeric and three-digit averages)
-- Automatic strategy selection based on evaluation template
-
-**Evaluation Asset Architecture**: The evaluation assets use an intentional "Manual IO with Foreign Keys" pattern:
-- `evaluation_prompt` uses foreign key relationships to load `generation_response` data from different partitions
-- Uses MockLoadContext pattern to bypass normal Dagster input/output for complex partition relationships  
-- Documented in `docs/architecture/architecture.md` with comprehensive error handling and troubleshooting
-- Alternative approaches (multi-dimensional partitions) are documented in `plans/` for future consideration
-
-## Development Guidelines
-
-- Code should fail early rather than using defensive programming
-- Focus on simplicity and clarity
+- **See AGENTS.md for comprehensive development guidelines** - it contains up-to-date testing practices, commit guidelines, and coding standards
+- Use dependency injection for testability
+- Fail early with clear error messages rather than defensive programming  
 - Commit formatting changes separately from functional changes
-- Only run `black` when there are no uncommitted changes
-
-### When to Use Manual IO with Foreign Keys
-
-Use the MockLoadContext pattern (like in `evaluation_prompt`) when:
-- ✅ Assets have foreign key relationships in their task tables
-- ✅ Partition schemes don't align between dependent assets
-- ✅ You need flexible, conditional data loading based on database relationships
-- ✅ Simple 1:1 partition mapping won't work
-
-Avoid this pattern when:
-- ❌ You have simple 1:1 partition relationships (use normal Dagster inputs)
-- ❌ Dagster's built-in partition mapping can handle your use case
-- ❌ The dependency needs to be visible in Dagster UI (consider multi-dimensional partitions)
-
-### Pattern Template for Manual IO Loading
-
-```python
-# 1. Extract foreign key from task data
-fk_id = task_row["foreign_key_column"]
-
-# 2. Validate the foreign key
-if not fk_id or fk_id.strip() == "":
-    raise Failure("Invalid foreign key...")
-
-# 3. Create mock context for cross-partition loading  
-class MockLoadContext:
-    def __init__(self, partition_key):
-        self.partition_key = partition_key
-
-mock_context = MockLoadContext(fk_id)
-
-# 4. Load data with comprehensive error handling
-try:
-    data = io_manager.load_input(mock_context)
-    context.log.info(f"Loaded {len(data)} chars from FK {fk_id}")
-except FileNotFoundError as e:
-    # Add rich metadata and resolution steps
-    raise Failure(f"Missing data for FK {fk_id}", metadata={...}) from e
-
-# 5. Add output metadata showing FK relationship
-context.add_output_metadata({
-    "fk_relationship": MetadataValue.text(f"current:{task_id} -> foreign:{fk_id}")
-})
-```
-
-## File Management Notes
-
-- Don't edit data/1_raw/generation_templates/gwern_original.txt - it is copied from the essay and we don't optimize it
+- Don't edit `data/1_raw/generation_templates/gwern_original.txt` - it's copied from the essay
