@@ -12,18 +12,18 @@ What the assets do
   - active draft/essay/evaluation templates
   - active generation/evaluation model IDs
   - Writes the manifest to `data/cohorts/<cohort_id>/manifest.json` and returns the cohort ID.
-- Asset `cohort_membership` (group `cohort`) builds an authoritative membership file and registers dynamic partitions:
+- Asset `cohort_membership` (group `task_definitions`) builds an authoritative membership file and registers dynamic partitions:
   - Reads `data/2_tasks/selected_essays.txt` (one gen_id per line) when present; otherwise uses the active axes (Cartesian).
-  - Writes `data/cohorts/<cohort_id>/membership.csv` with wide rows per stage:
+  - Writes `data/cohorts/<cohort_id>/membership.csv` with wide rows per stage (no task_id columns):
     - Common: `stage`, `gen_id`, `cohort_id`
-    - Draft: `draft_task_id`, `combo_id`, `draft_template`, `generation_model`, `generation_model_name`
-    - Essay: `essay_task_id`, `parent_gen_id` (draft), `draft_task_id`, `combo_id`, `draft_template`, `essay_template`, `generation_model`, `generation_model_name`
-    - Evaluation: `evaluation_task_id`, `parent_gen_id` (essay), `evaluation_template`, `evaluation_model`, `evaluation_model_name`, optional `parser`
+    - Draft: `combo_id`, `draft_template`, `generation_model`, `generation_model_name`
+    - Essay: `parent_gen_id` (draft), `combo_id`, `draft_template`, `essay_template`, `generation_model`, `generation_model_name`
+    - Evaluation: `parent_gen_id` (essay), `evaluation_template`, `evaluation_model`, `evaluation_model_name`, optional `parser`
   - Registers dynamic partitions add‑only for draft/essay/evaluation.
   - Enforces parent integrity (essays → drafts; evaluations → essays) within the same cohort.
 
 How it propagates
-- Task assets (`draft_generation_tasks`, `essay_generation_tasks`, `evaluation_tasks`) project their tables directly from membership.csv when present; otherwise they fall back to legacy active‑axes derivation.
+- Task assets (`draft_generation_tasks`, `essay_generation_tasks`, `evaluation_tasks`) project their tables directly from membership.csv when present and compute task_id columns from the other fields. Otherwise they fall back to legacy active‑axes derivation.
 - All gens `metadata.json` files include `cohort_id`.
 
 Overrides

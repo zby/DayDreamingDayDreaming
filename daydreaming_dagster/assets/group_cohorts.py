@@ -200,13 +200,12 @@ def cohort_membership(
             essay_task_id = f"{draft_task_id}__{essay_tpl}"
             essay_cohort_gen = reserve_gen_id("essay", essay_task_id, run_id=cohort_id)
 
-            # Draft row
+            # Draft row (no task_id stored; compute when needed)
             rows.append(
                 {
                     "stage": "draft",
                     "gen_id": draft_cohort_gen,
                     "cohort_id": str(cohort_id),
-                    "draft_task_id": draft_task_id,
                     "combo_id": combo_id,
                     "draft_template": draft_tpl,
                     "generation_model": model_id,
@@ -214,15 +213,13 @@ def cohort_membership(
                 }
             )
 
-            # Essay row
+            # Essay row (no task_ids stored)
             rows.append(
                 {
                     "stage": "essay",
                     "gen_id": essay_cohort_gen,
                     "cohort_id": str(cohort_id),
-                    "essay_task_id": essay_task_id,
                     "parent_gen_id": draft_cohort_gen,
-                    "draft_task_id": draft_task_id,
                     "combo_id": combo_id,
                     "draft_template": draft_tpl,
                     "essay_template": essay_tpl,
@@ -244,7 +241,6 @@ def cohort_membership(
                             "stage": "evaluation",
                             "gen_id": eval_gen_id,
                             "cohort_id": str(cohort_id),
-                            "evaluation_task_id": eval_task_id,
                             "parent_gen_id": essay_gen_id,
                             "evaluation_template": tpl,
                             "evaluation_model": mid,
@@ -286,7 +282,6 @@ def cohort_membership(
                             "stage": "draft",
                             "gen_id": draft_cohort_gen,
                             "cohort_id": str(cohort_id),
-                            "draft_task_id": draft_task_id,
                             "combo_id": combo_id,
                             "draft_template": draft_tpl,
                             "generation_model": mid,
@@ -300,12 +295,12 @@ def cohort_membership(
             essay_tpl_df = essay_tpl_df[essay_tpl_df["active"] == True]
         draft_rows = [r for r in rows if r.get("stage") == "draft"]
         for d in draft_rows:
-            draft_task_id = str(d.get("draft_task_id"))
             draft_cohort_gen = str(d.get("gen_id"))
             draft_tpl = str(d.get("draft_template"))
             combo_id = str(d.get("combo_id"))
             mid = str(d.get("generation_model"))
             mname = str(d.get("generation_model_name"))
+            draft_task_id = f"{combo_id}__{draft_tpl}__{mid}"
             for _, et in essay_tpl_df.iterrows():
                 essay_tpl = str(et["template_id"])
                 essay_task_id = f"{draft_task_id}__{essay_tpl}"
@@ -317,7 +312,6 @@ def cohort_membership(
                         "cohort_id": str(cohort_id),
                         "essay_task_id": essay_task_id,
                         "parent_gen_id": draft_cohort_gen,
-                        "draft_task_id": draft_task_id,
                         "combo_id": combo_id,
                         "draft_template": draft_tpl,
                         "essay_template": essay_tpl,
@@ -339,7 +333,6 @@ def cohort_membership(
                             "stage": "evaluation",
                             "gen_id": eval_gen_id,
                             "cohort_id": str(cohort_id),
-                            "evaluation_task_id": eval_task_id,
                             "parent_gen_id": essay_gen_id,
                             "evaluation_template": tpl,
                             "evaluation_model": mid,

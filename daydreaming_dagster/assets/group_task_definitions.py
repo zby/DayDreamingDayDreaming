@@ -311,19 +311,14 @@ def draft_generation_tasks(
     mdf = _read_membership_rows(data_root, resolved_cohort)
     if mdf is not None and not mdf.empty:
         draft_df = mdf[mdf.get("stage") == "draft"].copy()
-        cols = [
-            "draft_task_id",
-            "combo_id",
-            "draft_template",
-            "generation_model",
-            "generation_model_name",
-            "gen_id",
-            "cohort_id",
-        ]
-        # Ensure expected columns exist even if empty
-        for c in cols:
+        for c in ("combo_id","draft_template","generation_model","generation_model_name","gen_id","cohort_id"):
             if c not in draft_df.columns:
                 draft_df[c] = pd.Series(dtype=str)
+        draft_df["draft_task_id"] = draft_df.apply(
+            lambda r: f"{str(r.get('combo_id') or '').strip()}__{str(r.get('draft_template') or '').strip()}__{str(r.get('generation_model') or '').strip()}",
+            axis=1,
+        )
+        cols = ["draft_task_id","combo_id","draft_template","generation_model","generation_model_name","gen_id","cohort_id"]
         out = draft_df[cols].drop_duplicates(subset=["gen_id"]).reset_index(drop=True)
         # Register partitions add-only
         existing = set(context.instance.get_dynamic_partitions(draft_gens_partitions.name))
@@ -401,21 +396,20 @@ def essay_generation_tasks(
     mdf = _read_membership_rows(data_root, resolved_cohort)
     if mdf is not None and not mdf.empty:
         essay_df = mdf[mdf.get("stage") == "essay"].copy()
-        cols = [
-            "essay_task_id",
-            "parent_gen_id",
-            "draft_task_id",
-            "combo_id",
-            "draft_template",
-            "essay_template",
-            "generation_model",
-            "generation_model_name",
-            "gen_id",
-            "cohort_id",
-        ]
-        for c in cols:
+        for c in ("parent_gen_id","combo_id","draft_template","essay_template","generation_model","generation_model_name","gen_id","cohort_id"):
             if c not in essay_df.columns:
                 essay_df[c] = pd.Series(dtype=str)
+        essay_df["draft_task_id"] = essay_df.apply(
+            lambda r: f"{str(r.get('combo_id') or '').strip()}__{str(r.get('draft_template') or '').strip()}__{str(r.get('generation_model') or '').strip()}",
+            axis=1,
+        )
+        essay_df["essay_task_id"] = essay_df.apply(
+            lambda r: f"{str(r.get('draft_task_id') or '').strip()}__{str(r.get('essay_template') or '').strip()}",
+            axis=1,
+        )
+        cols = [
+            "essay_task_id","parent_gen_id","draft_task_id","combo_id","draft_template","essay_template","generation_model","generation_model_name","gen_id","cohort_id",
+        ]
         out = essay_df[cols].drop_duplicates(subset=["gen_id"]).reset_index(drop=True)
         # Register partitions add-only
         existing = set(context.instance.get_dynamic_partitions(essay_gens_partitions.name))
