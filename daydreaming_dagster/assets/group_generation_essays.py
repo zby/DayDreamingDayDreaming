@@ -11,7 +11,6 @@ from .partitions import essay_gens_partitions
 from ..utils.template_loader import load_generation_template
 from ..utils.raw_readers import read_essay_templates
 from ..utils.dataframe_helpers import get_task_row
-from ..utils.raw_write import save_versioned_raw_text
 from ..utils.ids import (
     gen_dir as build_gen_dir,
 )
@@ -289,7 +288,7 @@ def _essay_response_impl(context, essay_prompt, essay_generation_tasks) -> str:
             },
         )
 
-    # Default LLM path (with RAW side-write + truncation guard)
+    # Default LLM path (persist RAW early; apply truncation guard)
     model_name = task_row["generation_model_name"]
     llm_client = context.resources.openrouter_client
     max_tokens = context.resources.experiment_config.essay_generation_max_tokens
@@ -297,15 +296,26 @@ def _essay_response_impl(context, essay_prompt, essay_generation_tasks) -> str:
 
     normalized = str(text).replace("\r\n", "\n")
 
-    # Side-write RAW essay response with versioning
-    experiment_config = getattr(context.resources, "experiment_config", None)
-    save_raw = bool(getattr(experiment_config, "save_raw_essay_enabled", True))
-    raw_dir_override = getattr(experiment_config, "raw_essay_dir_override", None)
+    # Persist RAW to gens store immediately so it exists even if we later fail (e.g., truncation)
     data_root = Path(getattr(context.resources, "data_root", "data"))
-    raw_dir = Path(raw_dir_override) if raw_dir_override else data_root / "3_generation" / "essay_responses_raw"
-    raw_path_str = None
-    if save_raw:
-        raw_path_str = save_versioned_raw_text(raw_dir, str(gen_id), normalized, logger=context.log)
+    try:
+        _gen0 = Generation(
+            stage="essay",
+            gen_id=str(gen_id),
+            parent_gen_id=str(parent_gen_id) if parent_gen_id else None,
+            raw_text=normalized,
+            parsed_text=None,
+            prompt_text=essay_prompt if isinstance(essay_prompt, str) else None,
+            metadata={
+                "function": "essay_response",
+                "gen_id": str(gen_id),
+                "parent_gen_id": str(parent_gen_id) if parent_gen_id else "",
+            },
+        )
+        _gen0.write_files(data_root / "gens")
+        raw_path_str = str((_gen0.target_dir(data_root / "gens") / "raw.txt").resolve())
+    except Exception:
+        raw_path_str = None
 
     # Truncation detection: explicit flag or finish_reason=length
     finish_reason = (info or {}).get("finish_reason") if isinstance(info, dict) else None

@@ -205,7 +205,7 @@ uv run pytest --cov=daydreaming_dagster
 
 - `OPENROUTER_API_KEY`: OpenRouter API key for LLM access
 - `DAGSTER_HOME`: Dagster metadata storage (set to absolute path of `dagster_home/` directory)
-- Gens store layout: Draft/essay/evaluation prompts and responses are stored under `data/gens/<stage>/<gen_id>` as `prompt.txt`, `raw.txt`, `parsed.txt`, and `metadata.json`. RAW side-writes for debugging may still use versioned files (e.g., `3_generation/draft_responses_raw/{gen_id}_vN.txt`).
+- Gens store layout: Draft/essay/evaluation prompts and responses are stored under `data/gens/<stage>/<gen_id>` as `prompt.txt`, `raw.txt`, `parsed.txt`, and `metadata.json`.
 
 ### Versioned Files Utility
 
@@ -220,7 +220,7 @@ Example:
 from pathlib import Path
 from daydreaming_dagster.utils.versioned_files import save_versioned_text, latest_versioned_path
 
-raw_dir = Path(data_root) / "3_generation" / "essay_responses_raw"
+# RAW is persisted in the gens store; no legacy side-write directories are used.
 path_str = save_versioned_text(raw_dir, task_id, raw_text)
 
 essay_dir = Path(data_root) / "3_generation" / "essay_responses"

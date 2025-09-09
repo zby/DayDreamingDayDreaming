@@ -12,7 +12,7 @@ Gotchas (and fixes)
 - Key consistency: `gen_id` is the ground truth for partitions. Use `parent_gen_id` to link stages.
 - Cross‑phase reads: assets like `essay_prompt` and `evaluation_prompt` load upstream text by `parent_gen_id` directly from the filesystem (`data/gens/<stage>/<gen_id>`); no cross‑partition IO‑manager context is needed.
 - Stale CSVs: if a downstream asset expects new columns in `parsed_scores` (e.g., `draft_template`) and fails, rematerialize upstream with a clear error. Example: `uv run dagster asset materialize --select parsed_scores -f daydreaming_dagster/definitions.py`.
-- File names: files are stored under `data/gens/<stage>/<gen_id>` with fixed filenames; no `{id}_vN.txt` for prompts/responses (versioned RAW side-writes may still exist for debugging under `3_generation/*_raw`).
+- File names: files are stored under `data/gens/<stage>/<gen_id>` with fixed filenames; no `{id}_vN.txt` for prompts/responses.
 
 Why not multi‑dimensional partitions?
 - Dagster supports only 2D multi‑partitions; our model has ≥3 dimensions. Encoding them into composite keys adds more complexity than our task tables + dynamic partitions. We’ll revisit if Dagster adds richer partitioning.

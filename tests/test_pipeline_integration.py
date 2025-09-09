@@ -388,15 +388,11 @@ class TestPipelineIntegration:
                     [],
                 )
 
-                # Additionally verify that for any failed draft partitions, RAW outputs were saved (legacy raw dir)
+                # Additionally verify that for any failed draft partitions, RAW outputs were saved in gens store
                 if failed_gen_partitions:
-                    raw_dir = pipeline_data_root / "3_generation" / "draft_responses_raw"
-                    assert raw_dir.exists(), "RAW draft directory should exist when drafts fail"
-                    existing = {p.name for p in raw_dir.glob("*.txt")}
                     for pk in failed_gen_partitions:
-                        # Any version suffix is acceptable, ensure at least one raw file exists for this partition
-                        matches = [name for name in existing if name.startswith(f"{pk}_v") and name.endswith(".txt")]
-                        assert matches, f"RAW draft not saved for failed partition: {pk}"
+                        raw_fp = pipeline_data_root / "gens" / "draft" / str(pk) / "raw.txt"
+                        assert raw_fp.exists(), f"RAW draft not saved for failed partition in gens store: {pk}"
                 print("🎉 Task setup workflow test passed successfully!")
 
     def test_combo_mappings_normalized_structure(self):

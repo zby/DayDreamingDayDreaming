@@ -39,7 +39,7 @@ Only a subset on each axis is marked active for the current experiment; the cube
 - Axes (example): `content_combinations × draft_templates × generation_models` → draft tasks; then `draft_tasks × essay_templates` → essay tasks.
 - Example outputs:
 - Draft gens: `data/gens/draft/<gen_id>/{prompt.txt,raw.txt,parsed.txt,metadata.json}`
-  - RAW (optional side-write): `data/3_generation/draft_responses_raw/{gen_id}_vN.txt` (useful when Phase‑1 parsing fails)
+  - RAW is persisted under the gens store; on failures, `raw.txt` still exists for debugging.
   - Essay gens: `data/gens/essay/<gen_id>/{prompt.txt,raw.txt,parsed.txt,metadata.json}`
 - Legacy example: one‑phase essays under `data/3_generation/generation_responses/{combo_id}_{essay_template}_{model_id}.txt`.
 
@@ -121,7 +121,7 @@ Optional run tags:
 ## Data Hygiene and Overwrite Rules
 
 - Prompts overwrite is allowed (reflect latest templates).
-- Responses are stored under `data/gens/<stage>/<gen_id>`. New generations receive fresh `gen_id`s; prompts may overwrite to reflect template changes. Optional RAW side-writes may be versioned for debugging.
+- Responses are stored under `data/gens/<stage>/<gen_id>`. New generations receive fresh `gen_id`s; prompts may overwrite to reflect template changes.
 - This ensures historical experiments remain intact while allowing iterative prompt/template tweaks.
 
 ## Naming: “Active Experiment Cube” vs Alternatives

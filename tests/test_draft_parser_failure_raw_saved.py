@@ -98,10 +98,8 @@ def test_draft_parser_failure_saves_raw_then_fails(tmp_path: Path):
     with pytest.raises(Failure):
         _ = draft_response_impl(ctx, draft_prompt="ignored", draft_generation_tasks=tasks)
 
-    # And RAW should be saved to data/3_generation/draft_responses_raw/<id>_v1.txt
-    raw_dir = tmp_path / "3_generation" / "draft_responses_raw"
-    assert raw_dir.exists(), "RAW directory not created"
-    files = list(raw_dir.glob(f"{gen_id}_v*.txt"))
-    assert files, "RAW file not written"
-    content = files[0].read_text(encoding="utf-8")
+    # And RAW should be saved to gens store under data/gens/draft/<gen_id>/raw.txt
+    raw_fp = tmp_path / "gens" / "draft" / gen_id / "raw.txt"
+    assert raw_fp.exists(), "RAW file not created in gens store"
+    content = raw_fp.read_text(encoding="utf-8")
     assert content == raw_text

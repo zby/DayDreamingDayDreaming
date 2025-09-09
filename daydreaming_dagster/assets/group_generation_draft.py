@@ -13,7 +13,6 @@ from ..utils.template_loader import load_generation_template
 from ..utils.raw_readers import read_draft_templates
 from ..utils.draft_parsers import get_draft_parser
 from ..utils.dataframe_helpers import get_task_row
-from ..utils.raw_write import save_versioned_raw_text
 from ..utils.document import Generation
 from ..utils.metadata import build_generation_metadata
 
@@ -107,15 +106,28 @@ def _draft_response_impl(context, draft_prompt, draft_generation_tasks) -> str:
     # Unified client path
     text, info = llm_client.generate_with_info(draft_prompt, model=model_name, max_tokens=max_tokens)
 
-    # Normalize newlines and save RAW immediately (before any validation) to aid debugging
+    # Normalize newlines and persist RAW immediately (before any validation) to aid debugging
     normalized = str(text).replace("\r\n", "\n")
-    save_raw = bool(getattr(experiment_config, "save_raw_draft_enabled", True))
-    raw_dir_override = getattr(experiment_config, "raw_draft_dir_override", None)
     data_root = Path(getattr(context.resources, "data_root", "data"))
-    raw_dir = Path(raw_dir_override) if raw_dir_override else data_root / "3_generation" / "draft_responses_raw"
-    raw_path_str = None
-    if save_raw:
-        raw_path_str = save_versioned_raw_text(raw_dir, str(gen_id), normalized, logger=context.log)
+    # Persist RAW to gens store right away so it exists even if parsing fails
+    try:
+        from ..utils.document import Generation as _Gen
+        _gen = _Gen(
+            stage="draft",
+            gen_id=str(gen_id),
+            parent_gen_id=None,
+            raw_text=normalized,
+            parsed_text=None,
+            prompt_text=draft_prompt if isinstance(draft_prompt, str) else None,
+            metadata={
+                "function": "draft_response",
+                "gen_id": str(gen_id),
+            },
+        )
+        _gen.write_files(data_root / "gens")
+        raw_path_str = str((_gen.target_dir(data_root / "gens") / "raw.txt").resolve())
+    except Exception:
+        raw_path_str = None
 
     # Validate minimum lines after ensuring RAW is persisted
     response_lines = [line.strip() for line in normalized.split("\n") if line.strip()]
