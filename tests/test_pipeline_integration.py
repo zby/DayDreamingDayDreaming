@@ -25,7 +25,7 @@ def pipeline_data_root_prepared():
     Steps:
     - Clean tests/data_pipeline_test
     - Copy data/1_raw into tests/data_pipeline_test/1_raw
-    - Create output dirs (2_tasks, 3_generation/{draft_prompts,draft_responses,essay_prompts,essay_responses})
+    - Create output dirs (2_tasks, gens/) for gen-id–keyed prompts/responses
     - Limit active rows: concepts (2), draft_templates (1), essay_templates (1), evaluation_templates (2), llm_models for_generation (2)
     - Return Path to tests/data_pipeline_test
     """
@@ -38,14 +38,8 @@ def pipeline_data_root_prepared():
         shutil.rmtree(pipeline_data_root)
     (pipeline_data_root / "1_raw").mkdir(parents=True)
     (pipeline_data_root / "2_tasks").mkdir(parents=True)
-    # Legacy single-phase dirs no longer needed
-    # Two-phase generation directories
-    (pipeline_data_root / "3_generation" / "draft_prompts").mkdir(parents=True)
-    (pipeline_data_root / "3_generation" / "draft_responses").mkdir(parents=True)
-    (pipeline_data_root / "3_generation" / "essay_prompts").mkdir(parents=True)
-    (pipeline_data_root / "3_generation" / "essay_responses").mkdir(parents=True)
-    (pipeline_data_root / "4_evaluation" / "evaluation_prompts").mkdir(parents=True)
-    (pipeline_data_root / "4_evaluation" / "evaluation_responses").mkdir(parents=True)
+    # Gen store (prompts/responses live under data/gens/<stage>/<gen_id>/)
+    (pipeline_data_root / "gens").mkdir(parents=True)
     (pipeline_data_root / "5_parsing").mkdir(parents=True)
     (pipeline_data_root / "6_summary").mkdir(parents=True)
     (pipeline_data_root / "7_reporting").mkdir(parents=True)
@@ -172,38 +166,24 @@ class TestPipelineIntegration:
             for combo_id in gen_tasks_df["combo_id"].unique():
                 assert combo_id.startswith("combo_"), f"Invalid combo_id format: {combo_id}"
         
-        # Two-phase generation files (3_generation/)
-        draft_prompt_dir = test_directory / "3_generation" / "draft_prompts"
-        draft_response_dir = test_directory / "3_generation" / "draft_responses"
-        essay_prompt_dir = test_directory / "3_generation" / "essay_prompts"
-        essay_response_dir = test_directory / "3_generation" / "essay_responses"
-        
+        # Gen store verification under data/gens/
+        gens_root = test_directory / "gens"
         for partition in test_gen_partitions:
-            # Verify draft-phase files exist
-            draft_prompt_file = draft_prompt_dir / f"{partition}.txt"
-            draft_response_file = draft_response_dir / f"{partition}.txt"
-            # essay files are keyed by essay_task_id; checked elsewhere
-            
-            assert draft_prompt_file.exists(), f"Draft prompt not created: {draft_prompt_file}"
-            assert draft_response_file.exists(), f"Draft response not created: {draft_response_file}"
-            
-            # Verify file sizes
-            assert draft_prompt_file.stat().st_size > 0, f"Draft prompt is empty: {draft_prompt_file}"
-            assert draft_response_file.stat().st_size > 0, f"Draft response is empty: {draft_response_file}"
-            # essay file content checks removed since keys differ
-        
-        # Evaluation files (4_evaluation/) - Check if they exist but don't require them
-        eval_prompt_dir = test_directory / "4_evaluation" / "evaluation_prompts"
-        eval_response_dir = test_directory / "4_evaluation" / "evaluation_responses"
-        
-        eval_files_exist = False
-        if eval_prompt_dir.exists() and eval_response_dir.exists():
-            eval_files = list(eval_prompt_dir.glob("*.txt")) + list(eval_response_dir.glob("*.txt"))
-            if len(eval_files) > 0:
-                eval_files_exist = True
-                print(f"✓ Found {len(eval_files)} evaluation files")
-        
-        if not eval_files_exist:
+            draft_dir = gens_root / "draft" / str(partition)
+            prompt_fp = draft_dir / "prompt.txt"
+            parsed_fp = draft_dir / "parsed.txt"
+            assert prompt_fp.exists(), f"Draft prompt not created: {prompt_fp}"
+            assert parsed_fp.exists(), f"Draft parsed.txt not created: {parsed_fp}"
+            assert prompt_fp.stat().st_size > 0, f"Draft prompt is empty: {prompt_fp}"
+            assert parsed_fp.stat().st_size > 0, f"Draft parsed.txt is empty: {parsed_fp}"
+
+        # Evaluation files (gens/evaluation/) - Check if they exist but don't require them
+        eval_root = gens_root / "evaluation"
+        eval_files_exist = any(eval_root.rglob("prompt.txt")) or any(eval_root.rglob("raw.txt")) or any(eval_root.rglob("parsed.txt"))
+        if eval_files_exist:
+            count = sum(1 for _ in eval_root.rglob("prompt.txt")) + sum(1 for _ in eval_root.rglob("raw.txt")) + sum(1 for _ in eval_root.rglob("parsed.txt"))
+            print(f"✓ Found {count} evaluation gens-store files")
+        else:
             print("⚠ Evaluation files not generated (expected - cross-partition complexity)")
         
         # Results files (5_parsing/ & 6_summary/) - these may not exist if not enough evaluation data
@@ -258,9 +238,8 @@ class TestPipelineIntegration:
                 from daydreaming_dagster.assets.group_evaluation import (
                     evaluation_prompt, evaluation_response
                 )
-                from daydreaming_dagster.resources.io_managers import (
-                    CSVIOManager, PartitionedTextIOManager
-                )
+                from daydreaming_dagster.resources.io_managers import CSVIOManager, InMemoryIOManager
+                from daydreaming_dagster.resources.gens_prompt_io_manager import GensPromptIOManager
                 from daydreaming_dagster.resources.experiment_config import ExperimentConfig
 
                 resources = {
@@ -268,31 +247,31 @@ class TestPipelineIntegration:
                     "openrouter_client": CannedLLMResource(),
                     # no documents_index resource in filesystem-only mode
                     "csv_io_manager": CSVIOManager(base_path=pipeline_data_root / "2_tasks"),
-                    # Two-phase generation I/O managers
-                    "draft_prompt_io_manager": PartitionedTextIOManager(
-                        base_path=pipeline_data_root / "3_generation" / "draft_prompts",
-                        overwrite=True
+                    # Prompt IO to gens store; responses written by assets to gens store; keep responses in-memory
+                    "draft_prompt_io_manager": GensPromptIOManager(
+                        gens_root=pipeline_data_root / "gens",
+                        tasks_root=pipeline_data_root / "2_tasks",
+                        stage="draft",
+                        tasks_csv_name=None,
+                        id_col="gen_id",
                     ),
-                    "draft_response_io_manager": PartitionedTextIOManager(
-                        base_path=pipeline_data_root / "3_generation" / "draft_responses",
-                        overwrite=True
+                    "draft_response_io_manager": InMemoryIOManager(),
+                    "essay_prompt_io_manager": GensPromptIOManager(
+                        gens_root=pipeline_data_root / "gens",
+                        tasks_root=pipeline_data_root / "2_tasks",
+                        stage="essay",
+                        tasks_csv_name=None,
+                        id_col="gen_id",
                     ),
-                    "essay_prompt_io_manager": PartitionedTextIOManager(
-                        base_path=pipeline_data_root / "3_generation" / "essay_prompts",
-                        overwrite=True
+                    "essay_response_io_manager": InMemoryIOManager(),
+                    "evaluation_prompt_io_manager": GensPromptIOManager(
+                        gens_root=pipeline_data_root / "gens",
+                        tasks_root=pipeline_data_root / "2_tasks",
+                        stage="evaluation",
+                        tasks_csv_name=None,
+                        id_col="gen_id",
                     ),
-                    "essay_response_io_manager": PartitionedTextIOManager(
-                        base_path=pipeline_data_root / "3_generation" / "essay_responses",
-                        overwrite=True
-                    ),
-                    "evaluation_prompt_io_manager": PartitionedTextIOManager(
-                        base_path=pipeline_data_root / "4_evaluation" / "evaluation_prompts",
-                        overwrite=True
-                    ),
-                    "evaluation_response_io_manager": PartitionedTextIOManager(
-                        base_path=pipeline_data_root / "4_evaluation" / "evaluation_responses",
-                        overwrite=True
-                    ),
+                    "evaluation_response_io_manager": InMemoryIOManager(),
                     "parsing_results_io_manager": CSVIOManager(base_path=pipeline_data_root / "5_parsing"),
                     "summary_results_io_manager": CSVIOManager(base_path=pipeline_data_root / "6_summary"),
                     "error_log_io_manager": CSVIOManager(base_path=pipeline_data_root / "7_reporting"),
@@ -404,7 +383,7 @@ class TestPipelineIntegration:
                     [],
                 )
 
-                # Additionally verify that for any failed draft partitions, RAW outputs were saved
+                # Additionally verify that for any failed draft partitions, RAW outputs were saved (legacy raw dir)
                 if failed_gen_partitions:
                     raw_dir = pipeline_data_root / "3_generation" / "draft_responses_raw"
                     assert raw_dir.exists(), "RAW draft directory should exist when drafts fail"
@@ -568,7 +547,7 @@ class TestPipelineIntegration:
                 from daydreaming_dagster.assets.group_task_definitions import (
                     selected_combo_mappings, content_combinations, draft_generation_tasks
                 )
-                from daydreaming_dagster.resources.io_managers import CSVIOManager, PartitionedTextIOManager
+                from daydreaming_dagster.resources.io_managers import CSVIOManager
                 from daydreaming_dagster.resources.experiment_config import ExperimentConfig
                 
                 test_data_root = str(temp_data_dir)
@@ -577,9 +556,6 @@ class TestPipelineIntegration:
                     "data_root": test_data_root,
                     # no documents_index resource in filesystem-only mode
                     "csv_io_manager": CSVIOManager(base_path=Path(test_data_root) / "2_tasks"),
-                    # legacy io managers removed in simplified architecture
-                    "evaluation_prompt_io_manager": PartitionedTextIOManager(base_path=Path(test_data_root) / "4_evaluation" / "evaluation_prompts"),
-                    "evaluation_response_io_manager": PartitionedTextIOManager(base_path=Path(test_data_root) / "4_evaluation" / "evaluation_responses"),
                     "parsing_results_io_manager": CSVIOManager(base_path=Path(test_data_root) / "5_parsing"),
                     "summary_results_io_manager": CSVIOManager(base_path=Path(test_data_root) / "6_summary"),
                     "error_log_io_manager": CSVIOManager(base_path=Path(test_data_root) / "7_reporting"),

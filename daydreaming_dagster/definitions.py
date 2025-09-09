@@ -51,7 +51,6 @@ from daydreaming_dagster.assets.group_cross_experiment import (
 from daydreaming_dagster.resources.llm_client import LLMClientResource
 from daydreaming_dagster.resources.experiment_config import ExperimentConfig
 from daydreaming_dagster.resources.io_managers import (
-    PartitionedTextIOManager,
     CSVIOManager,
     InMemoryIOManager,
 )
