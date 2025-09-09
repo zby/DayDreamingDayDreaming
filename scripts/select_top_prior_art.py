@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Select top-N documents by prior-art scores (cross-experiment) and write
+Select top-N generations by prior-art scores (cross-experiment) and write
 curated essay generation tasks to data/2_tasks/essay_generation_tasks.csv.
 
 Optionally control writing the curated output via --write-drafts.
@@ -73,8 +73,8 @@ def main() -> int:
     if df.empty or "evaluation_template" not in df.columns:
         print("ERROR: parsed_scores is empty or missing 'evaluation_template' column", file=sys.stderr)
         return 2
-    if "parent_doc_id" not in df.columns:
-        print("ERROR: parsed_scores must include 'parent_doc_id' for grouping (doc-id-first)", file=sys.stderr)
+    if "parent_gen_id" not in df.columns:
+        print("ERROR: parsed_scores must include 'parent_gen_id' for grouping (gen-id-first)", file=sys.stderr)
         return 2
 
     # Filter to available prior-art templates and successful scores
@@ -108,8 +108,8 @@ def main() -> int:
     if filt.empty:
         print("No successful prior-art scores found to select from.", file=sys.stderr)
         return 1
-    # Prefer grouping by parent_doc_id (generation doc) if present; else fallback to document_id
-    key_col = "parent_doc_id"
+    # Group by parent_gen_id (essay generation)
+    key_col = "parent_gen_id"
     best = (
         filt.groupby(key_col)["score"].max().reset_index().sort_values(
             by=["score", key_col], ascending=[False, True]
@@ -117,7 +117,7 @@ def main() -> int:
     )
     top_docs = best.head(args.top_n)[key_col].astype(str).tolist()
     if not top_docs:
-        print("ERROR: No candidates found after filtering and grouping by parent_doc_id.", file=sys.stderr)
+        print("ERROR: No candidates found after filtering and grouping by parent_gen_id.", file=sys.stderr)
         print(f"Filters: templates={available}, top_n={args.top_n}", file=sys.stderr)
         return 1
 
@@ -180,10 +180,10 @@ def main() -> int:
     missing_essay_tpl_csv: set[str] = set()
 
     for doc in top_docs:
-        # Doc is the generation (essay) doc_id; use docs store metadata
-        essay_doc_id = str(doc)
+        # Doc is the generation (essay) gen_id; use gens store metadata
+        essay_gen_id = str(doc)
         data_root = Path("data")
-        essay_dir = data_root / "docs" / "essay" / essay_doc_id
+        essay_dir = data_root / "gens" / "essay" / essay_gen_id
         essay_meta = {}
         try:
             mp = essay_dir / "metadata.json"
@@ -194,11 +194,11 @@ def main() -> int:
         essay_template = str(essay_meta.get("template_id") or essay_meta.get("essay_template") or "")
         generation_model = str(essay_meta.get("model_id") or "")
         # Resolve parent draft to get combo_id and draft_template for legacy task ids
-        draft_doc_id = str(essay_meta.get("parent_doc_id") or "")
+        draft_gen_id = str(essay_meta.get("parent_gen_id") or "")
         combo_id = ""
         draft_template = ""
-        if draft_doc_id:
-            draft_meta_path = data_root / "docs" / "draft" / draft_doc_id / "metadata.json"
+        if draft_gen_id:
+            draft_meta_path = data_root / "gens" / "draft" / draft_gen_id / "metadata.json"
             try:
                 if draft_meta_path.exists():
                     dmeta = json.loads(draft_meta_path.read_text(encoding="utf-8")) or {}
@@ -222,8 +222,8 @@ def main() -> int:
                 missing_essay_tpl_files.add(essay_template)
             if known_essay_tpls and essay_template not in known_essay_tpls:
                 missing_essay_tpl_csv.add(essay_template)
-        # For essay generation tasks, parent_doc_id must point to the DRAFT document id
-        parent_doc_id = draft_doc_id
+        # For essay generation tasks, parent_gen_id must point to the DRAFT gen id
+        parent_gen_id = draft_gen_id
         if not (essay_dir / "parsed.txt").exists():
             missing_essays.append(str(essay_dir / "parsed.txt"))
         # Validate required fields
@@ -246,10 +246,10 @@ def main() -> int:
         essay_task_id = f"{draft_task_id}_{essay_template}"
         essay_rows.append({
             "essay_task_id": essay_task_id,
-            # Essay row lineage: parent_doc_id points to the draft doc id
-            "parent_doc_id": parent_doc_id,
-            # Also persist the essay's own doc id for doc-id-first flows
-            "essay_doc_id": essay_doc_id,
+            # Essay row lineage: parent_gen_id points to the draft gen id
+            "parent_gen_id": parent_gen_id,
+            # Also persist the essay's own gen id for gen-id-first flows
+            "essay_gen_id": essay_gen_id,
             "draft_task_id": draft_task_id,
             "combo_id": combo_id,
             "draft_template": draft_template,
@@ -269,14 +269,14 @@ def main() -> int:
                 for msg in missing_required:
                     print(" -", msg, file=sys.stderr)
                 return 2
-            # Ensure doc-id-first: include doc_id for essays.
-            # For curated tasks, the essay doc_id is exactly parent_doc_id from docs metadata.
+            # Ensure gen-id-first: include gen_id for essays.
+            # For curated tasks, the essay gen_id is exactly parent_gen_id from gens metadata.
             df_out = pd.DataFrame(essay_rows, columns=[
-                "essay_task_id","parent_doc_id","essay_doc_id","draft_task_id","combo_id","draft_template",
+                "essay_task_id","parent_gen_id","essay_gen_id","draft_task_id","combo_id","draft_template",
                 "essay_template","generation_model","generation_model_name"
             ]).drop_duplicates(subset=["essay_task_id"]).copy()
-            # Doc-id-first: set essay doc_id to the concrete essay doc id from docs store
-            df_out["doc_id"] = df_out["essay_doc_id"].astype(str)
+            # Gen-id-first: set essay gen_id to the concrete essay gen id from gens store
+            df_out["gen_id"] = df_out["essay_gen_id"].astype(str)
             df_out.to_csv(essay_out_csv, index=False)
             print(f"Wrote {len(essay_rows)} curated essay tasks to {essay_out_csv}")
         else:
@@ -285,7 +285,7 @@ def main() -> int:
                 file=sys.stderr,
             )
             if missing_required:
-                print("Details (per selected parent_doc_id):", file=sys.stderr)
+                print("Details (per selected parent_gen_id):", file=sys.stderr)
                 for msg in missing_required:
                     print(" -", msg, file=sys.stderr)
             return 2
@@ -337,8 +337,8 @@ def main() -> int:
         dt = r.get("draft_template")
         if dt:
             essays_by_draft_tpl.setdefault(str(dt), []).append(str(r.get("essay_task_id")))
-            # parent_doc_id holds the essay doc_id in curated rows
-            ed = r.get("parent_doc_id") or r.get("essay_doc_id")
+            # parent_gen_id holds the essay gen_id in curated rows
+            ed = r.get("parent_gen_id") or r.get("essay_gen_id")
             if ed:
                 essay_doc_ids_by_draft_tpl.setdefault(str(dt), []).append(str(ed))
 
@@ -359,7 +359,7 @@ def main() -> int:
                     continue
                 import json as _json
                 m = _json.loads(meta.read_text(encoding="utf-8")) or {}
-                if str(m.get("parent_doc_id")) in wanted:
+                if str(m.get("parent_gen_id")) in wanted:
                     out.append(d.name)
                     count += 1
                     if count >= limit:
@@ -383,7 +383,7 @@ def main() -> int:
                 # Prefer evaluation doc_ids from docs store when available for these essays
                 if es:
                     eds = essay_doc_ids_by_draft_tpl.get(t) or []
-                    doc_ids = _eval_doc_examples_from_docs(data_root / "docs", eds)
+                    doc_ids = _eval_doc_examples_from_docs(data_root / "gens", eds)
                     if doc_ids:
                         print("   evaluation doc_id examples:", file=sys.stderr)
                         for e in doc_ids[:5]:

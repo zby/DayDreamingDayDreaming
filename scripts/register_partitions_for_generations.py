@@ -17,14 +17,14 @@ Usage example:
   uv run python scripts/register_partitions_for_generations.py \
     --input data/2_tasks/essay_generation_tasks.csv
 
-Doc-ID pinning (default):
-- evaluation_tasks.csv is generated with a pinned parent_doc_id (the essay doc id) for each evaluation task,
-  taken directly from the curated essay_generation_tasks.csv. The input MUST include the essay document id
-  column named `essay_doc_id` (temporary alias `parent_doc_id` accepted for backcompat). The script also
-  reads the essay's metadata.json to optionally include `draft_doc_id`.
-- This script reserves and writes `doc_id` for draft_generation_tasks.csv and evaluation_tasks.csv only.
-  It does NOT modify essay_generation_tasks.csv. It FAILS if the curated essay tasks are missing a `doc_id`
-  column or if any `doc_id` is empty. Recommended: set doc_id = parent_doc_id in curated essays.
+Gen-ID pinning (default):
+- evaluation_tasks.csv is generated with a pinned parent_gen_id (the essay gen id) for each evaluation task,
+  taken directly from the curated essay_generation_tasks.csv. The input MUST include the essay generation id
+  column named `essay_gen_id` (temporary alias `parent_gen_id` accepted). The script also
+  reads the essay's metadata.json to optionally include `draft_gen_id`.
+- This script reserves and writes `gen_id` for draft_generation_tasks.csv and evaluation_tasks.csv only.
+  It does NOT modify essay_generation_tasks.csv. It FAILS if the curated essay tasks are missing a `gen_id`
+  column or if any `gen_id` is empty. Recommended: set gen_id = parent_gen_id in curated essays.
 """
 
 from __future__ import annotations
@@ -40,7 +40,7 @@ import re
 from daydreaming_dagster.utils.evaluation_parsing_config import load_parser_map
 import json
 import pandas as pd
-from daydreaming_dagster.utils.ids import reserve_doc_id
+from daydreaming_dagster.utils.ids import reserve_gen_id
 
 
 def parse_args() -> argparse.Namespace:
@@ -263,12 +263,12 @@ def main() -> int:
         })
         combo_ids.add(str(r["combo_id"]))
 
-    # EARLY VALIDATION: require essay document ids for evaluation lineage before any writes
-    docs_col = "essay_doc_id" if "essay_doc_id" in df.columns else ("parent_doc_id" if "parent_doc_id" in df.columns else None)
+    # EARLY VALIDATION: require essay generation ids for evaluation lineage before any writes
+    docs_col = "essay_gen_id" if "essay_gen_id" in df.columns else ("parent_gen_id" if "parent_gen_id" in df.columns else None)
     if docs_col is None:
         print(
-            "Error: input CSV is missing required column 'essay_doc_id' (temporary alias: 'parent_doc_id').\n"
-            "       Each row must include the essay document id to pin evaluation lineage (doc-id first).\n"
+            "Error: input CSV is missing required column 'essay_gen_id' (temporary alias: 'parent_gen_id').\n"
+            "       Each row must include the essay generation id to pin evaluation lineage (gen-id first).\n"
             f"       File: {input_abs}",
             file=sys.stderr,
         )
@@ -279,31 +279,31 @@ def main() -> int:
     if missing_count:
         sample = df.loc[missing_mask, "essay_task_id"].astype(str).head(5).tolist() if "essay_task_id" in df.columns else []
         print(
-            "Error: essay document ids are required but missing for some rows.\n"
+            "Error: essay generation ids are required but missing for some rows.\n"
             f"       Column '{docs_col}' has {missing_count} empty/missing values.\n"
             f"       Sample essay_task_id(s) missing ids: {sample}.\n"
-            "       Ensure essay responses were produced and recorded, then populate 'essay_doc_id' in the input CSV.\n"
-            "       Tip: you can read doc IDs from data/docs/essay/*/metadata.json or from essay_response run metadata.\n"
+            "       Ensure essay responses were produced and recorded, then populate 'essay_gen_id' in the input CSV.\n"
+            "       Tip: you can read gen IDs from data/gens/essay/*/metadata.json or from essay_response run metadata.\n"
             f"       File: {input_abs}",
             file=sys.stderr,
         )
         return 1
 
-    # NEW: Require doc_id column for essay tasks to support prompt persistence via DocsPromptIOManager
-    if "doc_id" not in df.columns:
+    # NEW: Require gen_id column for essay tasks to support prompt persistence via GensPromptIOManager
+    if "gen_id" not in df.columns:
         print(
-            "Error: input CSV is missing required column 'doc_id'.\n"
-            "       Essay tasks must include their own doc_id so prompts can be persisted to data/docs/essay/<doc_id>.\n"
-            "       Tip: for curated tasks, set doc_id = parent_doc_id.\n"
+            "Error: input CSV is missing required column 'gen_id'.\n"
+            "       Essay tasks must include their own gen_id so prompts can be persisted to data/gens/essay/<gen_id>.\n"
+            "       Tip: for curated tasks, set gen_id = parent_gen_id.\n"
             f"       File: {input_abs}",
             file=sys.stderr,
         )
         return 1
-    doc_missing_mask = df["doc_id"].astype(str).map(lambda s: not bool(s.strip()) or s.lower() == "nan")
+    doc_missing_mask = df["gen_id"].astype(str).map(lambda s: not bool(s.strip()) or s.lower() == "nan")
     if int(doc_missing_mask.sum()) > 0:
         sample = df.loc[doc_missing_mask, "essay_task_id"].astype(str).head(5).tolist() if "essay_task_id" in df.columns else []
         print(
-            "Error: some rows in essay_generation_tasks.csv have empty 'doc_id' values.\n"
+            "Error: some rows in essay_generation_tasks.csv have empty 'gen_id' values.\n"
             f"       Missing count: {int(doc_missing_mask.sum())}. Sample essay_task_id(s): {sample}\n"
             f"       File: {input_abs}",
             file=sys.stderr,
@@ -375,15 +375,15 @@ def main() -> int:
                 print(" - total missing template_ids:", len(missing_tpls))
         except Exception:
             pass
-        # Reserve doc_ids for drafts
+        # Reserve gen_ids for drafts
         for r in draft_rows:
-            r["doc_id"] = reserve_doc_id("draft", str(r["draft_task_id"]))
+            r["gen_id"] = reserve_gen_id("draft", str(r["draft_task_id"]))
         added_drafts = _write_table(
             link_out_csv,
             draft_rows,
             key="draft_task_id",
             columns=[
-                "draft_task_id","combo_id","draft_template","generation_model","generation_model_name","doc_id",
+                "draft_task_id","combo_id","draft_template","generation_model","generation_model_name","gen_id",
             ],
             dry_run=args.dry_run,
         )
@@ -393,18 +393,18 @@ def main() -> int:
     # Note: Do not write cross-experiment task tables here; cross-experiment tracking is driven by results appenders
 
     # Register dynamic partitions (add-only)
-    # Prepare partition keys (doc-id keyed)
-    draft_ids = [r.get("doc_id") for r in draft_rows] if draft_rows else []
+    # Prepare partition keys (gen-id keyed)
+    draft_ids = [r.get("gen_id") for r in draft_rows] if draft_rows else []
     essay_ids = []
-    # essay_rows in this script mirror input CSV; do not mutate curated doc_ids here
-    # If you want to register essay doc_ids, ensure essay_generation_tasks.csv includes doc_id
+    # essay_rows in this script mirror input CSV; do not mutate curated gen_ids here
+    # If you want to register essay gen_ids, ensure essay_generation_tasks.csv includes gen_id
     try:
         import pandas as _pd
         _essay_csv = data_root / "2_tasks" / "essay_generation_tasks.csv"
         if _essay_csv.exists():
             _edf = _pd.read_csv(_essay_csv)
-            if "doc_id" in _edf.columns:
-                essay_ids = _edf["doc_id"].astype(str).dropna().tolist()
+            if "gen_id" in _edf.columns:
+                essay_ids = _edf["gen_id"].astype(str).dropna().tolist()
     except Exception:
         pass
 
@@ -416,24 +416,24 @@ def main() -> int:
         parser_map = load_parser_map(data_root)
     except Exception as e:
         print(f"Warning: could not load parser map from evaluation_templates.csv: {e}", file=sys.stderr)
-    # Build evaluation tasks pinned by doc_id (default)
+    # Build evaluation tasks pinned by gen_id (default)
     evaluation_rows: List[dict] = []
     if essay_rows and eval_tpls and eval_models:
         model_name_map = _load_models_map(data_root)
-        docs_root = Path(data_root) / "docs"
-        # Require essay doc id column; accept either 'essay_doc_id' or 'parent_doc_id' (temporary naming)
-        essay_doc_col = 'essay_doc_id' if 'essay_doc_id' in df.columns else ('parent_doc_id' if 'parent_doc_id' in df.columns else None)
+        docs_root = Path(data_root) / "gens"
+        # Require essay gen id column; accept either 'essay_gen_id' or 'parent_gen_id'
+        essay_doc_col = 'essay_gen_id' if 'essay_gen_id' in df.columns else ('parent_gen_id' if 'parent_gen_id' in df.columns else None)
         if essay_doc_col is None:
-            print("Input CSV must contain 'essay_doc_id' (or temporary alias 'parent_doc_id') to build evaluation_tasks.csv with pinned doc IDs", file=sys.stderr)
+            print("Input CSV must contain 'essay_gen_id' (or temporary alias 'parent_gen_id') to build evaluation_tasks.csv with pinned gen IDs", file=sys.stderr)
             return 1
         for _, r in df.iterrows():
             essay_task_id = str(r["essay_task_id"]) if "essay_task_id" in r else ""
-            essay_doc_id = str(r.get(essay_doc_col) or "").strip()
-            if not essay_doc_id:
-                print(f"Error: missing essay doc id in column '{essay_doc_col}' for essay_task_id={essay_task_id}", file=sys.stderr)
+            essay_gen_id = str(r.get(essay_doc_col) or "").strip()
+            if not essay_gen_id:
+                print(f"Error: missing essay gen id in column '{essay_doc_col}' for essay_task_id={essay_task_id}", file=sys.stderr)
                 return 1
-            # Prefer docs store path for essay (parsed.txt if present, else raw.txt)
-            doc_dir = docs_root / "essay" / essay_doc_id
+            # Prefer gens store path for essay (parsed.txt if present, else raw.txt)
+            doc_dir = docs_root / "essay" / essay_gen_id
             parsed_fp = doc_dir / "parsed.txt"
             raw_fp = doc_dir / "raw.txt"
             if parsed_fp.exists():
@@ -442,26 +442,26 @@ def main() -> int:
                 file_path = str(raw_fp)
             else:
                 file_path = ""
-            # Also attempt to read the draft parent doc id from the essay's metadata.json
-            draft_doc_id = None
-            meta_path = docs_root / "essay" / essay_doc_id / "metadata.json"
+            # Also attempt to read the draft parent gen id from the essay's metadata.json
+            draft_gen_id = None
+            meta_path = docs_root / "essay" / essay_gen_id / "metadata.json"
             try:
                 if meta_path.exists():
                     meta = json.loads(meta_path.read_text(encoding="utf-8"))
                     if isinstance(meta, dict):
-                        val = meta.get("parent_doc_id")
+                        val = meta.get("parent_gen_id")
                         if isinstance(val, str) and val.strip():
-                            draft_doc_id = val.strip()
+                            draft_gen_id = val.strip()
             except Exception:
-                draft_doc_id = None
+                draft_gen_id = None
             for tpl in eval_tpls:
                 for model in eval_models:
                     evaluation_rows.append({
-                        # Use essay doc id as the evaluation target (parent for evaluation stage)
-                        "evaluation_task_id": f"{essay_doc_id}__{tpl}__{model}",
-                        "parent_doc_id": essay_doc_id,
+                        # Use essay gen id as the evaluation target (parent for evaluation stage)
+                        "evaluation_task_id": f"{essay_gen_id}__{tpl}__{model}",
+                        "parent_gen_id": essay_gen_id,
                         # Optional visibility of essay->draft lineage for ops/debugging
-                        "draft_doc_id": draft_doc_id or "",
+                        "draft_gen_id": draft_gen_id or "",
                         # task context (kept for compatibility in reports)
                         "document_id": essay_task_id,
                         "essay_task_id": essay_task_id,
@@ -476,16 +476,16 @@ def main() -> int:
                         "evaluation_model_name": model_name_map.get(model, model),
                         "parser": parser_map.get(tpl),
                         "file_path": file_path,
-                        "source_dir": "docs/essay" if doc_dir.exists() else "",
+                        "source_dir": "gens/essay" if doc_dir.exists() else "",
                         "source_asset": "essay_response",
                     })
     # Write evaluation tasks CSV
     eval_out_csv = data_root / "2_tasks" / "evaluation_tasks.csv"
     added_evals = 0
     if evaluation_rows:
-        # Reserve doc_ids for evaluations
+        # Reserve gen_ids for evaluations
         for r in evaluation_rows:
-            r["doc_id"] = reserve_doc_id("evaluation", str(r["evaluation_task_id"]))
+            r["gen_id"] = reserve_gen_id("evaluation", str(r["evaluation_task_id"]))
         added_evals = _write_table(
             eval_out_csv,
             evaluation_rows,
@@ -493,9 +493,9 @@ def main() -> int:
             columns=[
                 "evaluation_task_id",
                 # pinned lineage
-                "parent_doc_id",
-                "draft_doc_id",
-                "doc_id",
+                "parent_gen_id",
+                "draft_gen_id",
+                "gen_id",
                 # legacy/task context (kept during migration)
                 "document_id","essay_task_id","draft_task_id","combo_id",
                 "draft_template","essay_template","generation_model","generation_model_name",
@@ -510,8 +510,8 @@ def main() -> int:
         if not args.dry_run:
             print("No evaluation rows to write (check active evaluation templates/models)")
 
-    # Partition keys for evaluation (use doc_id, not evaluation_task_id)
-    eval_ids = [row["doc_id"] for row in evaluation_rows] if evaluation_rows else []
+    # Partition keys for evaluation (use gen_id, not evaluation_task_id)
+    eval_ids = [row["gen_id"] for row in evaluation_rows] if evaluation_rows else []
 
     # Optionally write partition lists
     # No key-list outputs in simplified mode
@@ -530,7 +530,7 @@ def main() -> int:
 
             # Optionally clear existing partitions first
             if not args.add_only:
-                for name in ("draft_docs", "essay_docs", "evaluation_docs"):
+                for name in ("draft_gens", "essay_gens", "evaluation_gens"):
                     existing = list(instance.get_dynamic_partitions(name))
                     for p in existing:
                         instance.delete_dynamic_partition(name, p)
@@ -538,27 +538,27 @@ def main() -> int:
 
             if draft_ids:
                 draft_ids = _unique_str(draft_ids)
-                existing = set(instance.get_dynamic_partitions("draft_docs"))
+                existing = set(instance.get_dynamic_partitions("draft_gens"))
                 new = [k for k in draft_ids if k not in existing]
                 if new:
-                    instance.add_dynamic_partitions("draft_docs", new)
-                print(f"Registered draft doc partitions: +{len(new)} (total ~{len(existing)+len(new)})")
+                    instance.add_dynamic_partitions("draft_gens", new)
+                print(f"Registered draft gen partitions: +{len(new)} (total ~{len(existing)+len(new)})")
 
             if essay_ids:
                 essay_ids = _unique_str(essay_ids)
-                existing = set(instance.get_dynamic_partitions("essay_docs"))
+                existing = set(instance.get_dynamic_partitions("essay_gens"))
                 new = [k for k in essay_ids if k not in existing]
                 if new:
-                    instance.add_dynamic_partitions("essay_docs", new)
-                print(f"Registered essay doc partitions: +{len(new)} (total ~{len(existing)+len(new)})")
+                    instance.add_dynamic_partitions("essay_gens", new)
+                print(f"Registered essay gen partitions: +{len(new)} (total ~{len(existing)+len(new)})")
 
             # Evaluation partitions for active evaluation templates × models
             if eval_ids:
-                existing = set(instance.get_dynamic_partitions("evaluation_docs"))
+                existing = set(instance.get_dynamic_partitions("evaluation_gens"))
                 to_add = [k for k in eval_ids if k not in existing]
                 if to_add:
-                    instance.add_dynamic_partitions("evaluation_docs", to_add)
-                print(f"Registered evaluation doc partitions: +{len(to_add)} (total ~{len(existing)+len(to_add)})")
+                    instance.add_dynamic_partitions("evaluation_gens", to_add)
+                print(f"Registered evaluation gen partitions: +{len(to_add)} (total ~{len(existing)+len(to_add)})")
 
             print(f"DAGSTER_HOME={os.environ.get('DAGSTER_HOME','(unset)')}")
         except Exception as e:
