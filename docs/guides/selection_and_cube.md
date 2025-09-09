@@ -51,7 +51,7 @@ Key flags
 - `--write-keys-dir DIR`: also write partition key lists to files.
 
 Inputs it accepts
-- A text file of `parent_gen_id`s (one per line), or a CSV with one of: `parent_gen_id`, `essay_gen_id`, `document_id`, `essay_task_id`, or `draft_task_id` (legacy). The registration script resolves evaluation partitions using `parent_gen_id`.
+- A text file of `parent_gen_id`s (one per line), or a CSV with one of: `parent_gen_id`, `gen_id`, `essay_task_id`, or `draft_task_id` (legacy). The registration script resolves evaluation partitions using `parent_gen_id` or `gen_id`.
 
 Outputs it writes
 - `data/2_tasks/essay_generation_tasks.csv` and (unless disabled) `data/2_tasks/draft_generation_tasks.csv` (de‑duplicated by task id).

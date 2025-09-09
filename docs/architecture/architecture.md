@@ -448,7 +448,7 @@ Sources merged:
 
 ### Evaluation Task Identity
 
-- `evaluation_task_id = {document_id}__{evaluation_template}__{evaluation_model_id}` (double-underscore separators)
+- `evaluation_task_id = {gen_id}__{evaluation_template}__{evaluation_model_id}` (double-underscore separators)
 - `evaluation_tasks` rows are denormalized with all document fields plus evaluation template/model names.
 
 ### Prompt Loading (Direct Path)
@@ -457,7 +457,7 @@ Sources merged:
 
 ### Results Processing
 
-- `parsed_scores` parses evaluator responses and joins denormalized metadata from `evaluation_tasks`.
+- `parsed_scores` parses evaluator responses; cross‑experiment aggregation reads `template_id` and `model_id` from metadata.json directly (no join required).
 - Normalized outputs include `stage`, `origin`, `generation_response_path` (copied from document `file_path`), `source_asset`, `source_dir`.
 - `generation_scores_pivot` pivots by `combo_id`, `stage`, `generation_template`, `generation_model`.
 
