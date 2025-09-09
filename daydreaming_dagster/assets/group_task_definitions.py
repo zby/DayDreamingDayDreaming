@@ -26,7 +26,6 @@ from .partitions import (
     essay_gens_partitions,
     evaluation_gens_partitions,
 )
-from ..utils.combo_ids import ComboIDManager
 from ..utils.ids import reserve_gen_id
 from ..utils.selected_combos import validate_selected_is_subset
 from pathlib import Path
@@ -111,27 +110,22 @@ def content_combinations(context) -> List[ContentCombination]:
             if combos:
                 return combos
     except FileNotFoundError:
-        # No selection file — fall through to active concept fallback
-        pass
+        raise Failure(
+            description="Selected combo mappings file not found",
+            metadata={
+                "required_file": MetadataValue.path(str(data_root / "2_tasks" / "selected_combo_mappings.csv")),
+                "resolution": MetadataValue.text("Generate selected_combo_mappings.csv using the selected_combo_mappings asset"),
+            }
+        )
     except Exception as e:
-        # Log and fall back
-        context.log.warning(f"content_combinations: selection load failed: {e}; falling back to active concepts")
-
-    # FALLBACK(OPS): derive a single combo from currently active concepts when no curated selection is present.
-    # Prefer maintaining curated selected_combo_mappings.csv; keep this narrow, deterministic fallback for dev only.
-    cfg = context.resources.experiment_config
-    level = getattr(cfg, "description_level", "paragraph")
-    k_max = int(getattr(cfg, "k_max", 2))
-    concepts = read_concepts(data_root, filter_active=True)
-    if not concepts:
-        context.add_output_metadata({"count": MetadataValue.int(0), "source": MetadataValue.text("fallback")})
-        return []
-    selected = concepts[: max(1, min(k_max, len(concepts)))]
-    manager = ComboIDManager(str(data_root / "combo_mappings.csv"))
-    combo_id = manager.get_or_create_combo_id([c.concept_id for c in selected], level, k_max)
-    combo = ContentCombination.from_concepts(selected, level, combo_id=combo_id)
-    context.add_output_metadata({"count": MetadataValue.int(1), "source": MetadataValue.text("fallback")})
-    return [combo]
+        raise Failure(
+            description=f"Failed to load selected combo mappings: {e}",
+            metadata={
+                "file_path": MetadataValue.path(str(data_root / "2_tasks" / "selected_combo_mappings.csv")),
+                "error": MetadataValue.text(str(e)),
+                "resolution": MetadataValue.text("Check file format and regenerate if needed using selected_combo_mappings asset"),
+            }
+        )
 
 
 @asset(
@@ -147,6 +141,8 @@ def selected_combo_mappings(context) -> pd.DataFrame:
     - Allocates a stable combo_id via ComboIDManager (writes/uses data/combo_mappings.csv)
     - Writes data/2_tasks/selected_combo_mappings.csv with one row per concept
     """
+    from ..utils.combo_ids import ComboIDManager
+    
     data_root = Path(getattr(context.resources, "data_root", "data"))
     cfg = context.resources.experiment_config
     level = getattr(cfg, "description_level", "paragraph")

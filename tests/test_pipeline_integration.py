@@ -280,11 +280,16 @@ class TestPipelineIntegration:
 
                 print("🚀 Starting complete pipeline workflow...")
                 
-                # STEP 1: Materialize selected -> combinations -> tasks in a single run
+                # STEP 1: Materialize selected mappings first, then combinations and tasks
                 print("📋 Step 1: Materializing task definitions...")
+                
+                # First materialize selected_combo_mappings
+                result = materialize([selected_combo_mappings], resources=resources, instance=instance)
+                assert result.success, "Selected combo mappings materialization failed"
+                
+                # Then materialize the rest
                 result = materialize(
                     [
-                        selected_combo_mappings,
                         content_combinations,
                         draft_generation_tasks,
                         essay_generation_tasks,
@@ -442,9 +447,16 @@ class TestPipelineIntegration:
                     "experiment_config": ExperimentConfig(k_max=2, description_level="paragraph")
                 }
                 
-                # Generate selection and combinations in one run
+                # Generate selection first, then combinations
                 result = materialize(
-                    [selected_combo_mappings, content_combinations],
+                    [selected_combo_mappings],
+                    resources=resources,
+                    instance=instance,
+                )
+                assert result.success, "Selected combo mappings materialization should succeed"
+                
+                result = materialize(
+                    [content_combinations],
                     resources=resources,
                     instance=instance,
                 )
@@ -560,8 +572,14 @@ class TestPipelineIntegration:
                     "experiment_config": ExperimentConfig(k_max=2, description_level="paragraph")
                 }
                 
+                # First materialize selected_combo_mappings
                 result = materialize([
                     selected_combo_mappings,
+                ], resources=resources, instance=instance)
+                assert result.success, "Selected combo mappings materialization should succeed"
+                
+                # Then materialize content_combinations and draft_generation_tasks
+                result = materialize([
                     content_combinations,
                     draft_generation_tasks
                 ], resources=resources, instance=instance)
