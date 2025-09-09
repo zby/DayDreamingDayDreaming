@@ -1,6 +1,6 @@
 # Active Experiment Cube
 
-This note defines the “Active Experiment Cube” (aka current experiment) and how the repo uses `active` columns to select a Cartesian product of inputs to generate and evaluate. It also explains how historical outputs persist on disk and how changing the active cube later can reuse prior outputs while filling in missing pieces.
+This note defines the “Active Experiment Cube” (aka current experiment) and how the repo uses `active` columns to select a Cartesian product of inputs to generate and evaluate. It also explains how historical outputs persist on disk and how changing the active cube later can reuse prior outputs while filling in missing pieces. It also clarifies how the new cohort concept fits with the cube.
 
 ## Concept
 
@@ -15,6 +15,19 @@ This note defines the “Active Experiment Cube” (aka current experiment) and 
 
 The “cube” name reflects that the AEC is a Cartesian product across dimensions (axes). We build different cubes for generation and evaluation, but they share the same principles.
 
+## Cohorts (How runs instantiate the cube)
+
+- Cohort: an identifier attached to a specific instantiation of the selected cube or any curated subset. It qualifies the run and is used when reserving `gen_id`s, so the same `task_id` can produce different `gen_id`s across cohorts on purpose.
+- Not a cube axis: the cohort does not change which combinations belong to the cube; it scopes where new artifacts are written and how they are grouped historically. Treat it like a run identifier that participates in ID seeding, not selection logic.
+- Policy:
+  - Full Cartesian (AEC) runs use a deterministic cohort by default, derived from a manifest hash of the exact cube + prompt/code fingerprints. This makes baselines idempotent and reproducible.
+  - Curated runs (e.g., top prior-art) default to timestamped cohorts (or an explicit user-provided name) to avoid overwriting and to keep lineage clear.
+- Where it lives:
+  - `cohort_id` column is written to task CSVs (draft/essay/evaluation) when known.
+  - `cohort_id` is included in `metadata.json` under `data/gens/<stage>/<gen_id>/`.
+  - The environment variable `DD_COHORT` binds the cohort for asset runs; scripts also accept `--cohort-id`/`--cohort-mode`.
+  - We persist `data/cohorts/<cohort_id>/manifest.json` for deterministic AEC runs.
+
 ## Axes (High‑Level) and Examples
 
 The cube is a Cartesian product across active subsets of several axes. Keep axes explicit and minimal; vary one or two at a time.
@@ -25,7 +38,7 @@ The cube is a Cartesian product across active subsets of several axes. Keep axes
 - Models: two separate axes — Generation Models and Evaluation Models. We store both in a single CSV with boolean flags (`for_generation`, `for_evaluation`), but they participate in different products.
 - Evaluation templates: scoring prompts with `active` flags.
 
-Note: The evaluation target (which stage’s outputs are evaluated) is not a cube axis — it’s a pipeline selection choice (see the unified plan’s Hybrid Document Axis) that determines which documents are included when building evaluation tasks.
+Note: The evaluation target (which stage’s outputs are evaluated) is not a cube axis — it’s a pipeline selection choice (see the unified plan’s Hybrid Document Axis) that determines which documents are included when building evaluation tasks. Similarly, the cohort is not a cube axis — it’s a run identifier that seeds `gen_id`s and groups artifacts.
 
 #### Why two model axes in one CSV?
 - Single inventory: One canonical list of model identifiers centralizes metadata (provider, context window, pricing, aliases), avoiding duplication.
@@ -33,7 +46,7 @@ Note: The evaluation target (which stage’s outputs are evaluated) is not a cub
 - Different products: Generation cubes use only the Generation Models axis; Evaluation cubes use only the Evaluation Models axis. Overlap is allowed but not required.
 - Operational simplicity: Operators flip flags in one place; downstream builders pick the appropriate subset per axis.
 
-Only a subset on each axis is marked active for the current experiment; the cube is the Cartesian product of those subsets.
+Only a subset on each axis is marked active for the current experiment; the cube is the Cartesian product of those subsets. A cohort then instantiates that selection (or a curated subset) into a concrete run.
 
 ### Example: Generation Cube (current design as an example)
 - Axes (example): `content_combinations × draft_templates × generation_models` → draft tasks; then `draft_tasks × essay_templates` → essay tasks.
@@ -48,6 +61,7 @@ Only a subset on each axis is marked active for the current experiment; the cube
   - `documents_to_evaluate` is a filtered set of existing documents discovered from tasks and/or filesystem.
 - Outputs (examples): gens under `data/gens/evaluation/<gen_id>/{prompt.txt,raw.txt,parsed.txt,metadata.json}`.
   - Note: In some experiments, draft outputs may be treated as “effective one‑phase” documents for evaluation convenience. This is a pipeline selection choice; provenance (e.g., original stage, source path) should still be retained in the data.
+  - Cohorts in evaluation: evaluations are written under the current `cohort_id`. When intentionally evaluating documents from a prior cohort, pass an optional `eval_input_cohort_id` (script/resource) to resolve input `gen_id`s from that older cohort; the evaluation’s own `gen_id`s still belong to the current cohort.
 
 ## Switching Generation Modes: Caveats
 
@@ -74,10 +88,11 @@ Recommended patterns:
 - essay_task_id (two‑phase): `{draft_task_id}_{essay_template}`
 - one‑phase essay stem: `{combo_id}_{essay_template}_{generation_model_id}`
 - evaluation_task_id (document‑centric pattern): typically `{document_id}__{evaluation_template}__{evaluation_model_id}`; stage is tracked as a column, not embedded in the ID
+- cohort_id: run-level identifier; when present, it is passed into ID reservation so `gen_id = f(stage, task_id, cohort_id)`. This makes the same `task_id` produce distinct `gen_id`s across cohorts by design.
 
 Stable IDs make it easy to:
-- Detect which parts of the cube are already done (files present).
-- Join back task rows to summarize results across experiments.
+- Detect which parts of the cube are already done (files present) per cohort.
+- Join back task rows to summarize results across experiments; include `cohort_id` for grouping and lineage.
 - Compare across modes by tagging results with the evaluated stage (for reporting) and pivoting on templates/models; the evaluated stage is a derived label, not a cube axis.
 
 ## Keep the Cube Small (Scope Discipline)
@@ -91,10 +106,14 @@ The Cartesian product grows quickly. For reliable iteration and readable stats:
 ## Operational Flow (Current Experiment)
 
 1) Set the AEC by editing `active` flags and ExperimentConfig.
-2) Materialize task definitions (auto in Dagster or via CLI). This registers dynamic partitions for the current cube.
-3) Generate drafts and/or essays according to the experiment’s focus.
-4) Build evaluation tasks for the chosen document source(s).
-5) Evaluate, parse scores, and produce summaries.
+2) Choose a cohort policy:
+   - Deterministic for the full AEC (manifest-hash); or
+   - Timestamped/explicit for curated subsets.
+   You can set `DD_COHORT=<cohort_id>` or pass flags to scripts.
+3) Materialize task definitions (auto in Dagster or via CLI). This registers dynamic partitions for the current cube and writes `cohort_id` to task CSVs when known.
+4) Generate drafts and/or essays according to the experiment’s focus.
+5) Build evaluation tasks for the chosen document source(s); if evaluating prior cohorts, supply `eval_input_cohort_id`.
+6) Evaluate, parse scores, and produce summaries.
 
 CLI tips:
 - `uv run dagster asset materialize --select group:task_definitions -f daydreaming_dagster/definitions.py`
@@ -135,4 +154,4 @@ We’ll use “Active Experiment Cube (AEC)” in docs and “current experiment
 ## Future Enhancements (Optional)
 
 - Explicit “document index” asset that lists documents available to evaluate (draft, two‑phase essay, one‑phase essay), governed by simple toggles, so evaluation tasks can be built directly from it.
-- Lightweight “completeness” report that shows how much of the current cube is materialized (drafts, essays, evaluations).
+- Lightweight “completeness” report that shows how much of the current cube is materialized (drafts, essays, evaluations) per cohort.
