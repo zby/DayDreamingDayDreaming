@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 import json
+from typing import Optional
 from .ids import gen_dir as build_gen_dir
 
 
@@ -48,3 +49,33 @@ class Generation:
         return base
 
     # Index row conversion removed in filesystem-only mode
+
+    @classmethod
+    def load(cls, gens_root: Path, stage: str, gen_id: str) -> "Generation":
+        """Best-effort read of an existing generation from disk.
+
+        Missing text files become empty string/None. Metadata is parsed when available.
+        """
+        base = build_gen_dir(Path(gens_root), stage, gen_id)
+        def _read(name: str) -> Optional[str]:
+            p = base / name
+            try:
+                return p.read_text(encoding="utf-8") if p.exists() else None
+            except Exception:
+                return None
+        md = None
+        mpath = base / "metadata.json"
+        if mpath.exists():
+            try:
+                md = json.loads(mpath.read_text(encoding="utf-8"))
+            except Exception:
+                md = None
+        return cls(
+            stage=str(stage),
+            gen_id=str(gen_id),
+            parent_gen_id=(md or {}).get("parent_gen_id"),
+            raw_text=_read("raw.txt") or "",
+            parsed_text=_read("parsed.txt"),
+            prompt_text=_read("prompt.txt"),
+            metadata=md,
+        )

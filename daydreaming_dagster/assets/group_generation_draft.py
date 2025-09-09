@@ -15,6 +15,7 @@ from ..utils.draft_parsers import get_draft_parser
 from ..utils.dataframe_helpers import get_task_row
 from ..utils.raw_write import save_versioned_raw_text
 from ..utils.document import Generation
+from ..utils.metadata import build_generation_metadata
 
 # Reuse a single Jinja environment
 JINJA = Environment()
@@ -280,15 +281,21 @@ def draft_response(context, draft_prompt, draft_generation_tasks) -> str:
 
     # Build generation and write files
     gens_root = _Path(getattr(context.resources, "data_root", "data")) / "gens"
-    metadata_json = {
-        "task_id": task_row.get("draft_task_id") or "",
-        "combo_id": combo_id,
-        "draft_template": draft_template,
-        "template_id": draft_template,
-        "model_id": model_id,
-        "usage": None,
-        "function": "draft_response",
-    }
+    run_id = getattr(getattr(context, "run", object()), "run_id", None) or getattr(context, "run_id", None)
+    metadata_json = build_generation_metadata(
+        stage="draft",
+        gen_id=str(gen_id),
+        parent_gen_id=None,
+        template_id=str(draft_template) if draft_template else None,
+        model_id=str(model_id) if model_id else None,
+        task_id=str(task_row.get("draft_task_id") or ""),
+        function="draft_response",
+        run_id=str(run_id) if run_id else None,
+        usage=None,
+        extra={
+            "combo_id": combo_id,
+        },
+    )
     # Copy the prompt alongside the document for traceability when available
     prompt_text = draft_prompt if isinstance(draft_prompt, str) else None
     doc = Generation(

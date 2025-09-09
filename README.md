@@ -186,14 +186,14 @@ Note: Auto‑materializing appenders were removed. Derive views on demand from t
 ### Testing
 
 ```bash
-# Run all tests
-uv run pytest
+# Run all tests (preferred in sandboxed envs)
+.venv/bin/pytest
 
 # Run only unit tests (fast, isolated)
-uv run pytest daydreaming_dagster/
+.venv/bin/pytest daydreaming_dagster/
 
 # Run only integration tests (data-dependent)
-uv run pytest tests/
+.venv/bin/pytest tests/
 
 # Run with coverage
 uv run pytest --cov=daydreaming_dagster
@@ -205,7 +205,7 @@ uv run pytest --cov=daydreaming_dagster
 
 - `OPENROUTER_API_KEY`: OpenRouter API key for LLM access
 - `DAGSTER_HOME`: Dagster metadata storage (set to absolute path of `dagster_home/` directory)
-- Versioned artifacts: Draft/essay/evaluation prompts and responses are written as `{id}_vN.txt`. Reads automatically pick the highest version; legacy `{id}.txt` is used only if no versions exist.
+- Gens store layout: Draft/essay/evaluation prompts and responses are stored under `data/gens/<stage>/<gen_id>` as `prompt.txt`, `raw.txt`, `parsed.txt`, and `metadata.json`. RAW side-writes for debugging may still use versioned files (e.g., `3_generation/draft_responses_raw/{gen_id}_vN.txt`).
 
 ### Versioned Files Utility
 

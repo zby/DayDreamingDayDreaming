@@ -21,6 +21,7 @@ from ..utils.filesystem_rows import (
     read_raw as fs_read_raw,
 )
 from ..utils.document import Generation
+from ..utils.metadata import build_generation_metadata
 
 # Reuse a single Jinja environment
 JINJA = Environment()
@@ -388,14 +389,20 @@ def essay_response(context, essay_prompt, essay_generation_tasks) -> str:
 
     gens_root = Path(getattr(context.resources, "data_root", "data")) / "gens"
     # Build document using helper
-    metadata = {
-        "task_id": task_row.get("essay_task_id") or "",
-        "essay_template": essay_template,
-        "template_id": essay_template,
-        "model_id": model_id,
-        "parent_gen_id": parent_gen_id,
-        "function": "essay_response",
-    }
+    run_id = getattr(getattr(context, "run", object()), "run_id", None) or getattr(context, "run_id", None)
+    metadata = build_generation_metadata(
+        stage="essay",
+        gen_id=str(gen_id_value),
+        parent_gen_id=str(parent_gen_id) if parent_gen_id else None,
+        template_id=str(essay_template) if essay_template else None,
+        model_id=str(model_id) if model_id else None,
+        task_id=str(task_row.get("essay_task_id") or ""),
+        function="essay_response",
+        run_id=str(run_id) if run_id else None,
+        extra={
+            "essay_template": essay_template,
+        },
+    )
     prompt_text = essay_prompt if (generator_mode == "llm" and isinstance(essay_prompt, str)) else None
 
     doc = Generation(

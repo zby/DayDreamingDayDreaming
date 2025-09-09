@@ -10,26 +10,10 @@ from daydreaming_dagster.assets.group_evaluation import evaluation_response as e
 import pandas as pd
 
 
-def _latest_versioned(path: Path, stem: str) -> Path | None:
-    if not path.exists():
-        return None
-    best = None
-    best_ver = -1
-    prefix = f"{stem}_v"
-    for name in path.iterdir():
-        if not name.name.startswith(prefix) or not name.suffix == ".txt":
-            continue
-        try:
-            v = int(name.stem.split("_v")[-1])
-        except Exception:
-            continue
-        if v > best_ver:
-            best_ver = v
-            best = name
-    if best is not None and best.exists():
-        return best
-    legacy = path / f"{stem}.txt"
-    return legacy if legacy.exists() else None
+"""Asset checks for gens-store outputs.
+
+These checks assert that parsed.txt exists under data/gens/<stage>/<gen_id>.
+"""
 
 
 def _get_pk(context):

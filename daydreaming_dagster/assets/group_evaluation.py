@@ -8,6 +8,7 @@ from dagster import asset, Failure, MetadataValue
 from pathlib import Path
 from .partitions import evaluation_gens_partitions
 from ..utils.document import Generation
+from ..utils.metadata import build_generation_metadata
 from ..utils.filesystem_rows import (
     get_row_by_gen_id as fs_get_row_by_gen_id,
     read_parsed as fs_read_parsed,
@@ -157,14 +158,20 @@ def evaluation_response(context, evaluation_prompt, evaluation_tasks) -> str:
     except Exception:
         # If parsing fails, do not synthesize a SCORE line; downstream will surface the error.
         score_val = None
-    metadata = {
-        "task_id": task_row.get("evaluation_task_id") or "",
-        "evaluation_template": evaluation_template,
-        "template_id": evaluation_template,
-        "model_id": model_id,
-        "parent_gen_id": parent_gen_id,
-        "function": "evaluation_response",
-    }
+    run_id = getattr(getattr(context, "run", object()), "run_id", None) or getattr(context, "run_id", None)
+    metadata = build_generation_metadata(
+        stage="evaluation",
+        gen_id=str(gen_id),
+        parent_gen_id=str(parent_gen_id) if parent_gen_id else None,
+        template_id=str(evaluation_template) if evaluation_template else None,
+        model_id=str(model_id) if model_id else None,
+        task_id=str(task_row.get("evaluation_task_id") or ""),
+        function="evaluation_response",
+        run_id=str(run_id) if run_id else None,
+        extra={
+            "evaluation_template": evaluation_template,
+        },
+    )
     prompt_text = evaluation_prompt if isinstance(evaluation_prompt, str) else None
     doc = Generation(
         stage="evaluation",
