@@ -272,16 +272,16 @@ def parse_all(
             if not parsed_fp.exists():
                 # Record missing parsed and continue
                 parent_gen_id = ""
-                eval_template = None
+                template_id = None
                 eval_model = None
                 try:
                     if meta_fp.exists():
                         meta = json.loads(meta_fp.read_text(encoding="utf-8"))
                         if isinstance(meta, dict):
                             parent_gen_id = str(meta.get("parent_gen_id") or "")
-                            eval_template = meta.get("evaluation_template")
+                            template_id = meta.get("template_id")
                             eval_model = meta.get("model_id")
-                            req = ["parent_gen_id", "evaluation_template", "model_id"]
+                            req = ["parent_gen_id", "template_id", "model_id"]
                             present = [k for k in req if meta.get(k)]
                             if len(present) < len(req):
                                 warnings.append(f"Warning: {meta_fp} missing keys: {sorted(set(req) - set(present))}")
@@ -292,7 +292,7 @@ def parse_all(
                 rows.append({
                     "gen_id": gen_id,
                     "parent_gen_id": parent_gen_id,
-                    "evaluation_template": eval_template,
+                    "template_id": template_id,
                     "evaluation_model": eval_model,
                     "score": None,
                     "error": "missing parsed.txt",
@@ -307,16 +307,16 @@ def parse_all(
                 continue
             # metadata
             parent_gen_id = ""
-            eval_template = None
+            template_id = None
             eval_model = None
             try:
                 if meta_fp.exists():
                     meta = json.loads(meta_fp.read_text(encoding="utf-8"))
                     if isinstance(meta, dict):
                         parent_gen_id = str(meta.get("parent_gen_id") or "")
-                        eval_template = meta.get("evaluation_template")
+                        template_id = meta.get("template_id")
                         eval_model = meta.get("model_id")
-                        req = ["parent_gen_id", "evaluation_template", "model_id"]
+                        req = ["parent_gen_id", "template_id", "model_id"]
                         present = [k for k in req if meta.get(k)]
                         if len(present) < len(req):
                             warnings.append(f"Warning: {meta_fp} missing keys: {sorted(set(req) - set(present))}")
@@ -351,7 +351,7 @@ def parse_all(
             rows.append({
                 "gen_id": gen_id,
                 "parent_gen_id": parent_gen_id,
-                "evaluation_template": eval_template,
+                "template_id": template_id,
                 "evaluation_model": eval_model,
                 "score": score,
                 "error": err,
@@ -366,7 +366,7 @@ def parse_all(
     expected_columns = [
         "gen_id",
         "parent_gen_id",
-        "evaluation_template",
+        "template_id",
         "evaluation_model",
         "score",
         "error",
@@ -385,7 +385,7 @@ def parse_all(
     column_order = [
         "parent_gen_id",
         "gen_id",
-        "evaluation_template",
+        "template_id",
         "evaluation_model",
         "score",
         "error",

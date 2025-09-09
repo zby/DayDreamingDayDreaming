@@ -30,18 +30,26 @@ def build_pivot(parsed_scores: Path, out_dir: Path) -> None:
     df = pd.read_csv(parsed_scores)
 
     # Ensure required columns exist (canonical uses draft_template; support legacy link_template)
+    # Accept either 'template_id' (new) or 'evaluation_template' (legacy)
     required = [
         "essay_task_id",
         "combo_id",
         "generation_template",
         "generation_model",
-        "evaluation_template",
+        # 'template_id' preferred; will map below
         "evaluation_model",
         "score",
     ]
     missing = [c for c in required if c not in df.columns]
     if missing:
-        raise ValueError(f"Missing columns in parsed scores: {missing}")
+        # if only missing evaluation template col, allow template_id
+        if missing == ["evaluation_model"] or missing == ["score"]:
+            raise ValueError(f"Missing columns in parsed scores: {missing}")
+    # Normalize template column name
+    if "template_id" in df.columns:
+        df = df.rename(columns={"template_id": "evaluation_template"})
+    elif "evaluation_template" not in df.columns:
+        raise ValueError("Missing 'template_id' or 'evaluation_template' column in parsed scores")
 
     # Backward-compat: if draft_template missing, populate from link_template when present
     if "draft_template" not in df.columns:

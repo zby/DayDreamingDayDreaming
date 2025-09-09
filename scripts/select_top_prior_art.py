@@ -69,23 +69,24 @@ def main() -> int:
         return 2
     df = pd.read_csv(args.parsed_scores)
 
-    # Validate required columns (doc-id-first)
-    if df.empty or "evaluation_template" not in df.columns:
-        print("ERROR: parsed_scores is empty or missing 'evaluation_template' column", file=sys.stderr)
+    # Validate required columns (gen-id-first)
+    if df.empty or ("template_id" not in df.columns and "evaluation_template" not in df.columns):
+        print("ERROR: parsed_scores is empty or missing 'template_id' column", file=sys.stderr)
         return 2
     if "parent_gen_id" not in df.columns:
         print("ERROR: parsed_scores must include 'parent_gen_id' for grouping (gen-id-first)", file=sys.stderr)
         return 2
 
     # Filter to available prior-art templates and successful scores
-    available = [tpl for tpl in args.prior_art_templates if tpl in set(df["evaluation_template"].unique())]
+    tpl_col = "template_id" if "template_id" in df.columns else "evaluation_template"
+    available = [tpl for tpl in args.prior_art_templates if tpl in set(df[tpl_col].unique())]
     if not available:
         print(
             f"No prior-art templates found in parsed_scores. Looked for any of: {args.prior_art_templates}",
             file=sys.stderr,
         )
         return 1
-    cond_tpl = df["evaluation_template"].isin(available)
+    cond_tpl = df[tpl_col].isin(available)
     cond_err = (df["error"].isna() if "error" in df.columns else True)
     cond_score = (df["score"].notna() if "score" in df.columns else True)
     cond_parent = df["parent_gen_id"].notna()
