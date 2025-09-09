@@ -51,21 +51,6 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--dry-run", action="store_true", help="Compute and print actions but make no changes")
     # Reset by default; use --add-only to avoid clearing existing partitions
     p.add_argument("--add-only", action="store_true", help="Do not clear existing dynamic partitions (add-only mode)")
-    # Optionally materialize content_combinations after updating selection
-    materialize_group = p.add_mutually_exclusive_group()
-    materialize_group.add_argument(
-        "--materialize-combos",
-        dest="materialize_combos",
-        action="store_true",
-        help="Materialize content_combinations (and core task assets) after updating selection in the ACTIVE Dagster instance (default: on)",
-    )
-    materialize_group.add_argument(
-        "--no-materialize-combos",
-        dest="materialize_combos",
-        action="store_false",
-        help="Do not materialize content_combinations automatically",
-    )
-    p.set_defaults(materialize_combos=True)
     return p.parse_args()
 
 
@@ -311,7 +296,6 @@ def main() -> int:
         return 1
 
     # Write/merge outputs
-    essay_out_csv = data_root / "2_tasks" / "essay_generation_tasks.csv"
     link_out_csv = data_root / "2_tasks" / "draft_generation_tasks.csv"
 
     # Ensure output directory exists
@@ -320,41 +304,9 @@ def main() -> int:
 
     # Write selected combo mappings for chosen combinations
     _write_selected_combo_mappings(data_root, sorted(combo_ids), dry_run=args.dry_run)
-    # Do NOT modify essay_generation_tasks.csv here (BACKCOMPAT: scripted curation is the source of truth)
+    # Do NOT modify essay_generation_tasks.csv here (BACKCOMPAT: curated CSV is the source of truth)
     # Always report missing concepts in the current selection to catch mismatches early
     _report_missing_concepts_in_selection(data_root)
-    # Optionally materialize content_combinations to ensure Dagster sees the updated selection
-    if args.materialize_combos and not args.dry_run:
-        # Materialize into the ACTIVE instance (DAGSTER_HOME), so the UI sees updated assets
-        try:
-            from dagster import materialize, DagsterInstance
-            from daydreaming_dagster.assets.group_task_definitions import (
-                content_combinations as combos_asset,
-                draft_generation_tasks as draft_tasks_asset,
-                essay_generation_tasks as essay_tasks_asset,
-                evaluation_tasks as eval_tasks_asset,
-            )
-            from daydreaming_dagster.resources.experiment_config import ExperimentConfig
-            from daydreaming_dagster.resources.io_managers import CSVIOManager
-
-            resources = {
-                "experiment_config": ExperimentConfig(),
-                "data_root": str(data_root),
-                # Ensure CSV outputs for task assets land under data_root/2_tasks
-                "csv_io_manager": CSVIOManager(base_path=data_root / "2_tasks"),
-            }
-            instance = DagsterInstance.get()
-            # First ensure content_combinations is refreshed for the active selection
-            res1 = materialize([combos_asset], resources=resources, instance=instance)
-            if not res1.success:
-                print("Warning: materialize(content_combinations) did not succeed", file=sys.stderr)
-            # Then refresh the task assets so dynamic partitions and CSVs are consistent
-            # Include content_combinations in this call so its in-memory output is available
-            res2 = materialize([combos_asset, draft_tasks_asset, essay_tasks_asset, eval_tasks_asset], resources=resources, instance=instance)
-            if not res2.success:
-                print("Warning: materialize(task assets) did not fully succeed", file=sys.stderr)
-        except Exception as e:
-            print(f"Warning: failed to materialize assets in active instance: {e}", file=sys.stderr)
 
     added_essays = 0
     added_drafts = 0
