@@ -118,18 +118,6 @@ def _load_phase1_text_by_parent_doc(context, parent_doc_id: str) -> tuple[str, s
     return str(text).replace("\r\n", "\n"), "draft_fs_parent"
 
 
-def _load_phase1_text_by_draft_task(context, draft_task_id: str) -> tuple[str, str]:
-    """Deprecated: task-based resolution removed — doc-id required."""
-    raise Failure(
-        description="draft_task_id-based resolution is disabled; provide parent_doc_id",
-        metadata={
-            "function": MetadataValue.text("_load_phase1_text_by_draft_task"),
-            "draft_task_id": MetadataValue.text(str(draft_task_id)),
-            "resolution": MetadataValue.text("Add parent_doc_id to essay_generation_tasks.csv for this essay_task_id"),
-        },
-    )
-
-
 def _load_phase1_text_by_combo_model(context, combo_id: str, model_id: str) -> tuple[str, str]:
     raise Failure(
         description="combo/model-based resolution is not supported; provide parent_doc_id",

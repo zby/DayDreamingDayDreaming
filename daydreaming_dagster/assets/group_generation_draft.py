@@ -276,30 +276,7 @@ def draft_response(context, draft_prompt, draft_generation_tasks) -> str:
             },
         )
 
-    # FALLBACK(OPS): prefer RAW from versioned raw dir if present; if missing, use parsed text.
-    # This is a developer convenience; prefer ensuring RAW side-write exists for reproducibility.
     raw_text = parsed
-    try:
-        data_root = _Path(getattr(context.resources, "data_root", "data"))
-        raw_dir = data_root / "3_generation" / "draft_responses_raw"
-        best = None
-        best_ver = -1
-        prefix = f"{doc_id}_v"
-        if raw_dir.exists():
-            for name in raw_dir.iterdir():
-                if not name.name.startswith(prefix) or name.suffix != ".txt":
-                    continue
-                try:
-                    v = int(name.stem.split("_v")[-1])
-                except Exception:
-                    continue
-                if v > best_ver:
-                    best_ver = v
-                    best = name
-        if best and best.exists():
-            raw_text = best.read_text(encoding="utf-8")
-    except Exception:
-        pass
 
     # Build document and write files
     docs_root = _Path(getattr(context.resources, "data_root", "data")) / "docs"
