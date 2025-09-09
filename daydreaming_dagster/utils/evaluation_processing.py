@@ -9,53 +9,26 @@ from .eval_response_parser import parse_llm_response
 from .evaluation_parsing_config import ALLOWED_PARSERS, require_parser_for_template, load_parser_map
 
 
-def parse_evaluation_files(
+def parse_eval_files_with_parsers(
     evaluation_tasks: pd.DataFrame,
     base_path: Path,
-    parse_function=None,
+    parser_map: dict[str, str],
     context=None,
-    evaluation_templates: Optional[pd.DataFrame] = None,
 ) -> pd.DataFrame:
-    """Parse evaluation response files and extract structured data.
-    
-    Args:
-        evaluation_tasks: DataFrame with evaluation task definitions
-        base_path: Base directory containing response files
-        parse_function: Optional custom parse function. If None, uses default parse_evaluation_response
-        context: Optional Dagster context for logging
-        
-    Returns:
-        DataFrame with parsed evaluation results
+    """Parse evaluation responses using an explicit parser map (template_id -> parser).
+
+    Strict: no fallbacks. Raises if a template is missing or invalid in parser_map.
+
+    Returns a DataFrame with columns: evaluation_task_id, score, error, used_parser, used_response_path
     """
     if evaluation_tasks.empty:
         return pd.DataFrame(columns=['evaluation_task_id', 'score', 'error'])
     
-    # Use default parsing function if none provided
-    if parse_function is None:
-        # PARSER CONFIG: Prefer explicit parser_map from provided evaluation_templates.
-        # FALLBACK(CONFIG): If not provided, load from CSV via load_parser_map(data_root).
-        # Do not attempt automatic data fixes here; fail fast if required templates/parsers are missing.
-        if evaluation_templates is not None:
-            if "template_id" not in evaluation_templates.columns or "parser" not in evaluation_templates.columns:
-                raise ValueError("evaluation_templates must include 'template_id' and 'parser' columns")
-            parser_map = (
-                evaluation_templates[["template_id", "parser"]]
-                .dropna(subset=["template_id", "parser"])  # ensure both present
-                .astype({"template_id": str, "parser": str})
-                .set_index("template_id")["parser"].str.strip().str.lower()
-                .to_dict()
-            )
-        else:
-            data_root = base_path.parents[1] if len(base_path.parents) >= 2 else Path("data")
-            parser_map = load_parser_map(data_root)
-
-        def _default_parse(text: str, task_row: pd.Series) -> Dict[str, Any]:
-            tpl = task_row.get('evaluation_template')
-            chosen = require_parser_for_template(str(tpl) if tpl is not None else "", parser_map)
-            out = parse_llm_response(text, chosen)
-            return out | {"used_parser": chosen}
-
-        parse_function = _default_parse
+    def _parse_with_table(text: str, task_row: pd.Series) -> Dict[str, Any]:
+        tpl = task_row.get('evaluation_template')
+        chosen = require_parser_for_template(str(tpl) if tpl is not None else "", parser_map)
+        out = parse_llm_response(text, chosen)
+        return out | {"used_parser": chosen}
     
     parsed_results = []
     from .versioned_files import latest_versioned_path
@@ -80,7 +53,7 @@ def parse_evaluation_files(
                 continue
                 
             response_text = response_file.read_text()
-            result = parse_function(response_text, task_row)
+            result = _parse_with_table(response_text, task_row)
             
             parsed_results.append({
                 "evaluation_task_id": evaluation_task_id,
@@ -99,6 +72,31 @@ def parse_evaluation_files(
             })
     
     return pd.DataFrame(parsed_results)
+
+
+def parse_evaluation_files(
+    evaluation_tasks: pd.DataFrame,
+    base_path: Path,
+    evaluation_templates: Optional[pd.DataFrame] = None,
+    context=None,
+) -> pd.DataFrame:
+    """Thin wrapper that builds a parser map from evaluation_templates and delegates.
+
+    Requires evaluation_templates with columns: template_id, parser.
+    No CSV fallbacks are attempted.
+    """
+    if evaluation_tasks.empty:
+        return pd.DataFrame(columns=['evaluation_task_id', 'score', 'error'])
+    if evaluation_templates is None or "template_id" not in evaluation_templates.columns or "parser" not in evaluation_templates.columns:
+        raise ValueError("evaluation_templates must be provided and include 'template_id' and 'parser' columns")
+    parser_map = (
+        evaluation_templates[["template_id", "parser"]]
+        .dropna(subset=["template_id", "parser"])  # ensure both present
+        .astype({"template_id": str, "parser": str})
+        .set_index("template_id")["parser"].str.strip().str.lower()
+        .to_dict()
+    )
+    return parse_eval_files_with_parsers(evaluation_tasks, base_path, parser_map, context=context)
 
 
 def parse_evaluation_file_from_filename(filename: str, base_path: Path, parser_map: dict[str, str]) -> Dict[str, Any]:

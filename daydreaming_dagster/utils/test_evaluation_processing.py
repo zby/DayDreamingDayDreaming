@@ -12,7 +12,7 @@ def test_parse_evaluation_files_empty_tasks():
     """Test parsing with empty evaluation tasks."""
     empty_tasks = pd.DataFrame()
     eval_templates = pd.DataFrame({"template_id": [], "parser": []})
-    result = parse_evaluation_files(empty_tasks, Path("/tmp"), lambda x, y: {"score": 5, "error": None}, evaluation_templates=eval_templates)
+    result = parse_evaluation_files(empty_tasks, Path("/tmp"), evaluation_templates=eval_templates)
     
     assert len(result) == 0
     assert list(result.columns) == ['evaluation_task_id', 'score', 'error']
