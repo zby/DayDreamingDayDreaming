@@ -27,6 +27,8 @@ The pipeline uses an innovative two-phase approach to LLM generation:
 
 ## Quick Start
 
+Documentation index: docs/index.md
+
 ### Prerequisites
 
 - Python 3.9+

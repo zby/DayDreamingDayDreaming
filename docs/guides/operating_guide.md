@@ -2,6 +2,11 @@
 
 This comprehensive guide covers everything you need to know to set up, run, and troubleshoot DayDreaming experiments.
 
+See also
+- Documentation Index: docs/index.md
+- Curated Runs Quickstart: docs/guides/selection_and_cube.md
+- Cohorts & membership: docs/cohorts.md
+
 ## Table of Contents
 
 1. [Setup & Configuration](#setup--configuration)

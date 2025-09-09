@@ -2,6 +2,10 @@
 
 Cohorts are explicit, reproducible identifiers that bind a complete run of the pipeline (task set and generated artifacts) to a single ID.
 
+See also
+- Active Experiment Cube: docs/architecture/active_experiment_cube.md
+- Curated Runs Quickstart: docs/guides/selection_and_cube.md
+
 What the assets do
 - Asset `cohort_id` (group `task_definitions`) computes a deterministic ID from a manifest of:
   - combo IDs (from `content_combinations`)

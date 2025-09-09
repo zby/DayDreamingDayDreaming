@@ -4,6 +4,10 @@ This guide shows the current, simple flow to run curated drafts/essays/evaluatio
 - `scripts/select_top_prior_art.py` — writes `data/2_tasks/selected_essays.txt` (one essay gen_id per line)
 - `cohort_membership` Dagster asset — builds membership.csv and registers dynamic partitions directly inside Dagster
 
+See also
+- Cohorts & membership: docs/cohorts.md
+- Full Active Experiment Cube: docs/architecture/active_experiment_cube.md
+
 Note on cohorts
 - Curated runs now carry a `cohort_id` to keep runs isolated and reproducible. By default, curated scripts use a timestamped cohort (or you can pass an explicit name). The full Active Experiment Cube (AEC) path uses a deterministic cohort by manifest hash. See `docs/architecture/active_experiment_cube.md` for details.
 
