@@ -207,6 +207,32 @@ uv run pytest --cov=daydreaming_dagster
 - `DAGSTER_HOME`: Dagster metadata storage (set to absolute path of `dagster_home/` directory)
 - Gens store layout: Draft/essay/evaluation prompts and responses are stored under `data/gens/<stage>/<gen_id>` as `prompt.txt`, `raw.txt`, `parsed.txt`, and `metadata.json`.
 
+### Cohorts (deterministic run IDs)
+
+- A dedicated asset `cohort_id` (group `task_definitions`) computes a deterministic cohort identifier from the current manifest of combos, active templates, and models.
+- The manifest is written to `data/cohorts/<cohort_id>/manifest.json`; the `cohort_id` value is threaded into all task CSVs and gens metadata when present.
+- Gen IDs are reserved as `reserve_gen_id(stage, task_id, run_id=cohort_id)` so all artifacts are tied to a visible, reproducible cohort.
+
+Usage:
+- Default deterministic cohort (recommended baseline):
+  - `uv run dagster asset materialize --select cohort_id -f daydreaming_dagster/definitions.py`
+  - Then materialize tasks (inherits the same cohort):
+    `uv run dagster asset materialize --select "group:task_definitions" -f daydreaming_dagster/definitions.py`
+- Override explicitly for curated re-runs:
+  - Env var: `export DD_COHORT=my-curated-2025-09-09` (tasks will use this value)
+  - Asset config (Dagster UI or YAML):
+    ```yaml
+    ops:
+      cohort_id:
+        config:
+          override: "baseline-v3"
+    ```
+
+Notes:
+- If you materialize a subset (e.g., only tasks) the tasks will compute and persist a cohort manifest automatically unless `DD_COHORT` is set.
+- Each stage’s `metadata.json` includes `cohort_id`; task CSVs add a `cohort_id` column.
+- Prefer deterministic cohorts for the full Cartesian baseline; use explicit/timestamped IDs for curated or ad‑hoc runs to avoid overwrites.
+
 ### Versioned Files Utility
 
 To keep versioned artifact handling consistent, use the helpers in `daydreaming_dagster/utils/versioned_files.py` instead of re‑implementing regex logic:
