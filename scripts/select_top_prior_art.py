@@ -3,9 +3,8 @@
 Select top-N generations by prior-art scores (cross-experiment) and write
 curated essay generation tasks to data/2_tasks/essay_generation_tasks.csv.
 
-Optionally control writing the curated output via --write-drafts.
-When set to false, the script performs selection but does not write
-the curated tasks CSV.
+Optionally control writing via --write-drafts (defaults on). With --no-write-drafts,
+the script performs selection but does not write the curated CSV.
 
 Defaults:
 - TOP_N = 10
@@ -31,7 +30,7 @@ from pathlib import Path
 import json
 import sys
 import pandas as pd
-# No external lookups required; operate only on docs metadata for selected records
+# No external lookups required beyond gens metadata for selected records.
 
 
 DEFAULT_PRIOR_ART_TEMPLATES = [
@@ -93,16 +92,16 @@ def main() -> int:
     filt = df[cond_tpl & cond_err & cond_score & cond_parent].copy()
 
     # Exclude evaluations run by Gemini models (empirically noisy for prior-art)
-    try:
-        name_col = (filt.get("evaluation_model_name") or filt.get("model_name"))
-        id_col = (filt.get("evaluation_model") or filt.get("model"))
-        name_is_gemini = name_col.fillna("").str.contains("gemini", case=False) if name_col is not None else False
-        id_is_gemini = id_col.fillna("").str.contains("gemini", case=False) if id_col is not None else False
-        mask = ~(name_is_gemini | id_is_gemini)
-        filt = filt[mask]
-    except Exception:
-        # If columns missing/unexpected, proceed without the exclusion
-        pass
+    if "evaluation_model" in filt.columns:
+        id_col = filt["evaluation_model"]
+    elif "model" in filt.columns:
+        id_col = filt["model"]
+    else:
+        print("ERROR: parsed_scores must include 'evaluation_model' or 'model'", file=sys.stderr)
+        return 2
+    id_is_gemini = id_col.fillna("").str.contains("gemini", case=False)
+    mask = ~id_is_gemini
+    filt = filt[mask]
     if filt.empty:
         print("No successful prior-art scores found to select from.", file=sys.stderr)
         return 1
@@ -119,76 +118,19 @@ def main() -> int:
         print(f"Filters: templates={available}, top_n={args.top_n}", file=sys.stderr)
         return 1
 
-    # Build curated generation task CSVs (essays, and optionally drafts)
-    models_csv = Path("data/1_raw/llm_models.csv")
+    # Build curated generation task CSV (essays only)
     data_root = Path("data")
-    # Legacy response directories are not used in doc-id-first path
     essay_out_csv = Path("data/2_tasks/essay_generation_tasks.csv")
-    # No draft tasks output here; we only write curated essay tasks
-
-    # Load model mapping id -> provider/model name
-    model_map = {}
-    if models_csv.exists():
-        try:
-            mdf = pd.read_csv(models_csv)
-            if {"id","model"}.issubset(mdf.columns):
-                model_map = dict(zip(mdf["id"].astype(str), mdf["model"].astype(str)))
-        except Exception as e:
-            print(f"Warning: failed to read model mapping ({e}); will use model ids as names", file=sys.stderr)
-
-    # No template CSV parsing in doc-id-first path
-
-    essay_rows = []
-    missing_essays = []
-    # Collect missing-field diagnostics per selected doc
+    essay_rows: list[dict] = []
     missing_required: list[str] = []
-    # Warn if referenced templates do not have files or are not registered in CSVs
-    draft_tpl_root = data_root / "1_raw" / "generation_templates" / "draft"
-    essay_tpl_root = data_root / "1_raw" / "generation_templates" / "essay"
-    draft_tpl_csv = data_root / "1_raw" / "draft_templates.csv"
-    essay_tpl_csv = data_root / "1_raw" / "essay_templates.csv"
-    known_draft_tpls: set[str] = set()
-    known_essay_tpls: set[str] = set()
-    essay_tpl_generators: dict[str, str] = {}
-    try:
-        if draft_tpl_csv.exists():
-            df = pd.read_csv(draft_tpl_csv)
-            if "template_id" in df.columns:
-                known_draft_tpls = set(df["template_id"].astype(str))
-    except Exception:
-        pass
-    try:
-        if essay_tpl_csv.exists():
-            df = pd.read_csv(essay_tpl_csv)
-            if "template_id" in df.columns:
-                known_essay_tpls = set(df["template_id"].astype(str))
-            # Build generator map if present
-            if "generator" in df.columns:
-                essay_tpl_generators = (
-                    df[["template_id", "generator"]]
-                    .dropna(subset=["template_id"])  # keep valid ids
-                    .astype({"template_id": str})
-                    .set_index("template_id")["generator"].astype(str).str.lower().to_dict()
-                )
-    except Exception:
-        pass
-    missing_draft_tpl_files: set[str] = set()
-    missing_essay_tpl_files: set[str] = set()
-    missing_draft_tpl_csv: set[str] = set()
-    missing_essay_tpl_csv: set[str] = set()
 
     for doc in top_docs:
         # Doc is the generation (essay) gen_id; use gens store metadata
         gen_id = str(doc)
         data_root = Path("data")
         essay_dir = data_root / "gens" / "essay" / gen_id
-        essay_meta = {}
-        try:
-            mp = essay_dir / "metadata.json"
-            if mp.exists():
-                essay_meta = json.loads(mp.read_text(encoding="utf-8")) or {}
-        except Exception:
-            essay_meta = {}
+        mp = essay_dir / "metadata.json"
+        essay_meta = json.loads(mp.read_text(encoding="utf-8")) if mp.exists() else {}
         essay_template = str(essay_meta.get("template_id") or essay_meta.get("essay_template") or "")
         generation_model = str(essay_meta.get("model_id") or "")
         # Resolve parent draft to get combo_id and draft_template for legacy task ids
@@ -197,33 +139,12 @@ def main() -> int:
         draft_template = ""
         if parent_gen_id:
             draft_meta_path = data_root / "gens" / "draft" / parent_gen_id / "metadata.json"
-            try:
-                if draft_meta_path.exists():
-                    dmeta = json.loads(draft_meta_path.read_text(encoding="utf-8")) or {}
-                    combo_id = str(dmeta.get("combo_id") or "")
-                    draft_template = str(dmeta.get("template_id") or dmeta.get("draft_template") or "")
-                    # If generation_model missing, use the draft model
-                    if not generation_model:
-                        generation_model = str(dmeta.get("model_id") or "")
-            except Exception:
-                pass
-        # Template existence warnings (files and CSV registration)
-        if draft_template:
-            if not (draft_tpl_root / f"{draft_template}.txt").exists():
-                missing_draft_tpl_files.add(draft_template)
-            if known_draft_tpls and draft_template not in known_draft_tpls:
-                missing_draft_tpl_csv.add(draft_template)
-        if essay_template:
-            gen_mode = (essay_tpl_generators.get(essay_template) or "").strip().lower()
-            # If essay generator mode is 'copy', template text is not required
-            if gen_mode != "copy" and not (essay_tpl_root / f"{essay_template}.txt").exists():
-                missing_essay_tpl_files.add(essay_template)
-            if known_essay_tpls and essay_template not in known_essay_tpls:
-                missing_essay_tpl_csv.add(essay_template)
-        # For essay generation tasks, parent_gen_id must point to the DRAFT gen id
-        # parent_gen_id already loaded
-        if not (essay_dir / "parsed.txt").exists():
-            missing_essays.append(str(essay_dir / "parsed.txt"))
+            dmeta = json.loads(draft_meta_path.read_text(encoding="utf-8")) if draft_meta_path.exists() else {}
+            combo_id = str(dmeta.get("combo_id") or "")
+            draft_template = str(dmeta.get("template_id") or dmeta.get("draft_template") or "")
+            # If generation_model missing, use the draft model
+            if not generation_model:
+                generation_model = str(dmeta.get("model_id") or "")
         # Validate required fields
         missing_fields = []
         if not essay_template:
@@ -237,7 +158,7 @@ def main() -> int:
         if not draft_template:
             missing_fields.append("draft_template")
         if missing_fields:
-            missing_required.append(f"{essay_doc_id}: missing {', '.join(missing_fields)}")
+            missing_required.append(f"{gen_id}: missing {', '.join(missing_fields)}")
             continue
         # Legacy task ids (still required): compose strictly from docs metadata
         draft_task_id = f"{combo_id}_{draft_template}_{generation_model}"
@@ -246,14 +167,13 @@ def main() -> int:
             "essay_task_id": essay_task_id,
             # Essay row lineage: parent_gen_id points to the draft gen id
             "parent_gen_id": parent_gen_id,
-            # Also persist the essay's own gen id for gen-id-first flows
-            "essay_gen_id": essay_gen_id,
+            # Also include essay gen_id for convenience in examples below
+            "gen_id": gen_id,
             "draft_task_id": draft_task_id,
             "combo_id": combo_id,
             "draft_template": draft_template,
             "essay_template": essay_template,
             "generation_model": generation_model,
-            "generation_model_name": model_map.get(generation_model, generation_model) if generation_model else "",
         })
 
         # No legacy fallback: grouping strictly by parent_doc_id
@@ -267,13 +187,11 @@ def main() -> int:
                 for msg in missing_required:
                     print(" -", msg, file=sys.stderr)
                 return 2
-            # Ensure gen-id-first: include gen_id for essays.
+            # Ensure gen-id-first: include gen_id for essays
             df_out = pd.DataFrame(essay_rows, columns=[
                 "essay_task_id","parent_gen_id","draft_task_id","combo_id","draft_template",
-                "essay_template","generation_model","generation_model_name"
+                "essay_template","generation_model","gen_id"
             ]).drop_duplicates(subset=["essay_task_id"]).copy()
-            # Add concrete essay gen_id column
-            df_out["gen_id"] = [str(x) for x in top_docs][: len(df_out)]
             df_out.to_csv(essay_out_csv, index=False)
             print(f"Wrote {len(essay_rows)} curated essay tasks to {essay_out_csv}")
         else:
@@ -281,153 +199,9 @@ def main() -> int:
                 "ERROR: No essay rows constructed. Ensure docs metadata contains essay.template_id, essay.model_id, essay.parent_doc_id and draft.combo_id, draft.template_id.",
                 file=sys.stderr,
             )
-            if missing_required:
-                print("Details (per selected parent_gen_id):", file=sys.stderr)
-                for msg in missing_required:
-                    print(" -", msg, file=sys.stderr)
             return 2
     else:
         print(f"Dry run: selected {len(essay_rows)} essay tasks; no file written")
-
-    # Note: Partition registration removed; this script only writes curated CSVs now.
-
-    if missing_essays:
-        print("Warning: missing essay files (evaluation will fail for these if run):", file=sys.stderr)
-        for m in missing_essays[:10]:
-            print(" -", m, file=sys.stderr)
-        if len(missing_essays) > 10:
-            print(f" ... {len(missing_essays)-10} more", file=sys.stderr)
-    # parent_doc_id is required; above path returns early if any missing
-    # Note: Draft backfill checks removed; selection focuses on essays only.
-    # Template warnings (non-fatal)
-    def _examples_for_template(df, tpl: str, cols: list[str]) -> list[str]:
-        try:
-            present = [c for c in cols if c in df.columns]
-            if not present:
-                return []
-            mask = False
-            for c in present:
-                mask = (df[c].astype(str) == tpl) if mask is False else (mask | (df[c].astype(str) == tpl))
-            sub = df[mask]
-            if sub.empty:
-                return []
-            # Prefer evaluation gen_id from parsed_scores (the concrete evaluation generation)
-            for pref in ("gen_id", "parent_gen_id", "document_id"):
-                if pref in sub.columns:
-                    vals = sub[pref].astype(str).head(5).tolist()
-                    if vals:
-                        return vals
-            # Fallback tuple sample
-            cols_show = [c for c in ["evaluation_template","evaluation_model","document_id","parent_doc_id"] if c in sub.columns]
-            out = []
-            for _, r in sub.head(5).iterrows():
-                parts = [f"{c}={str(r[c])}" for c in cols_show]
-                out.append(", ".join(parts))
-            return out
-        except Exception:
-            return []
-
-    # Helper: build essay examples by draft template from curated rows
-    essays_by_draft_tpl = {}
-    essay_doc_ids_by_draft_tpl = {}
-    for r in essay_rows:
-        dt = r.get("draft_template")
-        if dt:
-            essays_by_draft_tpl.setdefault(str(dt), []).append(str(r.get("essay_task_id")))
-            # parent_gen_id holds the essay gen_id in curated rows
-            ed = r.get("parent_gen_id") or r.get("essay_gen_id")
-            if ed:
-                essay_doc_ids_by_draft_tpl.setdefault(str(dt), []).append(str(ed))
-
-    def _eval_doc_examples_from_docs(docs_root: Path, essay_doc_ids: list[str], limit: int = 5) -> list[str]:
-        try:
-            eval_root = docs_root / "evaluation"
-            if not eval_root.exists():
-                return []
-            out = []
-            # Quick scan limited to first N essays and first K evals
-            wanted = set(essay_doc_ids)
-            count = 0
-            for d in eval_root.iterdir():
-                if not d.is_dir():
-                    continue
-                meta = d / "metadata.json"
-                if not meta.exists():
-                    continue
-                import json as _json
-                m = _json.loads(meta.read_text(encoding="utf-8")) or {}
-                if str(m.get("parent_gen_id")) in wanted:
-                    out.append(d.name)
-                    count += 1
-                    if count >= limit:
-                        break
-            return out
-        except Exception:
-            return []
-
-    if missing_draft_tpl_files:
-        print("Warning: draft templates referenced but draft template files not found:", file=sys.stderr)
-        for t in list(sorted(missing_draft_tpl_files))[:10]:
-            print(" -", t, file=sys.stderr)
-            ex = _examples_for_template(df, t, ["link_template", "draft_template"])
-            if ex:
-                print("   examples:", file=sys.stderr)
-                for e in ex:
-                    print("     ", e, file=sys.stderr)
-            else:
-                # Fall back to showing curated essay_task_id examples for this draft template
-                es = essays_by_draft_tpl.get(t) or []
-                # Prefer evaluation doc_ids from docs store when available for these essays
-                if es:
-                    eds = essay_doc_ids_by_draft_tpl.get(t) or []
-                    doc_ids = _eval_doc_examples_from_docs(data_root / "gens", eds)
-                    if doc_ids:
-                        print("   evaluation doc_id examples:", file=sys.stderr)
-                        for e in doc_ids[:5]:
-                            print("     ", e, file=sys.stderr)
-                if es:
-                    print("   essay_task_id examples:", file=sys.stderr)
-                    for e in es[:5]:
-                        print("     ", e, file=sys.stderr)
-        if len(missing_draft_tpl_files) > 10:
-            print(f" ... {len(missing_draft_tpl_files)-10} more", file=sys.stderr)
-    if missing_essay_tpl_files:
-        print("Warning: essay templates referenced but essay template files not found:", file=sys.stderr)
-        for t in list(sorted(missing_essay_tpl_files))[:10]:
-            print(" -", t, file=sys.stderr)
-            ex = _examples_for_template(df, t, ["essay_template", "generation_template"])
-            if ex:
-                print("   examples:", file=sys.stderr)
-                for e in ex:
-                    print("     ", e, file=sys.stderr)
-        if len(missing_essay_tpl_files) > 10:
-            print(f" ... {len(missing_essay_tpl_files)-10} more", file=sys.stderr)
-    if missing_draft_tpl_csv:
-        print("Warning: draft templates referenced but not registered in draft_templates.csv:", file=sys.stderr)
-        show = list(sorted(missing_draft_tpl_csv))[:10]
-        print(" - first 10:", show, file=sys.stderr)
-        for t in show:
-            ex = _examples_for_template(df, t, ["link_template", "draft_template"])
-            if ex:
-                print("   examples:", file=sys.stderr)
-                for e in ex:
-                    print("     ", e, file=sys.stderr)
-            else:
-                es = essays_by_draft_tpl.get(t) or []
-                if es:
-                    print("   essay_task_id examples:", file=sys.stderr)
-                    for e in es[:5]:
-                        print("     ", e, file=sys.stderr)
-    if missing_essay_tpl_csv:
-        print("Warning: essay templates referenced but not registered in essay_templates.csv:", file=sys.stderr)
-        show = list(sorted(missing_essay_tpl_csv))[:10]
-        print(" - first 10:", show, file=sys.stderr)
-        for t in show:
-            ex = _examples_for_template(df, t, ["essay_template", "generation_template"])
-            if ex:
-                print("   examples:", file=sys.stderr)
-                for e in ex:
-                    print("     ", e, file=sys.stderr)
     return 0
 
 
