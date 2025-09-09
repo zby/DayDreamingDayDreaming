@@ -126,22 +126,22 @@ defs = Definitions(
             docs_root=Path("data") / "docs",
             tasks_root=Path("data") / "2_tasks",
             stage="draft",
-            tasks_csv_name="draft_generation_tasks.csv",
-            id_col="draft_task_id",
+            tasks_csv_name=None,
+            id_col="doc_id",
         ),
         "essay_prompt_io_manager": DocsPromptIOManager(
             docs_root=Path("data") / "docs",
             tasks_root=Path("data") / "2_tasks",
             stage="essay",
-            tasks_csv_name="essay_generation_tasks.csv",
-            id_col="essay_task_id",
+            tasks_csv_name=None,
+            id_col="doc_id",
         ),
         "evaluation_prompt_io_manager": DocsPromptIOManager(
             docs_root=Path("data") / "docs",
             tasks_root=Path("data") / "2_tasks",
             stage="evaluation",
-            tasks_csv_name="evaluation_tasks.csv",
-            id_col="evaluation_task_id",
+            tasks_csv_name=None,
+            id_col="doc_id",
         ),
         # Responses: no need to persist via IO manager — assets write to docs store
         # Use in-memory manager only if downstream assets in-process; tests may override

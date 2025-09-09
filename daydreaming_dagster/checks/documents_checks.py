@@ -58,11 +58,7 @@ def draft_files_exist_check(context) -> AssetCheckResult:
     if not pk:
         return AssetCheckResult(passed=True, metadata={"skipped": MetadataValue.text("no partition context")})
     data_root = Path(getattr(context.resources, "data_root", "data"))
-    tasks_csv = data_root / "2_tasks" / "draft_generation_tasks.csv"
-    doc_id = _resolve_doc_id(tasks_csv, "draft_task_id", pk)
-    if not doc_id:
-        return AssetCheckResult(passed=False, metadata={"reason": MetadataValue.text("missing doc_id in tasks or key not found"), "task_id": MetadataValue.text(str(pk))})
-    base = data_root / "docs" / "draft" / str(doc_id)
+    base = data_root / "docs" / "draft" / str(pk)
     ok = (base / "parsed.txt").exists()
     return AssetCheckResult(passed=bool(ok), metadata={"doc_dir": MetadataValue.path(str(base))})
 
@@ -73,11 +69,7 @@ def essay_files_exist_check(context) -> AssetCheckResult:
     if not pk:
         return AssetCheckResult(passed=True, metadata={"skipped": MetadataValue.text("no partition context")})
     data_root = Path(getattr(context.resources, "data_root", "data"))
-    tasks_csv = data_root / "2_tasks" / "essay_generation_tasks.csv"
-    doc_id = _resolve_doc_id(tasks_csv, "essay_task_id", pk)
-    if not doc_id:
-        return AssetCheckResult(passed=False, metadata={"reason": MetadataValue.text("missing doc_id in tasks or key not found"), "task_id": MetadataValue.text(str(pk))})
-    base = data_root / "docs" / "essay" / str(doc_id)
+    base = data_root / "docs" / "essay" / str(pk)
     ok = (base / "parsed.txt").exists()
     return AssetCheckResult(passed=bool(ok), metadata={"doc_dir": MetadataValue.path(str(base))})
 
@@ -88,11 +80,7 @@ def evaluation_files_exist_check(context) -> AssetCheckResult:
     if not pk:
         return AssetCheckResult(passed=True, metadata={"skipped": MetadataValue.text("no partition context")})
     data_root = Path(getattr(context.resources, "data_root", "data"))
-    tasks_csv = data_root / "2_tasks" / "evaluation_tasks.csv"
-    doc_id = _resolve_doc_id(tasks_csv, "evaluation_task_id", pk)
-    if not doc_id:
-        return AssetCheckResult(passed=False, metadata={"reason": MetadataValue.text("missing doc_id in tasks or key not found"), "task_id": MetadataValue.text(str(pk))})
-    base = data_root / "docs" / "evaluation" / str(doc_id)
+    base = data_root / "docs" / "evaluation" / str(pk)
     ok = (base / "parsed.txt").exists()
     return AssetCheckResult(passed=bool(ok), metadata={"doc_dir": MetadataValue.path(str(base))})
 

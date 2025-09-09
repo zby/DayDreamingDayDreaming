@@ -6,7 +6,7 @@ Asset definitions for the evaluation stage.
 
 from dagster import asset, Failure, MetadataValue
 from pathlib import Path
-from .partitions import evaluation_tasks_partitions
+from .partitions import evaluation_docs_partitions
 from ..utils.document import Document
 from ..utils.filesystem_rows import (
     get_row_by_doc_id as fs_get_row_by_doc_id,
@@ -27,22 +27,22 @@ logger = logging.getLogger(__name__)
 
 
 @asset(
-    partitions_def=evaluation_tasks_partitions,
+    partitions_def=evaluation_docs_partitions,
     group_name="evaluation",
     io_manager_key="evaluation_prompt_io_manager",
     required_resource_keys={"data_root"},
     deps={EVALUATION_TEMPLATES_KEY},
 )
 def evaluation_prompt(context, evaluation_tasks) -> str:
-    task_id = context.partition_key
-    task_row = get_task_row(evaluation_tasks, "evaluation_task_id", task_id, context, "evaluation_tasks")
+    doc_id = context.partition_key
+    task_row = get_task_row(evaluation_tasks, "doc_id", doc_id, context, "evaluation_tasks")
     parent_doc_id = task_row.get("parent_doc_id")
     if not (isinstance(parent_doc_id, str) and parent_doc_id.strip()):
         raise Failure(
             description="Missing parent_doc_id for evaluation task",
             metadata={
                 "function": MetadataValue.text("evaluation_prompt"),
-                "evaluation_task_id": MetadataValue.text(task_id),
+                "doc_id": MetadataValue.text(str(doc_id)),
                 "resolution": MetadataValue.text("Provide parent_doc_id (essay doc id) in evaluation_tasks.csv"),
             },
         )
@@ -108,38 +108,37 @@ def evaluation_prompt(context, evaluation_tasks) -> str:
 
 
 @asset(
-    partitions_def=evaluation_tasks_partitions,
+    partitions_def=evaluation_docs_partitions,
     group_name="evaluation",
     io_manager_key="evaluation_response_io_manager",
     required_resource_keys={"openrouter_client", "data_root", "experiment_config"},
     deps=["evaluation_prompt", "evaluation_tasks"],
 )
 def evaluation_response(context, evaluation_prompt, evaluation_tasks) -> str:
-    task_id = context.partition_key
-    task_row = get_task_row(evaluation_tasks, "evaluation_task_id", task_id, context, "evaluation_tasks")
+    doc_id = context.partition_key
+    task_row = get_task_row(evaluation_tasks, "doc_id", doc_id, context, "evaluation_tasks")
     model_name = task_row["evaluation_model_name"]
     llm_client = context.resources.openrouter_client
     max_tokens = getattr(context.resources.experiment_config, "evaluation_max_tokens", None)
     text, info = llm_client.generate_with_info(evaluation_prompt, model=model_name, max_tokens=max_tokens)
     context.add_output_metadata({
-        "evaluation_task_id": MetadataValue.text(task_id),
+        "doc_id": MetadataValue.text(str(doc_id)),
         "model_used": MetadataValue.text(model_name),
         "finish_reason": MetadataValue.text(str((info or {}).get("finish_reason"))),
     })
-    context.log.info(f"Generated evaluation response for task {task_id} using model {model_name}")
+    context.log.info(f"Generated evaluation response for doc {doc_id} using model {model_name}")
     # Write to filesystem docs/evaluation
     import time
     from pathlib import Path as _Path
     parent_doc_id = task_row.get("parent_doc_id")
     evaluation_template = task_row.get("evaluation_template")
     model_id = task_row.get("evaluation_model") or task_row.get("evaluation_model_id")
-    doc_id = task_row.get("doc_id")
     if not (isinstance(doc_id, str) and doc_id.strip()):
         raise Failure(
             description="Missing doc_id for evaluation task",
             metadata={
                 "function": MetadataValue.text("evaluation_response"),
-                "evaluation_task_id": MetadataValue.text(task_id),
+                "doc_id": MetadataValue.text(str(doc_id)),
                 "resolution": MetadataValue.text("Ensure evaluation_tasks.csv includes a doc_id column"),
             },
         )
@@ -159,7 +158,7 @@ def evaluation_response(context, evaluation_prompt, evaluation_tasks) -> str:
         # If parsing fails, do not synthesize a SCORE line; downstream will surface the error.
         score_val = None
     metadata = {
-        "task_id": task_id,
+        "task_id": task_row.get("evaluation_task_id") or "",
         "evaluation_template": evaluation_template,
         "template_id": evaluation_template,
         "model_id": model_id,

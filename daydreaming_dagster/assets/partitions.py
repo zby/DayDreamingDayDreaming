@@ -1,9 +1,6 @@
 from dagster import DynamicPartitionsDefinition
 
-# Create dynamic partition definitions
-generation_tasks_partitions = DynamicPartitionsDefinition(name="generation_tasks")
-evaluation_tasks_partitions = DynamicPartitionsDefinition(name="evaluation_tasks")
-
-# Two-phase architecture
-essay_tasks_partitions = DynamicPartitionsDefinition(name="essay_tasks")
-draft_tasks_partitions = DynamicPartitionsDefinition(name="draft_tasks")
+# Doc-id keyed dynamic partitions (one per document)
+draft_docs_partitions = DynamicPartitionsDefinition(name="draft_docs")
+essay_docs_partitions = DynamicPartitionsDefinition(name="essay_docs")
+evaluation_docs_partitions = DynamicPartitionsDefinition(name="evaluation_docs")

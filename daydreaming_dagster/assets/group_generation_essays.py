@@ -7,7 +7,7 @@ Asset definitions for the essay (Phase‑2) generation stage.
 from dagster import asset, Failure, MetadataValue
 from pathlib import Path
 from jinja2 import Environment
-from .partitions import essay_tasks_partitions
+from .partitions import essay_docs_partitions
 from ..utils.template_loader import load_generation_template
 from ..utils.raw_readers import read_essay_templates
 from ..utils.dataframe_helpers import get_task_row
@@ -144,8 +144,8 @@ def _load_phase1_text_by_combo_model(context, combo_id: str, model_id: str) -> t
 
 def _essay_prompt_impl(context, essay_generation_tasks) -> str:
     """Generate Phase‑2 prompts based on Phase‑1 drafts."""
-    task_id = context.partition_key
-    task_row = get_task_row(essay_generation_tasks, "essay_task_id", task_id, context, "essay_generation_tasks")
+    doc_id = context.partition_key
+    task_row = get_task_row(essay_generation_tasks, "doc_id", doc_id, context, "essay_generation_tasks")
     template_name = task_row["essay_template"]
 
     generator_mode = _get_essay_generator_mode(context.resources.data_root, template_name)
@@ -163,10 +163,10 @@ def _essay_prompt_impl(context, essay_generation_tasks) -> str:
     parent_doc_id = task_row.get("parent_doc_id")
     if not (isinstance(parent_doc_id, str) and parent_doc_id.strip()):
         raise Failure(
-            description="Missing parent_doc_id for essay task",
+            description="Missing parent_doc_id for essay doc",
             metadata={
                 "function": MetadataValue.text("essay_prompt"),
-                "essay_task_id": MetadataValue.text(task_id),
+                "doc_id": MetadataValue.text(str(doc_id)),
                 "resolution": MetadataValue.text("Provide parent_doc_id (draft doc id) in essay_generation_tasks.csv"),
             },
         )
@@ -182,7 +182,7 @@ def _essay_prompt_impl(context, essay_generation_tasks) -> str:
             description="Upstream draft text is empty/too short for essay prompt",
             metadata={
                 "function": MetadataValue.text("essay_prompt"),
-                "essay_task_id": MetadataValue.text(task_id),
+                "doc_id": MetadataValue.text(str(doc_id)),
                 "parent_doc_id": MetadataValue.text(str(parent_doc_id)),
                 "draft_line_count": MetadataValue.int(len(draft_lines)),
                 "min_required_lines": MetadataValue.int(min_lines),
@@ -217,7 +217,7 @@ def _essay_prompt_impl(context, essay_generation_tasks) -> str:
     context.add_output_metadata(
         {
             "function": MetadataValue.text("essay_prompt"),
-            "essay_task_id": MetadataValue.text(task_id),
+            "doc_id": MetadataValue.text(str(doc_id)),
             "essay_template": MetadataValue.text(template_name),
             "draft_line_count": MetadataValue.int(len(draft_lines)),
             "phase1_source": MetadataValue.text(used_source),
@@ -227,7 +227,7 @@ def _essay_prompt_impl(context, essay_generation_tasks) -> str:
 
 
 @asset(
-    partitions_def=essay_tasks_partitions,
+    partitions_def=essay_docs_partitions,
     group_name="generation_essays",
     io_manager_key="essay_prompt_io_manager",
     required_resource_keys={"data_root", "experiment_config"},
@@ -242,8 +242,8 @@ def _essay_response_impl(context, essay_prompt, essay_generation_tasks) -> str:
     Always resolves and loads the Phase‑1 (draft) text via parent_doc_id first,
     regardless of mode, and then applies the selected generation path.
     """
-    task_id = context.partition_key
-    task_row = get_task_row(essay_generation_tasks, "essay_task_id", task_id, context, "essay_generation_tasks")
+    doc_id = context.partition_key
+    task_row = get_task_row(essay_generation_tasks, "doc_id", doc_id, context, "essay_generation_tasks")
     template_name = task_row["essay_template"]
     mode = _get_essay_generator_mode(context.resources.data_root, template_name)
 
@@ -251,10 +251,10 @@ def _essay_response_impl(context, essay_prompt, essay_generation_tasks) -> str:
     parent_doc_id = task_row.get("parent_doc_id")
     if not (isinstance(parent_doc_id, str) and parent_doc_id.strip()):
         raise Failure(
-            description="Missing parent_doc_id for essay task",
+            description="Missing parent_doc_id for essay doc",
             metadata={
                 "function": MetadataValue.text("_essay_response_impl"),
-                "essay_task_id": MetadataValue.text(task_id),
+                "doc_id": MetadataValue.text(str(doc_id)),
                 "resolution": MetadataValue.text("Provide parent_doc_id (draft doc id) in essay_generation_tasks.csv"),
             },
         )
@@ -270,7 +270,7 @@ def _essay_response_impl(context, essay_prompt, essay_generation_tasks) -> str:
             description="Upstream draft text is empty/too short for essay generation",
             metadata={
                 "function": MetadataValue.text("_essay_response_impl"),
-                "essay_task_id": MetadataValue.text(task_id),
+                "doc_id": MetadataValue.text(str(doc_id)),
                 "parent_doc_id": MetadataValue.text(str(parent_doc_id)),
                 "draft_line_count": MetadataValue.int(len(dlines)),
                 "min_required_lines": MetadataValue.int(min_lines),
@@ -284,7 +284,7 @@ def _essay_response_impl(context, essay_prompt, essay_generation_tasks) -> str:
             {
                 "function": MetadataValue.text("essay_response"),
                 "mode": MetadataValue.text("copy"),
-                "essay_task_id": MetadataValue.text(task_id),
+                "doc_id": MetadataValue.text(str(doc_id)),
                 "parent_doc_id": MetadataValue.text(str(parent_doc_id)),
                 "source": MetadataValue.text(used_source),
                 "chars": MetadataValue.int(len(text)),
@@ -343,12 +343,12 @@ def _essay_response_impl(context, essay_prompt, essay_generation_tasks) -> str:
         if raw_path_str:
             meta["raw_path"] = MetadataValue.path(raw_path_str)
             meta["raw_chars"] = MetadataValue.int(len(normalized))
-        raise Failure(description=f"Essay response truncated for task {task_id}", metadata=meta)
+        raise Failure(description=f"Essay response truncated for doc {doc_id}", metadata=meta)
 
     context.add_output_metadata(
         {
             "function": MetadataValue.text("essay_response"),
-            "essay_task_id": MetadataValue.text(task_id),
+            "doc_id": MetadataValue.text(str(doc_id)),
             "model_used": MetadataValue.text(model_name),
             "chars": MetadataValue.int(len(normalized)),
             "truncated": MetadataValue.bool(False),
@@ -359,7 +359,7 @@ def _essay_response_impl(context, essay_prompt, essay_generation_tasks) -> str:
 
 
 @asset(
-    partitions_def=essay_tasks_partitions,
+    partitions_def=essay_docs_partitions,
     group_name="generation_essays",
     io_manager_key="essay_response_io_manager",
     required_resource_keys={"openrouter_client", "experiment_config", "data_root"},
@@ -371,8 +371,8 @@ def essay_response(context, essay_prompt, essay_generation_tasks) -> str:
     import time
     from pathlib import Path as _Path
 
-    task_id = context.partition_key
-    task_row = get_task_row(essay_generation_tasks, "essay_task_id", task_id, context, "essay_generation_tasks")
+    doc_id = context.partition_key
+    task_row = get_task_row(essay_generation_tasks, "doc_id", doc_id, context, "essay_generation_tasks")
     essay_template = task_row.get("essay_template")
     model_id = task_row.get("generation_model") or task_row.get("generation_model_id")
     generator_mode = (_get_essay_generator_mode(context.resources.data_root, essay_template) or "llm").lower()
@@ -380,20 +380,20 @@ def essay_response(context, essay_prompt, essay_generation_tasks) -> str:
     parent_doc_id = task_row.get("parent_doc_id")
     if not (isinstance(parent_doc_id, str) and parent_doc_id.strip()):
         raise Failure(
-            description="Missing parent_doc_id for essay task",
+            description="Missing parent_doc_id for essay doc",
             metadata={
                 "function": MetadataValue.text("essay_response"),
-                "essay_task_id": MetadataValue.text(task_id),
+                "doc_id": MetadataValue.text(str(doc_id)),
                 "resolution": MetadataValue.text("Provide parent_doc_id (draft doc id) in essay_generation_tasks.csv"),
             },
         )
     doc_id = task_row.get("doc_id")
     if not (isinstance(doc_id, str) and doc_id.strip()):
         raise Failure(
-            description="Missing doc_id for essay task",
+            description="Missing doc_id for essay doc",
             metadata={
                 "function": MetadataValue.text("essay_response"),
-                "essay_task_id": MetadataValue.text(task_id),
+                "doc_id": MetadataValue.text(str(doc_id)),
                 "resolution": MetadataValue.text("Ensure essay_generation_tasks.csv includes a doc_id column"),
             },
         )
@@ -401,7 +401,7 @@ def essay_response(context, essay_prompt, essay_generation_tasks) -> str:
     docs_root = Path(getattr(context.resources, "data_root", "data")) / "docs"
     # Build document using helper
     metadata = {
-        "task_id": task_id,
+        "task_id": task_row.get("essay_task_id") or "",
         "essay_template": essay_template,
         "template_id": essay_template,
         "model_id": model_id,

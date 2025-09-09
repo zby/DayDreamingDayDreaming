@@ -22,9 +22,9 @@ from ..utils.raw_readers import (
 )
 from ..utils.selected_combos import read_selected_combo_mappings
 from .partitions import (
-    draft_tasks_partitions,
-    essay_tasks_partitions,
-    evaluation_tasks_partitions,
+    draft_docs_partitions,
+    essay_docs_partitions,
+    evaluation_docs_partitions,
 )
 from ..utils.combo_ids import ComboIDManager
 from ..utils.ids import reserve_doc_id
@@ -213,13 +213,13 @@ def draft_generation_tasks(context, content_combinations: List[ContentCombinatio
             lambda tid: reserve_doc_id("draft", tid)
         )
     # refresh dynamic partitions
-    existing = context.instance.get_dynamic_partitions(draft_tasks_partitions.name)
+    existing = context.instance.get_dynamic_partitions(draft_docs_partitions.name)
     if existing:
         for p in existing:
-            context.instance.delete_dynamic_partition(draft_tasks_partitions.name, p)
+            context.instance.delete_dynamic_partition(draft_docs_partitions.name, p)
     if not df.empty:
         context.instance.add_dynamic_partitions(
-            draft_tasks_partitions.name, df["draft_task_id"].tolist()
+            draft_docs_partitions.name, df["doc_id"].astype(str).tolist()
         )
     try:
         context.add_output_metadata({"task_count": MetadataValue.int(len(df))})
@@ -298,13 +298,13 @@ def essay_generation_tasks(context, content_combinations: List[ContentCombinatio
             df = pd.concat([df, new_row], ignore_index=True)
 
     # refresh dynamic partitions
-    existing = context.instance.get_dynamic_partitions(essay_tasks_partitions.name)
+    existing = context.instance.get_dynamic_partitions(essay_docs_partitions.name)
     if existing:
         for p in existing:
-            context.instance.delete_dynamic_partition(essay_tasks_partitions.name, p)
+            context.instance.delete_dynamic_partition(essay_docs_partitions.name, p)
     if not df.empty:
         context.instance.add_dynamic_partitions(
-            essay_tasks_partitions.name, df["essay_task_id"].tolist()
+            essay_docs_partitions.name, df["doc_id"].astype(str).tolist()
         )
     try:
         context.add_output_metadata({"task_count": MetadataValue.int(len(df))})
@@ -326,7 +326,7 @@ def evaluation_tasks(
 ) -> pd.DataFrame:
     from ..utils.raw_readers import read_llm_models, read_evaluation_templates
 
-    from .partitions import evaluation_tasks_partitions
+    # use evaluation_docs_partitions for partition registration
 
     data_root = Path(context.resources.data_root)
     models_df = read_llm_models(Path(data_root))
@@ -429,13 +429,13 @@ def evaluation_tasks(
         tasks_df["doc_id"] = tasks_df["evaluation_task_id"].astype(str).apply(
             lambda tid: reserve_doc_id("evaluation", tid, run_id=str(run_id) if run_id else None)
         )
-    existing = context.instance.get_dynamic_partitions(evaluation_tasks_partitions.name)
+    existing = context.instance.get_dynamic_partitions(evaluation_docs_partitions.name)
     if existing:
         for p in existing:
-            context.instance.delete_dynamic_partition(evaluation_tasks_partitions.name, p)
+            context.instance.delete_dynamic_partition(evaluation_docs_partitions.name, p)
     if not tasks_df.empty:
         context.instance.add_dynamic_partitions(
-            evaluation_tasks_partitions.name, tasks_df["evaluation_task_id"].tolist()
+            evaluation_docs_partitions.name, tasks_df["doc_id"].astype(str).tolist()
         )
     context.add_output_metadata({"task_count": MetadataValue.int(len(tasks_df))})
     return tasks_df

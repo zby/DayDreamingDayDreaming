@@ -19,15 +19,18 @@ class DocsPromptIOManager(IOManager):
     - id_col: partition key column (e.g., draft_task_id)
     """
 
-    def __init__(self, docs_root: Path, tasks_root: Path, *, stage: str, tasks_csv_name: str, id_col: str):
+    def __init__(self, docs_root: Path, tasks_root: Path, *, stage: str, tasks_csv_name: str | None, id_col: str):
         self.docs_root = Path(docs_root)
         self.tasks_root = Path(tasks_root)
         self.stage = str(stage)
-        self.tasks_csv_name = str(tasks_csv_name)
+        self.tasks_csv_name = str(tasks_csv_name) if tasks_csv_name is not None else None
         self.id_col = str(id_col)
 
     def _resolve_doc_id(self, partition_key: str) -> str:
-        csv = self.tasks_root / self.tasks_csv_name
+        # If id_col is already doc_id, the partition key is the doc id.
+        if self.id_col == "doc_id" or self.tasks_csv_name is None:
+            return str(partition_key)
+        csv = self.tasks_root / str(self.tasks_csv_name)
         if not csv.exists():
             raise FileNotFoundError(f"Tasks CSV not found: {csv}")
         df = pd.read_csv(csv)

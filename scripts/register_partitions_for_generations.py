@@ -392,9 +392,20 @@ def main() -> int:
     # Note: Do not write cross-experiment task tables here; cross-experiment tracking is driven by results appenders
 
     # Register dynamic partitions (add-only)
-    # Prepare partition keys
-    draft_ids = [r["draft_task_id"] for r in draft_rows] if draft_rows else []
-    essay_ids = [r["essay_task_id"] for r in essay_rows] if essay_rows else []
+    # Prepare partition keys (doc-id keyed)
+    draft_ids = [r.get("doc_id") for r in draft_rows] if draft_rows else []
+    essay_ids = []
+    # essay_rows in this script mirror input CSV; do not mutate curated doc_ids here
+    # If you want to register essay doc_ids, ensure essay_generation_tasks.csv includes doc_id
+    try:
+        import pandas as _pd
+        _essay_csv = data_root / "2_tasks" / "essay_generation_tasks.csv"
+        if _essay_csv.exists():
+            _edf = _pd.read_csv(_essay_csv)
+            if "doc_id" in _edf.columns:
+                essay_ids = _edf["doc_id"].astype(str).dropna().tolist()
+    except Exception:
+        pass
 
     # Evaluation axes (with optional overrides)
     eval_tpls, eval_models = _load_active_evaluation_axes(data_root)
@@ -518,7 +529,7 @@ def main() -> int:
 
             # Optionally clear existing partitions first
             if not args.add_only:
-                for name in ("draft_tasks", "essay_tasks", "evaluation_tasks"):
+                for name in ("draft_docs", "essay_docs", "evaluation_docs"):
                     existing = list(instance.get_dynamic_partitions(name))
                     for p in existing:
                         instance.delete_dynamic_partition(name, p)
@@ -526,27 +537,27 @@ def main() -> int:
 
             if draft_ids:
                 draft_ids = _unique_str(draft_ids)
-                existing = set(instance.get_dynamic_partitions("draft_tasks"))
+                existing = set(instance.get_dynamic_partitions("draft_docs"))
                 new = [k for k in draft_ids if k not in existing]
                 if new:
-                    instance.add_dynamic_partitions("draft_tasks", new)
-                print(f"Registered draft partitions: +{len(new)} (total ~{len(existing)+len(new)})")
+                    instance.add_dynamic_partitions("draft_docs", new)
+                print(f"Registered draft doc partitions: +{len(new)} (total ~{len(existing)+len(new)})")
 
             if essay_ids:
                 essay_ids = _unique_str(essay_ids)
-                existing = set(instance.get_dynamic_partitions("essay_tasks"))
+                existing = set(instance.get_dynamic_partitions("essay_docs"))
                 new = [k for k in essay_ids if k not in existing]
                 if new:
-                    instance.add_dynamic_partitions("essay_tasks", new)
-                print(f"Registered essay partitions: +{len(new)} (total ~{len(existing)+len(new)})")
+                    instance.add_dynamic_partitions("essay_docs", new)
+                print(f"Registered essay doc partitions: +{len(new)} (total ~{len(existing)+len(new)})")
 
             # Evaluation partitions for active evaluation templates × models
             if eval_ids:
-                existing = set(instance.get_dynamic_partitions("evaluation_tasks"))
+                existing = set(instance.get_dynamic_partitions("evaluation_docs"))
                 to_add = [k for k in eval_ids if k not in existing]
                 if to_add:
-                    instance.add_dynamic_partitions("evaluation_tasks", to_add)
-                print(f"Registered evaluation partitions: +{len(to_add)} (total ~{len(existing)+len(to_add)})")
+                    instance.add_dynamic_partitions("evaluation_docs", to_add)
+                print(f"Registered evaluation doc partitions: +{len(to_add)} (total ~{len(existing)+len(to_add)})")
 
             print(f"DAGSTER_HOME={os.environ.get('DAGSTER_HOME','(unset)')}")
         except Exception as e:
