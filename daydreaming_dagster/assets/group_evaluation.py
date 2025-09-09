@@ -95,7 +95,7 @@ def evaluation_prompt(context, evaluation_tasks) -> str:
     eval_prompt = template.render(response=doc_text)
     context.add_output_metadata(
         {
-            "evaluation_task_id": MetadataValue.text(task_id),
+            "doc_id": MetadataValue.text(str(doc_id)),
             "parent_doc_id": MetadataValue.text(str(parent_doc_id)),
             "document_content_length": MetadataValue.int(len(doc_text or "")),
             "evaluation_prompt_length": MetadataValue.int(len(eval_prompt)),

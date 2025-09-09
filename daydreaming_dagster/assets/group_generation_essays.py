@@ -197,7 +197,7 @@ def _essay_prompt_impl(context, essay_generation_tasks) -> str:
             description=f"Essay template '{template_name}' not found",
             metadata={
                 "function": MetadataValue.text("essay_prompt"),
-                "essay_task_id": MetadataValue.text(task_id),
+                "doc_id": MetadataValue.text(str(doc_id)),
                 "essay_template": MetadataValue.text(template_name),
                 "error": MetadataValue.text(str(e)),
             },
@@ -297,7 +297,7 @@ def _essay_response_impl(context, essay_prompt, essay_generation_tasks) -> str:
             description="Essay generator mode 'parser' is not supported",
             metadata={
                 "function": MetadataValue.text("essay_response"),
-                "essay_task_id": MetadataValue.text(task_id),
+                "doc_id": MetadataValue.text(str(doc_id)),
                 "essay_template": MetadataValue.text(template_name),
                 "resolution": MetadataValue.text("Set generator to 'llm' or 'copy' in data/1_raw/essay_templates.csv"),
             },
@@ -319,7 +319,7 @@ def _essay_response_impl(context, essay_prompt, essay_generation_tasks) -> str:
     raw_dir = Path(raw_dir_override) if raw_dir_override else data_root / "3_generation" / "essay_responses_raw"
     raw_path_str = None
     if save_raw:
-        raw_path_str = save_versioned_raw_text(raw_dir, task_id, normalized, logger=context.log)
+        raw_path_str = save_versioned_raw_text(raw_dir, str(doc_id), normalized, logger=context.log)
 
     # Truncation detection: explicit flag or finish_reason=length
     finish_reason = (info or {}).get("finish_reason") if isinstance(info, dict) else None
@@ -330,7 +330,7 @@ def _essay_response_impl(context, essay_prompt, essay_generation_tasks) -> str:
     if was_truncated:
         meta = {
             "function": MetadataValue.text("essay_response"),
-            "essay_task_id": MetadataValue.text(task_id),
+            "doc_id": MetadataValue.text(str(doc_id)),
             "model_used": MetadataValue.text(model_name),
             "max_tokens": MetadataValue.int(int(max_tokens) if isinstance(max_tokens, (int, float)) else 0),
             "finish_reason": MetadataValue.text(str(finish_reason)),

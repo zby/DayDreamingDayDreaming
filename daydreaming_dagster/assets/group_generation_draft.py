@@ -121,10 +121,10 @@ def _draft_response_impl(context, draft_prompt, draft_generation_tasks) -> str:
     min_lines = getattr(experiment_config, "min_draft_lines", 3)
     if len(response_lines) < int(min_lines):
         raise Failure(
-            description=f"Draft response insufficient for task {task_id}",
+            description=f"Draft response insufficient for doc {doc_id}",
             metadata={
                 "function": MetadataValue.text("draft_response"),
-                "task_id": MetadataValue.text(task_id),
+                "doc_id": MetadataValue.text(str(doc_id)),
                 "model_name": MetadataValue.text(model_name),
                 "response_line_count": MetadataValue.int(len(response_lines)),
                 "minimum_required": MetadataValue.int(int(min_lines)),
@@ -284,7 +284,7 @@ def draft_response(context, draft_prompt, draft_generation_tasks) -> str:
         raw_dir = data_root / "3_generation" / "draft_responses_raw"
         best = None
         best_ver = -1
-        prefix = f"{task_id}_v"
+        prefix = f"{doc_id}_v"
         if raw_dir.exists():
             for name in raw_dir.iterdir():
                 if not name.name.startswith(prefix) or name.suffix != ".txt":
