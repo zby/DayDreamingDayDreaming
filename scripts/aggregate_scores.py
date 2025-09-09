@@ -289,14 +289,47 @@ def parse_all(
                                     raise RuntimeError(f"Strict mode: required metadata keys absent in {meta_fp}")
                 except Exception:
                     pass
+                # Enrich generation-side identifiers from essay/draft metadata when possible
+                gen_template = None
+                gen_model = None
+                combo_id = None
+                draft_template = None
+                stage = "essay2p"
+                gen_path = str((data_root / "gens" / "essay" / parent_gen_id / "parsed.txt").resolve()) if parent_gen_id else ""
+                try:
+                    if parent_gen_id:
+                        emeta_path = data_root / "gens" / "essay" / parent_gen_id / "metadata.json"
+                        if emeta_path.exists():
+                            emeta = json.loads(emeta_path.read_text(encoding="utf-8")) or {}
+                            gen_template = str(emeta.get("template_id") or emeta.get("essay_template") or "")
+                            gen_model = str(emeta.get("model_id") or "")
+                            draft_id = str(emeta.get("parent_gen_id") or "")
+                            if draft_id:
+                                dmeta_path = data_root / "gens" / "draft" / draft_id / "metadata.json"
+                                if dmeta_path.exists():
+                                    dmeta = json.loads(dmeta_path.read_text(encoding="utf-8")) or {}
+                                    combo_id = str(dmeta.get("combo_id") or "")
+                                    draft_template = str(dmeta.get("template_id") or dmeta.get("draft_template") or "")
+                                    if not gen_model:
+                                        gen_model = str(dmeta.get("model_id") or "")
+                except Exception:
+                    pass
                 rows.append({
                     "gen_id": gen_id,
                     "parent_gen_id": parent_gen_id,
                     "template_id": template_id,
+                    "evaluation_template": template_id,
                     "evaluation_model": eval_model,
                     "score": None,
                     "error": "missing parsed.txt",
                     "evaluation_response_path": str(parsed_fp),
+                    # enrichments
+                    "combo_id": combo_id,
+                    "draft_template": draft_template,
+                    "generation_template": gen_template,
+                    "generation_model": gen_model,
+                    "stage": stage,
+                    "generation_response_path": gen_path,
                 })
                 continue
             try:
@@ -322,6 +355,32 @@ def parse_all(
                             warnings.append(f"Warning: {meta_fp} missing keys: {sorted(set(req) - set(present))}")
                             if strict and len(present) == 0:
                                 raise RuntimeError(f"Strict mode: required metadata keys absent in {meta_fp}")
+            except Exception:
+                pass
+
+            # Enrich generation-side identifiers from essay/draft metadata
+            gen_template = None
+            gen_model = None
+            combo_id = None
+            draft_template = None
+            stage = "essay2p"
+            gen_path = str((data_root / "gens" / "essay" / parent_gen_id / "parsed.txt").resolve()) if parent_gen_id else ""
+            try:
+                if parent_gen_id:
+                    emeta_path = data_root / "gens" / "essay" / parent_gen_id / "metadata.json"
+                    if emeta_path.exists():
+                        emeta = json.loads(emeta_path.read_text(encoding="utf-8")) or {}
+                        gen_template = str(emeta.get("template_id") or emeta.get("essay_template") or "")
+                        gen_model = str(emeta.get("model_id") or "")
+                        draft_id = str(emeta.get("parent_gen_id") or "")
+                        if draft_id:
+                            dmeta_path = data_root / "gens" / "draft" / draft_id / "metadata.json"
+                            if dmeta_path.exists():
+                                dmeta = json.loads(dmeta_path.read_text(encoding="utf-8")) or {}
+                                combo_id = str(dmeta.get("combo_id") or "")
+                                draft_template = str(dmeta.get("template_id") or dmeta.get("draft_template") or "")
+                                if not gen_model:
+                                    gen_model = str(dmeta.get("model_id") or "")
             except Exception:
                 pass
 
@@ -352,10 +411,18 @@ def parse_all(
                 "gen_id": gen_id,
                 "parent_gen_id": parent_gen_id,
                 "template_id": template_id,
+                "evaluation_template": template_id,
                 "evaluation_model": eval_model,
                 "score": score,
                 "error": err,
                 "evaluation_response_path": str(text_path),
+                # enrichments
+                "combo_id": combo_id,
+                "draft_template": draft_template,
+                "generation_template": gen_template,
+                "generation_model": gen_model,
+                "stage": stage,
+                "generation_response_path": gen_path,
             })
     else:
         raise FileNotFoundError(f"Docs store not found: {docs_eval}")
@@ -367,10 +434,18 @@ def parse_all(
         "gen_id",
         "parent_gen_id",
         "template_id",
+        "evaluation_template",
         "evaluation_model",
         "score",
         "error",
         "evaluation_response_path",
+        # enrichments
+        "combo_id",
+        "draft_template",
+        "generation_template",
+        "generation_model",
+        "stage",
+        "generation_response_path",
     ]
     # No document_id column — doc_id is canonical
 
@@ -386,10 +461,18 @@ def parse_all(
         "parent_gen_id",
         "gen_id",
         "template_id",
+        "evaluation_template",
         "evaluation_model",
         "score",
         "error",
         "evaluation_response_path",
+        # enrichments
+        "combo_id",
+        "draft_template",
+        "generation_template",
+        "generation_model",
+        "stage",
+        "generation_response_path",
     ]
     existing = [c for c in column_order if c in df.columns]
     df = df[existing + [c for c in df.columns if c not in existing]]
