@@ -72,15 +72,15 @@ uv run dagster asset materialize --select "group:task_definitions" -f daydreamin
 
 # Step 2: Generate LLM responses using two-phase generation
 # Now you can run individual partitions or use the UI to run all
-# Tip: get a draft partition key from the first column of draft_generation_tasks.csv
+# Tip: get a draft partition key (doc_id) from draft_generation_tasks.csv
 # Example (Phase 1):
-# DRAFT=$(cut -d',' -f1 data/2_tasks/draft_generation_tasks.csv | sed -n '2p')
-# uv run dagster asset materialize --select "group:generation_draft" --partition "$DRAFT" -f daydreaming_dagster/definitions.py
+# DRAFT_DOC=$(awk -F, 'NR==1{for(i=1;i<=NF;i++)h[$i]=i} NR==2{print $h["doc_id"]}' data/2_tasks/draft_generation_tasks.csv)
+# uv run dagster asset materialize --select "group:generation_draft" --partition "$DRAFT_DOC" -f daydreaming_dagster/definitions.py
 
-# Then get an essay partition key for that draft from essay_generation_tasks.csv
+# Then get an essay partition key (doc_id) whose parent_doc_id matches the draft
 # Example (Phase 2):
-# ESSAY=$(awk -F, -v draft="$DRAFT" 'NR==1{for(i=1;i<=NF;i++)h[$i]=i} NR>1 && $h["draft_task_id"]==draft {print $h["essay_task_id"]; exit}' data/2_tasks/essay_generation_tasks.csv)
-# uv run dagster asset materialize --select "group:generation_essays" --partition "$ESSAY" -f daydreaming_dagster/definitions.py
+# ESSAY_DOC=$(awk -F, -v dd="$DRAFT_DOC" 'NR==1{for(i=1;i<=NF;i++)h[$i]=i} NR>1 && $h["parent_doc_id"]==dd {print $h["doc_id"]; exit}' data/2_tasks/essay_generation_tasks.csv)
+# uv run dagster asset materialize --select "group:generation_essays" --partition "$ESSAY_DOC" -f daydreaming_dagster/definitions.py
 
 # Step 3: Process results (after sufficient generation/evaluation data)
 uv run dagster asset materialize --select "parsed_scores,final_results" -f daydreaming_dagster/definitions.py
@@ -99,7 +99,7 @@ uv run dagster asset materialize --select "parsed_scores,final_results" -f daydr
 - `evaluation_templates` loads evaluation CSV + files
 - Using asset groups or dependency resolution (`+`) automatically includes these dependencies
 
-**Dynamic Partitioning**: Partitions are created/updated by the task assets. Partition keys are based on `draft_task_id` (drafts) and `essay_task_id` (essays), which include a stable `combo_id` prefix.
+**Dynamic Partitioning**: Partitions are created/updated by the task assets. Partition keys are doc_id for all stages (`draft_docs`, `essay_docs`, `evaluation_docs`).
 
 ### Running All LLM Partitions
 
@@ -311,10 +311,7 @@ Active draft templates are controlled in `data/1_raw/draft_templates.csv` via th
   - `data/docs/draft/<doc_id>/prompt.txt`
   - `data/docs/essay/<doc_id>/prompt.txt`
   - `data/docs/evaluation/<doc_id>/prompt.txt`
-- The IO manager (`DocsPromptIOManager`) resolves `<doc_id>` from the corresponding tasks CSV in `data/2_tasks/` by matching the partition key:
-  - draft_prompt → `draft_generation_tasks.csv` (`draft_task_id`, `doc_id`)
-  - essay_prompt → `essay_generation_tasks.csv` (`essay_task_id`, `doc_id`)
-  - evaluation_prompt → `evaluation_tasks.csv` (`evaluation_task_id`, `doc_id`)
+- The IO manager (`DocsPromptIOManager`) accepts `doc_id` partition keys directly and writes prompts to `data/docs/<stage>/<doc_id>/prompt.txt`.
 - Responses are written to the docs store by the assets themselves (not via IO managers). Scripts and downstream assets read from the docs store using `metadata.json` and file paths.
 
 ## Key Features
@@ -361,7 +358,7 @@ Active draft templates are controlled in `data/1_raw/draft_templates.csv` via th
    ```
   DagsterUnknownPartitionError: Could not find a partition with key `combo_v1_<hex>_...` (or legacy `combo_001_...`)
    ```
-  **Solution**: Make sure task CSV files exist by running step 1 first. Use `cut -d',' -f1 data/2_tasks/draft_generation_tasks.csv | sed -n '2p'` to retrieve a valid draft partition key.
+  **Solution**: Make sure task CSV files exist by running step 1 first. Use `awk -F, 'NR==1{for(i=1;i<=NF;i++)h[$i]=i} NR==2{print $h["doc_id"]}' data/2_tasks/draft_generation_tasks.csv` to retrieve a valid draft partition key (doc_id).
 
 4. **Partitioned Asset Group Error**:
    ```
