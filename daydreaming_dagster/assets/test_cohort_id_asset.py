@@ -83,7 +83,7 @@ def test_cohort_id_override_precedence_config_over_env(tmp_path, monkeypatch):
 def test_draft_generation_tasks_includes_cohort_id(tmp_path, monkeypatch):
     import daydreaming_dagster.assets.group_task_definitions as m
 
-    # Stub draft templates and models to produce one task
+    # Stub draft templates and models to compute expected gen_id
     draft_templates_df = pd.DataFrame([{"template_id": "draft-A", "active": True}])
     models_df = pd.DataFrame([
         {"id": "gen-model-1", "model": "provider/model-1", "for_generation": True},
@@ -91,17 +91,26 @@ def test_draft_generation_tasks_includes_cohort_id(tmp_path, monkeypatch):
     monkeypatch.setattr(m, "read_draft_templates", lambda _root: draft_templates_df)
     monkeypatch.setattr(m, "read_llm_models", lambda _root: models_df)
 
-    # Reserve function should receive run_id=cohort_id; return value reflects it for verification
-    calls = []
-
-    def fake_reserve(stage, task_id, run_id=None):
-        calls.append((stage, task_id, run_id))
-        return f"gid::{stage}::{task_id}::run={run_id}"
-
-    monkeypatch.setattr(m, "reserve_gen_id", fake_reserve)
-
-    # Override via environment to avoid Dagster dependency on cohort asset during direct invocation
-    monkeypatch.setenv("DD_COHORT", "COH-1")
+    # Provide cohort via env and pre-write membership.csv for projection
+    cohort = "COH-1"
+    monkeypatch.setenv("DD_COHORT", cohort)
+    cohort_dir = tmp_path / "cohorts" / cohort
+    cohort_dir.mkdir(parents=True, exist_ok=True)
+    # Compute expected gen_id
+    draft_task_id = "combo-1__draft-A__gen-model-1"
+    expected_gen_id = m.reserve_gen_id("draft", draft_task_id, run_id=cohort)
+    mdraft = pd.DataFrame([
+        {
+            "stage": "draft",
+            "gen_id": expected_gen_id,
+            "cohort_id": cohort,
+            "combo_id": "combo-1",
+            "draft_template": "draft-A",
+            "generation_model": "gen-model-1",
+            "generation_model_name": "provider/model-1",
+        }
+    ])
+    (cohort_dir / "membership.csv").write_text(mdraft.to_csv(index=False), encoding="utf-8")
 
     ctx = build_asset_context(resources={"data_root": str(tmp_path)}, asset_config={})
     combos = [ContentCombination(contents=[{"name": "a", "content": "x"}], combo_id="combo-1", concept_ids=["a"])]
@@ -109,7 +118,6 @@ def test_draft_generation_tasks_includes_cohort_id(tmp_path, monkeypatch):
 
     assert not df.empty
     assert set(df.columns) >= {"gen_id", "cohort_id", "draft_task_id"}
-    assert (df["cohort_id"] == "COH-1").all()
-    # Ensure reserve_gen_id saw the cohort run id
-    assert all(c[-1] == "COH-1" for c in calls)
-    assert df["gen_id"].astype(str).str.contains("run=COH-1").all()
+    assert (df["cohort_id"] == cohort).all()
+    assert df["draft_task_id"].iloc[0] == draft_task_id
+    assert df["gen_id"].iloc[0] == expected_gen_id
