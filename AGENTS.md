@@ -3,7 +3,7 @@
 ## Project Structure & Module Organization
 - `daydreaming_dagster/`: Dagster package with `assets/`, `resources/`, `models/`, `utils/`, and `definitions.py` (entry for the asset graph).
 - `tests/`: Integration tests and fixtures; unit tests live alongside modules in `daydreaming_dagster/`.
-- `data/`: Pipeline inputs/outputs (`1_raw/`, `2_tasks/`, `3_generation/`, `4_evaluation/`, `5_parsing/`, `6_summary/`). Do not commit secrets or proprietary outputs.
+- `data/`: Pipeline inputs/outputs (`1_raw/`, `2_tasks/`, `gens/`, `5_parsing/`, `6_summary/`). Optional legacy RAW side-writes under `3_generation/*_raw/`. Do not commit secrets or proprietary outputs.
 - `scripts/`: Support scripts for results tables and maintenance.
 - `docs/`: Architecture and development notes; see `docs/project_goals.md` for project goals.
 

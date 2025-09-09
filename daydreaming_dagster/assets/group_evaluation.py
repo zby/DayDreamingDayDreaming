@@ -10,8 +10,6 @@ from .partitions import evaluation_gens_partitions
 from ..utils.document import Generation
 from ..utils.metadata import build_generation_metadata
 from ..utils.filesystem_rows import (
-    get_row_by_gen_id as fs_get_row_by_gen_id,
-    read_parsed as fs_read_parsed,
     read_raw as fs_read_raw,
 )
 
@@ -49,29 +47,29 @@ def evaluation_prompt(context, evaluation_tasks) -> str:
         )
     data_root = Path(getattr(context.resources, "data_root", "data"))
     gens_root = data_root / "gens"
-    row = fs_get_row_by_gen_id(gens_root, "essay", str(parent_gen_id))
-    if not row:
+    base = gens_root / "essay" / str(parent_gen_id)
+    try:
+        gen = Generation.load(gens_root, "essay", str(parent_gen_id))
+    except Exception as e:
         raise Failure(
             description="Target essay document not found",
             metadata={
                 "function": MetadataValue.text("evaluation_prompt"),
                 "parent_gen_id": MetadataValue.text(str(parent_gen_id)),
+                "error": MetadataValue.text(str(e)),
             },
         )
-    try:
-        doc_text = fs_read_parsed(row)
-    except Exception as e:
-        base = gens_root / "essay" / str(parent_gen_id)
+    if not isinstance(gen.parsed_text, str) or not gen.parsed_text:
         raise Failure(
             description="Missing or unreadable parsed.txt for target essay document",
             metadata={
                 "function": MetadataValue.text("evaluation_prompt"),
                 "parent_gen_id": MetadataValue.text(str(parent_gen_id)),
                 "essay_gen_dir": MetadataValue.path(str(base)),
-                "error": MetadataValue.text(str(e)),
             },
         )
-    used_source = "essay_fs"
+    doc_text = gen.parsed_text
+    used_source = "essay_gens"
 
     eval_df = read_evaluation_templates(Path(context.resources.data_root))
     evaluation_templates_dict: dict[str, str] = {}

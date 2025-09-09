@@ -16,8 +16,6 @@ from ..utils.ids import (
     gen_dir as build_gen_dir,
 )
 from ..utils.filesystem_rows import (
-    get_row_by_gen_id as fs_get_row_by_gen_id,
-    read_parsed as fs_read_parsed,
     read_raw as fs_read_raw,
 )
 from ..utils.document import Generation
@@ -94,29 +92,28 @@ def _load_phase1_text_by_parent_doc(context, parent_gen_id: str) -> tuple[str, s
     """
     data_root = Path(getattr(context.resources, "data_root", "data"))
     gens_root = data_root / "gens"
-    row = fs_get_row_by_gen_id(gens_root, "draft", str(parent_gen_id))
-    if not row:
+    base = gens_root / "draft" / str(parent_gen_id)
+    try:
+        gen = Generation.load(gens_root, "draft", str(parent_gen_id))
+    except Exception as e:
         raise Failure(
             description="Parent draft document not found",
             metadata={
                 "function": MetadataValue.text("_load_phase1_text_by_parent_doc"),
                 "parent_gen_id": MetadataValue.text(str(parent_gen_id)),
+                "error": MetadataValue.text(str(e)),
             },
         )
-    try:
-        text = fs_read_parsed(row)
-    except Exception as e:
-        base = gens_root / "draft" / str(parent_gen_id)
+    if not isinstance(gen.parsed_text, str) or not gen.parsed_text:
         raise Failure(
             description="Missing or unreadable parsed.txt for parent draft document",
             metadata={
                 "function": MetadataValue.text("_load_phase1_text_by_parent_doc"),
                 "parent_gen_id": MetadataValue.text(str(parent_gen_id)),
                 "draft_gen_dir": MetadataValue.path(str(base)),
-                "error": MetadataValue.text(str(e)),
             },
         )
-    return str(text).replace("\r\n", "\n"), "draft_fs_parent"
+    return str(gen.parsed_text).replace("\r\n", "\n"), "draft_gens_parent"
 
 
 def _load_phase1_text_by_combo_model(context, combo_id: str, model_id: str) -> tuple[str, str]:

@@ -167,14 +167,14 @@ LLM generation/evaluation assets remain manual to avoid surprise API usage/costs
 Two assets groups implement the two‑phase flow:
 
 1) Phase‑1 — Draft Generation (`group_generation_draft.py`)
-   - Assets: `draft_prompt`, `draft_response` (partitioned by `draft_task_id`).
-   - Behavior: Calls the LLM, saves RAW draft under `data/3_generation/draft_responses_raw/{draft_task_id}_vN.txt`, then applies a parser configured in `data/1_raw/draft_templates.csv` (column `parser`). If no parser is set, identity is used. On parser failure, the asset fails with a clear error, and the RAW draft remains saved for debugging.
-   - Parsed output is materialized to `data/3_generation/draft_responses/{draft_task_id}_vN.txt` via the IO manager.
+   - Assets: `draft_prompt`, `draft_response` (partitioned by `gen_id`).
+   - Behavior: Calls the LLM, writes prompt/raw/parsed/metadata to `data/gens/draft/<gen_id>/` (parser from `data/1_raw/draft_templates.csv`, identity when missing). On parser failure, the asset fails with a clear error; RAW may also be side-written to `data/3_generation/draft_responses_raw/{gen_id}_vN.txt` for debugging.
 
 2) Phase‑2 — Essay Generation (`group_generation_essays.py`)
-   - Assets: `essay_prompt`, `essay_response` (partitioned by `essay_task_id`).
+   - Assets: `essay_prompt`, `essay_response` (partitioned by `gen_id`).
    - Modes: `llm` (default; uses parsed draft as input) and `copy` (returns parsed draft verbatim). Essay‑level parser mode is deprecated after parser‑first.
    - Essay templates live under `data/1_raw/generation_templates/essay/` and typically include a placeholder like `{{ links_block }}` / `{{ draft_block }}` to include the Phase‑1 text in prompts.
+   - Behavior: Writes prompt/raw/parsed/metadata to `data/gens/essay/<gen_id>/`; loads the parent draft via `parent_gen_id` from `data/gens/draft/<parent>/parsed.txt`.
 
 **Template Structure**:
 ```
@@ -260,9 +260,9 @@ def llm_client_resource(context) -> LLMClientResource:
 **Purpose**: Custom storage managers for different data types
 
 **Managers**:
-- **TextFileIOManager**: Individual text files for prompts/responses
+- **GensPromptIOManager**: Persists prompts to `data/gens/<stage>/<gen_id>/prompt.txt`
 - **CSVIOManager**: Structured data with human-readable format
-- **JSONIOManager**: Complex objects with structured format
+- **InMemoryIOManager**: For ephemeral in-process passing in tests/runs
 
 **Benefits**:
 - **Debugging**: Easy inspection of intermediate results
@@ -279,8 +279,7 @@ def llm_client_resource(context) -> LLMClientResource:
 - `save_versioned_text(dir, stem, text, ext)`: Write text to the next version and return the path.
 
 **Usage**:
-- Preferred for RAW/parsed prompt and response files to avoid duplicated regex logic.
-- Utilities like `evaluation_processing` already use this helper.
+- Used for legacy/optional RAW side-writes under `data/3_generation/*_raw/` during debugging.
 
 ## Partitioning Architecture
 
@@ -343,15 +342,12 @@ data/
 │   ├── draft_generation_tasks.csv
 │   ├── essay_generation_tasks.csv
 │   └── evaluation_tasks.csv
-├── 3_generation/               # LLM generation results (two‑phase)
-│   ├── draft_prompts/          # Phase‑1 prompts
-│   ├── draft_responses/        # Historical Phase‑1 parsed outputs (scripts may still read latest version)
-│   ├── draft_responses_raw/    # Phase‑1 RAW LLM outputs (always saved)
-│   ├── essay_prompts/          # Phase‑2 prompts
-│   └── essay_responses/        # Phase‑2 outputs
-├── 4_evaluation/               # LLM evaluation results
-│   ├── evaluation_prompts/
-│   └── evaluation_responses/
+├── gens/                       # Canonical gens store (prompt/raw/parsed/metadata)
+│   ├── draft/<gen_id>/{prompt.txt,raw.txt,parsed.txt,metadata.json}
+│   ├── essay/<gen_id>/{prompt.txt,raw.txt,parsed.txt,metadata.json}
+│   └── evaluation/<gen_id>/{prompt.txt,raw.txt,parsed.txt,metadata.json}
+├── 3_generation/
+│   └── draft_responses_raw/    # Optional RAW side-writes for debugging (`{gen_id}_vN.txt`)
 ├── 5_parsing/                  # Parsed evaluation scores
 │   └── parsed_scores.csv
 ├── 6_summary/                  # Final aggregated results

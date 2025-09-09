@@ -38,15 +38,15 @@ Only a subset on each axis is marked active for the current experiment; the cube
 ### Example: Generation Cube (current design as an example)
 - Axes (example): `content_combinations × draft_templates × generation_models` → draft tasks; then `draft_tasks × essay_templates` → essay tasks.
 - Example outputs:
-- Draft files: `data/3_generation/draft_responses/{draft_task_id}.txt` (legacy: `links_responses/{link_task_id}.txt`)
-  - RAW (saved on every run): `data/3_generation/draft_responses_raw/{draft_task_id}_vN.txt` (useful when Phase‑1 parsing fails)
-  - Essay files: `data/3_generation/essay_responses/{essay_task_id}.txt`
+- Draft gens: `data/gens/draft/<gen_id>/{prompt.txt,raw.txt,parsed.txt,metadata.json}`
+  - RAW (optional side-write): `data/3_generation/draft_responses_raw/{gen_id}_vN.txt` (useful when Phase‑1 parsing fails)
+  - Essay gens: `data/gens/essay/<gen_id>/{prompt.txt,raw.txt,parsed.txt,metadata.json}`
 - Legacy example: one‑phase essays under `data/3_generation/generation_responses/{combo_id}_{essay_template}_{model_id}.txt`.
 
 ### Example: Evaluation Cube (document‑centric)
 - Axes (example): `documents_to_evaluate × evaluation_templates × evaluation_models`.
   - `documents_to_evaluate` is a filtered set of existing documents discovered from tasks and/or filesystem.
-- Outputs (examples): prompts and responses under `data/4_evaluation/`.
+- Outputs (examples): gens under `data/gens/evaluation/<gen_id>/{prompt.txt,raw.txt,parsed.txt,metadata.json}`.
   - Note: In some experiments, draft outputs may be treated as “effective one‑phase” documents for evaluation convenience. This is a pipeline selection choice; provenance (e.g., original stage, source path) should still be retained in the data.
 
 ## Switching Generation Modes: Caveats
@@ -60,7 +60,7 @@ Recommended patterns:
 
 ## Persistence and “Completing the Cube”
 
-- The repo never deletes prior outputs automatically; historical artifacts persist under `data/3_generation` and `data/4_evaluation`.
+- The repo never deletes prior outputs automatically; historical artifacts persist under `data/gens/` (canonical) and legacy `data/3_generation`/`data/4_evaluation` (where present).
 - When you change the AEC (e.g., add a new essay template or model), the next task build will:
   - Create partitions for the new Cartesian products.
   - Keep partitions for previously generated products (if still addressable by ID).
@@ -121,7 +121,7 @@ Optional run tags:
 ## Data Hygiene and Overwrite Rules
 
 - Prompts overwrite is allowed (reflect latest templates).
-- Responses are versioned by default; each rerun writes `{id}_vN.txt` and readers pick the latest. No need to delete files or set flags.
+- Responses are stored under `data/gens/<stage>/<gen_id>`. New generations receive fresh `gen_id`s; prompts may overwrite to reflect template changes. Optional RAW side-writes may be versioned for debugging.
 - This ensures historical experiments remain intact while allowing iterative prompt/template tweaks.
 
 ## Naming: “Active Experiment Cube” vs Alternatives

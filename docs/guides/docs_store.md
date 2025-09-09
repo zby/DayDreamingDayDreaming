@@ -35,18 +35,16 @@ Each `metadata.json` should include at least:
 
 ## Programmatic Access
 
-Use the filesystem helpers in `daydreaming_dagster/utils/filesystem_rows.py`:
-- `get_row_by_gen_id(gens_root, stage, gen_id) -> dict | None`
-- `read_raw(row)`, `read_parsed(row)`, `read_prompt(row)`
+Preferred: use `Generation.load` to read from the gens store.
 
 Example:
 ```python
 from pathlib import Path
-from daydreaming_dagster.utils.filesystem_rows import get_row_by_gen_id, read_parsed
+from daydreaming_dagster.utils.document import Generation
 
-row = get_row_by_gen_id(Path("data/gens"), "essay", "abc123xyz")
-if row:
-    text = read_parsed(row)
+gens_root = Path("data") / "gens"
+gen = Generation.load(gens_root, "essay", "abc123xyz")
+text = gen.parsed_text  # or gen.raw_text / gen.prompt_text / gen.metadata
 ```
 
 ## Troubleshooting
