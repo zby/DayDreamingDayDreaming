@@ -87,7 +87,7 @@ def _eval_axes(data_root: Path) -> Tuple[List[str], List[str], Dict[str, str], D
 
 
 @asset(
-    group_name="cohort",
+    group_name="task_definitions",
     required_resource_keys={"data_root"},
 )
 def cohort_membership(

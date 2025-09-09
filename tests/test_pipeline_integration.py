@@ -227,8 +227,10 @@ class TestPipelineIntegration:
                 instance = DagsterInstance.ephemeral(tempdir=str(temp_dagster_home))
 
                 from daydreaming_dagster.assets.group_task_definitions import (
+                    cohort_id,
                     selected_combo_mappings, content_combinations, draft_generation_tasks, essay_generation_tasks, evaluation_tasks
                 )
+                from daydreaming_dagster.assets.group_cohorts import cohort_membership
                 from daydreaming_dagster.assets.group_generation_draft import (
                     draft_prompt, draft_response
                 )
@@ -287,9 +289,11 @@ class TestPipelineIntegration:
                 result = materialize([selected_combo_mappings], resources=resources, instance=instance)
                 assert result.success, "Selected combo mappings materialization failed"
                 
-                # Then materialize the rest
+                # Then materialize the rest (include cohort assets to satisfy dependencies)
                 result = materialize(
                     [
+                        cohort_id,
+                        cohort_membership,
                         content_combinations,
                         draft_generation_tasks,
                         essay_generation_tasks,
