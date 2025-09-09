@@ -41,7 +41,6 @@ from daydreaming_dagster.utils.evaluation_parsing_config import load_parser_map
 import json
 import pandas as pd
 from daydreaming_dagster.utils.ids import reserve_gen_id
-from daydreaming_dagster.utils.cohorts import compute_cohort_id, write_manifest
 
 
 def parse_args() -> argparse.Namespace:
@@ -305,18 +304,38 @@ def main() -> int:
         )
         return 1
 
-    # Compute cohort id for curated set
-    cohort_id = compute_cohort_id(
-        kind="curated",
-        manifest={
-            "combos": sorted(list(combo_ids)),
-            "llms": [],
-            "templates": {},
-            "prompt_versions": None,
-        },
-        mode=args.cohort_mode,
-        explicit=args.cohort_id,
+    # Enforce cohort_id from curated CSV
+    if "cohort_id" not in df.columns:
+        print(
+            "Error: input CSV is missing required column 'cohort_id'.\n"
+            "       This script enforces a single cohort across all rows.\n"
+            "       Tip: run select_top_prior_art.py to write a curated CSV with cohort_id,\n"
+            "       or add a 'cohort_id' column manually and keep it uniform.",
+            file=sys.stderr,
+        )
+        return 1
+    cohort_vals = (
+        df["cohort_id"]
+        .astype(str)
+        .map(lambda s: s.strip())
+        .tolist()
     )
+    unique = sorted({c for c in cohort_vals if c and c.lower() != "nan"})
+    if not unique:
+        print(
+            "Error: input CSV 'cohort_id' column is present but empty for all rows.",
+            file=sys.stderr,
+        )
+        return 1
+    if len(unique) != 1:
+        sample = unique[:5]
+        print(
+            "Error: multiple cohort_ids detected in input CSV; expected a single uniform cohort.\n"
+            f"       Unique cohort_id values (first 5): {sample}",
+            file=sys.stderr,
+        )
+        return 1
+    cohort_id = unique[0]
     # Write/merge outputs
     link_out_csv = data_root / "2_tasks" / "draft_generation_tasks.csv"
 
