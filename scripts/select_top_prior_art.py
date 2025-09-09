@@ -85,14 +85,11 @@ def main() -> int:
             file=sys.stderr,
         )
         return 1
-    filt = df[
-        df["evaluation_template"].isin(available)
-        & df.get("error").isna()
-        & df.get("score").notna()
-        & (
-            (df["parent_doc_id"].notna() if "parent_doc_id" in df.columns else df["document_id"].notna())
-        )
-    ].copy()
+    cond_tpl = df["evaluation_template"].isin(available)
+    cond_err = (df["error"].isna() if "error" in df.columns else True)
+    cond_score = (df["score"].notna() if "score" in df.columns else True)
+    cond_parent = df["parent_gen_id"].notna()
+    filt = df[cond_tpl & cond_err & cond_score & cond_parent].copy()
 
     # Exclude evaluations run by Gemini models (empirically noisy for prior-art)
     try:
@@ -314,8 +311,8 @@ def main() -> int:
             sub = df[mask]
             if sub.empty:
                 return []
-            # Prefer evaluation doc_id from parsed_scores (the concrete evaluation document)
-            for pref in ("doc_id", "parent_doc_id", "document_id"):
+            # Prefer evaluation gen_id from parsed_scores (the concrete evaluation generation)
+            for pref in ("gen_id", "parent_gen_id", "document_id"):
                 if pref in sub.columns:
                     vals = sub[pref].astype(str).head(5).tolist()
                     if vals:
