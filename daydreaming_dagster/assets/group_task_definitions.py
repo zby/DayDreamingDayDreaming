@@ -329,17 +329,41 @@ def draft_generation_tasks(
         )
         return out
 
-    # Single-path policy: require cohort_membership
-    raise Failure(
-        description="cohort_membership is empty or not materialized; cannot project draft tasks",
-        metadata={
-            "function": MetadataValue.text("draft_generation_tasks"),
-            "resolution": MetadataValue.text(
-                "Materialize 'cohort_id,cohort_membership' first. Example: \n"
-                "uv run dagster asset materialize --select cohort_id,cohort_membership -f daydreaming_dagster/definitions.py"
-            ),
-        },
-    )
+    # Legacy fallback: derive from active axes
+    templates_df = read_draft_templates(data_root)
+    models_df = read_llm_models(data_root)
+    if "active" in templates_df.columns:
+        templates_df = templates_df[templates_df["active"] == True]
+    gen_models = models_df[models_df["for_generation"] == True]
+    rows: List[dict] = []
+    for combo in content_combinations:
+        for _, t in templates_df.iterrows():
+            for _, m in gen_models.iterrows():
+                task_id = f"{combo.combo_id}__{t['template_id']}__{m['id']}"
+                rows.append(
+                    {
+                        "draft_task_id": task_id,
+                        "combo_id": combo.combo_id,
+                        "draft_template": t["template_id"],
+                        "generation_model": m["id"],
+                        "generation_model_name": m["model"],
+                    }
+                )
+    df = pd.DataFrame(rows)
+    if not df.empty:
+        df["gen_id"] = df["draft_task_id"].astype(str).apply(
+            lambda tid: reserve_gen_id("draft", tid, run_id=str(resolved_cohort) if resolved_cohort else None)
+        )
+        if resolved_cohort:
+            df["cohort_id"] = str(resolved_cohort)
+        # Add-only registration
+        existing = set(context.instance.get_dynamic_partitions(draft_gens_partitions.name))
+        keys = [str(x) for x in df["gen_id"].astype(str).tolist()]
+        to_add = [k for k in keys if k and k not in existing]
+        if to_add:
+            context.instance.add_dynamic_partitions(draft_gens_partitions.name, to_add)
+    context.add_output_metadata({"task_count": MetadataValue.int(len(df)), "source": MetadataValue.text("legacy_axes")})
+    return df
 
 @asset(
     group_name="task_definitions",
@@ -396,17 +420,56 @@ def essay_generation_tasks(
         )
         return out
 
-    # Single-path policy: require cohort_membership
-    raise Failure(
-        description="cohort_membership is empty or not materialized; cannot project essay tasks",
-        metadata={
-            "function": MetadataValue.text("essay_generation_tasks"),
-            "resolution": MetadataValue.text(
-                "Materialize 'cohort_id,cohort_membership' first. Example: \n"
-                "uv run dagster asset materialize --select cohort_id,cohort_membership -f daydreaming_dagster/definitions.py"
-            ),
-        },
-    )
+    # Legacy fallback
+    templates_df = read_essay_templates(data_root)
+    if "active" in templates_df.columns:
+        templates_df = templates_df[templates_df["active"] == True]
+    cols = [
+        "essay_task_id",
+        "parent_gen_id",
+        "draft_task_id",
+        "combo_id",
+        "draft_template",
+        "essay_template",
+        "generation_model",
+        "generation_model_name",
+        "gen_id",
+        "cohort_id",
+    ]
+    df = pd.DataFrame(columns=cols)
+    if draft_generation_tasks is None or draft_generation_tasks.empty or templates_df.empty:
+        return df
+    for _, drow in draft_generation_tasks.iterrows():
+        combo_id = str(drow.get("combo_id"))
+        draft_task_id = drow.get("draft_task_id")
+        gen_model_id = drow.get("generation_model")
+        gen_model_name = drow.get("generation_model_name", gen_model_id)
+        draft_gen_id = drow.get("gen_id")
+        for _, trow in templates_df.iterrows():
+            essay_template_id = trow["template_id"]
+            if isinstance(draft_task_id, str) and draft_task_id:
+                essay_task_id = f"{draft_task_id}__{essay_template_id}"
+            gen_id = reserve_gen_id("essay", essay_task_id, run_id=str(resolved_cohort) if resolved_cohort else None)
+            row_dict = {
+                "essay_task_id": essay_task_id,
+                "parent_gen_id": draft_gen_id,
+                "draft_task_id": draft_task_id,
+                "combo_id": combo_id,
+                "draft_template": drow.get("draft_template"),
+                "essay_template": essay_template_id,
+                "generation_model": gen_model_id,
+                "generation_model_name": gen_model_name,
+                "gen_id": gen_id,
+                "cohort_id": str(resolved_cohort) if resolved_cohort else "",
+            }
+            df = pd.concat([df, pd.DataFrame([row_dict])], ignore_index=True)
+    existing = set(context.instance.get_dynamic_partitions(essay_gens_partitions.name))
+    keys = [str(x) for x in df["gen_id"].astype(str).tolist()]
+    to_add = [k for k in keys if k and k not in existing]
+    if to_add:
+        context.instance.add_dynamic_partitions(essay_gens_partitions.name, to_add)
+    context.add_output_metadata({"task_count": MetadataValue.int(len(df)), "source": MetadataValue.text("legacy_axes"), "partitions_added": MetadataValue.int(len(to_add))})
+    return df
 
 
 @asset(
