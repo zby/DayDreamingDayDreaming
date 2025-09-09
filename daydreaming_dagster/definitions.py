@@ -45,7 +45,6 @@ from daydreaming_dagster.assets.group_task_definitions import (
     content_combinations,
     draft_generation_tasks,
     essay_generation_tasks,
-    document_index,
     evaluation_tasks,
 )
 from daydreaming_dagster.assets.group_cross_experiment import (
@@ -80,7 +79,6 @@ defs = Definitions(
         content_combinations,
         draft_generation_tasks,
         essay_generation_tasks,
-        document_index,
         evaluation_tasks,
         
         # Two-phase generation assets
