@@ -41,6 +41,7 @@ from daydreaming_dagster.utils.evaluation_parsing_config import load_parser_map
 import json
 import pandas as pd
 from daydreaming_dagster.utils.ids import reserve_gen_id
+from daydreaming_dagster.utils.cohorts import compute_cohort_id, write_manifest
 
 
 def parse_args() -> argparse.Namespace:
@@ -51,6 +52,15 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--dry-run", action="store_true", help="Compute and print actions but make no changes")
     # Reset by default; use --add-only to avoid clearing existing partitions
     p.add_argument("--add-only", action="store_true", help="Do not clear existing dynamic partitions (add-only mode)")
+    # Cohorts
+    p.add_argument("--cohort-id", type=str, default=None, help="Explicit cohort id to bind gen_ids (overrides mode)")
+    p.add_argument(
+        "--cohort-mode",
+        type=str,
+        choices=["deterministic", "timestamped"],
+        default="timestamped",
+        help="Cohort id selection mode (default for curated: timestamped)",
+    )
     return p.parse_args()
 
 
@@ -295,6 +305,18 @@ def main() -> int:
         )
         return 1
 
+    # Compute cohort id for curated set
+    cohort_id = compute_cohort_id(
+        kind="curated",
+        manifest={
+            "combos": sorted(list(combo_ids)),
+            "llms": [],
+            "templates": {},
+            "prompt_versions": None,
+        },
+        mode=args.cohort_mode,
+        explicit=args.cohort_id,
+    )
     # Write/merge outputs
     link_out_csv = data_root / "2_tasks" / "draft_generation_tasks.csv"
 
@@ -329,13 +351,14 @@ def main() -> int:
             pass
         # Reserve gen_ids for drafts
         for r in draft_rows:
-            r["gen_id"] = reserve_gen_id("draft", str(r["draft_task_id"]))
+            r["gen_id"] = reserve_gen_id("draft", str(r["draft_task_id"]), run_id=cohort_id)
+            r["cohort_id"] = cohort_id
         added_drafts = _write_table(
             link_out_csv,
             draft_rows,
             key="draft_task_id",
             columns=[
-                "draft_task_id","combo_id","draft_template","generation_model","generation_model_name","gen_id",
+                "draft_task_id","combo_id","draft_template","generation_model","generation_model_name","gen_id","cohort_id",
             ],
             dry_run=args.dry_run,
         )
@@ -442,7 +465,8 @@ def main() -> int:
     if evaluation_rows:
         # Reserve gen_ids for evaluations
         for r in evaluation_rows:
-            r["gen_id"] = reserve_gen_id("evaluation", str(r["evaluation_task_id"]))
+            r["gen_id"] = reserve_gen_id("evaluation", str(r["evaluation_task_id"]), run_id=cohort_id)
+            r["cohort_id"] = cohort_id
         added_evals = _write_table(
             eval_out_csv,
             evaluation_rows,
@@ -452,6 +476,7 @@ def main() -> int:
                 # pinned lineage
                 "parent_gen_id",
                 "gen_id",
+                "cohort_id",
                 # legacy/task context (kept during migration)
                 "document_id","essay_task_id","draft_task_id","combo_id",
                 "draft_template","essay_template","generation_model","generation_model_name",

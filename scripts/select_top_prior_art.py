@@ -58,6 +58,15 @@ def parse_args() -> argparse.Namespace:
         help="Do not write curated essay_generation_tasks.csv (dry run)",
     )
     p.set_defaults(write_drafts=True)
+    # Cohorts
+    p.add_argument("--cohort-id", type=str, default=None, help="Explicit cohort id for curated outputs")
+    p.add_argument(
+        "--cohort-mode",
+        type=str,
+        choices=["deterministic", "timestamped"],
+        default="timestamped",
+        help="Cohort id selection mode for curated outputs (default: timestamped)",
+    )
     return p.parse_args()
 
 
@@ -178,6 +187,20 @@ def main() -> int:
 
         # No legacy fallback: grouping strictly by parent_doc_id
 
+    # Compute cohort id for curated set
+    from daydreaming_dagster.utils.cohorts import compute_cohort_id
+    cohort_id = compute_cohort_id(
+        kind="curated",
+        manifest={
+            "combos": sorted(list({r.get("combo_id", "") for r in essay_rows if r.get("combo_id")})),
+            "llms": [],
+            "templates": {},
+            "prompt_versions": None,
+        },
+        mode=args.cohort_mode,
+        explicit=args.cohort_id,
+    )
+
     # Write output (essay tasks only)
     if args.write_drafts:
         essay_out_csv.parent.mkdir(parents=True, exist_ok=True)
@@ -192,6 +215,7 @@ def main() -> int:
                 "essay_task_id","parent_gen_id","draft_task_id","combo_id","draft_template",
                 "essay_template","generation_model","gen_id"
             ]).drop_duplicates(subset=["essay_task_id"]).copy()
+            df_out["cohort_id"] = cohort_id
             df_out.to_csv(essay_out_csv, index=False)
             print(f"Wrote {len(essay_rows)} curated essay tasks to {essay_out_csv}")
         else:
