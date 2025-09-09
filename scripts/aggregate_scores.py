@@ -1,18 +1,18 @@
 #!/usr/bin/env python3
 """
-Parse evaluation scores from the docs store and write a consolidated CSV.
+Parse evaluation scores from the gens store and write a consolidated CSV.
 
-This script performs CROSS-EXPERIMENT analysis by scanning ALL evaluation documents
-under data/docs/evaluation, not just those from the current experiment's task definitions.
+This script performs CROSS-EXPERIMENT analysis by scanning ALL evaluation generations
+under data/gens/evaluation, not just those from the current experiment's task definitions.
 This enables historical analysis across multiple experimental runs.
 
 Key cross-experiment features:
-- Scans docs/evaluation/<doc_id> for parsed/raw texts and reads metadata.json
+- Scans gens/evaluation/<gen_id> for parsed/raw texts and reads metadata.json
 - Uses evaluation_templates.csv to select the parser for each evaluation_template
 - No dependence on evaluation_tasks.csv or legacy responses directory
 
 Defaults:
-- Docs store: data/docs/evaluation/<doc_id>/{parsed.txt,metadata.json}
+- Gens store: data/gens/evaluation/<gen_id>/{parsed.txt,metadata.json}
 - Output: data/7_cross_experiment/parsed_scores.csv
 
 Usage examples:
@@ -247,12 +247,12 @@ def parse_all(
     data_root: Path,
     output_csv: Path,
 ) -> pd.DataFrame:
-    """Parse all evaluation scores from the docs store.
+    """Parse all evaluation scores from the gens store.
 
-    Source: data_root/docs/evaluation/<doc_id>/{parsed.txt,metadata.json}
+    Source: data_root/gens/evaluation/<gen_id>/{parsed.txt,metadata.json}
     """
 
-    docs_eval = data_root / "docs" / "evaluation"
+    docs_eval = data_root / "gens" / "evaluation"
 
     # Create only the output directory
     output_csv.parent.mkdir(parents=True, exist_ok=True)
@@ -263,26 +263,26 @@ def parse_all(
 
     if docs_eval.exists():
         for doc_dir in sorted([p for p in docs_eval.iterdir() if p.is_dir()]):
-            doc_id = doc_dir.name
+            gen_id = doc_dir.name
             parsed_fp = doc_dir / "parsed.txt"
             meta_fp = doc_dir / "metadata.json"
             if not parsed_fp.exists():
                 # Record missing parsed and continue
-                parent_doc_id = ""
+                parent_gen_id = ""
                 eval_template = None
                 eval_model = None
                 try:
                     if meta_fp.exists():
                         meta = json.loads(meta_fp.read_text(encoding="utf-8"))
                         if isinstance(meta, dict):
-                            parent_doc_id = str(meta.get("parent_doc_id") or "")
+                            parent_gen_id = str(meta.get("parent_gen_id") or "")
                             eval_template = meta.get("evaluation_template") or meta.get("template_id")
                             eval_model = meta.get("model_id") or meta.get("evaluation_model")
                 except Exception:
                     pass
                 rows.append({
-                    "doc_id": doc_id,
-                    "parent_doc_id": parent_doc_id,
+                    "gen_id": gen_id,
+                    "parent_gen_id": parent_gen_id,
                     "evaluation_template": eval_template,
                     "evaluation_model": eval_model,
                     "score": None,
@@ -294,17 +294,17 @@ def parse_all(
                 text_path = parsed_fp
                 text = text_path.read_text(encoding="utf-8", errors="ignore")
             except Exception as e:
-                rows.append({"doc_id": doc_id, "score": None, "error": f"Read error: {e}", "evaluation_response_path": str(text_path)})
+                rows.append({"gen_id": gen_id, "score": None, "error": f"Read error: {e}", "evaluation_response_path": str(text_path)})
                 continue
             # metadata
-            parent_doc_id = ""
+            parent_gen_id = ""
             eval_template = None
             eval_model = None
             try:
                 if meta_fp.exists():
                     meta = json.loads(meta_fp.read_text(encoding="utf-8"))
                     if isinstance(meta, dict):
-                        parent_doc_id = str(meta.get("parent_doc_id") or "")
+                        parent_gen_id = str(meta.get("parent_gen_id") or "")
                         eval_template = meta.get("evaluation_template") or meta.get("template_id")
                         eval_model = meta.get("model_id") or meta.get("evaluation_model")
             except Exception:
@@ -334,8 +334,8 @@ def parse_all(
                     score = None
                     err = f"Parse error: {e}"
             rows.append({
-                "doc_id": doc_id,
-                "parent_doc_id": parent_doc_id,
+                "gen_id": gen_id,
+                "parent_gen_id": parent_gen_id,
                 "evaluation_template": eval_template,
                 "evaluation_model": eval_model,
                 "score": score,
@@ -349,8 +349,8 @@ def parse_all(
 
     # Ensure consistent schema with defaults
     expected_columns = [
-        "doc_id",
-        "parent_doc_id",
+        "gen_id",
+        "parent_gen_id",
         "evaluation_template",
         "evaluation_model",
         "score",
@@ -368,8 +368,8 @@ def parse_all(
 
     # Order columns for readability if present
     column_order = [
-        "parent_doc_id",
-        "doc_id",
+        "parent_gen_id",
+        "gen_id",
         "evaluation_template",
         "evaluation_model",
         "score",
@@ -384,7 +384,7 @@ def parse_all(
         df["score"] = pd.to_numeric(df["score"], errors="coerce")
     # Replace NaN with empty string for text-like columns
     text_like = [
-        "doc_id","parent_doc_id","evaluation_template","evaluation_model","evaluation_response_path","error"
+        "gen_id","parent_gen_id","evaluation_template","evaluation_model","evaluation_response_path","error"
     ]
     for col in text_like:
         if col in df.columns:
@@ -410,7 +410,7 @@ def parse_all(
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Parse evaluation scores from docs store")
+    parser = argparse.ArgumentParser(description="Parse evaluation scores from gens store")
     parser.add_argument(
         "--data-root",
         type=Path,
