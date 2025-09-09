@@ -179,9 +179,9 @@ def main() -> int:
 
     for doc in top_docs:
         # Doc is the generation (essay) gen_id; use gens store metadata
-        essay_gen_id = str(doc)
+        gen_id = str(doc)
         data_root = Path("data")
-        essay_dir = data_root / "gens" / "essay" / essay_gen_id
+        essay_dir = data_root / "gens" / "essay" / gen_id
         essay_meta = {}
         try:
             mp = essay_dir / "metadata.json"
@@ -192,11 +192,11 @@ def main() -> int:
         essay_template = str(essay_meta.get("template_id") or essay_meta.get("essay_template") or "")
         generation_model = str(essay_meta.get("model_id") or "")
         # Resolve parent draft to get combo_id and draft_template for legacy task ids
-        draft_gen_id = str(essay_meta.get("parent_gen_id") or "")
+        parent_gen_id = str(essay_meta.get("parent_gen_id") or "")
         combo_id = ""
         draft_template = ""
-        if draft_gen_id:
-            draft_meta_path = data_root / "gens" / "draft" / draft_gen_id / "metadata.json"
+        if parent_gen_id:
+            draft_meta_path = data_root / "gens" / "draft" / parent_gen_id / "metadata.json"
             try:
                 if draft_meta_path.exists():
                     dmeta = json.loads(draft_meta_path.read_text(encoding="utf-8")) or {}
@@ -221,7 +221,7 @@ def main() -> int:
             if known_essay_tpls and essay_template not in known_essay_tpls:
                 missing_essay_tpl_csv.add(essay_template)
         # For essay generation tasks, parent_gen_id must point to the DRAFT gen id
-        parent_gen_id = draft_gen_id
+        # parent_gen_id already loaded
         if not (essay_dir / "parsed.txt").exists():
             missing_essays.append(str(essay_dir / "parsed.txt"))
         # Validate required fields
@@ -230,7 +230,7 @@ def main() -> int:
             missing_fields.append("essay_template")
         if not generation_model:
             missing_fields.append("generation_model")
-        if not draft_gen_id:
+        if not parent_gen_id:
             missing_fields.append("essay.parent_gen_id (draft parent)")
         if not combo_id:
             missing_fields.append("combo_id")
@@ -268,13 +268,12 @@ def main() -> int:
                     print(" -", msg, file=sys.stderr)
                 return 2
             # Ensure gen-id-first: include gen_id for essays.
-            # For curated tasks, the essay gen_id is exactly parent_gen_id from gens metadata.
             df_out = pd.DataFrame(essay_rows, columns=[
-                "essay_task_id","parent_gen_id","essay_gen_id","draft_task_id","combo_id","draft_template",
+                "essay_task_id","parent_gen_id","draft_task_id","combo_id","draft_template",
                 "essay_template","generation_model","generation_model_name"
             ]).drop_duplicates(subset=["essay_task_id"]).copy()
-            # Gen-id-first: set essay gen_id to the concrete essay gen id from gens store
-            df_out["gen_id"] = df_out["essay_gen_id"].astype(str)
+            # Add concrete essay gen_id column
+            df_out["gen_id"] = [str(x) for x in top_docs][: len(df_out)]
             df_out.to_csv(essay_out_csv, index=False)
             print(f"Wrote {len(essay_rows)} curated essay tasks to {essay_out_csv}")
         else:

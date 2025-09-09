@@ -251,7 +251,6 @@ def essay_generation_tasks(context, content_combinations: List[ContentCombinatio
     cols = [
         "essay_task_id",
         "parent_gen_id",
-        "essay_gen_id",
         "draft_task_id",
         "combo_id",
         "draft_template",
@@ -280,20 +279,19 @@ def essay_generation_tasks(context, content_combinations: List[ContentCombinatio
                 essay_task_id = f"{draft_task_id}__{essay_template_id}"
             
             # Reserve essay gen_id
-            essay_gen_id = reserve_gen_id("essay", essay_task_id)
+            gen_id = reserve_gen_id("essay", essay_task_id)
             
             # Add row directly to DataFrame
             new_row = pd.DataFrame([{
                 "essay_task_id": essay_task_id,
                 "parent_gen_id": draft_gen_id,  # Points to draft gen_id
-                "essay_gen_id": essay_gen_id,   # Essay's own gen_id
                 "draft_task_id": draft_task_id,
                 "combo_id": combo_id,
                 "draft_template": drow.get("draft_template"),
                 "essay_template": essay_template_id,
                 "generation_model": gen_model_id,
                 "generation_model_name": gen_model_name,
-                "gen_id": essay_gen_id,  # Set gen_id to essay_gen_id
+                "gen_id": gen_id,
             }])
             df = pd.concat([df, new_row], ignore_index=True)
 

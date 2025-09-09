@@ -373,19 +373,25 @@ def main() -> int:
     if essay_rows and eval_tpls and eval_models:
         model_name_map = _load_models_map(data_root)
         docs_root = Path(data_root) / "gens"
-        # Require essay gen id column; accept either 'essay_gen_id' or 'parent_gen_id'
-        essay_doc_col = 'essay_gen_id' if 'essay_gen_id' in df.columns else ('parent_gen_id' if 'parent_gen_id' in df.columns else None)
+        # Require essay gen id column; accept 'gen_id' (preferred), or 'essay_gen_id', or 'parent_gen_id'
+        essay_doc_col = (
+            'gen_id' if 'gen_id' in df.columns else (
+                'essay_gen_id' if 'essay_gen_id' in df.columns else (
+                    'parent_gen_id' if 'parent_gen_id' in df.columns else None
+                )
+            )
+        )
         if essay_doc_col is None:
-            print("Input CSV must contain 'essay_gen_id' (or temporary alias 'parent_gen_id') to build evaluation_tasks.csv with pinned gen IDs", file=sys.stderr)
+            print("Input CSV must contain 'gen_id' (preferred) or 'essay_gen_id'/'parent_gen_id' to build evaluation_tasks.csv with pinned gen IDs", file=sys.stderr)
             return 1
         for _, r in df.iterrows():
             essay_task_id = str(r["essay_task_id"]) if "essay_task_id" in r else ""
-            essay_gen_id = str(r.get(essay_doc_col) or "").strip()
-            if not essay_gen_id:
+            gen_id = str(r.get(essay_doc_col) or "").strip()
+            if not gen_id:
                 print(f"Error: missing essay gen id in column '{essay_doc_col}' for essay_task_id={essay_task_id}", file=sys.stderr)
                 return 1
             # Prefer gens store path for essay (parsed.txt if present, else raw.txt)
-            doc_dir = docs_root / "essay" / essay_gen_id
+            doc_dir = docs_root / "essay" / gen_id
             parsed_fp = doc_dir / "parsed.txt"
             raw_fp = doc_dir / "raw.txt"
             if parsed_fp.exists():
@@ -395,25 +401,24 @@ def main() -> int:
             else:
                 file_path = ""
             # Also attempt to read the draft parent gen id from the essay's metadata.json
-            draft_gen_id = None
-            meta_path = docs_root / "essay" / essay_gen_id / "metadata.json"
+            parent_gen_id = None
+            meta_path = docs_root / "essay" / gen_id / "metadata.json"
             try:
                 if meta_path.exists():
                     meta = json.loads(meta_path.read_text(encoding="utf-8"))
                     if isinstance(meta, dict):
                         val = meta.get("parent_gen_id")
                         if isinstance(val, str) and val.strip():
-                            draft_gen_id = val.strip()
+                            parent_gen_id = val.strip()
             except Exception:
-                draft_gen_id = None
+                parent_gen_id = None
             for tpl in eval_tpls:
                 for model in eval_models:
                     evaluation_rows.append({
                         # Use essay gen id as the evaluation target (parent for evaluation stage)
-                        "evaluation_task_id": f"{essay_gen_id}__{tpl}__{model}",
-                        "parent_gen_id": essay_gen_id,
-                        # Optional visibility of essay->draft lineage for ops/debugging
-                        "draft_gen_id": draft_gen_id or "",
+                        "evaluation_task_id": f"{gen_id}__{tpl}__{model}",
+                        "parent_gen_id": gen_id,
+                        # draft_gen_id removed; consumers should look up via essay parent link
                         # task context (kept for compatibility in reports)
                         "document_id": essay_task_id,
                         "essay_task_id": essay_task_id,
@@ -446,7 +451,6 @@ def main() -> int:
                 "evaluation_task_id",
                 # pinned lineage
                 "parent_gen_id",
-                "draft_gen_id",
                 "gen_id",
                 # legacy/task context (kept during migration)
                 "document_id","essay_task_id","draft_task_id","combo_id",
