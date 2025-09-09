@@ -1,6 +1,8 @@
 # Curated Selection and Partitions
 
-This guide shows the current, simple flow to run curated drafts/essays/evaluations without touching the full cube. It centers on two scripts: `scripts/select_top_prior_art.py` and `scripts/register_partitions_for_generations.py`.
+This guide shows the current, simple flow to run curated drafts/essays/evaluations without touching the full cube. It now centers on:
+- `scripts/select_top_prior_art.py` — writes `data/2_tasks/selected_essays.txt` (one essay gen_id per line)
+- `cohort_membership` Dagster asset — builds membership.csv and registers dynamic partitions directly inside Dagster
 
 Note on cohorts
 - Curated runs now carry a `cohort_id` to keep runs isolated and reproducible. By default, curated scripts use a timestamped cohort (or you can pass an explicit name). The full Active Experiment Cube (AEC) path uses a deterministic cohort by manifest hash. See `docs/architecture/active_experiment_cube.md` for details.
@@ -13,59 +15,33 @@ Note on cohorts
 
 ## Step 1: Select Top Prior-Art Winners
 
-Use `scripts/select_top_prior_art.py` to pick the top‑N by prior‑art scores and optionally write the curated essay tasks CSV. Pivots and selections are keyed by `parent_gen_id` (the essay generation id), which is the first token of the `evaluation_task_id` in the gen‑id‑first scheme. The script accepts an optional `--cohort-id` and `--cohort-mode` to stamp the curated outputs.
-
-What it does
-- Reads cross‑experiment scores, considers prior‑art templates (`gemini-prior-art-eval`, `gemini-prior-art-eval-v2` by default), and selects top‑N `document_id`s.
-- Writes `data/2_tasks/essay_generation_tasks.csv` by default; pass `--no-write-drafts` for a dry run that writes nothing.
+Use `scripts/select_top_prior_art.py` to pick the top‑N by prior‑art scores. The script writes `data/2_tasks/selected_essays.txt` with one essay gen_id per line. Pivots and selections are keyed by `parent_gen_id` (the essay generation id), which is the first token of the `evaluation_task_id` in the gen‑id‑first scheme.
 
 Usage
 ```bash
 uv run python scripts/select_top_prior_art.py \
   --top-n 25 \
   --parsed-scores data/7_cross_experiment/parsed_scores.csv \
-  # optional: --cohort-id baseline-v3      # explicit name
-  # optional: --cohort-mode timestamped     # default for curated; or deterministic
-  # optional: --no-write-drafts  # dry run (do not write CSV)
   # optional: --prior-art-templates gemini-prior-art-eval gemini-prior-art-eval-v2
 ```
 
 Notes
-- Writing is enabled by default; use `--no-write-drafts` to preview selection without writing.
+- The file `selected_essays.txt` serves as the input signal for the cohort builder.
 - When joining or pivoting across results, prefer `parent_gen_id` over task ids for stable aggregation.
-- The curated CSV will include a `cohort_id` column when provided. Lineage columns like `origin_gen_id`/`origin_cohort_id` can be written to preserve the source of selection.
 
-## Step 2: Register Curated Partitions (and Evaluations)
+## Step 2: Build Cohort and Register Partitions (inside Dagster)
 
-Use `scripts/register_partitions_for_generations.py` when you want to:
-- Register evaluation partitions for selected documents across active evaluation templates × models.
-- Reset dynamic partitions (clean slate) or clean `data/2_tasks` before writing curated CSVs.
-- Drive from a list/CSV of IDs instead of re‑selecting.
+Use the Dagster asset `cohort_membership` to build membership.csv (wide rows per stage) and register dynamic partitions directly:
 
-Typical usage (drive from the curated CSV written in Step 1)
 ```bash
-uv run python scripts/register_partitions_for_generations.py \
-  --input data/2_tasks/essay_generation_tasks.csv \
-  # optional: --cohort-id baseline-v3
-  # optional: --cohort-mode timestamped
+uv run dagster asset materialize --select "cohort_id,cohort_membership" -f daydreaming_dagster/definitions.py
 ```
 
-Key flags
-- `--no-register`: write CSVs only, skip partition registration.
-- `--no-reset-partitions`: keep existing partitions; default is reset (fresh curated set).
-- `--no-clean-2-tasks`: do not clear `data/2_tasks`; default cleans and preserves only `selected_generations.txt/.csv` if present.
-- `--eval-templates ...` and `--eval-models ...`: override active evaluation axes.
-- `--dry-run`: print what would be written/registered without making changes.
-- `--write-keys-dir DIR`: also write partition key lists to files.
-- `--cohort-id` and `--cohort-mode`: stamp tasks with a cohort and reserve `gen_id`s seeded by it.
-
-Inputs it accepts
-- A text file of `parent_gen_id`s (one per line), or a CSV with one of: `parent_gen_id`, `gen_id`, `essay_task_id`, or `draft_task_id` (legacy). The registration script resolves evaluation partitions using `parent_gen_id` or `gen_id`.
-
-Outputs it writes
-- `data/2_tasks/essay_generation_tasks.csv` and (unless disabled) `data/2_tasks/draft_generation_tasks.csv` (de‑duplicated by task id).
-- Dynamic partitions for `draft_tasks`, `essay_tasks`, and `evaluation_tasks` (active templates × models, or your overrides).
-- A `cohort_id` column in the curated tasks when provided (used by assets if `DD_COHORT` is not set).
+What it does
+- Reads `data/2_tasks/selected_essays.txt` (if present) to build a curated cohort; otherwise builds a Cartesian cohort from active axes.
+- Writes `data/cohorts/<cohort_id>/membership.csv` with full task columns per stage.
+- Registers dynamic partitions for draft/essay/evaluation add‑only.
+- Enforces parent integrity: essays must point to cohort drafts; evaluations must point to cohort essays.
 
 ## Running the Curated Set
 
@@ -98,6 +74,6 @@ Pivoting by parent_gen_id
 - Include `cohort_id` in your pivots when comparing different curated runs or baselines.
 
 Environment tip
-- You can set `DD_COHORT=<cohort_id>` when materializing assets so generation/evaluation assets reserve `gen_id`s seeded by the same cohort. If unset, assets fall back to the `cohort_id` column in tasks (when present) or to Dagster `run_id` for evaluations.
+- You can set `DD_COHORT=<cohort_id>` when materializing assets so generation/evaluation assets reserve `gen_id`s seeded by the same cohort. If unset, task assets compute `cohort_id` deterministically; cohort_membership persists the manifest.
 
-That’s it: two scripts to select winners and register only what you want to run, independent of `k_max` or the full cube, with cohorts keeping curated runs isolated and reproducible.
+That’s it: one selection script plus a Dagster asset to register only what you want to run — independent of `k_max` or the full cube — with cohorts keeping curated runs isolated and reproducible.

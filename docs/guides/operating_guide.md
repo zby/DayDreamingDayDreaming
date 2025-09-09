@@ -225,39 +225,32 @@ For cross-experiment winners, place or symlink their generation texts under the 
 
 ### Curated Selection Quick Start (Drafts, Essays, Evaluations)
 
-Use two scripts to select targets, then register only those partitions (no need to change `k_max`). If `data/7_cross_experiment/parsed_scores.csv` is missing, rebuild cross‑experiment tables (including `parsed_scores.csv`) with `./scripts/rebuild_results.sh` first. In all examples below, treat `parent_gen_id` as the canonical key for evaluation pivots and selections.
+Use the selection script to write a list of essay gen_ids, then let Dagster build the cohort and register partitions (no need to change `k_max`). If `data/7_cross_experiment/parsed_scores.csv` is missing, rebuild cross‑experiment tables (including `parsed_scores.csv`) with `./scripts/rebuild_results.sh` first. In all examples below, treat `parent_gen_id` as the canonical key for evaluation pivots and selections.
 
 1) Select top‑N prior‑art winners (editable list)
 ```bash
-uv run python scripts/select_top_prior_art.py --top-n 30
-# Edit data/2_tasks/essay_generation_tasks.csv or write a list to data/2_tasks/selected_generations.txt
+uv run python scripts/select_top_prior_art.py --top-n 30 --parsed-scores data/7_cross_experiment/parsed_scores.csv
+# Edit data/2_tasks/selected_essays.txt if desired
 ```
 
-2) Register curated tasks and partitions
+2) Build cohort membership and register partitions (inside Dagster)
 ```bash
 export DAGSTER_HOME="$(pwd)/dagster_home"
-uv run python scripts/register_partitions_for_generations.py \
-  --input data/2_tasks/selected_generations.txt
+uv run dagster asset materialize --select "cohort_id,cohort_membership" -f daydreaming_dagster/definitions.py
 ```
 
 What it does
-- Writes curated rows into:
-  - `data/2_tasks/draft_generation_tasks.csv` (optional; disable `--no-write-drafts`)
-  - `data/2_tasks/essay_generation_tasks.csv`
-- Selected combinations
-  - Default path: the `selected_combo_mappings` asset regenerates a single selection from the current active concepts (using `description_level` and `k_max` from `ExperimentConfig`) and allocates a stable `combo_id` via `data/combo_mappings.csv`.
-  - Curated path: the register script writes `data/2_tasks/selected_combo_mappings.csv` by filtering `data/combo_mappings.csv` to the chosen `combo_id`s. In this mode, materialize the rest of `group:task_definitions` and skip `selected_combo_mappings` to avoid overwriting the curated file.
-- Registers dynamic partitions (reset by default) for `draft_tasks`, `essay_tasks`, and `evaluation_tasks` (active templates × evaluation models). Use `--no-reset-partitions` for additive registration.
-- Cleans `data/2_tasks` by default (use `--no-clean-2-tasks` to skip) and writes only curated task CSVs. The `selected_generations` list (txt/csv) is preserved.
+- Writes `data/cohorts/<cohort_id>/membership.csv` with full task columns per stage, built from the selected essays.
+- Registers dynamic partitions add‑only for draft/essay/evaluation.
+- Enforces parent integrity within the cohort.
 
 3) Run in Dagster
-- Drafts: materialize `draft_prompt,draft_response` for selected `draft_task_id`s
-- Essays: materialize `essay_prompt,essay_response` for selected `essay_task_id`s
-- Evaluations: materialize `evaluation_prompt,evaluation_response` for selected `evaluation_task_id`s
+- Drafts: materialize `draft_prompt,draft_response` for selected partitions (by gen_id)
+- Essays: materialize `essay_prompt,essay_response`
+- Evaluations: materialize `evaluation_prompt,evaluation_response`
 
-Tips
-- `--eval-templates` and `--eval-models` restrict evaluation axes without editing raw CSVs.
-- `--write-keys-dir <dir>` writes partition keys to files for copy‑paste.
+Tip
+- Set `DD_COHORT=<cohort_id>` to bind generation/evaluation seeds; task assets compute/persist a deterministic cohort id when not provided.
 - Use `--dry-run` to preview changes.
 
 ### Where Assets Live

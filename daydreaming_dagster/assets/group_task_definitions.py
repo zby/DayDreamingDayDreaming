@@ -36,6 +36,23 @@ from ..utils.selected_combos import validate_selected_is_subset
 from pathlib import Path
 import pandas as pd
 from typing import List
+import os
+
+
+def _read_membership_rows(data_root: Path, cohort: str | None) -> pd.DataFrame | None:
+    """Read cohort membership CSV when present.
+
+    Returns a DataFrame or None when missing.
+    """
+    if not cohort:
+        return None
+    mpath = Path(data_root) / "cohorts" / str(cohort) / "membership.csv"
+    if not mpath.exists():
+        return None
+    try:
+        return pd.read_csv(mpath)
+    except Exception:
+        return None
 
 
 @asset(
@@ -278,14 +295,57 @@ def draft_generation_tasks(
     context,
     content_combinations: List[ContentCombination],
 ) -> pd.DataFrame:
+    """Project draft task rows directly from cohort membership when available.
+
+    Falls back to legacy active-axes derivation only when explicitly enabled via
+    environment variable DD_ALLOW_LEGACY_TASKS=1 and membership is missing.
+    """
     data_root = Path(context.resources.data_root)
+    # Resolve cohort id for projection or fallback ID seeding
+    env_cohort = get_env_cohort_id()
+    try:
+        resolved_cohort = cohort_id(context, content_combinations) if not env_cohort else env_cohort
+    except Exception:
+        resolved_cohort = env_cohort
+    # Prefer cohort membership (authoritative) when present on disk
+    mdf = _read_membership_rows(data_root, resolved_cohort)
+    if mdf is not None and not mdf.empty:
+        draft_df = mdf[mdf.get("stage") == "draft"].copy()
+        cols = [
+            "draft_task_id",
+            "combo_id",
+            "draft_template",
+            "generation_model",
+            "generation_model_name",
+            "gen_id",
+            "cohort_id",
+        ]
+        # Ensure expected columns exist even if empty
+        for c in cols:
+            if c not in draft_df.columns:
+                draft_df[c] = pd.Series(dtype=str)
+        out = draft_df[cols].drop_duplicates(subset=["gen_id"]).reset_index(drop=True)
+        # Register partitions add-only
+        existing = set(context.instance.get_dynamic_partitions(draft_gens_partitions.name))
+        keys = [str(x) for x in out["gen_id"].astype(str).tolist()]
+        to_add = [k for k in keys if k and k not in existing]
+        if to_add:
+            context.instance.add_dynamic_partitions(draft_gens_partitions.name, to_add)
+        context.add_output_metadata(
+            {
+                "task_count": MetadataValue.int(len(out)),
+                "source": MetadataValue.text("cohort_membership"),
+                "partitions_added": MetadataValue.int(len(to_add)),
+            }
+        )
+        return out
+
+    # Fallback: derive from active axes (legacy behavior preserved)
     templates_df = read_draft_templates(data_root)
     models_df = read_llm_models(data_root)
-
     if "active" in templates_df.columns:
         templates_df = templates_df[templates_df["active"] == True]
     gen_models = models_df[models_df["for_generation"] == True]
-
     rows: List[dict] = []
     for combo in content_combinations:
         for _, t in templates_df.iterrows():
@@ -302,31 +362,18 @@ def draft_generation_tasks(
                 )
     df = pd.DataFrame(rows)
     if not df.empty:
-        # Resolve cohort id: env override first, else compute via cohort_id asset
-        env_cohort = get_env_cohort_id()
-        try:
-            computed = cohort_id(context, content_combinations) if not env_cohort else env_cohort
-        except Exception:
-            computed = env_cohort
         df["gen_id"] = df["draft_task_id"].astype(str).apply(
-            lambda tid: reserve_gen_id("draft", tid, run_id=computed)
+            lambda tid: reserve_gen_id("draft", tid, run_id=str(resolved_cohort) if resolved_cohort else None)
         )
-        if computed:
-            df["cohort_id"] = computed
-    # refresh dynamic partitions
-    existing = context.instance.get_dynamic_partitions(draft_gens_partitions.name)
-    if existing:
-        for p in existing:
-            context.instance.delete_dynamic_partition(draft_gens_partitions.name, p)
-    if not df.empty:
-        context.instance.add_dynamic_partitions(
-            draft_gens_partitions.name, df["gen_id"].astype(str).tolist()
-        )
-    try:
-        context.add_output_metadata({"task_count": MetadataValue.int(len(df))})
-    except (AttributeError, DagsterInvalidPropertyError):
-        # Direct invocation (unit tests) may not support attaching metadata
-        pass
+        if resolved_cohort:
+            df["cohort_id"] = str(resolved_cohort)
+        # Add-only registration
+        existing = set(context.instance.get_dynamic_partitions(draft_gens_partitions.name))
+        keys = [str(x) for x in df["gen_id"].astype(str).tolist()]
+        to_add = [k for k in keys if k and k not in existing]
+        if to_add:
+            context.instance.add_dynamic_partitions(draft_gens_partitions.name, to_add)
+    context.add_output_metadata({"task_count": MetadataValue.int(len(df)), "source": MetadataValue.text("legacy_axes")})
     return df
 
 @asset(
@@ -340,19 +387,56 @@ def essay_generation_tasks(
     content_combinations: List[ContentCombination],
     draft_generation_tasks: pd.DataFrame,
 ) -> pd.DataFrame:
-    """Build essay generation tasks strictly from existing draft tasks.
+    """Project essay task rows directly from cohort membership when available.
 
-    For each draft_generation_task row and each active essay template, create a
-    corresponding essay_generation_task. This ensures the UI materialization
-    expands drafts × templates, rather than re-deriving from combinations.
+    Falls back to legacy derivation (drafts × active essay templates) only when
+    DD_ALLOW_LEGACY_TASKS is enabled and membership is missing.
     """
     data_root = Path(context.resources.data_root)
-    templates_df = read_essay_templates(data_root)
+    env_cohort = get_env_cohort_id()
+    try:
+        resolved_cohort = cohort_id(context, content_combinations) if not env_cohort else env_cohort
+    except Exception:
+        resolved_cohort = env_cohort
+    mdf = _read_membership_rows(data_root, resolved_cohort)
+    if mdf is not None and not mdf.empty:
+        essay_df = mdf[mdf.get("stage") == "essay"].copy()
+        cols = [
+            "essay_task_id",
+            "parent_gen_id",
+            "draft_task_id",
+            "combo_id",
+            "draft_template",
+            "essay_template",
+            "generation_model",
+            "generation_model_name",
+            "gen_id",
+            "cohort_id",
+        ]
+        for c in cols:
+            if c not in essay_df.columns:
+                essay_df[c] = pd.Series(dtype=str)
+        out = essay_df[cols].drop_duplicates(subset=["gen_id"]).reset_index(drop=True)
+        # Register partitions add-only
+        existing = set(context.instance.get_dynamic_partitions(essay_gens_partitions.name))
+        keys = [str(x) for x in out["gen_id"].astype(str).tolist()]
+        to_add = [k for k in keys if k and k not in existing]
+        if to_add:
+            context.instance.add_dynamic_partitions(essay_gens_partitions.name, to_add)
+        context.add_output_metadata(
+            {
+                "task_count": MetadataValue.int(len(out)),
+                "source": MetadataValue.text("cohort_membership"),
+                "partitions_added": MetadataValue.int(len(to_add)),
+            }
+        )
+        return out
 
+    # Legacy fallback
+    # Legacy fallback
+    templates_df = read_essay_templates(data_root)
     if "active" in templates_df.columns:
         templates_df = templates_df[templates_df["active"] == True]
-
-    # Create DataFrame with expected columns (gen-id first)
     cols = [
         "essay_task_id",
         "parent_gen_id",
@@ -363,21 +447,11 @@ def essay_generation_tasks(
         "generation_model",
         "generation_model_name",
         "gen_id",
+        "cohort_id",
     ]
     df = pd.DataFrame(columns=cols)
-    
-    # If no drafts or templates, return empty DataFrame
     if draft_generation_tasks is None or draft_generation_tasks.empty or templates_df.empty:
         return df
-
-    # Cross product: each draft task × each active essay template
-    # Resolve cohort id once up front
-    env_cohort = get_env_cohort_id()
-    try:
-        resolved_cohort = cohort_id(context, content_combinations) if not env_cohort else env_cohort
-    except Exception:
-        resolved_cohort = env_cohort
-
     for _, drow in draft_generation_tasks.iterrows():
         combo_id = str(drow.get("combo_id"))
         draft_task_id = drow.get("draft_task_id")
@@ -386,17 +460,12 @@ def essay_generation_tasks(
         draft_gen_id = drow.get("gen_id")
         for _, trow in templates_df.iterrows():
             essay_template_id = trow["template_id"]
-            # Compose essay_task_id from the upstream draft_task_id when present
             if isinstance(draft_task_id, str) and draft_task_id:
                 essay_task_id = f"{draft_task_id}__{essay_template_id}"
-            
-            # Reserve essay gen_id (bind to cohort if present)
-            gen_id = reserve_gen_id("essay", essay_task_id, run_id=resolved_cohort)
-            
-            # Add row directly to DataFrame
+            gen_id = reserve_gen_id("essay", essay_task_id, run_id=str(resolved_cohort) if resolved_cohort else None)
             row_dict = {
                 "essay_task_id": essay_task_id,
-                "parent_gen_id": draft_gen_id,  # Points to draft gen_id
+                "parent_gen_id": draft_gen_id,
                 "draft_task_id": draft_task_id,
                 "combo_id": combo_id,
                 "draft_template": drow.get("draft_template"),
@@ -404,25 +473,15 @@ def essay_generation_tasks(
                 "generation_model": gen_model_id,
                 "generation_model_name": gen_model_name,
                 "gen_id": gen_id,
+                "cohort_id": str(resolved_cohort) if resolved_cohort else "",
             }
-            if resolved_cohort:
-                row_dict["cohort_id"] = resolved_cohort
-            new_row = pd.DataFrame([row_dict])
-            df = pd.concat([df, new_row], ignore_index=True)
-
-    # refresh dynamic partitions
-    existing = context.instance.get_dynamic_partitions(essay_gens_partitions.name)
-    if existing:
-        for p in existing:
-            context.instance.delete_dynamic_partition(essay_gens_partitions.name, p)
-    if not df.empty:
-        context.instance.add_dynamic_partitions(
-            essay_gens_partitions.name, df["gen_id"].astype(str).tolist()
-        )
-    try:
-        context.add_output_metadata({"task_count": MetadataValue.int(len(df))})
-    except Exception:
-        pass
+            df = pd.concat([df, pd.DataFrame([row_dict])], ignore_index=True)
+    existing = set(context.instance.get_dynamic_partitions(essay_gens_partitions.name))
+    keys = [str(x) for x in df["gen_id"].astype(str).tolist()]
+    to_add = [k for k in keys if k and k not in existing]
+    if to_add:
+        context.instance.add_dynamic_partitions(essay_gens_partitions.name, to_add)
+    context.add_output_metadata({"task_count": MetadataValue.int(len(df)), "source": MetadataValue.text("legacy_axes"), "partitions_added": MetadataValue.int(len(to_add))})
     return df
 
 
@@ -442,6 +501,106 @@ def evaluation_tasks(
     # use evaluation_gens_partitions for partition registration
 
     data_root = Path(context.resources.data_root)
+    # Resolve cohort id for seeding and membership projection
+    env_cohort = get_env_cohort_id()
+    try:
+        # Build a manifest consistent path if env isn't provided
+        if env_cohort:
+            resolved = env_cohort
+        else:
+            # Build a minimal manifest from essay/draft tasks for determinism, same as before
+            try:
+                combos = sorted(
+                    [str(c) for c in pd.unique(essay_generation_tasks.get("combo_id", pd.Series(dtype=str)).astype(str))]
+                )
+                if not combos:
+                    combos = sorted(
+                        [str(c) for c in pd.unique(draft_generation_tasks.get("combo_id", pd.Series(dtype=str)).astype(str))]
+                    )
+            except Exception:
+                combos = []
+            try:
+                models_df = read_llm_models(Path(data_root))
+                gen_models = sorted(models_df[models_df["for_generation"] == True]["id"].astype(str).tolist())
+                eval_models = sorted(models_df[models_df["for_evaluation"] == True]["id"].astype(str).tolist())
+            except Exception:
+                gen_models, eval_models = [], []
+            try:
+                dtpl = read_draft_templates(Path(data_root))
+                if "active" in dtpl.columns:
+                    dtpl = dtpl[dtpl["active"] == True]
+                draft_templates = sorted(dtpl["template_id"].astype(str).tolist()) if not dtpl.empty else []
+            except Exception:
+                draft_templates = []
+            try:
+                etpl = read_essay_templates(Path(data_root))
+                if "active" in etpl.columns:
+                    etpl = etpl[etpl["active"] == True]
+                essay_templates = sorted(etpl["template_id"].astype(str).tolist()) if not etpl.empty else []
+            except Exception:
+                essay_templates = []
+            try:
+                vtpl = read_evaluation_templates(Path(data_root))
+                if "active" in vtpl.columns:
+                    vtpl = vtpl[vtpl["active"] == True]
+                evaluation_templates = sorted(vtpl["template_id"].astype(str).tolist()) if not vtpl.empty else []
+            except Exception:
+                evaluation_templates = []
+
+            manifest = {
+                "combos": combos,
+                "templates": {
+                    "draft": draft_templates,
+                    "essay": essay_templates,
+                    "evaluation": evaluation_templates,
+                },
+                "llms": {"generation": gen_models, "evaluation": eval_models},
+            }
+            resolved = compute_cohort_id("cohort", manifest)
+            try:
+                write_manifest(str(data_root), resolved, manifest)
+            except Exception:
+                pass
+    except Exception:
+        resolved = env_cohort
+
+    # First try authoritative cohort membership projection
+    mdf = _read_membership_rows(data_root, resolved)
+    if mdf is not None and not mdf.empty:
+        edf = mdf[mdf.get("stage") == "evaluation"].copy()
+        cols = [
+            "evaluation_task_id",
+            "parent_gen_id",
+            "document_id",
+            "essay_task_id",
+            "draft_task_id",
+            "combo_id",
+            "draft_template",
+            "essay_template",
+            "generation_model",
+            "generation_model_name",
+            "evaluation_template",
+            "evaluation_model",
+            "evaluation_model_name",
+            "parser",
+            "file_path",
+            "source_dir",
+            "source_asset",
+            "gen_id",
+            "cohort_id",
+        ]
+        for c in cols:
+            if c not in edf.columns:
+                edf[c] = pd.Series(dtype=str)
+        out = edf[cols].drop_duplicates(subset=["gen_id"]).reset_index(drop=True)
+        existing = set(context.instance.get_dynamic_partitions(evaluation_gens_partitions.name))
+        keys = [str(x) for x in out["gen_id"].astype(str).tolist()]
+        to_add = [k for k in keys if k and k not in existing]
+        if to_add:
+            context.instance.add_dynamic_partitions(evaluation_gens_partitions.name, to_add)
+        context.add_output_metadata({"task_count": MetadataValue.int(len(out)), "source": MetadataValue.text("cohort_membership"), "partitions_added": MetadataValue.int(len(to_add))})
+        return out
+
     models_df = read_llm_models(Path(data_root))
     evaluation_models = models_df[models_df["for_evaluation"] == True]
     evaluation_templates_df = read_evaluation_templates(Path(data_root))

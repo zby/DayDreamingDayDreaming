@@ -132,25 +132,18 @@ done
 Run only a curated set of drafts/essays/evaluations without expanding the full cube:
 
 ```bash
-# 1) Select top‑N prior‑art winners and write curated CSVs
-uv run python scripts/select_top_prior_art.py --top-n 30
-# Optionally skip auto-registration: --no-register-partitions
+# 1) Select top‑N prior‑art winners and write a list of essay gen_ids
+uv run python scripts/select_top_prior_art.py --top-n 30 --parsed-scores data/7_cross_experiment/parsed_scores.csv
 
-# 2) Register curated tasks and partitions (if you edited the list or want eval partitions)
+# 2) Build cohort membership and register partitions (inside Dagster)
 export DAGSTER_HOME="$(pwd)/dagster_home"
-uv run python scripts/register_partitions_for_generations.py \
-  --input data/2_tasks/selected_generations.txt
+uv run dagster asset materialize --select "cohort_id,cohort_membership" -f daydreaming_dagster/definitions.py
 
-# Optional knobs (register script):
-#   --no-reset-partitions       # additive registration; default resets dynamic partitions
-#   --eval-templates novelty    # restrict evaluation templates
-#   --eval-models sonnet-4      # restrict evaluation models
-#   --write-keys-dir data/2_tasks/keys  # write partition key lists
+# 3) Materialize drafts → essays → evaluations using the registered partitions
+uv run dagster asset materialize --select "group:task_definitions" -f daydreaming_dagster/definitions.py
 ```
 
-This cleans `data/2_tasks` by default (preserving `selected_generations.txt`/`.csv`; use `--no-clean-2-tasks` to skip) and writes curated task CSVs.
-Drafts use `data/2_tasks/selected_combo_mappings.csv` as the single source of content combinations. By default this file is regenerated from the currently active concepts (using `ExperimentConfig.description_level` and `k_max`) and assigned a stable `combo_id` via `data/combo_mappings.csv`. For curated runs, you can write a subset (row‑subset of `data/combo_mappings.csv`) using `scripts/select_combos.py` and materialize everything except the `selected_combo_mappings` asset to avoid overwriting the curated selection.
-Then trigger only those partitions in the UI or via CLI.
+The membership asset writes `data/cohorts/<cohort_id>/membership.csv` (wide rows by stage) and registers dynamic partitions add‑only. Task assets project their tables from membership; generation/evaluation assets run as before.
 
 ### Cross‑Experiment Views
 

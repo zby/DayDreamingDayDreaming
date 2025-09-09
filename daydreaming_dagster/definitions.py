@@ -25,6 +25,9 @@ from daydreaming_dagster.assets.group_results_summary import (
     generation_scores_pivot,
     evaluation_model_template_pivot,
 )
+from daydreaming_dagster.assets.group_cohorts import (
+    cohort_membership,
+)
 from daydreaming_dagster.assets.documents_reporting import (
     documents_latest_report,
     documents_consistency_report,
@@ -72,6 +75,7 @@ defs = Definitions(
     assets=[
         # Core processing assets
         cohort_id,
+        cohort_membership,
         selected_combo_mappings,
         content_combinations,
         draft_generation_tasks,

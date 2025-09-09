@@ -2,16 +2,24 @@
 
 Cohorts are explicit, reproducible identifiers that bind a complete run of the pipeline (task set and generated artifacts) to a single ID.
 
-What the asset does
+What the assets do
 - Asset `cohort_id` (group `task_definitions`) computes a deterministic ID from a manifest of:
   - combo IDs (from `content_combinations`)
   - active draft/essay/evaluation templates
   - active generation/evaluation model IDs
-- Writes the manifest to `data/cohorts/<cohort_id>/manifest.json`.
-- Returns the cohort ID string and surfaces it in the Dagster UI.
+  - Writes the manifest to `data/cohorts/<cohort_id>/manifest.json` and returns the cohort ID.
+- Asset `cohort_membership` (group `cohort`) builds an authoritative membership file and registers dynamic partitions:
+  - Reads `data/2_tasks/selected_essays.txt` (one gen_id per line) when present; otherwise uses the active axes (Cartesian).
+  - Writes `data/cohorts/<cohort_id>/membership.csv` with wide rows per stage:
+    - Common: `stage`, `gen_id`, `cohort_id`
+    - Draft: `draft_task_id`, `combo_id`, `draft_template`, `generation_model`, `generation_model_name`
+    - Essay: `essay_task_id`, `parent_gen_id` (draft), `draft_task_id`, `combo_id`, `draft_template`, `essay_template`, `generation_model`, `generation_model_name`
+    - Evaluation: `evaluation_task_id`, `parent_gen_id` (essay), `evaluation_template`, `evaluation_model`, `evaluation_model_name`, optional `parser`
+  - Registers dynamic partitions add‑only for draft/essay/evaluation.
+  - Enforces parent integrity (essays → drafts; evaluations → essays) within the same cohort.
 
 How it propagates
-- `draft_generation_tasks`, `essay_generation_tasks`, and `evaluation_tasks` reserve gen IDs with `run_id=cohort_id` and add a `cohort_id` column.
+- Task assets (`draft_generation_tasks`, `essay_generation_tasks`, `evaluation_tasks`) project their tables directly from membership.csv when present; otherwise they fall back to legacy active‑axes derivation.
 - All gens `metadata.json` files include `cohort_id`.
 
 Overrides
@@ -24,18 +32,15 @@ Recommended policy
 
 CLI examples
 ```bash
-# Show/compute cohort and write manifest
-uv run dagster asset materialize --select cohort_id -f daydreaming_dagster/definitions.py
+# Curated: write selected essays then build cohort
+uv run python scripts/select_top_prior_art.py --top-n 25 --parsed-scores data/7_cross_experiment/parsed_scores.csv
+uv run dagster asset materialize --select "cohort_id,cohort_membership,group:task_definitions" -f daydreaming_dagster/definitions.py
 
-# Materialize task definitions that inherit the same cohort
-uv run dagster asset materialize --select "group:task_definitions" -f daydreaming_dagster/definitions.py
-
-# Curated run override (env based)
-export DD_COHORT=curated-2025-09-09
-uv run dagster asset materialize --select "group:task_definitions" -f daydreaming_dagster/definitions.py
+# Cartesian: no selection file; cohort_membership derives from active axes
+uv run dagster asset materialize --select "cohort_id,cohort_membership,group:task_definitions" -f daydreaming_dagster/definitions.py
 ```
 
 Implementation notes
 - If a subset materialization runs tasks without the `cohort_id` asset, tasks will compute and persist the cohort manifest automatically (unless `DD_COHORT` is set), to keep subsets/tests ergonomic.
 - The deterministic ID changes when any manifest component changes (combos/templates/models, or a pipeline version constant for material changes).
-
+- Task assets read membership.csv implicitly (using the resolved cohort id) when present and only fall back to legacy active‑axes derivation when membership is absent.
