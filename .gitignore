@@ -216,6 +216,7 @@ data/7_cross_experiment/
 data/7_reporting/
 data/db/
 data/docs/
+data/gens/
 data/combo_mappings.csv
 
 # live data copy for tests
