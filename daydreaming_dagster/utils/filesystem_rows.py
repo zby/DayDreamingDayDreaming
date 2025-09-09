@@ -43,7 +43,7 @@ def read_prompt(row: dict) -> str:
 
 
 def read_metadata(row: dict, *, strict: bool = False) -> dict:
-    """Load metadata.json for a given docs-store row.
+    """Load metadata.json for a given gens-store row.
 
     Returns an empty dict when metadata.json is missing or invalid, unless strict=True
     in which case it raises the underlying exception.

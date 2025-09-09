@@ -97,4 +97,4 @@ def template_version_comparison_pivot(
     return pivot_df
 
 
-# (Auto-materializing tracking assets removed. Derive cross-experiment views from the docs store and tasks.)
+# (Auto-materializing tracking assets removed. Derive cross-experiment views from the gens store and tasks.)

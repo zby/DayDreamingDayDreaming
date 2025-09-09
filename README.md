@@ -172,7 +172,7 @@ Cross‑experiment analysis is derived directly from the gens store (data/gens/*
 # - evaluation_scores_by_template_model.csv  (pivot: rows=essay_task, cols=evaluation_template__evaluation_model)
 ```
 
-Note: Auto‑materializing appenders were removed. Derive views on demand from the docs store and tasks.
+Note: Auto‑materializing appenders were removed. Derive views on demand from the gens store and tasks.
 
 ### Raw CSV Change Handling (Schedule)
 

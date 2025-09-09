@@ -142,7 +142,7 @@ defs = Definitions(
             tasks_csv_name=None,
             id_col="gen_id",
         ),
-        # Responses: no need to persist via IO manager — assets write to docs store
+        # Responses: no need to persist via IO manager — assets write to the gens store
         # Use in-memory manager only if downstream assets in-process; tests may override
         "draft_response_io_manager": InMemoryIOManager(),
         "essay_response_io_manager": InMemoryIOManager(),

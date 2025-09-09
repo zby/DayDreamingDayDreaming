@@ -47,7 +47,7 @@ def parsed_scores(context, evaluation_tasks: pd.DataFrame) -> pd.DataFrame:
         essay_doc = str(row.get("parent_gen_id") or "")
         # Default stage for evaluations is essays
         stages.append("essay2p")
-        # Default generation path to essay parsed.txt in docs store
+        # Default generation path to essay parsed.txt in gens store
         gen_paths.append(str(gens_root / "essay" / essay_doc / "parsed.txt") if essay_doc else "")
         etpl = ""
         gmid = ""

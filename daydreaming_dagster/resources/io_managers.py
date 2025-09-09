@@ -61,8 +61,8 @@ class CSVIOManager(IOManager):
 # Factory functions removed - use direct CSVIOManager instantiation
 
 
-# VersionedTextIOManager removed. For persistence, assets write to the docs store
-# (data/docs/<stage>/<doc_id>) and scripts read from the filesystem directly.
+# VersionedTextIOManager removed. For persistence, assets write to the gens store
+# (data/gens/<stage>/<gen_id>) and scripts read from the filesystem directly.
 
 
 class InMemoryIOManager(IOManager):
