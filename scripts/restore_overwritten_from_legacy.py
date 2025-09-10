@@ -177,6 +177,7 @@ def analyze_overwrites(
     eval_tpls, eval_model_ids = _load_eval_axes(data_root)
     rows: List[Dict[str, str]] = []
     diffs: List[Dict] = []  # keep full context for optional apply
+    matches_by_stage: Dict[str, List[Tuple[str, str]]] = {s: [] for s in stages}
     gens_root = data_root / "gens"
     count = 0
     for stage in stages:
@@ -248,11 +249,25 @@ def analyze_overwrites(
                     continue
                 # choose the oldest candidate for comparison
                 best = _pick_oldest(candidates)
-                try:
-                    legacy_text = best.read_text(encoding="utf-8", errors="ignore") if best else ""
-                except Exception:
-                    legacy_text = ""
-                if _norm_text(legacy_text, normalize) != gnorm:
+                # Compare all candidates; if any matches, record that candidate; otherwise treat as overwritten
+                match_path: Optional[Path] = None
+                for cand in candidates:
+                    try:
+                        c_text = cand.read_text(encoding="utf-8", errors="ignore")
+                    except Exception:
+                        continue
+                    if _norm_text(c_text, normalize) == gnorm:
+                        match_path = cand
+                        break
+                if match_path is not None:
+                    # record a match with the concrete file paths used
+                    if stage == "evaluation":
+                        new_path = str(raw_path) if raw_path.exists() else (str(parsed_path) if parsed_path.exists() else "")
+                    else:
+                        new_path = str(parsed_path) if parsed_path.exists() else (str(raw_path) if raw_path.exists() else "")
+                    matches_by_stage.setdefault(stage, []).append((new_path, str(match_path)))
+                else:
+                    best = _pick_oldest(candidates)
                     row = {
                         "stage": stage,
                         "gen_id": gen_id,
@@ -292,6 +307,14 @@ def analyze_overwrites(
             for r in by_stage.get(st, []):
                 w.writerow(r)
         print(f"Report written: {out} (rows={len(by_stage.get(st, []))})")
+        # Write matches report with just two columns: new store path, old store path
+        match_rows = matches_by_stage.get(st, [])
+        mout = reports_dir / f"matches_{st}.csv"
+        with mout.open("w", newline="", encoding="utf-8") as f:
+            w = csv.writer(f)
+            w.writerow(["new_path", "old_path"])
+            w.writerows(match_rows)
+        print(f"Report written: {mout} (rows={len(match_rows)})")
     if new_cohort_id:
         _apply_restore_new_cohort(data_root, diffs, new_cohort_id)
 
