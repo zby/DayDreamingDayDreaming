@@ -227,13 +227,18 @@ def analyze_overwrites(
                         stems = [f"{essay_stem}_{eval_tpl}_{eval_model}"]
                         candidates = _candidate_legacy_paths(data_root, stage, stems)
                 # Compare oldest candidate only for overwrite detection; if none exist → NEW
-                gens_text = None
-                if parsed_path.exists():
-                    gens_text = parsed_path.read_text(encoding="utf-8", errors="ignore")
-                elif raw_path.exists():
-                    gens_text = raw_path.read_text(encoding="utf-8", errors="ignore")
+                # Stage-specific compare: evaluations compare RAW (not parsed)
+                gens_text = ""
+                if stage == "evaluation":
+                    if raw_path.exists():
+                        gens_text = raw_path.read_text(encoding="utf-8", errors="ignore")
+                    elif parsed_path.exists():
+                        gens_text = parsed_path.read_text(encoding="utf-8", errors="ignore")
                 else:
-                    gens_text = ""
+                    if parsed_path.exists():
+                        gens_text = parsed_path.read_text(encoding="utf-8", errors="ignore")
+                    elif raw_path.exists():
+                        gens_text = raw_path.read_text(encoding="utf-8", errors="ignore")
                 gnorm = _norm_text(gens_text, normalize)
                 if not candidates:
                     # No legacy candidates ⇒ new generation (not overwritten)
