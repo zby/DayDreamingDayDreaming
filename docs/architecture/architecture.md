@@ -192,7 +192,7 @@ data/1_raw/generation_templates/
 **Processing Pipeline**:
 1. **Sequential File Processing**: Read evaluation response files one at a time to avoid memory issues
 2. **Multi-Format Score Extraction**: Automatically detect and parse various LLM response formats
-3. **Strategy Selection**: Parsing strategy is driven by `data/1_raw/evaluation_templates.csv` column `parsing_strategy` (`in_last_line` or `complex`). If unset, defaults to `in_last_line`.
+3. **Strategy Selection**: Parsing strategy is driven by `data/1_raw/evaluation_templates.csv` column `parser` (`in_last_line` or `complex`). The `parser` column is required per template.
 4. **Metadata Enhancement**: Add task metadata (combo, template, model info) via DataFrame joins
 5. **Aggregation**: Calculate summary statistics and perfect score analysis
 6. **CSV Output**: Structured results for further analysis

@@ -294,7 +294,7 @@ Active draft templates are controlled in `data/1_raw/draft_templates.csv` via th
    - **Score location**: Searches the last 3 non-empty lines for score patterns
    - **Formatting support**: Handles markdown formatting like `**SCORE: 7**`
    - **Score formats**: Standard numeric (e.g., 8.5) and three-digit averages (e.g., 456 → 5.0)
-   - **Strategy selection (CSV-driven)**: `data/1_raw/evaluation_templates.csv` now supports a `parsing_strategy` column (`in_last_line` or `complex`). If missing, defaults to `in_last_line`.
+   - **Strategy selection (CSV-driven)**: `data/1_raw/evaluation_templates.csv` uses a required `parser` column (`in_last_line` or `complex`).
 
 ## Documentation
 
