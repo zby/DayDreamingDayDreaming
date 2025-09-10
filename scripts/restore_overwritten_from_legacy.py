@@ -173,64 +173,32 @@ def analyze_overwrites(
             except Exception:
                 continue
             try:
-                # Build stems
+                # Build stems using task_id directly from metadata
                 stems: List[str] = []
-                if stage == "draft":
-                    combo = str(md.get("combo_id") or "").strip()
-                    d_tpl = str(md.get("template_id") or md.get("draft_template") or "").strip()
-                    model = str(md.get("model_id") or "").strip()
-                    if not (combo and d_tpl and model):
-                        raise ValueError("missing combo/template/model in metadata")
-                    stems = [f"{combo}_{d_tpl}_{model}"]
-                elif stage == "essay":
-                    essay_tpl = str(md.get("template_id") or md.get("essay_template") or "").strip()
-                    parent = str(md.get("parent_gen_id") or "").strip()
-                    if not (essay_tpl and parent):
-                        raise ValueError("missing essay template or parent_gen_id")
-                    # load parent draft metadata
-                    try:
-                        dmeta = json.loads((gens_root / "draft" / parent / "metadata.json").read_text(encoding="utf-8"))
-                    except Exception:
-                        dmeta = {}
-                    combo = str(dmeta.get("combo_id") or "").strip()
-                    d_tpl = str(dmeta.get("template_id") or dmeta.get("draft_template") or "").strip()
-                    model = str(dmeta.get("model_id") or "").strip()
-                    if combo and d_tpl and model:
-                        stems = [f"{combo}_{d_tpl}_{model}_{essay_tpl}", f"{combo}_{essay_tpl}_{model}"]  # two-phase and one-phase fallback
-                    else:
-                        stems = [f"*_{essay_tpl}_*"]
+                task_id = str(md.get("task_id") or "").strip()
+                if stage in ("draft", "essay"):
+                    if not task_id:
+                        raise ValueError("missing task_id in metadata")
+                    # Legacy filenames use single '_' separators
+                    stems = [task_id.replace("__", "_")]
                 elif stage == "evaluation":
                     eval_tpl = str(md.get("template_id") or "").strip()
                     eval_model = str(md.get("model_id") or "").strip()
                     parent = str(md.get("parent_gen_id") or "").strip()
                     if not (eval_tpl and eval_model and parent):
                         raise ValueError("missing eval template/model/parent")
-                    # parent essay stem
+                    # Read parent essay's task_id and convert to legacy stem
                     try:
                         emeta = json.loads((gens_root / "essay" / parent / "metadata.json").read_text(encoding="utf-8"))
+                        essay_task_id = str(emeta.get("task_id") or "").strip()
                     except Exception:
-                        emeta = {}
-                    essay_tpl = str(emeta.get("template_id") or emeta.get("essay_template") or "").strip()
-                    try:
-                        dmeta = json.loads((gens_root / "draft" / str(emeta.get("parent_gen_id") or "") / "metadata.json").read_text(encoding="utf-8"))
-                    except Exception:
-                        dmeta = {}
-                    combo = str(dmeta.get("combo_id") or "").strip()
-                    d_tpl = str(dmeta.get("template_id") or dmeta.get("draft_template") or "").strip()
-                    model = str(dmeta.get("model_id") or "").strip()
-                    if combo and d_tpl and model and essay_tpl:
-                        essay_stem = f"{combo}_{d_tpl}_{model}_{essay_tpl}"
-                        stems = [f"{essay_stem}_{eval_tpl}_{eval_model}"]
-                    else:
-                        stems = []
-                # Find candidates
+                        essay_task_id = ""
+                    if not essay_task_id:
+                        raise ValueError("missing parent essay task_id for evaluation")
+                    essay_stem = essay_task_id.replace("__", "_")
+                    stems = [f"{essay_stem}_{eval_tpl}_{eval_model}"]
+                # Find candidates and compare all of them; report overwritten only if none match
                 candidates = _candidate_legacy_paths(data_root, stage, stems)
-                if not candidates:
-                    continue
-                best = _pick_oldest(candidates)
-                if not best:
-                    continue
-                legacy_text = best.read_text(encoding="utf-8", errors="ignore")
                 gens_text = None
                 if parsed_path.exists():
                     gens_text = parsed_path.read_text(encoding="utf-8", errors="ignore")
@@ -238,19 +206,32 @@ def analyze_overwrites(
                     gens_text = raw_path.read_text(encoding="utf-8", errors="ignore")
                 else:
                     gens_text = ""
-                lnorm = _norm_text(legacy_text, normalize)
                 gnorm = _norm_text(gens_text, normalize)
-                if lnorm != gnorm:
+                match = False
+                for cand in candidates:
+                    try:
+                        c_text = cand.read_text(encoding="utf-8", errors="ignore")
+                    except Exception:
+                        continue
+                    if _norm_text(c_text, normalize) == gnorm:
+                        match = True
+                        break
+                if not match:
+                    # choose the oldest candidate (if any) for reporting/restore
+                    best = _pick_oldest(candidates) if candidates else None
                     row = {
                         "stage": stage,
                         "gen_id": gen_id,
-                        "legacy_path": str(best),
+                        "legacy_path": str(best) if best else "",
                         "gens_parsed": str(parsed_path) if parsed_path.exists() else "",
                         "gens_raw": str(raw_path) if raw_path.exists() else "",
                     }
                     rows.append(row)
-                    print(f"OVERWRITTEN? stage={stage} gen_id={gen_id} <- {best}")
-                    if apply:
+                    print(
+                        f"OVERWRITTEN? stage={stage} gen_id={gen_id} <- {best if best else 'NO_CANDIDATE'}"
+                    )
+                    if apply and best is not None:
+                        legacy_text = best.read_text(encoding="utf-8", errors="ignore")
                         base = gen_dir
                         # overwrite parsed/raw with legacy text
                         (base / "raw.txt").write_text(legacy_text, encoding="utf-8")
