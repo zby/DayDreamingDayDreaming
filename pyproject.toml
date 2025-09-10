@@ -45,15 +45,23 @@ include = ["daydreaming_dagster*"]
 namespaces = false
 
 [tool.pytest.ini_options]
-# Note: a historical CLI compatibility test that reproduced an ANTLR4 parsing
-# issue has been removed. We pin antlr4-python3-runtime>=4.13.2, and the test
-# is no longer needed.
+# Unified pytest configuration (consolidated from pytest.ini)
 addopts = """
+-v \
 --cov-report term-missing \
 --cov daydreaming_dagster \
 --cov-fail-under 0
 """
-testpaths = ["tests"]
+testpaths = ["daydreaming_dagster", "tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+markers = [
+    "unit: fast, isolated unit tests",
+    "integration: integration/functional tests within repo boundaries",
+    "live_data: tests that operate on copied live data",
+    "slow: slower-running scenarios",
+]
 
 [tool.coverage.report]
 fail_under = 0
