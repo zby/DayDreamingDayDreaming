@@ -448,13 +448,10 @@ def _apply_restore_new_cohort(data_root: Path, diffs: List[Dict], cohort_id: str
     def ensure_evaluation(md: Dict) -> str:
         task_id = str(md.get("task_id") or "").strip()
         parent_id = str(md.get("parent_gen_id") or "").strip()
-        if not task_id:
-            # compose from parent essay gen_id + eval template/model
-            eval_tpl = str(md.get("template_id") or "").strip()
-            eval_model = str(md.get("model_id") or "").strip()
-            if not (parent_id and eval_tpl and eval_model):
-                raise RuntimeError("missing evaluation task_id and insufficient fields to compose it")
-            task_id = f"{parent_id}__{eval_tpl}__{eval_model}"
+        eval_tpl = str(md.get("template_id") or "").strip()
+        eval_model = str(md.get("model_id") or "").strip()
+        if not (eval_tpl and eval_model):
+            raise RuntimeError("missing evaluation template/model in metadata")
         key = ("evaluation", task_id)
         if key in created:
             return created[key]
@@ -463,6 +460,9 @@ def _apply_restore_new_cohort(data_root: Path, diffs: List[Dict], cohort_id: str
         emeta_path = gens_root / "essay" / parent_id / "metadata.json"
         emeta = json.loads(emeta_path.read_text(encoding="utf-8")) if emeta_path.exists() else {}
         new_essay_id = ensure_essay(emeta)
+        # Compose task_id using the NEW parent id when missing or blank
+        if not task_id:
+            task_id = f"{new_essay_id}__{eval_tpl}__{eval_model}"
         new_id = reserve_gen_id("evaluation", task_id, run_id=cohort_id)
         # Prefer direct metadata source_file for evaluation
         src = str(md.get("source_file") or "").strip()
@@ -511,7 +511,37 @@ def _apply_restore_new_cohort(data_root: Path, diffs: List[Dict], cohort_id: str
                 ensure_evaluation(md)
         except Exception as e:
             print(f"Apply failed for stage={st} gen_id={d.get('gen_id')}: {e}")
-    print(f"Restored {len(created)} generations into cohort '{cohort_id}'.")
+    # Integrity check: ensure no orphans in the new cohort subset we created
+    orphan_essays = []
+    orphan_evals = []
+    for (stage, _task), gen_id in created.items():
+        if stage == "essay":
+            # essay should have an existing parent draft dir
+            mdp = gens_root / "essay" / gen_id / "metadata.json"
+            try:
+                emd = json.loads(mdp.read_text(encoding="utf-8")) if mdp.exists() else {}
+            except Exception:
+                emd = {}
+            pdid = str(emd.get("parent_gen_id") or "").strip()
+            if not pdid or not (gens_root / "draft" / pdid).exists():
+                orphan_essays.append(gen_id)
+        elif stage == "evaluation":
+            mdp = gens_root / "evaluation" / gen_id / "metadata.json"
+            try:
+                vmd = json.loads(mdp.read_text(encoding="utf-8")) if mdp.exists() else {}
+            except Exception:
+                vmd = {}
+            peid = str(vmd.get("parent_gen_id") or "").strip()
+            if not peid or not (gens_root / "essay" / peid).exists():
+                orphan_evals.append(gen_id)
+    if orphan_essays or orphan_evals:
+        print(f"WARNING: orphaned generations detected in restored cohort '{cohort_id}':")
+        if orphan_essays:
+            print(f"  essays without drafts: {len(orphan_essays)} (e.g., {orphan_essays[:5]})")
+        if orphan_evals:
+            print(f"  evaluations without essays: {len(orphan_evals)} (e.g., {orphan_evals[:5]})")
+        raise RuntimeError("Orphaned generations detected after restore; aborting to avoid inconsistent cohort")
+    print(f"Restored {len(created)} generations into cohort '{cohort_id}' with no orphans.")
 
 
 def parse_args() -> argparse.Namespace:
