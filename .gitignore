@@ -203,6 +203,9 @@ __marimo__/
 data/cohorts/
 data/2_tasks/selected_essays.txt
 
+# Working notes (do not commit plans by default)
+plans/
+
 # Streamlit
 .streamlit/secrets.toml
 
