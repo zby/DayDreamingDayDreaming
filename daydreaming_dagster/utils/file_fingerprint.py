@@ -3,7 +3,7 @@ from __future__ import annotations
 import hashlib
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, Iterable, List, Tuple
+from typing import Iterable, List
 
 
 @dataclass(frozen=True)
@@ -41,14 +41,4 @@ def combined_fingerprint(entries: Iterable[FileEntry]) -> str:
     return h.hexdigest()[:16]
 
 
-def diff_by_rel_path(prev: Dict[str, FileEntry], curr: Dict[str, FileEntry]) -> Tuple[List[str], List[str], List[str]]:
-    prev_keys = set(prev.keys())
-    curr_keys = set(curr.keys())
-    added = sorted(list(curr_keys - prev_keys))
-    removed = sorted(list(prev_keys - curr_keys))
-    modified = []
-    for k in sorted(list(prev_keys & curr_keys)):
-        if (prev[k].size != curr[k].size) or (prev[k].mtime_ns != curr[k].mtime_ns):
-            modified.append(k)
-    return added, removed, modified
-
+# Removed unused diff_by_rel_path helper to keep surface minimal.
