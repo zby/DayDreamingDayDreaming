@@ -133,6 +133,21 @@ def _pick_oldest(paths: List[Path]) -> Optional[Path]:
     return sorted(paths, key=key)[0]
 
 
+def _resolve_src_path(data_root: Path, src: str) -> Path:
+    """Resolve a metadata source_file path to an absolute Path.
+
+    If src is absolute, return as-is. If it starts with 'data/', treat it as
+    project-root relative. Otherwise, treat it as relative to data_root.
+    """
+    p = Path(src)
+    if p.is_absolute():
+        return p
+    s = str(p)
+    if s.startswith("data/"):
+        return Path.cwd() / p
+    return data_root / p
+
+
 def _candidate_legacy_paths(data_root: Path, stage: str, stems: Sequence[str]) -> List[Path]:
     out: List[Path] = []
     def add(glob_patterns: List[str]):
@@ -193,9 +208,7 @@ def analyze_overwrites(
                     # Prefer direct source_file from metadata (no guessing)
                     src = str(md.get("source_file") or "").strip()
                     if src:
-                        candidates = [Path(src)]
-                        # ensure absolute path under data_root
-                        candidates = [p if p.is_absolute() else (data_root / p) for p in candidates]
+                        candidates = [_resolve_src_path(data_root, src)]
                     else:
                         eval_tpl = str(md.get("template_id") or "").strip()
                         eval_model = str(md.get("model_id") or "").strip()
@@ -213,8 +226,7 @@ def analyze_overwrites(
                         essay_stem = essay_task_id.replace("__", "_")
                         stems = [f"{essay_stem}_{eval_tpl}_{eval_model}"]
                         candidates = _candidate_legacy_paths(data_root, stage, stems)
-                # Compare all candidates; report overwritten only if none match;
-                # if there are no candidates at all, treat as NEW (not overwritten)
+                # Compare oldest candidate only for overwrite detection; if none exist → NEW
                 gens_text = None
                 if parsed_path.exists():
                     gens_text = parsed_path.read_text(encoding="utf-8", errors="ignore")
@@ -229,18 +241,13 @@ def analyze_overwrites(
                     if limit and count >= limit:
                         break
                     continue
-                match = False
-                for cand in candidates:
-                    try:
-                        c_text = cand.read_text(encoding="utf-8", errors="ignore")
-                    except Exception:
-                        continue
-                    if _norm_text(c_text, normalize) == gnorm:
-                        match = True
-                        break
-                if not match:
-                    # choose the oldest candidate (if any) for reporting/restore
-                    best = _pick_oldest(candidates)
+                # choose the oldest candidate for comparison
+                best = _pick_oldest(candidates)
+                try:
+                    legacy_text = best.read_text(encoding="utf-8", errors="ignore") if best else ""
+                except Exception:
+                    legacy_text = ""
+                if _norm_text(legacy_text, normalize) != gnorm:
                     row = {
                         "stage": stage,
                         "gen_id": gen_id,
@@ -249,7 +256,6 @@ def analyze_overwrites(
                         "gens_raw": str(raw_path) if raw_path.exists() else "",
                     }
                     rows.append(row)
-                    print(f"OVERWRITTEN? stage={stage} gen_id={gen_id} <- {best}")
                     diffs.append({
                         "stage": stage,
                         "gen_id": gen_id,
