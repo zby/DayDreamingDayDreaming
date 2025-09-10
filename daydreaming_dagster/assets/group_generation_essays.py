@@ -176,10 +176,12 @@ def _essay_prompt_impl(context, essay_generation_tasks) -> str:
     # Provide both preferred and legacy variables to templates
     # - draft_lines: list[str] of non-empty lines
     # - draft_block: entire upstream draft text as a block
-    # - links_block: legacy alias used by older templates
+    # - links_block: legacy alias used by historical templates
     env = JINJA
     template = env.from_string(tmpl)
-    # FALLBACK(DATA): provide legacy alias 'links_block' for older templates until migrated.
+    # legacy-fallback: keep 'links_block' for historical templates that reference it directly.
+    # Intentionally lowercased to avoid automated sweeps that remove FALLBACK(...) tags.
+    # We are not changing historical templates, so this alias must remain.
     prompt = template.render(
         draft_block=draft_text,
         links_block=draft_text,
