@@ -5,50 +5,17 @@ import pytest
 from pathlib import Path
 from unittest.mock import Mock
 
-from daydreaming_dagster.utils.evaluation_processing import parse_evaluation_files, enrich_evaluation_data, calculate_evaluation_metadata, add_evaluation_file_paths
+from daydreaming_dagster.utils.evaluation_processing import (
+    enrich_evaluation_data,
+    calculate_evaluation_metadata,
+)
 
 
-def test_parse_evaluation_files_empty_tasks():
-    """Test parsing with empty evaluation tasks."""
-    empty_tasks = pd.DataFrame()
-    eval_templates = pd.DataFrame({"template_id": [], "parser": []})
-    result = parse_evaluation_files(empty_tasks, Path("/tmp"), evaluation_templates=eval_templates)
-    
-    assert len(result) == 0
-    assert list(result.columns) == ['evaluation_task_id', 'score', 'error']
+"""Legacy parsing helpers were removed. Remaining helpers operate on DataFrames.
 
-
-def test_parse_evaluation_files_respects_parser_complex(tmp_path: Path):
-    """Default parser selection should honor explicit parser='complex'."""
-    # Prepare task row and file
-    task_id = "doc__templateX__modelY"
-    (tmp_path / f"{task_id}.txt").write_text("REASONING: ok\nTotal Score: 7/10", encoding="utf-8")
-    tasks = pd.DataFrame([
-        {"evaluation_task_id": task_id, "evaluation_template": "templateX"}
-    ])
-    eval_templates = pd.DataFrame([
-        {"template_id": "templateX", "parser": "complex"}
-    ])
-    out = parse_evaluation_files(tasks, tmp_path, evaluation_templates=eval_templates)
-    assert len(out) == 1
-    assert out.iloc[0]["score"] == 7.0
-    assert out.iloc[0]["used_parser"] == "complex"
-
-
-def test_parse_evaluation_files_respects_parser_in_last_line(tmp_path: Path):
-    """Default parser selection should honor explicit parser='in_last_line'."""
-    task_id = "doc__templateY__modelZ"
-    (tmp_path / f"{task_id}.txt").write_text("Some text\nSCORE: 8", encoding="utf-8")
-    tasks = pd.DataFrame([
-        {"evaluation_task_id": task_id, "evaluation_template": "templateY"}
-    ])
-    eval_templates = pd.DataFrame([
-        {"template_id": "templateY", "parser": "in_last_line"}
-    ])
-    out = parse_evaluation_files(tasks, tmp_path, evaluation_templates=eval_templates)
-    assert len(out) == 1
-    assert out.iloc[0]["score"] == 8.0
-    assert out.iloc[0]["used_parser"] == "in_last_line"
+This test module validates the enrichment utilities that are still used by
+gens-store based assets.
+"""
 
 
 def test_enrich_evaluation_data_basic():
@@ -96,14 +63,4 @@ def test_calculate_evaluation_metadata():
     assert metadata['avg_score'].value == 8.0
 
 
-def test_add_evaluation_file_paths():
-    """Test adding evaluation file paths."""
-    df = pd.DataFrame({
-        'combo_id': ['combo1', 'combo2'],
-        'template': ['template1', 'template2']
-    })
-    
-    result = add_evaluation_file_paths(df, "data/path", "{combo_id}_{template}.txt")
-    
-    assert 'file_path' in result.columns
-    assert result.iloc[0]['file_path'] == "data/path/combo1_template1.txt"
+    # Parsing functions removed; file path helper removed.
