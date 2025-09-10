@@ -150,11 +150,12 @@ def _candidate_legacy_paths(data_root: Path, stage: str, stems: Sequence[str]) -
 
 
 def analyze_overwrites(
-    *, data_root: Path, stages: Sequence[str], limit: Optional[int], normalize: bool, apply: bool, report_csv: Optional[Path]
+    *, data_root: Path, stages: Sequence[str], limit: Optional[int], normalize: bool, report_csv: Optional[Path], new_cohort_id: Optional[str] = None
 ) -> None:
     draft_tpls, essay_tpls = _load_known_templates(data_root)
     eval_tpls, eval_model_ids = _load_eval_axes(data_root)
     rows: List[Dict[str, str]] = []
+    diffs: List[Dict] = []  # keep full context for optional apply
     gens_root = data_root / "gens"
     count = 0
     for stage in stages:
@@ -230,12 +231,13 @@ def analyze_overwrites(
                     print(
                         f"OVERWRITTEN? stage={stage} gen_id={gen_id} <- {best if best else 'NO_CANDIDATE'}"
                     )
-                    if apply and best is not None:
-                        legacy_text = best.read_text(encoding="utf-8", errors="ignore")
-                        base = gen_dir
-                        # overwrite parsed/raw with legacy text
-                        (base / "raw.txt").write_text(legacy_text, encoding="utf-8")
-                        (base / "parsed.txt").write_text(legacy_text, encoding="utf-8")
+                    diffs.append({
+                        "stage": stage,
+                        "gen_id": gen_id,
+                        "gen_dir": gen_dir,
+                        "metadata": md,
+                        "best": best,
+                    })
                 count += 1
                 if limit and count >= limit:
                     break
@@ -251,6 +253,188 @@ def analyze_overwrites(
             w.writeheader()
             for r in rows:
                 w.writerow(r)
+    if new_cohort_id:
+        _apply_restore_new_cohort(data_root, diffs, new_cohort_id)
+
+
+def _apply_restore_new_cohort(data_root: Path, diffs: List[Dict], cohort_id: str) -> None:
+    """Create a new cohort of generations for the differing docs by copying legacy content.
+
+    - Drafts: create new draft under cohort_id using current task_id; copy best legacy content when available.
+    - Essays: ensure parent draft exists in new cohort; create essay under cohort_id; copy best legacy content when available.
+    - Evaluations: ensure parent essay (and its draft) exist in new cohort; create evaluation under cohort_id; copy best legacy content when available.
+    """
+    from daydreaming_dagster.utils.ids import reserve_gen_id
+    from daydreaming_dagster.utils.metadata import build_generation_metadata
+    from daydreaming_dagster.utils.document import Generation
+
+    gens_root = data_root / "gens"
+
+    # caches to avoid duplicate creation
+    created: Dict[Tuple[str, str], str] = {}  # (stage, task_id) -> new_gen_id
+
+    def read_text(path: Optional[Path], fallback: Optional[Path] = None) -> str:
+        if isinstance(path, Path) and path.exists():
+            return path.read_text(encoding="utf-8", errors="ignore")
+        if isinstance(fallback, Path) and fallback.exists():
+            return fallback.read_text(encoding="utf-8", errors="ignore")
+        return ""
+
+    def ensure_draft(md: Dict) -> str:
+        task_id = str(md.get("task_id") or "").strip()
+        if not task_id:
+            combo = str(md.get("combo_id") or "").strip()
+            d_tpl = str(md.get("template_id") or md.get("draft_template") or "").strip()
+            model = str(md.get("model_id") or "").strip()
+            if not (combo and d_tpl and model):
+                raise RuntimeError("missing draft task_id and insufficient fields to compose it")
+            task_id = f"{combo}__{d_tpl}__{model}"
+        key = ("draft", task_id)
+        if key in created:
+            return created[key]
+        new_id = reserve_gen_id("draft", task_id, run_id=cohort_id)
+        # choose legacy text if we can find it
+        stem = task_id.replace("__", "_")
+        cands = _candidate_legacy_paths(data_root, "draft", [stem])
+        best = _pick_oldest(cands)
+        # fallback to current gens/raw
+        cur = Generation.load(gens_root, "draft", str(md.get("gen_id") or ""))
+        text = read_text(best, Path(cur.target_dir(gens_root) / "parsed.txt")) or cur.raw_text
+        meta = build_generation_metadata(
+            stage="draft",
+            gen_id=new_id,
+            parent_gen_id=None,
+            template_id=str(md.get("template_id") or md.get("draft_template") or ""),
+            model_id=str(md.get("model_id") or ""),
+            task_id=task_id,
+            function="restore_overwritten_from_legacy",
+            cohort_id=cohort_id,
+            extra={"combo_id": str(md.get("combo_id") or "")},
+        )
+        Generation(
+            stage="draft",
+            gen_id=new_id,
+            parent_gen_id=None,
+            raw_text=text,
+            parsed_text=text,
+            prompt_text=None,
+            metadata=meta,
+        ).write_files(gens_root)
+        created[key] = new_id
+        return new_id
+
+    def ensure_essay(md: Dict) -> str:
+        task_id = str(md.get("task_id") or "").strip()
+        parent_id = str(md.get("parent_gen_id") or "").strip()
+        if not task_id:
+            # compose from parent draft + essay template
+            dmeta_path = gens_root / "draft" / parent_id / "metadata.json"
+            dmeta = json.loads(dmeta_path.read_text(encoding="utf-8")) if dmeta_path.exists() else {}
+            combo = str(dmeta.get("combo_id") or "").strip()
+            d_tpl = str(dmeta.get("template_id") or dmeta.get("draft_template") or "").strip()
+            model = str(dmeta.get("model_id") or "").strip()
+            essay_tpl = str(md.get("template_id") or md.get("essay_template") or "").strip()
+            if not (combo and d_tpl and model and essay_tpl):
+                raise RuntimeError("missing essay task_id and insufficient fields to compose it")
+            task_id = f"{combo}__{d_tpl}__{model}__{essay_tpl}"
+        key = ("essay", task_id)
+        if key in created:
+            return created[key]
+        # ensure parent draft
+        parent_id = str(md.get("parent_gen_id") or "").strip()
+        dmeta_path = gens_root / "draft" / parent_id / "metadata.json"
+        dmeta = json.loads(dmeta_path.read_text(encoding="utf-8")) if dmeta_path.exists() else {}
+        new_draft_id = ensure_draft(dmeta)
+        new_id = reserve_gen_id("essay", task_id, run_id=cohort_id)
+        # legacy text
+        stem = task_id.replace("__", "_")
+        cands = _candidate_legacy_paths(data_root, "essay", [stem])
+        best = _pick_oldest(cands)
+        cur = Generation.load(gens_root, "essay", str(md.get("gen_id") or ""))
+        text = read_text(best, Path(cur.target_dir(gens_root) / "parsed.txt")) or cur.raw_text
+        meta = build_generation_metadata(
+            stage="essay",
+            gen_id=new_id,
+            parent_gen_id=new_draft_id,
+            template_id=str(md.get("template_id") or md.get("essay_template") or ""),
+            model_id=str(md.get("model_id") or ""),
+            task_id=task_id,
+            function="restore_overwritten_from_legacy",
+            cohort_id=cohort_id,
+            extra={"essay_template": str(md.get("essay_template") or md.get("template_id") or "")},
+        )
+        Generation(
+            stage="essay",
+            gen_id=new_id,
+            parent_gen_id=new_draft_id,
+            raw_text=text,
+            parsed_text=text,
+            prompt_text=None,
+            metadata=meta,
+        ).write_files(gens_root)
+        created[key] = new_id
+        return new_id
+
+    def ensure_evaluation(md: Dict) -> str:
+        task_id = str(md.get("task_id") or "").strip()
+        parent_id = str(md.get("parent_gen_id") or "").strip()
+        if not task_id:
+            # compose from parent essay gen_id + eval template/model
+            eval_tpl = str(md.get("template_id") or "").strip()
+            eval_model = str(md.get("model_id") or "").strip()
+            if not (parent_id and eval_tpl and eval_model):
+                raise RuntimeError("missing evaluation task_id and insufficient fields to compose it")
+            task_id = f"{parent_id}__{eval_tpl}__{eval_model}"
+        key = ("evaluation", task_id)
+        if key in created:
+            return created[key]
+        # ensure parent essay
+        parent_id = str(md.get("parent_gen_id") or "").strip()
+        emeta_path = gens_root / "essay" / parent_id / "metadata.json"
+        emeta = json.loads(emeta_path.read_text(encoding="utf-8")) if emeta_path.exists() else {}
+        new_essay_id = ensure_essay(emeta)
+        new_id = reserve_gen_id("evaluation", task_id, run_id=cohort_id)
+        stem = task_id.replace("__", "_")
+        cands = _candidate_legacy_paths(data_root, "evaluation", [stem])
+        best = _pick_oldest(cands)
+        cur = Generation.load(gens_root, "evaluation", str(md.get("gen_id") or ""))
+        text = read_text(best, Path(cur.target_dir(gens_root) / "parsed.txt")) or cur.raw_text
+        meta = build_generation_metadata(
+            stage="evaluation",
+            gen_id=new_id,
+            parent_gen_id=new_essay_id,
+            template_id=str(md.get("template_id") or ""),
+            model_id=str(md.get("model_id") or ""),
+            task_id=task_id,
+            function="restore_overwritten_from_legacy",
+            cohort_id=cohort_id,
+            extra={"evaluation_template": str(md.get("template_id") or "")},
+        )
+        Generation(
+            stage="evaluation",
+            gen_id=new_id,
+            parent_gen_id=new_essay_id,
+            raw_text=text,
+            parsed_text=text,
+            prompt_text=None,
+            metadata=meta,
+        ).write_files(gens_root)
+        created[key] = new_id
+        return new_id
+
+    for d in diffs:
+        st = d["stage"]
+        md = d["metadata"]
+        try:
+            if st == "draft":
+                ensure_draft(md)
+            elif st == "essay":
+                ensure_essay(md)
+            elif st == "evaluation":
+                ensure_evaluation(md)
+        except Exception as e:
+            print(f"Apply failed for stage={st} gen_id={d.get('gen_id')}: {e}")
+    print(f"Restored {len(created)} generations into cohort '{cohort_id}'.")
 
 
 def parse_args() -> argparse.Namespace:
@@ -259,7 +443,7 @@ def parse_args() -> argparse.Namespace:
     ap.add_argument("--stages", nargs="+", choices=["draft","essay","evaluation"], default=["draft","essay","evaluation"])
     ap.add_argument("--limit", type=int, default=None)
     ap.add_argument("--normalize", action="store_true", help="Normalize newlines and trim trailing spaces before compare")
-    ap.add_argument("--apply", action="store_true", help="Overwrite gens raw.txt/parsed.txt with legacy content for differing docs")
+    ap.add_argument("--new-cohort-id", type=str, default=None, help="If provided, create a restored cohort with these differing docs")
     ap.add_argument("--report", type=Path, default=None, help="Write CSV report of differing docs")
     return ap.parse_args()
 
@@ -271,8 +455,8 @@ def main() -> int:
         stages=args.stages,
         limit=args.limit,
         normalize=args.normalize,
-        apply=args.apply,
         report_csv=args.report,
+        new_cohort_id=args.new_cohort_id,
     )
     return 0
 
