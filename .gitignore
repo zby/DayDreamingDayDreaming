@@ -222,6 +222,7 @@ data/db/
 data/docs/
 data/gens/
 data/reports/
+data/combo_mappings.csv
 
 # live data copy for tests
 tests/data_pipeline_test/
