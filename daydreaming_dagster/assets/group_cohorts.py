@@ -26,7 +26,7 @@ from .partitions import (
     essay_gens_partitions,
     evaluation_gens_partitions,
 )
-from ..utils.document import Generation
+from ..utils.generation import Generation
 
 
 def _load_selected_essays_list(data_root: Path) -> List[str]:

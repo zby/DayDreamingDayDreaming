@@ -11,13 +11,7 @@ from .partitions import essay_gens_partitions
 from ..utils.template_loader import load_generation_template
 from ..utils.raw_readers import read_essay_templates
 from ..utils.dataframe_helpers import get_task_row
-from ..utils.ids import (
-    gen_dir as build_gen_dir,
-)
-from ..utils.filesystem_rows import (
-    read_raw as fs_read_raw,
-)
-from ..utils.document import Generation
+from ..utils.generation import Generation
 from ..utils.metadata import build_generation_metadata
 from ..constants import DRAFT, ESSAY, FILE_RAW
 

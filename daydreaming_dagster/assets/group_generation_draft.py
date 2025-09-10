@@ -14,7 +14,7 @@ from ..utils.template_loader import load_generation_template
 from ..utils.raw_readers import read_draft_templates
 from ..utils.draft_parsers import get_draft_parser
 from ..utils.dataframe_helpers import get_task_row
-from ..utils.document import Generation
+from ..utils.generation import Generation
 from ..utils.metadata import build_generation_metadata
 from ..constants import DRAFT, FILE_RAW
 
@@ -113,7 +113,7 @@ def _draft_response_impl(context, draft_prompt, draft_generation_tasks) -> str:
     data_root = Path(getattr(context.resources, "data_root", "data"))
     # Persist RAW to gens store right away so it exists even if parsing fails
     try:
-        from ..utils.document import Generation as _Gen
+        from ..utils.generation import Generation as _Gen
         _gen = _Gen(
             stage=DRAFT,
             gen_id=str(gen_id),

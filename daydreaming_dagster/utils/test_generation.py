@@ -1,10 +1,10 @@
 from __future__ import annotations
 
 from pathlib import Path
-from daydreaming_dagster.utils.document import Generation
+from daydreaming_dagster.utils.generation import Generation
 
 
-class TestDocument:
+class TestGeneration:
     def test_write_and_to_index_row(self, tmp_path: Path):
         docs_root = tmp_path / "gens"
 

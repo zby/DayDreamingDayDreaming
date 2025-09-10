@@ -7,14 +7,9 @@ Asset definitions for the evaluation stage.
 from dagster import asset, Failure, MetadataValue
 from pathlib import Path
 from .partitions import evaluation_gens_partitions
-from ..utils.document import Generation
+from ..utils.generation import Generation
 from ..utils.metadata import build_generation_metadata
-from ..utils.filesystem_rows import (
-    read_raw as fs_read_raw,
-)
-
-import pandas as pd
-import logging
+ 
 from jinja2 import Environment
 from ..utils.dataframe_helpers import get_task_row
 from ..utils.raw_readers import read_evaluation_templates
@@ -23,7 +18,7 @@ from ..utils.evaluation_parsing_config import load_parser_map, require_parser_fo
 from ..utils.eval_response_parser import parse_llm_response
 from ..constants import ESSAY, EVALUATION
 
-logger = logging.getLogger(__name__)
+ 
 
 
 @asset(

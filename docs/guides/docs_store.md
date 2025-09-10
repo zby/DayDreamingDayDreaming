@@ -40,7 +40,7 @@ Preferred: use `Generation.load` to read from the gens store.
 Example:
 ```python
 from pathlib import Path
-from daydreaming_dagster.utils.document import Generation
+from daydreaming_dagster.utils.generation import Generation
 
 gens_root = Path("data") / "gens"
 gen = Generation.load(gens_root, "essay", "abc123xyz")

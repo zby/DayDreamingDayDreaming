@@ -327,7 +327,7 @@ def _apply_restore_new_cohort(data_root: Path, diffs: List[Dict], cohort_id: str
     """
     from daydreaming_dagster.utils.ids import reserve_gen_id
     from daydreaming_dagster.utils.metadata import build_generation_metadata
-    from daydreaming_dagster.utils.document import Generation
+    from daydreaming_dagster.utils.generation import Generation
 
     gens_root = data_root / "gens"
 
