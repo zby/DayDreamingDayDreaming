@@ -283,7 +283,7 @@ def selected_combo_mappings(context) -> pd.DataFrame:
 @asset(
     group_name="task_definitions",
     io_manager_key="csv_io_manager",
-    deps={"cohort_membership"},
+    deps={"cohort_membership", "prune_dynamic_partitions"},
     required_resource_keys={"data_root"},
 )
 def draft_generation_tasks(
@@ -369,7 +369,7 @@ def draft_generation_tasks(
 @asset(
     group_name="task_definitions",
     io_manager_key="csv_io_manager",
-    deps={"cohort_membership"},
+    deps={"cohort_membership", "prune_dynamic_partitions"},
     required_resource_keys={"data_root"},
 )
 def essay_generation_tasks(
@@ -476,7 +476,7 @@ def essay_generation_tasks(
 @asset(
     group_name="task_definitions",
     io_manager_key="csv_io_manager",
-    deps={"cohort_membership"},
+    deps={"cohort_membership", "prune_dynamic_partitions"},
     required_resource_keys={"data_root"},
 )
 def evaluation_tasks(

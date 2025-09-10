@@ -1,17 +1,23 @@
-# Plan: Two‑Turn Generations (Link → LLM, Essay‑like → Copy)
+# Plan: Two‑Turn Generations under a Single Cohort (Link → LLM, Essay‑like → Copy)
 
 Status: ready
 Owner: daydreaming_dagster
 
 Objective
-- Run remaining draft templates in two turns to simplify validation and isolate failure modes:
+- Run the two turns of generation under ONE explicit cohort for reproducibility and easier analysis.
   1) Turn 1 (link‑style → LLM essay): Activate link‑style draft templates and a single LLM essay template (`synthesis-theme-narrative-v19`). Generate drafts and essays end‑to‑end. Disable copy essays.
   2) Turn 2 (essay‑like → copy): Deactivate link‑style drafts, activate essay‑like drafts, switch essay template to copy mode (`parsed-from-links-v1`) to finalize drafts without LLM.
 
 Guiding principles
-- Doc‑id‑first: All task CSVs must include `doc_id`; essays/evaluations must carry `parent_doc_id` pointing at the upstream doc.
-- Fail‑fast: Scripts/assets should error on missing IDs or files instead of auto‑fixing data.
-- No DB: Use filesystem docs store under `data/docs/<stage>/<doc_id>/`.
+- Gen‑id‑first using gens store: generations live under `data/gens/<stage>/<gen_id>/{prompt.txt,raw.txt,parsed.txt,metadata.json}`.
+- Fail‑fast: assets error on missing data rather than silently fixing it.
+- No DB: filesystem + CSVs only.
+
+Pinning one cohort across turns
+- Export a single cohort ID before both turns so dynamic partitions and membership accumulate under the same cohort:
+  - `export DD_COHORT=cohort_two_turn_$(date +%Y%m%d)`
+  - Alternatively pass via run config: `ops: { cohort_id: { config: { override: "cohort_two_turn_custom" } } }`
+- With `DD_COHORT` set, assets will use this explicit ID and write/update `data/cohorts/$DD_COHORT/manifest.json` and `membership.csv` as you run turns.
 
 Turn 1 — Link‑style drafts → LLM essay v19
 - Draft templates to activate (CSV: `data/1_raw/draft_templates.csv`):
@@ -27,7 +33,8 @@ Turn 1 — Link‑style drafts → LLM essay v19
   - Draft: creative-synthesis-v7
   - Essay: parsed-from-links-v1 (copy)
 - Steps
-  1) Materialize tasks: `uv run dagster asset materialize --select "group:task_definitions" -f daydreaming_dagster/definitions.py`
+  1) Materialize cohort + membership + tasks:
+     `uv run dagster asset materialize --select "cohort_id,cohort_membership,group:task_definitions" -f daydreaming_dagster/definitions.py`
   2) Drafts: `uv run dagster asset materialize --select "group:generation_draft" -f daydreaming_dagster/definitions.py`
   3) Essays: `uv run dagster asset materialize --select "group:generation_essays" -f daydreaming_dagster/definitions.py`
   4) Optional evaluations: `uv run dagster asset materialize --select "group:evaluation" -f daydreaming_dagster/definitions.py`
@@ -43,15 +50,19 @@ Turn 2 — Essay‑like drafts → copy
   - parsed-from-links-v1 (generator=copy)
 - Deactivate for this turn:
   - synthesis-theme-narrative-v19 (LLM)
-- Steps: same sequence as Turn 1 (tasks → drafts → essays → optional evals).
+- Steps (same cohort ID still exported)
+  1) Materialize cohort_membership + tasks (recomputes membership under same cohort, registers new partitions add‑only):
+     `uv run dagster asset materialize --select "cohort_membership,group:task_definitions" -f daydreaming_dagster/definitions.py`
+  2) Drafts: `uv run dagster asset materialize --select "group:generation_draft" -f daydreaming_dagster/definitions.py`
+  3) Essays: `uv run dagster asset materialize --select "group:generation_essays" -f daydreaming_dagster/definitions.py`
+  4) Optional evaluations: `uv run dagster asset materialize --select "group:evaluation" -f daydreaming_dagster/definitions.py`
 
 Notes & caveats
-- creative-synthesis-v8: referenced by existing docs, but draft template file appears missing locally. Keep it inactive or add a template file before use.
-- Using curated runs: you can also build `data/2_tasks/essay_generation_tasks.csv` directly (with `parent_doc_id` and `doc_id`) and run via scripts/register_partitions_for_generations.py for reproducible batches.
-- Keep evaluations focused on essay outputs; single‑phase copy runs will pass through draft text unchanged.
+- creative-synthesis-v8: referenced by existing docs, but the draft template file may be missing locally. Keep it inactive or add the template file before use.
+- You can also run curated turns by seeding `data/2_tasks/selected_essays.txt` with essay gen_ids; `cohort_membership` will use curated mode and still respect `DD_COHORT`.
+- Evaluations target essays; copy‑mode essays simply pass through draft text.
 
 Validation checklist
-- All task CSVs include `doc_id`; essays/evals include non‑empty `parent_doc_id`.
-- Docs written to `data/docs/<stage>/<doc_id>/` with `metadata.json` and `parsed.txt` present.
-- For Turn 1, essay prompts/responses are produced via LLM; for Turn 2, essays copy draft content without LLM.
-
+- Gens files present: `data/gens/<stage>/<gen_id>/{prompt.txt,raw.txt,parsed.txt,metadata.json}`.
+- `data/cohorts/$DD_COHORT/membership.csv` includes both turns’ rows; dynamic partitions registered for all gen_ids.
+- Turn 1 essays come from LLM; Turn 2 essays copy draft content (no LLM).

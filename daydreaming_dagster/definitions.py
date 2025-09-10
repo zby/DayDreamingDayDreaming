@@ -28,6 +28,9 @@ from daydreaming_dagster.assets.group_results_summary import (
 from daydreaming_dagster.assets.group_cohorts import (
     cohort_membership,
 )
+from daydreaming_dagster.assets.maintenance import (
+    prune_dynamic_partitions,
+)
 from daydreaming_dagster.assets.documents_reporting import (
     documents_latest_report,
     documents_consistency_report,
@@ -105,6 +108,7 @@ defs = Definitions(
         template_version_comparison_pivot,
         documents_latest_report,
         documents_consistency_report,
+        prune_dynamic_partitions,
         # Source assets (CSV-only)
         *RAW_SOURCE_ASSETS,
         *TASK_SOURCE_ASSETS,
