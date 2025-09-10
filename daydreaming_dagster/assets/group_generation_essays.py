@@ -194,12 +194,10 @@ def _essay_prompt_impl(context, essay_generation_tasks) -> str:
     # - links_block: legacy alias used by older templates
     env = JINJA
     template = env.from_string(tmpl)
-    draft_block = draft_text
     # FALLBACK(DATA): provide legacy alias 'links_block' for older templates until migrated.
     prompt = template.render(
-        draft_lines=draft_lines,
-        draft_block=draft_block,
-        links_block=draft_block,
+        draft_block=draft_text,
+        links_block=draft_text,
     )
     context.add_output_metadata(
         {
