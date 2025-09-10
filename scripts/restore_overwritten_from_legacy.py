@@ -34,6 +34,7 @@ import json
 from pathlib import Path
 import re
 from typing import Dict, List, Optional, Sequence, Tuple
+import sys
 
 def _load_known_templates(base_data: Path):
     draft: set[str] = set(); essay: set[str] = set()
@@ -155,15 +156,17 @@ def _candidate_legacy_paths(data_root: Path, stage: str, stems: Sequence[str]) -
             for s in stems:
                 out.extend(sorted(Path(data_root).glob(pat.format(stem=s))))
     if stage == "draft":
-        # older first
+        # older first; include raw variants
         add([
             "3_generation/links_responses/{stem}*.txt",
             "3_generation/draft_responses/{stem}*.txt",
+            "3_generation/draft_responses_raw/{stem}*.txt",
         ])
     elif stage == "essay":
         add([
             "3_generation/generation_responses/{stem}*.txt",
             "3_generation/essay_responses/{stem}*.txt",
+            "3_generation/essay_responses_raw/{stem}*.txt",
         ])
     elif stage == "evaluation":
         add(["4_evaluation/evaluation_responses/{stem}*.txt"])
@@ -190,104 +193,100 @@ def analyze_overwrites(
             parsed_path = gen_dir / "parsed.txt"
             raw_path = gen_dir / "raw.txt"
             if not md_path.exists():
-                continue
-            try:
-                md = json.loads(md_path.read_text(encoding="utf-8"))
-            except Exception:
-                continue
-            try:
-                # Build stems using task_id directly from metadata
-                stems: List[str] = []
-                task_id = str(md.get("task_id") or "").strip()
-                if stage in ("draft", "essay"):
-                    if not task_id:
-                        raise ValueError("missing task_id in metadata")
+                raise FileNotFoundError(f"missing metadata.json: {md_path}")
+            md = json.loads(md_path.read_text(encoding="utf-8"))
+            # Build stems using task_id directly from metadata
+            stems: List[str] = []
+            task_id = str(md.get("task_id") or "").strip()
+            if stage in ("draft", "essay"):
+                src = str(md.get("source_file") or "").strip()
+                if task_id:
                     # Legacy filenames use single '_' separators
                     stems = [task_id.replace("__", "_")]
                     candidates = _candidate_legacy_paths(data_root, stage, stems)
-                elif stage == "evaluation":
-                    # Prefer direct source_file from metadata (no guessing)
-                    src = str(md.get("source_file") or "").strip()
-                    if src:
-                        candidates = [_resolve_src_path(data_root, src)]
-                    else:
-                        eval_tpl = str(md.get("template_id") or "").strip()
-                        eval_model = str(md.get("model_id") or "").strip()
-                        parent = str(md.get("parent_gen_id") or "").strip()
-                        if not (eval_tpl and eval_model and parent):
-                            raise ValueError("missing eval template/model/parent")
-                        # Read parent essay's task_id and convert to legacy stem
-                        try:
-                            emeta = json.loads((gens_root / "essay" / parent / "metadata.json").read_text(encoding="utf-8"))
-                            essay_task_id = str(emeta.get("task_id") or "").strip()
-                        except Exception:
-                            essay_task_id = ""
-                        if not essay_task_id:
-                            raise ValueError("missing parent essay task_id for evaluation")
-                        essay_stem = essay_task_id.replace("__", "_")
-                        stems = [f"{essay_stem}_{eval_tpl}_{eval_model}"]
-                        candidates = _candidate_legacy_paths(data_root, stage, stems)
-                # Compare oldest candidate only for overwrite detection; if none exist → NEW
-                # Stage-specific compare: evaluations compare RAW (not parsed)
-                gens_text = ""
-                if stage == "evaluation":
-                    if raw_path.exists():
-                        gens_text = raw_path.read_text(encoding="utf-8", errors="ignore")
-                    elif parsed_path.exists():
-                        gens_text = parsed_path.read_text(encoding="utf-8", errors="ignore")
+                elif src:
+                    candidates = [_resolve_src_path(data_root, src)]
                 else:
-                    if parsed_path.exists():
-                        gens_text = parsed_path.read_text(encoding="utf-8", errors="ignore")
-                    elif raw_path.exists():
-                        gens_text = raw_path.read_text(encoding="utf-8", errors="ignore")
-                gnorm = _norm_text(gens_text, normalize)
-                if not candidates:
-                    # No legacy candidates ⇒ new generation (not overwritten)
-                    count += 1
-                    if limit and count >= limit:
-                        break
-                    continue
-                # choose the oldest candidate for comparison
-                best = _pick_oldest(candidates)
-                # Compare all candidates; if any matches, record that candidate; otherwise treat as overwritten
-                match_path: Optional[Path] = None
-                for cand in candidates:
-                    try:
-                        c_text = cand.read_text(encoding="utf-8", errors="ignore")
-                    except Exception:
-                        continue
-                    if _norm_text(c_text, normalize) == gnorm:
-                        match_path = cand
-                        break
-                if match_path is not None:
-                    # record a match with the concrete file paths used
-                    if stage == "evaluation":
-                        new_path = str(raw_path) if raw_path.exists() else (str(parsed_path) if parsed_path.exists() else "")
-                    else:
-                        new_path = str(parsed_path) if parsed_path.exists() else (str(raw_path) if raw_path.exists() else "")
-                    matches_by_stage.setdefault(stage, []).append((new_path, str(match_path)))
+                    # Fail fast when both task_id and source_file are missing
+                    raise ValueError(f"missing task_id and source_file in metadata: {md_path}")
+            elif stage == "evaluation":
+                # Prefer direct source_file from metadata (no guessing)
+                src = str(md.get("source_file") or "").strip()
+                if src:
+                    candidates = [_resolve_src_path(data_root, src)]
                 else:
-                    best = _pick_oldest(candidates)
-                    row = {
-                        "stage": stage,
-                        "gen_id": gen_id,
-                        "legacy_path": str(best) if best else "",
-                        "gens_parsed": str(parsed_path) if parsed_path.exists() else "",
-                        "gens_raw": str(raw_path) if raw_path.exists() else "",
-                    }
-                    rows.append(row)
-                    diffs.append({
-                        "stage": stage,
-                        "gen_id": gen_id,
-                        "gen_dir": gen_dir,
-                        "metadata": md,
-                        "best": best,
-                    })
+                    eval_tpl = str(md.get("template_id") or "").strip()
+                    eval_model = str(md.get("model_id") or "").strip()
+                    parent = str(md.get("parent_gen_id") or "").strip()
+                    if not (eval_tpl and eval_model and parent):
+                        raise ValueError("missing eval template/model/parent")
+                    # Read parent essay's task_id and convert to legacy stem
+                    emeta = json.loads((gens_root / "essay" / parent / "metadata.json").read_text(encoding="utf-8"))
+                    essay_task_id = str(emeta.get("task_id") or "").strip()
+                    if not essay_task_id:
+                        raise ValueError("missing parent essay task_id for evaluation")
+                    essay_stem = essay_task_id.replace("__", "_")
+                    stems = [f"{essay_stem}_{eval_tpl}_{eval_model}"]
+                    candidates = _candidate_legacy_paths(data_root, stage, stems)
+            # Compare oldest candidate only for overwrite detection; if none exist → NEW
+            # Stage-specific compare: evaluations compare RAW (not parsed)
+            gens_text = ""
+            if stage == "evaluation":
+                if raw_path.exists():
+                    gens_text = raw_path.read_text(encoding="utf-8", errors="ignore")
+                elif parsed_path.exists():
+                    gens_text = parsed_path.read_text(encoding="utf-8", errors="ignore")
+            else:
+                if parsed_path.exists():
+                    gens_text = parsed_path.read_text(encoding="utf-8", errors="ignore")
+                elif raw_path.exists():
+                    gens_text = raw_path.read_text(encoding="utf-8", errors="ignore")
+            gnorm = _norm_text(gens_text, normalize)
+            if not candidates:
+                # No legacy candidates ⇒ new generation (not overwritten)
                 count += 1
                 if limit and count >= limit:
                     break
-            except Exception:
                 continue
+            # choose the oldest candidate for comparison
+            best = _pick_oldest(candidates)
+            # Compare all candidates; if any matches, record that candidate; otherwise treat as overwritten
+            match_path: Optional[Path] = None
+            for cand in candidates:
+                try:
+                    c_text = cand.read_text(encoding="utf-8", errors="ignore")
+                except Exception:
+                    continue
+                if _norm_text(c_text, normalize) == gnorm:
+                    match_path = cand
+                    break
+            if match_path is not None:
+                # record a match with the concrete file paths used
+                if stage == "evaluation":
+                    new_path = str(raw_path) if raw_path.exists() else (str(parsed_path) if parsed_path.exists() else "")
+                else:
+                    new_path = str(parsed_path) if parsed_path.exists() else (str(raw_path) if raw_path.exists() else "")
+                matches_by_stage.setdefault(stage, []).append((new_path, str(match_path)))
+            else:
+                best = _pick_oldest(candidates)
+                row = {
+                    "stage": stage,
+                    "gen_id": gen_id,
+                    "legacy_path": str(best) if best else "",
+                    "gens_parsed": str(parsed_path) if parsed_path.exists() else "",
+                    "gens_raw": str(raw_path) if raw_path.exists() else "",
+                }
+                rows.append(row)
+                diffs.append({
+                    "stage": stage,
+                    "gen_id": gen_id,
+                    "gen_dir": gen_dir,
+                    "metadata": md,
+                    "best": best,
+                })
+            count += 1
+            if limit and count >= limit:
+                break
         if limit and count >= limit:
             break
     print(f"Analyzed gens: {count}; overwritten (differs): {len(rows)}")
