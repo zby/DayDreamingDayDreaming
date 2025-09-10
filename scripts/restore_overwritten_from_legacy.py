@@ -357,10 +357,19 @@ def _apply_restore_new_cohort(data_root: Path, diffs: List[Dict], cohort_id: str
         # choose legacy text if we can find it
         stem = task_id.replace("__", "_")
         cands = _candidate_legacy_paths(data_root, "draft", [stem])
-        best = _pick_oldest(cands)
-        # fallback to current gens/raw
+        # Prefer explicit raw if available under draft_responses_raw
+        raw_cands = [p for p in cands if "draft_responses_raw" in str(p)]
+        best_raw = _pick_oldest(raw_cands)
+        # Treat other candidates (links_responses/draft_responses) as parsed-style
+        parsed_cands = [p for p in cands if "draft_responses_raw" not in str(p)]
+        best_parsed = _pick_oldest(parsed_cands)
+        # fallback to current gens store
         cur = Generation.load(gens_root, "draft", str(md.get("gen_id") or ""))
-        text = read_text(best, Path(cur.target_dir(gens_root) / "parsed.txt")) or cur.raw_text
+        raw_fallback = Path(cur.target_dir(gens_root) / "raw.txt")
+        parsed_fallback = Path(cur.target_dir(gens_root) / "parsed.txt")
+        text_raw = read_text(best_raw, raw_fallback) or cur.raw_text
+        # If no parsed candidate, use existing parsed; if missing, fall back to raw
+        text_parsed = read_text(best_parsed, parsed_fallback) or (cur.parsed_text or text_raw)
         meta = build_generation_metadata(
             stage="draft",
             gen_id=new_id,
@@ -376,8 +385,8 @@ def _apply_restore_new_cohort(data_root: Path, diffs: List[Dict], cohort_id: str
             stage="draft",
             gen_id=new_id,
             parent_gen_id=None,
-            raw_text=text,
-            parsed_text=text,
+            raw_text=text_raw,
+            parsed_text=text_parsed,
             prompt_text=None,
             metadata=meta,
         ).write_files(gens_root)
@@ -465,7 +474,8 @@ def _apply_restore_new_cohort(data_root: Path, diffs: List[Dict], cohort_id: str
             cands = _candidate_legacy_paths(data_root, "evaluation", [stem])
             best = _pick_oldest(cands)
         cur = Generation.load(gens_root, "evaluation", str(md.get("gen_id") or ""))
-        text = read_text(best, Path(cur.target_dir(gens_root) / "parsed.txt")) or cur.raw_text
+        # For evaluations prefer RAW as canonical content; fall back to current RAW then PARSED
+        text = read_text(best, Path(cur.target_dir(gens_root) / "raw.txt")) or cur.raw_text or (cur.parsed_text or "")
         meta = build_generation_metadata(
             stage="evaluation",
             gen_id=new_id,
