@@ -6,7 +6,7 @@ from typing import Dict, Any, List, Optional
 from dagster import MetadataValue
 
 from .eval_response_parser import parse_llm_response
-from .evaluation_parsing_config import ALLOWED_PARSERS, require_parser_for_template, load_parser_map
+from .evaluation_parsing_config import ALLOWED_PARSERS, require_parser_for_template
 
 
 def parse_eval_files_with_parsers(
@@ -99,123 +99,7 @@ def parse_evaluation_files(
     return parse_eval_files_with_parsers(evaluation_tasks, base_path, parser_map, context=context)
 
 
-def parse_evaluation_file_from_filename(filename: str, base_path: Path, parser_map: dict[str, str]) -> Dict[str, Any]:
-    """Parse a single evaluation file using filename-based parsing.
-    
-    This function is useful for cross-experiment analysis where task metadata
-    may not be available, but filenames contain all necessary information.
-    
-    Args:
-        filename: Filename without extension (e.g., 'combo_001_creative-synthesis-v2_deepseek_r1_f_style-coherence_deepseek_r1_f')
-        base_path: Base directory containing the file
-        
-    Returns:
-        Dictionary with parsed evaluation data
-    """
-    from .eval_response_parser import parse_llm_response
-    
-    # Parse identifiers from filename (similar to aggregate_scores.py logic)
-    parts = filename.split('_')
-    
-    # Find evaluation template and model (from right side)
-    # Look for known template patterns
-    known_templates = {
-        'creative-synthesis', 'creative-synthesis-v2', 'creative-synthesis-v3',
-        'essay-inventive-synthesis', 'essay-inventive-synthesis-v3',
-        'research-discovery', 'research-discovery-v2', 'research-discovery-v3',
-        'systematic-analytical', 'systematic-analytical-v2',
-        'problem-solving', 'problem-solving-v2',
-        'application-implementation', 'application-implementation-v2',
-        'gwern-original',
-        'daydreaming-verification', 'daydreaming-verification-v2',
-        'o3-prior-art-eval', 'gemini-prior-art-eval', 
-        'style-coherence', 'style-coherence-v2', 'style-coherence-v3',
-        'creativity-metrics', 'iterative-loops', 'scientific-rigor'
-    }
-    
-    evaluation_template = None
-    evaluation_model = None
-    
-    # Find evaluation template and model from right side
-    for i in range(len(parts) - 1, -1, -1):
-        part = parts[i]
-        if evaluation_template is None and part in known_templates:
-            evaluation_template = part
-        elif evaluation_template is not None and evaluation_model is None:
-            evaluation_model = part
-            break
-    
-    # Read and parse the file
-    file_path = base_path / f"{filename}.txt"
-    if not file_path.exists():
-        return {
-            "evaluation_task_id": filename,
-            "score": None,
-            "error": "File not found",
-            "evaluation_template": evaluation_template,
-            "evaluation_model": evaluation_model
-        }
-    
-    try:
-        response_text = file_path.read_text(encoding="utf-8", errors="ignore")
-        parser = require_parser_for_template(evaluation_template or "", parser_map)
-        result = parse_llm_response(response_text, parser)
-        
-        return {
-            "evaluation_task_id": filename,
-            "score": result.get("score"),
-            "error": result.get("error"),
-            "evaluation_template": evaluation_template,
-            "evaluation_model": evaluation_model
-        }
-        
-    except Exception as e:
-        return {
-            "evaluation_task_id": filename,
-            "score": None,
-            "error": f"Parse error: {str(e)}",
-            "evaluation_template": evaluation_template,
-            "evaluation_model": evaluation_model
-        }
-
-
-def parse_evaluation_files_cross_experiment(base_path: Path, context=None) -> pd.DataFrame:
-    """Parse all evaluation files in a directory for cross-experiment analysis.
-    
-    This function is designed for cross-experiment analysis where task metadata
-    may not be available, but filenames contain all necessary information.
-    
-    Args:
-        base_path: Directory containing evaluation response files
-        context: Optional Dagster context for logging
-        
-    Returns:
-        DataFrame with parsed evaluation results from all files
-    """
-    # FALLBACK(OPS): This reads legacy single-phase directories (e.g., data/4_evaluation/evaluation_responses).
-    # Consider gating this with a configuration flag to keep legacy opt-in.
-    if not base_path.exists() or not base_path.is_dir():
-        return pd.DataFrame(columns=['evaluation_task_id', 'score', 'error', 'evaluation_template', 'evaluation_model'])
-    
-    # Get all .txt files
-    txt_files = list(base_path.glob("*.txt"))
-    if context:
-        context.log.info(f"Found {len(txt_files)} evaluation files to parse")
-    
-    parsed_results = []
-    # Strict parser map from data root inferred from responses path
-    data_root = base_path.parents[1] if len(base_path.parents) >= 2 else Path("data")
-    parser_map = load_parser_map(data_root)
-    for i, file_path in enumerate(txt_files):
-        if context and i > 0 and i % 100 == 0:
-            context.log.info(f"Processed {i}/{len(txt_files)} evaluation files")
-        
-        # Parse file using filename-based approach
-        filename = file_path.stem
-        result = parse_evaluation_file_from_filename(filename, base_path, parser_map)
-        parsed_results.append(result)
-    
-    return pd.DataFrame(parsed_results)
+# Removed legacy single-phase cross-experiment helpers. Use gens-store driven assets instead.
 
 
 def enrich_evaluation_data(parsed_df: pd.DataFrame, evaluation_tasks: pd.DataFrame, 
