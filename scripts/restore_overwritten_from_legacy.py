@@ -17,7 +17,13 @@ Usage:
   uv run python scripts/restore_overwritten_from_legacy.py \
     --data-root data \
     --stages draft essay evaluation \
-    [--apply] [--limit 200] [--normalize] [--report report.csv]
+    [--limit 200] [--normalize] [--new-cohort-id restored-YYYYMMDD]
+
+Outputs:
+- Always writes one CSV per processed stage under data/reports:
+  - data/reports/overwritten_draft.csv
+  - data/reports/overwritten_essay.csv
+  - data/reports/overwritten_evaluation.csv
 """
 
 from __future__ import annotations
@@ -150,7 +156,7 @@ def _candidate_legacy_paths(data_root: Path, stage: str, stems: Sequence[str]) -
 
 
 def analyze_overwrites(
-    *, data_root: Path, stages: Sequence[str], limit: Optional[int], normalize: bool, report_csv: Optional[Path], new_cohort_id: Optional[str] = None
+    *, data_root: Path, stages: Sequence[str], limit: Optional[int], normalize: bool, new_cohort_id: Optional[str] = None
 ) -> None:
     draft_tpls, essay_tpls = _load_known_templates(data_root)
     eval_tpls, eval_model_ids = _load_eval_axes(data_root)
@@ -182,6 +188,7 @@ def analyze_overwrites(
                         raise ValueError("missing task_id in metadata")
                     # Legacy filenames use single '_' separators
                     stems = [task_id.replace("__", "_")]
+                    candidates = _candidate_legacy_paths(data_root, stage, stems)
                 elif stage == "evaluation":
                     # Prefer direct source_file from metadata (no guessing)
                     src = str(md.get("source_file") or "").strip()
@@ -253,13 +260,22 @@ def analyze_overwrites(
         if limit and count >= limit:
             break
     print(f"Analyzed gens: {count}; overwritten (differs): {len(rows)}")
-    if report_csv:
-        report_csv.parent.mkdir(parents=True, exist_ok=True)
-        with report_csv.open("w", newline="", encoding="utf-8") as f:
+    # Write per-stage reports into data/reports
+    reports_dir = data_root / "reports"
+    reports_dir.mkdir(parents=True, exist_ok=True)
+    by_stage: Dict[str, List[Dict[str, str]]] = {s: [] for s in stages}
+    for r in rows:
+        st = r.get("stage")
+        if st in by_stage:
+            by_stage[st].append(r)
+    for st in stages:
+        out = reports_dir / f"overwritten_{st}.csv"
+        with out.open("w", newline="", encoding="utf-8") as f:
             w = csv.DictWriter(f, fieldnames=["stage","gen_id","legacy_path","gens_parsed","gens_raw"])
             w.writeheader()
-            for r in rows:
+            for r in by_stage.get(st, []):
                 w.writerow(r)
+        print(f"Report written: {out} (rows={len(by_stage.get(st, []))})")
     if new_cohort_id:
         _apply_restore_new_cohort(data_root, diffs, new_cohort_id)
 
@@ -457,7 +473,7 @@ def parse_args() -> argparse.Namespace:
     ap.add_argument("--limit", type=int, default=None)
     ap.add_argument("--normalize", action="store_true", help="Normalize newlines and trim trailing spaces before compare")
     ap.add_argument("--new-cohort-id", type=str, default=None, help="If provided, create a restored cohort with these differing docs")
-    ap.add_argument("--report", type=Path, default=None, help="Write CSV report of differing docs")
+    # reports are always written per stage under data/reports
     return ap.parse_args()
 
 
@@ -468,7 +484,6 @@ def main() -> int:
         stages=args.stages,
         limit=args.limit,
         normalize=args.normalize,
-        report_csv=args.report,
         new_cohort_id=args.new_cohort_id,
     )
     return 0
