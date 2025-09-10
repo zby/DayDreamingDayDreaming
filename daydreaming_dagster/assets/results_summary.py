@@ -4,16 +4,61 @@ import numpy as np
 from pathlib import Path
 from .raw_data import EVALUATION_TEMPLATES_KEY
 from ..utils.raw_readers import read_evaluation_templates
+from ..constants import ESSAY, FILE_PARSED
+from functools import lru_cache
 
 
-def get_generation_response_path(combo_id: str, draft_template: str, essay_template: str, model_name: str) -> str:
-    """Construct the essay response path for a given row (doc-id first).
+@lru_cache(maxsize=1)
+def _load_essay_tasks(base: str) -> pd.DataFrame:
+    """Load essay_generation_tasks.csv once (best-effort).
 
-    Evaluations are always performed on essays. Even for "single-phase" style work,
-    we use an essay template with generator=copy to materialize the essay from the
-    draft. Therefore, the canonical path is always under essay_responses.
+    Returns empty DataFrame on failure.
     """
-    # FALLBACK(DATA): Construct path in legacy single-phase tree for reporting-compat.
+    try:
+        df = pd.read_csv(Path(base) / "2_tasks" / "essay_generation_tasks.csv")
+        # Normalize types
+        for col in ("combo_id", "draft_template", "essay_template", "generation_model", "generation_model_name", "gen_id"):
+            if col in df.columns:
+                df[col] = df[col].astype(str)
+        return df
+    except Exception:
+        return pd.DataFrame()
+
+
+def get_generation_response_path(combo_id: str, draft_template: str, essay_template: str, model_name: str, *, data_root: str | Path = "data") -> str:
+    """Construct the canonical gens-store essay path for a given row.
+
+    Tries to resolve gen_id from data/2_tasks/essay_generation_tasks.csv using
+    (combo_id, draft_template, essay_template, model). If found, returns
+    data/gens/essay/<gen_id>/parsed.txt. If not found, falls back to the legacy
+    single-phase path under data/3_generation/essay_responses/ for historical
+    compatibility in older reports.
+    """
+    # Attempt gens-store resolution via tasks CSV
+    df = _load_essay_tasks(str(data_root))
+    if not df.empty:
+        # Some historical CSVs used 'link_template' for drafts; prefer 'draft_template' when present
+        draft_col = "draft_template" if "draft_template" in df.columns else ("link_template" if "link_template" in df.columns else None)
+        if draft_col and {"combo_id", draft_col, "essay_template", "gen_id"}.issubset(df.columns):
+            # Match model by either id or name when available
+            mask = (
+                (df["combo_id"].astype(str) == str(combo_id)) &
+                (df[draft_col].astype(str) == str(draft_template)) &
+                (df["essay_template"].astype(str) == str(essay_template))
+            )
+            if "generation_model_name" in df.columns:
+                mask = mask & (
+                    (df["generation_model_name"].astype(str) == str(model_name)) |
+                    (("generation_model" in df.columns) & (df["generation_model"].astype(str) == str(model_name)))
+                )
+            elif "generation_model" in df.columns:
+                mask = mask & (df["generation_model"].astype(str) == str(model_name))
+            candidates = df[mask]
+            if not candidates.empty:
+                gen_id = str(candidates.iloc[0]["gen_id"])  # first match is fine for reporting
+                return str(Path(data_root) / "gens" / ESSAY / gen_id / FILE_PARSED)
+
+    # Legacy fallback for historical reports
     return f"data/3_generation/essay_responses/{combo_id}_{draft_template}_{model_name}_{essay_template}.txt"
 
 
