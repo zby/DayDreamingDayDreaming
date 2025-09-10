@@ -244,7 +244,7 @@ def _draft_response_impl(context, draft_prompt, draft_generation_tasks) -> str:
     meta = {
         "function": MetadataValue.text("draft_response"),
         "raw_line_count": MetadataValue.int(len(response_lines)),
-        "model_used": MetadataValue.text(model_name),
+        # Intentionally omit provider model from reports to simplify
         "max_tokens": MetadataValue.int(int(max_tokens) if isinstance(max_tokens, (int, float)) else 0),
         "parser": MetadataValue.text(parser_used),
         "parsed_chars": MetadataValue.int(len(parsed_text)),
@@ -279,7 +279,7 @@ def draft_response(context, draft_prompt, draft_generation_tasks) -> str:
     task_row = get_task_row(draft_generation_tasks, "gen_id", gen_id, context, "draft_generation_tasks")
     combo_id = task_row.get("combo_id")
     draft_template = task_row.get("draft_template")
-    model_id = task_row.get("generation_model") or task_row.get("generation_model_id")
+    model_id = task_row.get("generation_model") or task_row.get("model_id")
     # Partition key is the gen_id
     if not (isinstance(gen_id, str) and gen_id.strip()):
         raise Failure(

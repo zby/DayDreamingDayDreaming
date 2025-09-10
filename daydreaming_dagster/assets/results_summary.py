@@ -40,18 +40,13 @@ def get_generation_response_path(combo_id: str, draft_template: str, essay_templ
         # Some historical CSVs used 'link_template' for drafts; prefer 'draft_template' when present
         draft_col = "draft_template" if "draft_template" in df.columns else ("link_template" if "link_template" in df.columns else None)
         if draft_col and {"combo_id", draft_col, "essay_template", "gen_id"}.issubset(df.columns):
-            # Match model by either id or name when available
+            # Match by model_id only to avoid provider dependency
             mask = (
                 (df["combo_id"].astype(str) == str(combo_id)) &
                 (df[draft_col].astype(str) == str(draft_template)) &
                 (df["essay_template"].astype(str) == str(essay_template))
             )
-            if "generation_model_name" in df.columns:
-                mask = mask & (
-                    (df["generation_model_name"].astype(str) == str(model_name)) |
-                    (("generation_model" in df.columns) & (df["generation_model"].astype(str) == str(model_name)))
-                )
-            elif "generation_model" in df.columns:
+            if "generation_model" in df.columns:
                 mask = mask & (df["generation_model"].astype(str) == str(model_name))
             candidates = df[mask]
             if not candidates.empty:

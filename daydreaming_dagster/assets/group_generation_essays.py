@@ -303,7 +303,7 @@ def _essay_response_impl(context, essay_prompt, essay_generation_tasks) -> str:
         meta = {
             "function": MetadataValue.text("essay_response"),
             "gen_id": MetadataValue.text(str(gen_id)),
-            "model_used": MetadataValue.text(model_name),
+            # Intentionally omit provider model from reports to simplify
             "max_tokens": MetadataValue.int(int(max_tokens) if isinstance(max_tokens, (int, float)) else 0),
             "finish_reason": MetadataValue.text(str(finish_reason)),
             "truncated": MetadataValue.bool(True),
@@ -321,7 +321,7 @@ def _essay_response_impl(context, essay_prompt, essay_generation_tasks) -> str:
         {
             "function": MetadataValue.text("essay_response"),
             "gen_id": MetadataValue.text(str(gen_id)),
-            "model_used": MetadataValue.text(model_name),
+            # Intentionally omit provider model from reports to simplify
             "chars": MetadataValue.int(len(normalized)),
             "truncated": MetadataValue.bool(False),
             **({"raw_path": MetadataValue.path(raw_path_str)} if raw_path_str else {}),

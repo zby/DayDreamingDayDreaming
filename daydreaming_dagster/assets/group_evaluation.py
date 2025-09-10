@@ -96,7 +96,6 @@ def evaluation_prompt(context, evaluation_tasks) -> str:
             "evaluation_prompt_length": MetadataValue.int(len(eval_prompt)),
             "source_used": MetadataValue.text(used_source or ""),
             "template_used": MetadataValue.text(task_row["evaluation_template"]),
-            "model_planned": MetadataValue.text(task_row["evaluation_model_name"]),
         }
     )
     return eval_prompt
@@ -118,7 +117,6 @@ def evaluation_response(context, evaluation_prompt, evaluation_tasks) -> str:
     text, info = llm_client.generate_with_info(evaluation_prompt, model=model_name, max_tokens=max_tokens)
     context.add_output_metadata({
         "gen_id": MetadataValue.text(str(gen_id)),
-        "model_used": MetadataValue.text(model_name),
         "finish_reason": MetadataValue.text(str((info or {}).get("finish_reason"))),
     })
     context.log.info(f"Generated evaluation response for gen {gen_id} using model {model_name}")
