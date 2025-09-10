@@ -259,13 +259,10 @@ def cohort_membership(
         # Read selected combo ids from data/2_tasks/selected_combo_mappings.csv
         combo_ids: List[str] = []
         try:
-            from ..utils.selected_combos import read_selected_combo_mappings
-
-            sel_df = read_selected_combo_mappings(data_root)
+            import pandas as _pd
+            sel_df = _pd.read_csv(data_root / "2_tasks" / "selected_combo_mappings.csv")
             if not sel_df.empty and "combo_id" in sel_df.columns:
-                combo_ids = (
-                    sel_df["combo_id"].astype(str).dropna().unique().tolist()
-                )
+                combo_ids = sel_df["combo_id"].astype(str).dropna().unique().tolist()
         except Exception:
             combo_ids = []
 

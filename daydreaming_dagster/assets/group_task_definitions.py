@@ -14,7 +14,6 @@ from ..utils.raw_readers import (
     read_llm_models,
     read_concepts,
 )
-from ..utils.selected_combos import read_selected_combo_mappings
 from .partitions import (
     draft_gens_partitions,
     essay_gens_partitions,
@@ -154,7 +153,9 @@ def content_combinations(context) -> List[ContentCombination]:
     data_root = Path(getattr(context.resources, "data_root", "data"))
     # Try explicit selection first
     try:
-        sel = read_selected_combo_mappings(data_root)
+        import pandas as _pd
+        selected_path = data_root / "2_tasks" / "selected_combo_mappings.csv"
+        sel = _pd.read_csv(selected_path)
         # Debug: log selection file stats
         selected_path = data_root / "2_tasks" / "selected_combo_mappings.csv"
         try:
