@@ -15,6 +15,7 @@ from ..utils.draft_parsers import get_draft_parser
 from ..utils.dataframe_helpers import get_task_row
 from ..utils.document import Generation
 from ..utils.metadata import build_generation_metadata
+from ..constants import DRAFT, FILE_RAW
 
 # Reuse a single Jinja environment
 JINJA = Environment()
@@ -113,7 +114,7 @@ def _draft_response_impl(context, draft_prompt, draft_generation_tasks) -> str:
     try:
         from ..utils.document import Generation as _Gen
         _gen = _Gen(
-            stage="draft",
+            stage=DRAFT,
             gen_id=str(gen_id),
             parent_gen_id=None,
             raw_text=normalized,
@@ -125,7 +126,7 @@ def _draft_response_impl(context, draft_prompt, draft_generation_tasks) -> str:
             },
         )
         _gen.write_files(data_root / "gens")
-        raw_path_str = str((_gen.target_dir(data_root / "gens") / "raw.txt").resolve())
+        raw_path_str = str((_gen.target_dir(data_root / "gens") / FILE_RAW).resolve())
     except Exception:
         raw_path_str = None
 
@@ -295,7 +296,7 @@ def draft_response(context, draft_prompt, draft_generation_tasks) -> str:
     gens_root = _Path(getattr(context.resources, "data_root", "data")) / "gens"
     run_id = getattr(getattr(context, "run", object()), "run_id", None) or getattr(context, "run_id", None)
     metadata_json = build_generation_metadata(
-        stage="draft",
+        stage=DRAFT,
         gen_id=str(gen_id),
         parent_gen_id=None,
         template_id=str(draft_template) if draft_template else None,
@@ -312,7 +313,7 @@ def draft_response(context, draft_prompt, draft_generation_tasks) -> str:
     # Copy the prompt alongside the document for traceability when available
     prompt_text = draft_prompt if isinstance(draft_prompt, str) else None
     doc = Generation(
-        stage="draft",
+        stage=DRAFT,
         gen_id=gen_id,
         parent_gen_id=None,
         raw_text=raw_text,

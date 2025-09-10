@@ -5,6 +5,7 @@ from pathlib import Path
 import json
 from typing import Optional
 from .ids import gen_dir as build_gen_dir
+from ..constants import FILE_RAW, FILE_PARSED, FILE_PROMPT, FILE_METADATA
 
 
 def _write_atomic(path: Path, data: str) -> None:
@@ -39,13 +40,13 @@ class Generation:
         """
         base = self.target_dir(gens_root)
         base.mkdir(parents=True, exist_ok=True)
-        _write_atomic(base / "raw.txt", self.raw_text)
+        _write_atomic(base / FILE_RAW, self.raw_text)
         if isinstance(self.parsed_text, str):
-            _write_atomic(base / "parsed.txt", self.parsed_text)
+            _write_atomic(base / FILE_PARSED, self.parsed_text)
         if isinstance(self.prompt_text, str):
-            _write_atomic(base / "prompt.txt", self.prompt_text)
+            _write_atomic(base / FILE_PROMPT, self.prompt_text)
         if isinstance(self.metadata, dict):
-            _write_atomic(base / "metadata.json", json.dumps(self.metadata, ensure_ascii=False, indent=2))
+            _write_atomic(base / FILE_METADATA, json.dumps(self.metadata, ensure_ascii=False, indent=2))
         return base
 
     # Index row conversion removed in filesystem-only mode
@@ -64,7 +65,7 @@ class Generation:
             except Exception:
                 return None
         md = None
-        mpath = base / "metadata.json"
+        mpath = base / FILE_METADATA
         if mpath.exists():
             try:
                 md = json.loads(mpath.read_text(encoding="utf-8"))
@@ -74,8 +75,8 @@ class Generation:
             stage=str(stage),
             gen_id=str(gen_id),
             parent_gen_id=(md or {}).get("parent_gen_id"),
-            raw_text=_read("raw.txt") or "",
-            parsed_text=_read("parsed.txt"),
-            prompt_text=_read("prompt.txt"),
+            raw_text=_read(FILE_RAW) or "",
+            parsed_text=_read(FILE_PARSED),
+            prompt_text=_read(FILE_PROMPT),
             metadata=md,
         )

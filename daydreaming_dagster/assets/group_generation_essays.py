@@ -19,6 +19,7 @@ from ..utils.filesystem_rows import (
 )
 from ..utils.document import Generation
 from ..utils.metadata import build_generation_metadata
+from ..constants import DRAFT, ESSAY, FILE_RAW
 
 # Reuse a single Jinja environment
 JINJA = Environment()
@@ -91,9 +92,9 @@ def _load_phase1_text_by_parent_doc(context, parent_gen_id: str) -> tuple[str, s
     """
     data_root = Path(getattr(context.resources, "data_root", "data"))
     gens_root = data_root / "gens"
-    base = gens_root / "draft" / str(parent_gen_id)
+    base = gens_root / DRAFT / str(parent_gen_id)
     try:
-        gen = Generation.load(gens_root, "draft", str(parent_gen_id))
+        gen = Generation.load(gens_root, DRAFT, str(parent_gen_id))
     except Exception as e:
         raise Failure(
             description="Parent draft document not found",
@@ -162,7 +163,7 @@ def _essay_prompt_impl(context, essay_generation_tasks) -> str:
     min_lines = int(context.resources.experiment_config.min_draft_lines)
     if len(draft_lines) < max(1, min_lines):
         data_root = Path(getattr(context.resources, "data_root", "data"))
-        draft_dir = data_root / "gens" / "draft" / str(parent_gen_id)
+        draft_dir = data_root / "gens" / DRAFT / str(parent_gen_id)
         raise Failure(
             description="Upstream draft text is empty/too short for essay prompt",
             metadata={
@@ -250,7 +251,7 @@ def _essay_response_impl(context, essay_prompt, essay_generation_tasks) -> str:
     dlines = [line.strip() for line in str(draft_text).split("\n") if line.strip()]
     if len(dlines) < max(1, min_lines):
         data_root = Path(getattr(context.resources, "data_root", "data"))
-        draft_dir = data_root / "gens" / "draft" / str(parent_gen_id)
+        draft_dir = data_root / "gens" / DRAFT / str(parent_gen_id)
         raise Failure(
             description="Upstream draft text is empty/too short for essay generation",
             metadata={
@@ -300,7 +301,7 @@ def _essay_response_impl(context, essay_prompt, essay_generation_tasks) -> str:
     data_root = Path(getattr(context.resources, "data_root", "data"))
     try:
         _gen0 = Generation(
-            stage="essay",
+            stage=ESSAY,
             gen_id=str(gen_id),
             parent_gen_id=str(parent_gen_id) if parent_gen_id else None,
             raw_text=normalized,
@@ -313,7 +314,7 @@ def _essay_response_impl(context, essay_prompt, essay_generation_tasks) -> str:
             },
         )
         _gen0.write_files(data_root / "gens")
-        raw_path_str = str((_gen0.target_dir(data_root / "gens") / "raw.txt").resolve())
+        raw_path_str = str((_gen0.target_dir(data_root / "gens") / FILE_RAW).resolve())
     except Exception:
         raw_path_str = None
 
@@ -398,7 +399,7 @@ def essay_response(context, essay_prompt, essay_generation_tasks) -> str:
     # Build document using helper
     run_id = getattr(getattr(context, "run", object()), "run_id", None) or getattr(context, "run_id", None)
     metadata = build_generation_metadata(
-        stage="essay",
+        stage=ESSAY,
         gen_id=str(gen_id_value),
         parent_gen_id=str(parent_gen_id) if parent_gen_id else None,
         template_id=str(essay_template) if essay_template else None,
@@ -414,7 +415,7 @@ def essay_response(context, essay_prompt, essay_generation_tasks) -> str:
     prompt_text = essay_prompt if (generator_mode == "llm" and isinstance(essay_prompt, str)) else None
 
     doc = Generation(
-        stage="essay",
+        stage=ESSAY,
         gen_id=gen_id_value,
         parent_gen_id=parent_gen_id,
         raw_text=text,

@@ -21,6 +21,7 @@ from ..utils.raw_readers import read_evaluation_templates
 from .raw_data import EVALUATION_TEMPLATES_KEY
 from ..utils.evaluation_parsing_config import load_parser_map, require_parser_for_template
 from ..utils.eval_response_parser import parse_llm_response
+from ..constants import ESSAY, EVALUATION
 
 logger = logging.getLogger(__name__)
 
@@ -47,9 +48,9 @@ def evaluation_prompt(context, evaluation_tasks) -> str:
         )
     data_root = Path(getattr(context.resources, "data_root", "data"))
     gens_root = data_root / "gens"
-    base = gens_root / "essay" / str(parent_gen_id)
+    base = gens_root / ESSAY / str(parent_gen_id)
     try:
-        gen = Generation.load(gens_root, "essay", str(parent_gen_id))
+        gen = Generation.load(gens_root, ESSAY, str(parent_gen_id))
     except Exception as e:
         raise Failure(
             description="Target essay document not found",
@@ -158,7 +159,7 @@ def evaluation_response(context, evaluation_prompt, evaluation_tasks) -> str:
         score_val = None
     run_id = getattr(getattr(context, "run", object()), "run_id", None) or getattr(context, "run_id", None)
     metadata = build_generation_metadata(
-        stage="evaluation",
+        stage=EVALUATION,
         gen_id=str(gen_id),
         parent_gen_id=str(parent_gen_id) if parent_gen_id else None,
         template_id=str(evaluation_template) if evaluation_template else None,
@@ -173,7 +174,7 @@ def evaluation_response(context, evaluation_prompt, evaluation_tasks) -> str:
     )
     prompt_text = evaluation_prompt if isinstance(evaluation_prompt, str) else None
     doc = Generation(
-        stage="evaluation",
+        stage=EVALUATION,
         gen_id=gen_id,
         parent_gen_id=parent_gen_id,
         raw_text=normalized,

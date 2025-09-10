@@ -5,6 +5,7 @@ import pandas as pd
 from pathlib import Path
 import os
 import json
+from ..constants import STAGES, FILE_METADATA, FILE_RAW, FILE_PARSED, FILE_PROMPT
 
 
 @asset(
@@ -21,14 +22,14 @@ def documents_latest_report(context) -> pd.DataFrame:
     data_root = Path(getattr(context.resources, "data_root", "data"))
     docs_root = data_root / "gens"
     records: list[dict] = []
-    for stage in ("draft", "essay", "evaluation"):
+    for stage in STAGES:
         base = docs_root / stage
         if not base.exists():
             continue
         for doc_dir in base.iterdir():
             if not doc_dir.is_dir():
                 continue
-            meta_path = doc_dir / "metadata.json"
+            meta_path = doc_dir / FILE_METADATA
             task_id = None
             created_at = None
             try:
@@ -70,19 +71,19 @@ def documents_consistency_report(context) -> pd.DataFrame:
     data_root = Path(getattr(context.resources, "data_root", "data"))
     docs_root = data_root / "gens"
     records: list[dict] = []
-    for stage in ("draft", "essay", "evaluation"):
+    for stage in STAGES:
         base = docs_root / stage
         if not base.exists():
             continue
         for doc_dir in base.iterdir():
             if not doc_dir.is_dir():
                 continue
-            raw = doc_dir / "raw.txt"
-            parsed = doc_dir / "parsed.txt"
-            prompt = doc_dir / "prompt.txt"
+            raw = doc_dir / FILE_RAW
+            parsed = doc_dir / FILE_PARSED
+            prompt = doc_dir / FILE_PROMPT
             task_id = None
             try:
-                meta_path = doc_dir / "metadata.json"
+                meta_path = doc_dir / FILE_METADATA
                 if meta_path.exists():
                     meta = json.loads(meta_path.read_text(encoding="utf-8"))
                     if isinstance(meta, dict):

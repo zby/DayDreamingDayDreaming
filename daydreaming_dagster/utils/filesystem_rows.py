@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Optional
 import json
+from ..constants import FILE_RAW, FILE_PARSED, FILE_PROMPT, FILE_METADATA
 
 
 def _gen_dir(gens_root: Path, stage: str, gen_id: str) -> Path:
@@ -29,17 +30,17 @@ def _read_text(base: Path, name: str) -> str:
 
 def read_raw(row: dict) -> str:
     base = Path(row.get("gen_dir") or row.get("doc_dir"))
-    return _read_text(base, "raw.txt")
+    return _read_text(base, FILE_RAW)
 
 
 def read_parsed(row: dict) -> str:
     base = Path(row.get("gen_dir") or row.get("doc_dir"))
-    return _read_text(base, "parsed.txt")
+    return _read_text(base, FILE_PARSED)
 
 
 def read_prompt(row: dict) -> str:
     base = Path(row.get("gen_dir") or row.get("doc_dir"))
-    return _read_text(base, "prompt.txt")
+    return _read_text(base, FILE_PROMPT)
 
 
 def read_metadata(row: dict, *, strict: bool = False) -> dict:
@@ -49,7 +50,7 @@ def read_metadata(row: dict, *, strict: bool = False) -> dict:
     in which case it raises the underlying exception.
     """
     base = Path(row.get("gen_dir") or row.get("doc_dir")) if isinstance(row, dict) else Path(str(row))
-    fp = base / "metadata.json"
+    fp = base / FILE_METADATA
     try:
         if not fp.exists():
             return {}

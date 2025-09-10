@@ -3,6 +3,7 @@ from __future__ import annotations
 from dagster import IOManager, OutputContext, InputContext
 from pathlib import Path
 import pandas as pd
+from ..constants import FILE_PROMPT, STAGES
 
 
 class GensPromptIOManager(IOManager):
@@ -22,7 +23,10 @@ class GensPromptIOManager(IOManager):
     def __init__(self, gens_root: Path, tasks_root: Path, *, stage: str, tasks_csv_name: str | None, id_col: str):
         self.gens_root = Path(gens_root)
         self.tasks_root = Path(tasks_root)
-        self.stage = str(stage)
+        stage_str = str(stage)
+        if stage_str not in STAGES:
+            raise ValueError(f"Invalid stage '{stage_str}'. Expected one of {STAGES}.")
+        self.stage = stage_str
         self.tasks_csv_name = str(tasks_csv_name) if tasks_csv_name is not None else None
         self.id_col = str(id_col)
 
@@ -51,15 +55,14 @@ class GensPromptIOManager(IOManager):
         gen_id = self._resolve_gen_id(pk)
         base = self.gens_root / self.stage / gen_id
         base.mkdir(parents=True, exist_ok=True)
-        (base / "prompt.txt").write_text(obj, encoding="utf-8")
+        (base / FILE_PROMPT).write_text(obj, encoding="utf-8")
 
     def load_input(self, context: InputContext) -> str:
         upstream = context.upstream_output
         pk = upstream.partition_key
         gen_id = self._resolve_gen_id(pk)
         base = self.gens_root / self.stage / gen_id
-        fp = base / "prompt.txt"
+        fp = base / FILE_PROMPT
         if not fp.exists():
             raise FileNotFoundError(f"Prompt not found: {fp}")
         return fp.read_text(encoding="utf-8")
-

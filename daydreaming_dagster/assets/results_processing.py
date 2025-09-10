@@ -4,6 +4,7 @@ import pandas as pd
 import numpy as np
 from scripts.aggregate_scores import parse_all as parse_all_scores
 import json
+from ..constants import ESSAY, DRAFT, FILE_PARSED, FILE_METADATA
 
 
 @asset(
@@ -48,14 +49,14 @@ def parsed_scores(context, evaluation_tasks: pd.DataFrame) -> pd.DataFrame:
         # Default stage for evaluations is essays
         stages.append("essay2p")
         # Default generation path to essay parsed.txt in gens store
-        gen_paths.append(str(gens_root / "essay" / essay_doc / "parsed.txt") if essay_doc else "")
+        gen_paths.append(str(gens_root / ESSAY / essay_doc / FILE_PARSED) if essay_doc else "")
         etpl = ""
         gmid = ""
         ddoc = ""
         # Read essay metadata to get template_id (essay) and model_id and parent draft
         try:
             if essay_doc:
-                emeta_path = gens_root / "essay" / essay_doc / "metadata.json"
+                emeta_path = gens_root / ESSAY / essay_doc / FILE_METADATA
                 if emeta_path.exists():
                     emeta = json.loads(emeta_path.read_text(encoding="utf-8")) or {}
                     etpl = str(emeta.get("template_id") or emeta.get("essay_template") or "")
@@ -68,7 +69,7 @@ def parsed_scores(context, evaluation_tasks: pd.DataFrame) -> pd.DataFrame:
         dtpl = ""
         try:
             if ddoc:
-                dmeta_path = gens_root / "draft" / ddoc / "metadata.json"
+                dmeta_path = gens_root / DRAFT / ddoc / FILE_METADATA
                 if dmeta_path.exists():
                     dmeta = json.loads(dmeta_path.read_text(encoding="utf-8")) or {}
                     cid = str(dmeta.get("combo_id") or "")

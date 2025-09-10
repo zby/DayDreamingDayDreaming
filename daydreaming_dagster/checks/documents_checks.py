@@ -8,6 +8,7 @@ from daydreaming_dagster.assets.group_generation_draft import draft_response as 
 from daydreaming_dagster.assets.group_generation_essays import essay_response as essay_response_asset
 from daydreaming_dagster.assets.group_evaluation import evaluation_response as evaluation_response_asset
 import pandas as pd
+from ..constants import DRAFT, ESSAY, EVALUATION, FILE_PARSED
 
 
 """Asset checks for gens-store outputs.
@@ -42,8 +43,8 @@ def draft_files_exist_check(context) -> AssetCheckResult:
     if not pk:
         return AssetCheckResult(passed=True, metadata={"skipped": MetadataValue.text("no partition context")})
     data_root = Path(getattr(context.resources, "data_root", "data"))
-    base = data_root / "gens" / "draft" / str(pk)
-    ok = (base / "parsed.txt").exists()
+    base = data_root / "gens" / DRAFT / str(pk)
+    ok = (base / FILE_PARSED).exists()
     return AssetCheckResult(passed=bool(ok), metadata={"gen_dir": MetadataValue.path(str(base))})
 
 
@@ -53,8 +54,8 @@ def essay_files_exist_check(context) -> AssetCheckResult:
     if not pk:
         return AssetCheckResult(passed=True, metadata={"skipped": MetadataValue.text("no partition context")})
     data_root = Path(getattr(context.resources, "data_root", "data"))
-    base = data_root / "gens" / "essay" / str(pk)
-    ok = (base / "parsed.txt").exists()
+    base = data_root / "gens" / ESSAY / str(pk)
+    ok = (base / FILE_PARSED).exists()
     return AssetCheckResult(passed=bool(ok), metadata={"gen_dir": MetadataValue.path(str(base))})
 
 
@@ -64,8 +65,8 @@ def evaluation_files_exist_check(context) -> AssetCheckResult:
     if not pk:
         return AssetCheckResult(passed=True, metadata={"skipped": MetadataValue.text("no partition context")})
     data_root = Path(getattr(context.resources, "data_root", "data"))
-    base = data_root / "gens" / "evaluation" / str(pk)
-    ok = (base / "parsed.txt").exists()
+    base = data_root / "gens" / EVALUATION / str(pk)
+    ok = (base / FILE_PARSED).exists()
     return AssetCheckResult(passed=bool(ok), metadata={"gen_dir": MetadataValue.path(str(base))})
 
 
