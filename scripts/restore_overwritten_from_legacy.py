@@ -213,7 +213,8 @@ def analyze_overwrites(
                         essay_stem = essay_task_id.replace("__", "_")
                         stems = [f"{essay_stem}_{eval_tpl}_{eval_model}"]
                         candidates = _candidate_legacy_paths(data_root, stage, stems)
-                # Compare all candidates; report overwritten only if none match
+                # Compare all candidates; report overwritten only if none match;
+                # if there are no candidates at all, treat as NEW (not overwritten)
                 gens_text = None
                 if parsed_path.exists():
                     gens_text = parsed_path.read_text(encoding="utf-8", errors="ignore")
@@ -222,6 +223,12 @@ def analyze_overwrites(
                 else:
                     gens_text = ""
                 gnorm = _norm_text(gens_text, normalize)
+                if not candidates:
+                    # No legacy candidates ⇒ new generation (not overwritten)
+                    count += 1
+                    if limit and count >= limit:
+                        break
+                    continue
                 match = False
                 for cand in candidates:
                     try:
@@ -233,7 +240,7 @@ def analyze_overwrites(
                         break
                 if not match:
                     # choose the oldest candidate (if any) for reporting/restore
-                    best = _pick_oldest(candidates) if candidates else None
+                    best = _pick_oldest(candidates)
                     row = {
                         "stage": stage,
                         "gen_id": gen_id,
@@ -242,9 +249,7 @@ def analyze_overwrites(
                         "gens_raw": str(raw_path) if raw_path.exists() else "",
                     }
                     rows.append(row)
-                    print(
-                        f"OVERWRITTEN? stage={stage} gen_id={gen_id} <- {best if best else 'NO_CANDIDATE'}"
-                    )
+                    print(f"OVERWRITTEN? stage={stage} gen_id={gen_id} <- {best}")
                     diffs.append({
                         "stage": stage,
                         "gen_id": gen_id,
