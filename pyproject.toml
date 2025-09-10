@@ -46,12 +46,7 @@ namespaces = false
 
 [tool.pytest.ini_options]
 # Unified pytest configuration (consolidated from pytest.ini)
-addopts = """
--v \
---cov-report term-missing \
---cov daydreaming_dagster \
---cov-fail-under 0
-"""
+addopts = "-v"
 testpaths = ["daydreaming_dagster", "tests"]
 python_files = ["test_*.py"]
 python_classes = ["Test*"]

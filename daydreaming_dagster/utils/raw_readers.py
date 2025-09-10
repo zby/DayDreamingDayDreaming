@@ -45,7 +45,7 @@ def _validate_templates_df(df: pd.DataFrame, csv_path: Path) -> pd.DataFrame:
     """Validate that template CSVs share a minimal uniform schema.
 
     Required columns: template_id, active
-    Optional columns (not enforced): parser, parsing_strategy
+    Optional column (not enforced here): parser
     """
     required = {"template_id", "active"}
     missing = [c for c in required if c not in df.columns]
