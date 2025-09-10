@@ -259,7 +259,7 @@ Configure in `daydreaming_dagster/resources/experiment_config.py`:
 - `k_max`: Maximum concept combination size
 - `description_level`: Description level ("sentence", "paragraph", "article")
 - `template_names_filter`: Optional list of template names to load (None = all)
-- Model selection in `data/1_raw/generation_models.csv` and `data/1_raw/evaluation_models.csv`
+- Model selection in `data/1_raw/llm_models.csv` (use `for_generation`/`for_evaluation` columns)
 
 ### Selective Loading for Development
 
@@ -280,7 +280,7 @@ config = ExperimentConfig(
 ### Input Data
 - **Concepts**: `data/1_raw/concepts/day_dreaming_concepts.json`
 - **Templates**: `data/1_raw/generation_templates/` (Jinja2 templates with two-phase structure; override root with `GEN_TEMPLATES_ROOT`)
-- **Models**: `data/1_raw/*_models.csv` (available LLM models)
+- **Models**: `data/1_raw/llm_models.csv` (available LLM models; flags `for_generation`, `for_evaluation`)
 
 #### Template Structure (Two-Phase)
 
