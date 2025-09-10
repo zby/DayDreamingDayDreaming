@@ -279,17 +279,6 @@ def _essay_response_impl(context, essay_prompt, essay_generation_tasks) -> str:
             }
         )
         return text
-    if mode == "parser":
-        raise Failure(
-            description="Essay generator mode 'parser' is not supported",
-            metadata={
-                "function": MetadataValue.text("essay_response"),
-                "gen_id": MetadataValue.text(str(gen_id)),
-                "essay_template": MetadataValue.text(template_name),
-                "resolution": MetadataValue.text("Set generator to 'llm' or 'copy' in data/1_raw/essay_templates.csv"),
-            },
-        )
-
     # Default LLM path (persist RAW early; apply truncation guard)
     model_name = task_row["generation_model_name"]
     llm_client = context.resources.openrouter_client

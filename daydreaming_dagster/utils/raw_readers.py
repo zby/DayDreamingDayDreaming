@@ -41,6 +41,15 @@ def read_llm_models(data_root: Path) -> pd.DataFrame:
     fp = Path(data_root) / "1_raw" / "llm_models.csv"
     return read_csv_with_context(fp)
 
+def _read_templates(data_root: Path, filename: str, *, filter_active: bool = True) -> pd.DataFrame:
+    base = Path(data_root) / "1_raw"
+    csv_path = base / filename
+    df = read_csv_with_context(csv_path)
+    df = _validate_templates_df(df, csv_path)
+    if filter_active and "active" in df.columns:
+        df = df[df["active"] == True]
+    return df
+
 def _validate_templates_df(df: pd.DataFrame, csv_path: Path) -> pd.DataFrame:
     """Validate that template CSVs share a minimal uniform schema.
 
@@ -55,28 +64,12 @@ def _validate_templates_df(df: pd.DataFrame, csv_path: Path) -> pd.DataFrame:
 
 
 def read_draft_templates(data_root: Path, filter_active: bool = True) -> pd.DataFrame:
-    base = Path(data_root) / "1_raw"
-    csv_path = base / "draft_templates.csv"
-    df = read_csv_with_context(csv_path)
-    df = _validate_templates_df(df, csv_path)
-    if filter_active and "active" in df.columns:
-        df = df[df["active"] == True]
-    return df
+    return _read_templates(data_root, "draft_templates.csv", filter_active=filter_active)
 
 
 def read_essay_templates(data_root: Path, filter_active: bool = True) -> pd.DataFrame:
-    base = Path(data_root) / "1_raw"
-    csv_path = base / "essay_templates.csv"
-    df = read_csv_with_context(csv_path)
-    df = _validate_templates_df(df, csv_path)
-    if filter_active and "active" in df.columns:
-        df = df[df["active"] == True]
-    return df
+    return _read_templates(data_root, "essay_templates.csv", filter_active=filter_active)
 
 
 def read_evaluation_templates(data_root: Path) -> pd.DataFrame:
-    base = Path(data_root) / "1_raw"
-    csv_path = base / "evaluation_templates.csv"
-    df = read_csv_with_context(csv_path)
-    df = _validate_templates_df(df, csv_path)
-    return df
+    return _read_templates(data_root, "evaluation_templates.csv", filter_active=True)

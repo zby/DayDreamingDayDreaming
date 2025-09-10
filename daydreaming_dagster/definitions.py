@@ -59,7 +59,7 @@ from daydreaming_dagster.resources.io_managers import (
 )
 from daydreaming_dagster.resources.gens_prompt_io_manager import GensPromptIOManager
 from pathlib import Path
-from daydreaming_dagster.constants import STAGES
+from daydreaming_dagster.constants import DRAFT, ESSAY, EVALUATION
 
 
 # Responses and prompts are versioned; overwrite flags are not used.
@@ -129,21 +129,21 @@ defs = Definitions(
         "draft_prompt_io_manager": GensPromptIOManager(
             gens_root=Path("data") / "gens",
             tasks_root=Path("data") / "2_tasks",
-            stage=STAGES[0],
+            stage=DRAFT,
             tasks_csv_name=None,
             id_col="gen_id",
         ),
         "essay_prompt_io_manager": GensPromptIOManager(
             gens_root=Path("data") / "gens",
             tasks_root=Path("data") / "2_tasks",
-            stage=STAGES[1],
+            stage=ESSAY,
             tasks_csv_name=None,
             id_col="gen_id",
         ),
         "evaluation_prompt_io_manager": GensPromptIOManager(
             gens_root=Path("data") / "gens",
             tasks_root=Path("data") / "2_tasks",
-            stage=STAGES[2],
+            stage=EVALUATION,
             tasks_csv_name=None,
             id_col="gen_id",
         ),
