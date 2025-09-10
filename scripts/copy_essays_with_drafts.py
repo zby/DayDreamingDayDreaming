@@ -619,7 +619,9 @@ def main():
         elif args.use_big_pivot:
             print("No essays found using big pivot mode.")
             print("- Ensure the big pivot exists and is populated: data/7_cross_experiment/evaluation_scores_by_template_model.csv")
-            print("- If missing or empty, run: ./scripts/rebuild_results.sh")
+            print("- If missing or empty, run:")
+            print("    uv run python scripts/aggregate_scores.py --output data/7_cross_experiment/parsed_scores.csv")
+            print("    uv run python scripts/build_pivot_tables.py --parsed-scores data/7_cross_experiment/parsed_scores.csv")
             print("- Also confirm evaluation_tasks.csv lists the template+model pairs for this experiment.")
         else:
             print("No generations found in scores CSV (data/6_summary/generation_scores_pivot.csv)")

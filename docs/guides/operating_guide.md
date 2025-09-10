@@ -230,7 +230,9 @@ For cross-experiment winners, place or symlink their generation texts under the 
 
 ### Curated Selection Quick Start (Drafts, Essays, Evaluations)
 
-Use the selection script to write a list of essay gen_ids, then let Dagster build the cohort and register partitions (no need to change `k_max`). If `data/7_cross_experiment/parsed_scores.csv` is missing, rebuild cross‑experiment tables (including `parsed_scores.csv`) with `./scripts/rebuild_results.sh` first. In all examples below, treat `parent_gen_id` as the canonical key for evaluation pivots and selections.
+Use the selection script to write a list of essay gen_ids, then let Dagster build the cohort and register partitions (no need to change `k_max`). If `data/7_cross_experiment/parsed_scores.csv` is missing, build it first:
+`uv run python scripts/aggregate_scores.py --output data/7_cross_experiment/parsed_scores.csv`.
+In all examples below, treat `parent_gen_id` as the canonical key for evaluation pivots and selections.
 
 1) Select top‑N prior‑art winners (editable list)
 ```bash
@@ -328,17 +330,15 @@ uv run dagster asset materialize -f daydreaming_dagster/definitions.py \
 
 ### Bulk Results Table Generation
 
-For initial setup or when you need to rebuild the cross-experiment tracking tables from existing data:
+For initial setup or when you need to rebuild the cross‑experiment outputs from existing gens:
 
 ```bash
-# Rebuild cross-experiment tracking tables from existing files (two-phase + legacy)
-./scripts/rebuild_results.sh
+# Build parsed scores and pivot from the gens store
+uv run python scripts/aggregate_scores.py --output data/7_cross_experiment/parsed_scores.csv
+uv run python scripts/build_pivot_tables.py --parsed-scores data/7_cross_experiment/parsed_scores.csv
 ```
 
-These scripts scan existing response files and rebuild the comprehensive tracking tables. Useful for:
-- Initial migration to the new tracking system
-- Recovery after table corruption
-- Rebuilding tables when adding new columns
+These scripts scan existing gens and produce canonical outputs under `data/7_cross_experiment/`.
 
 ### Optional Reporting
 

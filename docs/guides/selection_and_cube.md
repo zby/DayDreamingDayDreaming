@@ -14,7 +14,8 @@ Note on cohorts
 ## Prerequisites
 
 - Set `DAGSTER_HOME` to a writable directory, e.g. `export DAGSTER_HOME=$(pwd)/dagster_home`.
-- Ensure `data/7_cross_experiment/parsed_scores.csv` exists (produced by prior runs). If missing, rebuild it via `./scripts/rebuild_results.sh`.
+- Ensure `data/7_cross_experiment/parsed_scores.csv` exists (produced by prior runs). If missing, create it via:
+  `uv run python scripts/aggregate_scores.py --output data/7_cross_experiment/parsed_scores.csv`.
 - Start Dagster if you want the UI: `uv run dagster dev -f daydreaming_dagster/definitions.py`.
 
 ## Step 1: Select Top Prior-Art Winners

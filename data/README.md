@@ -39,7 +39,7 @@ data/
 - `draft_generation_tasks.csv` - Phase‑1 (draft) generation task definitions with partition keys
 - `essay_generation_tasks.csv` - Phase‑2 (essay) generation task definitions with partition keys
 - `evaluation_tasks.csv` - LLM evaluation task definitions with partition keys
-- `selected_combo_mappings.csv` - Selected combinations used by drafts. By default this is regenerated from the current active concepts (using `ExperimentConfig.description_level` and `k_max`) and assigned a stable `combo_id` via `data/combo_mappings.csv`. You may also supply a curated subset (row‑subset of `data/combo_mappings.csv`) using scripts (e.g., `scripts/select_combos.py`).
+- `selected_combo_mappings.csv` - Selected combinations used by drafts. By default this is regenerated from the current active concepts (using `ExperimentConfig.description_level` and `k_max`) and assigned a stable `combo_id` via `data/combo_mappings.csv`. For a curated subset, write this CSV directly (row‑subset of `data/combo_mappings.csv`) and avoid re‑materializing the `selected_combo_mappings` asset.
 
 **Tracking**: ✅ Tracked in git (reproducible task definitions)
 

@@ -156,14 +156,14 @@ Cross‑experiment analysis is derived directly from the gens store (data/gens/*
 
 **Initial setup** (populate tables from existing data):
 ```bash
-# Build tracking tables and pivot from existing responses (two-phase + legacy)
-./scripts/rebuild_results.sh
+# 1) Parse evaluation scores from gens store into parsed_scores.csv
+uv run python scripts/aggregate_scores.py --output data/7_cross_experiment/parsed_scores.csv
+
+# 2) Build pivot over parsed_scores
+uv run python scripts/build_pivot_tables.py --parsed-scores data/7_cross_experiment/parsed_scores.csv
 
 # Outputs (under data/7_cross_experiment/):
-# - draft_generation_results.csv
-# - essay_generation_results.csv
-# - evaluation_results.csv
-# - parsed_scores.csv
+# - parsed_scores.csv (canonical cross-experiment evaluation scores)
 # - evaluation_scores_by_template_model.csv  (pivot: rows=essay_task, cols=evaluation_template__evaluation_model)
 ```
 

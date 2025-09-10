@@ -215,9 +215,9 @@ data/1_raw/generation_templates/
 - Light filtering hooks (expandable)
 
 **Backfills and Tables**:
-- Scripts: `scripts/build_generation_results_table.py`, `scripts/build_evaluation_results_table.py`
-- Purpose: Initial migration and one‑off table rebuilding from existing files
-- Utility: `append_to_results_csv()` (locking) used by scripts only
+- Scripts: `scripts/aggregate_scores.py` (evaluation)
+- Purpose: One‑off rebuilding from the gens store (no auto-appenders)
+- Output: `data/7_cross_experiment/parsed_scores.csv` (canonical)
 
 ## Resource Architecture
 

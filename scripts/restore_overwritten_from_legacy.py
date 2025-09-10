@@ -183,23 +183,30 @@ def analyze_overwrites(
                     # Legacy filenames use single '_' separators
                     stems = [task_id.replace("__", "_")]
                 elif stage == "evaluation":
-                    eval_tpl = str(md.get("template_id") or "").strip()
-                    eval_model = str(md.get("model_id") or "").strip()
-                    parent = str(md.get("parent_gen_id") or "").strip()
-                    if not (eval_tpl and eval_model and parent):
-                        raise ValueError("missing eval template/model/parent")
-                    # Read parent essay's task_id and convert to legacy stem
-                    try:
-                        emeta = json.loads((gens_root / "essay" / parent / "metadata.json").read_text(encoding="utf-8"))
-                        essay_task_id = str(emeta.get("task_id") or "").strip()
-                    except Exception:
-                        essay_task_id = ""
-                    if not essay_task_id:
-                        raise ValueError("missing parent essay task_id for evaluation")
-                    essay_stem = essay_task_id.replace("__", "_")
-                    stems = [f"{essay_stem}_{eval_tpl}_{eval_model}"]
-                # Find candidates and compare all of them; report overwritten only if none match
-                candidates = _candidate_legacy_paths(data_root, stage, stems)
+                    # Prefer direct source_file from metadata (no guessing)
+                    src = str(md.get("source_file") or "").strip()
+                    if src:
+                        candidates = [Path(src)]
+                        # ensure absolute path under data_root
+                        candidates = [p if p.is_absolute() else (data_root / p) for p in candidates]
+                    else:
+                        eval_tpl = str(md.get("template_id") or "").strip()
+                        eval_model = str(md.get("model_id") or "").strip()
+                        parent = str(md.get("parent_gen_id") or "").strip()
+                        if not (eval_tpl and eval_model and parent):
+                            raise ValueError("missing eval template/model/parent")
+                        # Read parent essay's task_id and convert to legacy stem
+                        try:
+                            emeta = json.loads((gens_root / "essay" / parent / "metadata.json").read_text(encoding="utf-8"))
+                            essay_task_id = str(emeta.get("task_id") or "").strip()
+                        except Exception:
+                            essay_task_id = ""
+                        if not essay_task_id:
+                            raise ValueError("missing parent essay task_id for evaluation")
+                        essay_stem = essay_task_id.replace("__", "_")
+                        stems = [f"{essay_stem}_{eval_tpl}_{eval_model}"]
+                        candidates = _candidate_legacy_paths(data_root, stage, stems)
+                # Compare all candidates; report overwritten only if none match
                 gens_text = None
                 if parsed_path.exists():
                     gens_text = parsed_path.read_text(encoding="utf-8", errors="ignore")
@@ -394,9 +401,15 @@ def _apply_restore_new_cohort(data_root: Path, diffs: List[Dict], cohort_id: str
         emeta = json.loads(emeta_path.read_text(encoding="utf-8")) if emeta_path.exists() else {}
         new_essay_id = ensure_essay(emeta)
         new_id = reserve_gen_id("evaluation", task_id, run_id=cohort_id)
-        stem = task_id.replace("__", "_")
-        cands = _candidate_legacy_paths(data_root, "evaluation", [stem])
-        best = _pick_oldest(cands)
+        # Prefer direct metadata source_file for evaluation
+        src = str(md.get("source_file") or "").strip()
+        best = Path(src) if src else None
+        if best and not best.is_absolute():
+            best = (data_root / best)
+        if not best or not best.exists():
+            stem = task_id.replace("__", "_")
+            cands = _candidate_legacy_paths(data_root, "evaluation", [stem])
+            best = _pick_oldest(cands)
         cur = Generation.load(gens_root, "evaluation", str(md.get("gen_id") or ""))
         text = read_text(best, Path(cur.target_dir(gens_root) / "parsed.txt")) or cur.raw_text
         meta = build_generation_metadata(
