@@ -41,14 +41,7 @@ def _load_selected_essays_list(data_root: Path) -> List[str]:
     return out
 
 
-def _model_name_map(data_root: Path) -> Dict[str, str]:
-    try:
-        df = read_llm_models(data_root)
-        if "id" in df.columns and "model" in df.columns:
-            return dict(zip(df["id"].astype(str), df["model"].astype(str)))
-    except Exception:
-        pass
-    return {}
+# Model provider name mapping removed from cohort generation to reduce complexity.
 
 
 def _eval_axes(data_root: Path) -> Tuple[List[str], List[str], Dict[str, str], Dict[str, str]]:
@@ -114,7 +107,7 @@ def cohort_membership(
     out_path = cohort_dir / "membership.csv"
 
     selected_essays = _load_selected_essays_list(data_root)
-    model_name_by_id = _model_name_map(data_root)
+    # Cohort membership depends on model_id only (provider names omitted).
 
     rows: List[Dict] = []
 
@@ -173,7 +166,6 @@ def cohort_membership(
             draft_tpl = str(draft_meta.get("template_id") or draft_meta.get("draft_template") or "").strip()
             draft_model_id = str(draft_meta.get("model_id") or "").strip()
             model_id = essay_model_id or draft_model_id
-            model_name = model_name_by_id.get(model_id, model_id)
             # Validate required fields for curated reconstruction
             missing_fields = []
             if not combo_id:
@@ -209,7 +201,6 @@ def cohort_membership(
                     "combo_id": combo_id,
                     "draft_template": draft_tpl,
                     "generation_model": model_id,
-                    "generation_model_name": model_name,
                 }
             )
 
@@ -224,7 +215,6 @@ def cohort_membership(
                     "draft_template": draft_tpl,
                     "essay_template": essay_tpl,
                     "generation_model": model_id,
-                    "generation_model_name": model_name,
                 }
             )
 
@@ -244,7 +234,6 @@ def cohort_membership(
                             "parent_gen_id": essay_gen_id,
                             "evaluation_template": tpl,
                             "evaluation_model": mid,
-                            "evaluation_model_name": eval_model_names.get(mid, mid),
                             "parser": parser_map.get(str(tpl)),
                         }
                     )
@@ -271,7 +260,7 @@ def cohort_membership(
                 draft_tpl = str(trow["template_id"])
                 for _, mrow in gen_models_df.iterrows():
                     mid = str(mrow["id"])
-                    mname = str(mrow.get("model", mid))
+                    # provider model name omitted
                     draft_task_id = f"{combo_id}__{draft_tpl}__{mid}"
                     draft_cohort_gen = reserve_gen_id("draft", draft_task_id, run_id=cohort_id)
                     rows.append(
@@ -282,7 +271,6 @@ def cohort_membership(
                             "combo_id": combo_id,
                             "draft_template": draft_tpl,
                             "generation_model": mid,
-                            "generation_model_name": mname,
                         }
                     )
 
@@ -296,7 +284,7 @@ def cohort_membership(
             draft_tpl = str(d.get("draft_template"))
             combo_id = str(d.get("combo_id"))
             mid = str(d.get("generation_model"))
-            mname = str(d.get("generation_model_name"))
+            # provider model name omitted
             draft_task_id = f"{combo_id}__{draft_tpl}__{mid}"
             for _, et in essay_tpl_df.iterrows():
                 essay_tpl = str(et["template_id"])
@@ -313,7 +301,6 @@ def cohort_membership(
                         "draft_template": draft_tpl,
                         "essay_template": essay_tpl,
                         "generation_model": mid,
-                        "generation_model_name": mname,
                     }
                 )
 
@@ -333,7 +320,6 @@ def cohort_membership(
                             "parent_gen_id": essay_gen_id,
                             "evaluation_template": tpl,
                             "evaluation_model": mid,
-                            "evaluation_model_name": eval_model_names.get(mid, mid),
                             "parser": parser_map.get(str(tpl)),
                         }
                     )

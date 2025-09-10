@@ -391,7 +391,7 @@ def essay_generation_tasks(
     mdf = _read_membership_rows(data_root, resolved_cohort)
     if mdf is not None and not mdf.empty:
         essay_df = mdf[mdf.get("stage") == "essay"].copy()
-        for c in ("parent_gen_id","combo_id","draft_template","essay_template","generation_model","generation_model_name","gen_id","cohort_id"):
+        for c in ("parent_gen_id","combo_id","draft_template","essay_template","generation_model","gen_id","cohort_id"):
             if c not in essay_df.columns:
                 essay_df[c] = pd.Series(dtype=str)
         essay_df["draft_task_id"] = essay_df.apply(
@@ -403,7 +403,7 @@ def essay_generation_tasks(
             axis=1,
         )
         cols = [
-            "essay_task_id","parent_gen_id","draft_task_id","combo_id","draft_template","essay_template","generation_model","generation_model_name","gen_id","cohort_id",
+            "essay_task_id","parent_gen_id","draft_task_id","combo_id","draft_template","essay_template","generation_model","gen_id","cohort_id",
         ]
         out = essay_df[cols].drop_duplicates(subset=["gen_id"]).reset_index(drop=True)
         # Register partitions add-only
@@ -433,7 +433,6 @@ def essay_generation_tasks(
         "draft_template",
         "essay_template",
         "generation_model",
-        "generation_model_name",
         "gen_id",
         "cohort_id",
     ]
@@ -444,7 +443,6 @@ def essay_generation_tasks(
         combo_id = str(drow.get("combo_id"))
         draft_task_id = drow.get("draft_task_id")
         gen_model_id = drow.get("generation_model")
-        gen_model_name = drow.get("generation_model_name", gen_model_id)
         draft_gen_id = drow.get("gen_id")
         for _, trow in templates_df.iterrows():
             essay_template_id = trow["template_id"]
@@ -459,7 +457,6 @@ def essay_generation_tasks(
                 "draft_template": drow.get("draft_template"),
                 "essay_template": essay_template_id,
                 "generation_model": gen_model_id,
-                "generation_model_name": gen_model_name,
                 "gen_id": gen_id,
                 "cohort_id": str(resolved_cohort) if resolved_cohort else "",
             }
@@ -566,10 +563,8 @@ def evaluation_tasks(
             "draft_template",
             "essay_template",
             "generation_model",
-            "generation_model_name",
             "evaluation_template",
             "evaluation_model",
-            "evaluation_model_name",
             "parser",
             "file_path",
             "source_dir",
