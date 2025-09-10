@@ -59,6 +59,7 @@ def parsed_scores(context, evaluation_tasks: pd.DataFrame) -> pd.DataFrame:
                 emeta_path = gens_root / ESSAY / essay_doc / FILE_METADATA
                 if emeta_path.exists():
                     emeta = json.loads(emeta_path.read_text(encoding="utf-8")) or {}
+                    # FALLBACK(DATA): accept legacy 'essay_template' key until all writers emit 'template_id'.
                     etpl = str(emeta.get("template_id") or emeta.get("essay_template") or "")
                     gmid = str(emeta.get("model_id") or "")
                     ddoc = str(emeta.get("parent_gen_id") or "")
@@ -73,6 +74,7 @@ def parsed_scores(context, evaluation_tasks: pd.DataFrame) -> pd.DataFrame:
                 if dmeta_path.exists():
                     dmeta = json.loads(dmeta_path.read_text(encoding="utf-8")) or {}
                     cid = str(dmeta.get("combo_id") or "")
+                    # FALLBACK(DATA): accept legacy 'draft_template' key until all writers emit 'template_id'.
                     dtpl = str(dmeta.get("template_id") or dmeta.get("draft_template") or "")
                     if not gmid:
                         gmid = str(dmeta.get("model_id") or "")
