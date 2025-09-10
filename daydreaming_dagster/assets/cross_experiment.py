@@ -30,6 +30,8 @@ def filtered_evaluation_results(context, config: FilteredEvaluationResultsConfig
     """
     
     # Use the new cross-experiment parsing utility with filtering
+    # FALLBACK(OPS): Reads legacy single-phase responses under data/4_evaluation/evaluation_responses.
+    # Keep enabled for cross-experiment analysis; consider gating with a config flag to opt-in.
     base_path = Path("data/4_evaluation/evaluation_responses")
     
     # Parse all files (filtering can be added later if needed)

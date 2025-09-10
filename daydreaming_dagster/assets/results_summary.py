@@ -13,6 +13,7 @@ def get_generation_response_path(combo_id: str, draft_template: str, essay_templ
     we use an essay template with generator=copy to materialize the essay from the
     draft. Therefore, the canonical path is always under essay_responses.
     """
+    # FALLBACK(DATA): Construct path in legacy single-phase tree for reporting-compat.
     return f"data/3_generation/essay_responses/{combo_id}_{draft_template}_{model_name}_{essay_template}.txt"
 
 
@@ -336,6 +337,7 @@ def perfect_score_paths(context, parsed_scores: pd.DataFrame) -> pd.DataFrame:
             )
 
         # Evaluation path: use parsed column when present
+        # FALLBACK(DATA): Use legacy single-phase evaluation path when parsed_scores lacks an explicit path.
         evaluation_path = row['evaluation_response_path'] if 'evaluation_response_path' in row else f"data/4_evaluation/evaluation_responses/{row['combo_id']}_{row['generation_template']}_{row['generation_model']}_{row.get('evaluation_template', 'daydreaming-verification-v2')}_{row['evaluation_model']}.txt"
         
         paths_data.append({

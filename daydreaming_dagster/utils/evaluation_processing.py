@@ -192,6 +192,8 @@ def parse_evaluation_files_cross_experiment(base_path: Path, context=None) -> pd
     Returns:
         DataFrame with parsed evaluation results from all files
     """
+    # FALLBACK(OPS): This reads legacy single-phase directories (e.g., data/4_evaluation/evaluation_responses).
+    # Consider gating this with a configuration flag to keep legacy opt-in.
     if not base_path.exists() or not base_path.is_dir():
         return pd.DataFrame(columns=['evaluation_task_id', 'score', 'error', 'evaluation_template', 'evaluation_model'])
     
