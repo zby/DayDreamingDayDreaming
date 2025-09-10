@@ -1,143 +1,62 @@
 # DayDreaming Dagster Pipeline
 
-This is a Dagster-based data pipeline that tests whether pre-June 2025 LLMs can "reinvent" Gwern's Daydreaming Loop concept when provided with minimal contextual hints through a focused combinatorial testing approach.
+Dagster-based pipeline exploring whether offline LLMs can reinvent the “Daydreaming Loop” via structured, two‑phase generation and evaluation.
 
-## Project Overview
+- Start here: docs/index.md
+- Goals and scope: docs/project_goals.md
+- Architecture: docs/architecture/architecture.md
+- Operating guide: docs/guides/operating_guide.md
 
-The system tests k_max-sized concept combinations to elicit the Day-Dreaming idea from offline LLMs using automated LLM-based evaluation. The pipeline features a **two-phase generation architecture** that separates creative brainstorming from structured essay composition for improved quality and consistency.
-
-### Conceptual Framing
-- Project goals and benchmark framing: see `docs/project_goals.md` (existence vs. practicality, neutrality, scope).
-- Current approach — Constructive search: see `docs/architecture/constructive_search.md` (finite, structured search with problem‑first `recursive_construction`).
-- Prior approach (context): unordered free‑association over concept combinations; kept for historical reference but superseded by constructive search for better anchoring and pruning.
-
-### Two-Phase Generation System 🚀
-
-The pipeline uses an innovative two-phase approach to LLM generation:
-
-**Phase 1 - Draft Generation**: LLMs brainstorm conceptual connections and combinations between input concepts, producing 6-12 specific bullet points describing how concepts could be integrated.
-
-**Phase 2 - Essay Generation**: Using the draft-stage output from Phase 1 as inspiration, LLMs compose comprehensive essays (1500-3000 words) that develop the most promising conceptual combinations into detailed analyses.
-
-**Key Benefits**:
-- **Higher Quality**: Separates creative ideation from structured writing
-- **Robust Validation**: Draft phase enforces minimum quality (e.g., >=3 lines) and applies parsing before essays
-- **Better Essays**: Phase 2 has rich context from Phase 1 brainstorming (parsed draft)
-- **Backward Compatible**: Existing evaluation and analysis assets work unchanged
+## Two‑Phase Generation (Draft → Essay)
+- Phase 1 (draft): brainstorm connections between concepts.
+- Phase 2 (essay): compose a structured essay from the draft.
+- Details and rationale: docs/architecture/architecture.md#two-phase-llm-generation
 
 ## Quick Start
 
-Documentation index: docs/index.md
+Prereqs: Python 3.9+, uv, LLM API key in `.env`.
 
-### Prerequisites
-
-- Python 3.9+
-- UV package manager
-- OpenRouter API key (or other LLM API)
-
-### Installation
-
+UI flow (recommended):
 ```bash
-# Clone and install
-git clone <repository>
-cd DayDreamingDayDreaming
-uv sync
-
-# Set up environment variables
-cp .env.example .env
-# Edit .env with your API keys
-```
-
-### Running the Pipeline
-
-#### Option 1: Dagster UI (Recommended)
-```bash
-# Set DAGSTER_HOME to use project configuration (required for auto-materialization)
 export DAGSTER_HOME=$(pwd)/dagster_home
-
-# Start the Dagster development server
 uv run dagster dev -f daydreaming_dagster/definitions.py
-
-# Open browser to http://localhost:3000
-# Use the UI to materialize assets interactively
+# Open http://localhost:3000 and materialize assets
 ```
 
-#### Option 2: Command Line (Simplified)
-
-Raw loaders are standalone (no observable source assets). After editing files under `data/1_raw/**/*`, re‑materialize the raw setup assets to refresh downstream tasks. Keep the LLM steps manual.
-
+CLI flow (minimal):
 ```bash
-## Seed/setup assets and task CSVs
+# Seed tasks and register partitions
+uv sync
+export DAGSTER_HOME=$(pwd)/dagster_home
 uv run dagster asset materialize --select "group:task_definitions" -f daydreaming_dagster/definitions.py
 
-# Dynamic partitions are automatically created/updated by the task assets
+# Run a single draft or essay partition by gen_id (from data/2_tasks/*.csv)
+uv run dagster asset materialize --select "group:generation_draft"   --partition <gen_id> -f daydreaming_dagster/definitions.py
+uv run dagster asset materialize --select "group:generation_essays"  --partition <gen_id> -f daydreaming_dagster/definitions.py
 
-# Step 2: Generate LLM responses using two-phase generation
-# Now you can run individual partitions or use the UI to run all
-# Tip: get a draft partition key (gen_id) from draft_generation_tasks.csv
-# Example (Phase 1):
-# DRAFT_GEN=$(awk -F, 'NR==1{for(i=1;i<=NF;i++)h[$i]=i} NR==2{print $h["gen_id"]}' data/2_tasks/draft_generation_tasks.csv)
-# uv run dagster asset materialize --select "group:generation_draft" --partition "$DRAFT_GEN" -f daydreaming_dagster/definitions.py
-
-# Then get an essay partition key (gen_id) whose parent_gen_id matches the draft
-# Example (Phase 2):
-# ESSAY_GEN=$(awk -F, -v dd="$DRAFT_GEN" 'NR==1{for(i=1;i<=NF;i++)h[$i]=i} NR>1 && $h["parent_gen_id"]==dd {print $h["gen_id"]; exit}' data/2_tasks/essay_generation_tasks.csv)
-# uv run dagster asset materialize --select "group:generation_essays" --partition "$ESSAY_GEN" -f daydreaming_dagster/definitions.py
-
-# Step 3: Process results (after sufficient generation/evaluation data)
-uv run dagster asset materialize --select "parsed_scores,final_results" -f daydreaming_dagster/definitions.py
+# Parse and pivot evaluation scores (cross‑experiment)
+uv run python scripts/aggregate_scores.py --output data/7_cross_experiment/parsed_scores.csv
+uv run python scripts/build_pivot_tables.py --parsed-scores data/7_cross_experiment/parsed_scores.csv
 ```
 
-**Asset Group Breakdown**:
-- `group:raw_data`: concepts, models, templates (loads from `data/1_raw/`; re‑materialize after edits)
-- `group:task_definitions`: content_combinations, draft_generation_tasks, essay_generation_tasks, evaluation_tasks (auto-materialize; writes `data/2_tasks/*.csv` with `gen_id` columns)
-- `group:generation_draft`: draft_prompt, draft_response (writes generations under `data/gens/draft/<gen_id>`)
-- `group:generation_essays`: essay_prompt, essay_response (writes generations under `data/gens/essay/<gen_id>`)
-- `group:evaluation`: evaluation_prompt, evaluation_response (writes generations under `data/gens/evaluation/<gen_id>`)
-- `group:results_processing`: parsed_scores, analysis, and final_results (writes `data/5_parsing/`, `data/6_summary/`)
+More examples and troubleshooting: docs/guides/operating_guide.md
 
-**Why the specific asset dependencies matter**:
-- `draft_templates` and `essay_templates` load their CSVs and template files and determine activeness
-- `evaluation_templates` loads evaluation CSV + files
-- Using asset groups or dependency resolution (`+`) automatically includes these dependencies
+## Data & Partitions
+- Inputs: `data/1_raw/` (concepts, templates, `llm_models.csv` with `for_generation` / `for_evaluation`).
+- Task CSVs: `data/2_tasks/` (contain `gen_id` partition keys).
+- Gens store: `data/gens/<stage>/<gen_id>/{prompt.txt,raw.txt,parsed.txt,metadata.json}`.
+- Dynamic partitions: one `gen_id` per stage (draft, essay, evaluation).
+- Details: docs/architecture/architecture.md#storage-architecture
 
-**Dynamic Partitioning**: Partitions are created/updated by the task assets. Partition keys are gen_id for all stages (`draft_gens`, `essay_gens`, `evaluation_gens`).
+## Development
+- Tests: `.venv/bin/pytest` (unit in `daydreaming_dagster/`, integration in `tests/`).
+- Formatting: `uv run black .`; Lint: `uv run ruff check`.
+- Conventions and agent guidelines: AGENTS.md
 
-### Running All LLM Partitions
-
-After completing Step 1 above, you'll have ~150 LLM partitions available. To run them all:
-
-**Recommended**: Use the Dagster UI
-```bash
-export DAGSTER_HOME=$(pwd)/dagster_home
-uv run dagster dev -f daydreaming_dagster/definitions.py
-# Go to http://localhost:3000, find the partitioned assets, click "Materialize all partitions"
-```
-
-**Alternative**: CLI loop (sequential, slower)
-```bash
-# Get all partition names and run them one by one (two-phase generation)
-# Phase 1: run all draft partitions
-cut -d',' -f1 data/2_tasks/draft_generation_tasks.csv 2>/dev/null | tail -n +2 | while read DRAFT; do
-  echo "Running draft partition: $DRAFT"
-  uv run dagster asset materialize --select "group:generation_draft" --partition "$DRAFT" -f daydreaming_dagster/definitions.py
-done
-# Phase 2: run all essay partitions
-cut -d',' -f1 data/2_tasks/essay_generation_tasks.csv | tail -n +2 | while read ESSAY; do
-  echo "Running essay partition: $ESSAY"
-  uv run dagster asset materialize --select "group:generation_essays" --partition "$ESSAY" -f daydreaming_dagster/definitions.py
-done
-```
-
-### Selective / Curated Runs (Top‑N or Manual List)
-
-Run only a curated set of drafts/essays/evaluations without expanding the full cube:
-
-```bash
-# 1) Select top‑N prior‑art winners and write a list of essay gen_ids
-uv run python scripts/select_top_prior_art.py --top-n 30 --parsed-scores data/7_cross_experiment/parsed_scores.csv
-
-# 2) Build cohort membership and register partitions (inside Dagster)
+---
+For curated selection, cohorts, and advanced workflows, see:
+- docs/cohorts.md
+- docs/guides/selection_and_cube.md
 export DAGSTER_HOME="$(pwd)/dagster_home"
 uv run dagster asset materialize --select "cohort_id,cohort_membership" -f daydreaming_dagster/definitions.py
 
