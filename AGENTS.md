@@ -1,167 +1,76 @@
-# Repository Guidelines
+# AGENTS.md — Quick Guide
 
-## Project Structure & Module Organization
-- `daydreaming_dagster/`: Dagster package with `assets/`, `resources/`, `models/`, `utils/`, and `definitions.py` (entry for the asset graph).
-- `tests/`: Integration tests and fixtures; unit tests live alongside modules in `daydreaming_dagster/`.
-- `data/`: Pipeline inputs/outputs (`1_raw/`, `2_tasks/`, `gens/`, `5_parsing/`, `6_summary/`). Do not commit secrets or proprietary outputs.
-- `scripts/`: Support scripts for results tables and maintenance.
-- `docs/`: Architecture and development notes; see `docs/project_goals.md` for project goals.
+Concise, high-signal rules for working in this repo. Keep changes focused, validated early, and aligned with reproducibility.
 
-## Build, Test, and Development Commands
-- Install: `uv sync` (use `uv sync --dev` for Black/Ruff).
-- Interpreter: prefer `.venv/bin/python` and `.venv/bin/pytest` to ensure the project virtual environment is used (avoid system `python`/`pytest`). If you use `uv`, `uv run <cmd>` will execute inside the same `.venv`.
-- Dagster UI: `uv run dagster dev -f daydreaming_dagster/definitions.py` (set `DAGSTER_HOME=$(pwd)/dagster_home`).
-- Auto-update upstream assets: start Dagster with the daemon (`export DAGSTER_HOME=$(pwd)/dagster_home && uv run dagster dev -f daydreaming_dagster/definitions.py`). Raw loaders and task definitions auto-rematerialize when `data/1_raw/**/*` changes.
-- Optional seed (once): `uv run dagster asset materialize --select "group:task_definitions" -f daydreaming_dagster/definitions.py`.
-- Two‑phase generation (split tasks):
-  - Drafts: `uv run dagster asset materialize --select "group:generation_draft" --partition <draft_task_id> -f daydreaming_dagster/definitions.py` (legacy: `group:generation_links` with `link_task_id`).
-  - Essays: `uv run dagster asset materialize --select "group:generation_essays" --partition <essay_task_id> -f daydreaming_dagster/definitions.py`.
-- Tests: `.venv/bin/pytest` (unit: `.venv/bin/pytest daydreaming_dagster/`, integration: `.venv/bin/pytest tests/`).
-- Sandbox note: avoid `uv run pytest` — uv may attempt to write to a global cache outside the sandbox; `.venv/bin/pytest` runs entirely inside the project venv and avoids this issue.
-- Format/lint: `uv run black .` and `uv run ruff check`.
+## Project Layout
+- `daydreaming_dagster/`: Dagster package (`assets/`, `resources/`, `models/`, `utils/`, `definitions.py`).
+- `tests/`: Integration tests and fixtures; unit tests live next to code in `daydreaming_dagster/`.
+- `data/`: Inputs/outputs (`1_raw/`, `2_tasks/`, `gens/`, `5_parsing/`, `6_summary/`). Don’t commit secrets or proprietary outputs.
+- `scripts/`: Results tables and maintenance.
+- `docs/`: Architecture/notes; see `docs/project_goals.md`.
 
-## Coding Style & Naming Conventions
-- Formatting: Black (line length 88); 4‑space indentation; UTF‑8 files.
-- Linting: Ruff (advisory; keep warnings low before PR).
-- Naming: `snake_case` functions/modules, `PascalCase` classes, tests as `test_*.py`.
-- Type hints encouraged; prefer pure functions and dependency injection for testability.
- - Style-only changes must be separate commits. Do not mix formatting/lint fixes with functional changes. Run Black/Ruff after your functional commit, then commit the style diff as `style: format with Black` (or similar).
+## Setup & Key Commands
+- Install: `uv sync` (dev tools: `uv sync --dev`).
+- Use project venv: prefer `.venv/bin/python` and `.venv/bin/pytest` (or `uv run <cmd>`).
+- Dagster UI: `export DAGSTER_HOME=$(pwd)/dagster_home && uv run dagster dev -f daydreaming_dagster/definitions.py`.
+- Auto-rematerialize on `data/1_raw/**/*` changes: run Dagster with the daemon as above.
+- Seed once: `uv run dagster asset materialize --select "group:task_definitions" -f daydreaming_dagster/definitions.py`.
+- Two‑phase generation:
+  - Drafts: `uv run dagster asset materialize --select "group:generation_draft" --partition <gen_id> -f daydreaming_dagster/definitions.py`
+  - Essays: `uv run dagster asset materialize --select "group:generation_essays" --partition <gen_id> -f daydreaming_dagster/definitions.py`
+- Tests: unit `.venv/bin/pytest daydreaming_dagster/`; integration `.venv/bin/pytest tests/`.
+- Sandbox note: avoid `uv run pytest`; use `.venv/bin/pytest` to keep writes inside the venv.
 
-## Testing Guidelines
-- Framework: Pytest with coverage config in `pyproject.toml` (target sensible coverage; current hard gate is 0).
-- Structure: fast unit tests colocated with code; integration tests in `tests/` may read from `data/` but must not hit real APIs (mock LLM calls).
-- Conventions: functions `test_*`, files `test_*.py`; use fixtures in `tests/fixtures/` where possible.
+## Development Conventions
+- Style: Black (88 cols), 4 spaces, UTF‑8; Ruff advisory.
+- Naming: `snake_case` functions/modules; `PascalCase` classes; tests `test_*.py`.
+- Types: add hints; prefer pure functions and dependency injection.
+- Commit hygiene: do not mix formatting/lint with logic. Make functional change first; then `style: format with Black`.
+- Staging: never `git add -A`. Stage only intentional paths (code vs data vs docs).
 
-### Unit vs. Integration Tests
-- Unit tests:
-  - Colocated with modules under `daydreaming_dagster/`.
-  - Must not access files under `data/` or make network calls; mock external deps (LLMs, file I/O, Dagster resources).
-  - Aim for very fast execution (<1s per test) and narrow scope.
-- Integration tests:
-  - Live under `tests/` only; exercise multiple components together.
-  - Can read from `data/` when validating data‑dependent behavior.
-  - Must not make real API calls (use stubs/mocks); fail if required local data is missing.
+## Testing
+- Unit tests (colocated): no file I/O; no network; mock external deps (LLMs, IO, resources). Target <1s per test.
+- Integration tests (`tests/`): may read `data/`; must not hit real APIs; fail if required local data missing.
+- Test early, test often:
+  - Make one focused change → run narrowest relevant test(s).
+  - Prefer fastest checks: specific test node (`-k`/node id), single-partition asset materialize, `ruff`/`black --check` for style-only.
+  - Add an explicit “Run tests for X” step to your plan before moving on.
 
-### Test Early, Test Often (Plan–Execute–Validate)
-- Always test immediately when it is possible to test. Do not batch multiple code changes before running tests.
-- Keep iterations small: make one focused change, run the narrowest relevant test(s), then proceed.
-- Prefer the fastest checks first:
-  - Unit scope: `.venv/bin/pytest daydreaming_dagster/utils/test_foo.py::TestFoo::test_bar` or `-k "bar and TestFoo"`.
-  - Asset scope: materialize only the changed asset/partition with Dagster CLI, not the whole graph.
-  - Lint/format: `ruff`/`black --check` for style-only edits.
-- Define validation steps in your plan: after each implementation step, add a concrete “Run tests for X” step and execute it before moving on.
-- Use dry-runs and subsets for expensive paths: prefer `--dry-run`, single-partition materializations, or filtered test sets over full runs.
-- Approvals/sandboxing awareness:
-  - Interactive modes: propose the exact test command and run it as soon as approved.
-  - Non-interactive modes (e.g., never/on-failure): run the minimal tests proactively to validate your change.
-- Examples of “possible to test” right away:
-  - Edited a pure function or parser with existing unit tests → run those tests immediately.
-  - Modified one asset → materialize that asset for one representative partition.
-  - Adjusted a script argument → run the script with a tiny fixture input.
-  - Docs-only edits → no test run required; optionally run link or linter checks if configured.
+## Approvals & Sandboxing
+- Interactive modes: propose exact commands; run once approved.
+- Non‑interactive: run the minimal validations proactively.
 
-## Commit & Pull Request Guidelines
-- Commits: imperative mood, concise subject (≤72 chars), include scope when helpful (e.g., "assets: two‑phase generation").
- - Separation policy: if a change includes both logic and formatting, split into two commits (logic first, then style). This keeps review diffs readable and aligns with our LLM workflow.
-- PRs: clear description, linked issues, test plan (`pytest` output), and, when relevant, screenshots of Dagster runs or sample artifacts. Note any data/schema changes.
+## Cleanup, Backcompat, and Tags
+- After larger changes: remove scaffolding, dead code, debug prints. Update docs/comments affected.
+- Backcompat: keep narrow, clearly tagged where declared; plan removal.
+  - `BACKCOMPAT:` rationale + link + target removal.
+  - `TEMPORARY:` scope + removal trigger.
+  - `TODO-REMOVE-BY:` date or milestone.
+- Fallbacks: avoid automatic data fixes at runtime. If required to stay unblocked, keep minimal and tagged:
+  - `FALLBACK(DATA|PARSER|OPS):` why it exists + removal plan.
 
-### Staging Rules (Important)
-- Do not use `git add -A`. This can accidentally stage unrelated files, large artifacts, or local cruft. Instead, explicitly stage only the intended paths (e.g., `git add daydreaming_dagster/assets/core.py` or `git add data/1_raw/...`).
-- Separate commits by scope:
-  - Data-only changes: stage files under `data/` explicitly.
-  - Code-only changes: stage only source files and tests.
-  - Docs-only changes: stage only `docs/` or specific markdown files.
-- Never mix functional changes and formatting in the same commit; format in a follow-up commit.
+## Security & Data
+- Never commit secrets/real outputs. Use `.env` and env vars (e.g., `OPENROUTER_API_KEY`, `DAGSTER_HOME`).
+- Set `DAGSTER_HOME` to an absolute path, e.g., `export DAGSTER_HOME=$(pwd)/dagster_home`.
+- Large generated folders under `data/` should be git‑ignored unless explicitly needed for tests/docs.
 
-## Change Hygiene & Backcompat
-
-- After larger changes, always do a cleanup pass before finishing:
-  - Remove any scaffolding/bloat you introduced while iterating (debug prints, unused helpers/flags, dead code).
-  - Update or remove obsolete docs/comments; add concise notes where behavior changed.
-  - Verify the narrowest relevant tests pass; add missing unit tests for new logic.
-- Clearly mark any temporary compatibility code to make it easy to scan and retire:
-  - Use grep-friendly tags in comments at the declaration site(s):
-    - `BACKCOMPAT:` short rationale; link to plan/issue; target removal version/date.
-    - `TEMPORARY:` scope and removal trigger.
-    - `TODO-REMOVE-BY: YYYY-MM-DD` (or release/milestone).
-  - Example:
-    ```python
-    # BACKCOMPAT: accept legacy column 'parent_doc_id' until 2025-10-01
-    # TODO-REMOVE-BY: 2025-10-01 — switch callers to 'essay_doc_id' exclusively
-    essay_doc_col = 'essay_doc_id' if 'essay_doc_id' in df.columns else ('parent_doc_id' if 'parent_doc_id' in df.columns else None)
-    ```
-  - Prefer feature flags or narrow branches over sprawling legacy paths; do not expand backcompat surface area.
-- PRs should include a brief "Cleanup & Backcompat" note summarizing:
-  - What was removed; what remains temporarily; when/how it will be removed; and links to tracking items.
-- Periodically sweep for tags `BACKCOMPAT|TEMPORARY|TODO-REMOVE-BY|DEPRECATED|LEGACY|MIGRATION` and retire code on schedule.
-
-### Policy: Fallbacks and Data Quality
-
-- Do not implement automatic data fixes in runtime code (e.g., silently correcting/mutating CSVs or inputs). Prefer explicit failures with actionable error messages and plan a proper data migration.
-- Limit fallbacks to cases where they are absolutely necessary to keep development unblocked. When adding any fallback:
-  - Tag the code with a grep-friendly marker describing why it exists and how it will be removed:
-    - `FALLBACK(DATA):` when compensating for missing/low-quality data.
-    - `FALLBACK(PARSER):` when tolerating imperfect format output from a template.
-    - `FALLBACK(OPS):` when providing a minimal developer-only path (not production).
-    - Include `TODO-REMOVE-BY:` with a date/milestone.
-  - Keep the fallback narrow and deterministic; avoid expanding behavior.
-  - Prefer fail-fast in assets; fallbacks may live in dev-only scripts or controlled branches with clear logging.
-- Do not write to inputs (e.g., task CSVs) as part of fallback behavior. Any data repair must be a planned, explicit ops step or a standalone script run intentionally by a human.
-
-## Security & Configuration Tips
-- Secrets: never commit API keys or real outputs; use a local `.env` and environment variables (`OPENROUTER_API_KEY`, `DAGSTER_HOME`).
-  - Set `DAGSTER_HOME` as an absolute path, e.g., `export DAGSTER_HOME=$(pwd)/dagster_home`.
-- Data: large generated folders under `data/` should be git‑ignored unless explicitly needed for tests/docs.
-
-## Agent‑Specific Notes
-- Follow TDD: write/adjust tests before implementation; keep unit vs. integration boundaries. See `CLAUDE.md` for deeper conventions and patterns.
-
-### Plans (Do Not Commit by Default)
-- Do not commit files under `plans/` unless explicitly requested. Plans are working notes and should typically stay local.
-- If a plan is useful to persist, ask for approval first and commit it in a docs-only change.
-- Prefer the `update_plan` tool for live task plans and progress tracking instead of writing/committing plan files.
-
-### Using ast-grep (sg) for Code Search/Edits
-- Install tools: `uv sync --dev` (sg binary is provided by the `ast-grep-cli` dev dependency). Run with `uv run sg ...`.
-- Quick snippet search (example‑driven):
-  - `uv run sg -e 'def evaluation_tasks(' -l` — list files defining `evaluation_tasks`.
-  - `uv run sg -e 'document_index(' -n 3` — show 3 lines of context for matches.
-  - Add a glob to limit scope: `-g 'daydreaming_dagster/**/*.py'`.
-- Structural search (pattern DSL):
-  - `uv run sg -p 'call[name="read_text"]' -g 'daydreaming_dagster/**/*.py'` — find calls named `read_text`.
-  - `uv run sg -p 'function_definition[name="evaluation_prompt"]'` — find a function by name.
-- JSON output for tooling: `uv run sg -e 'evaluation_prompt(' --json`.
-- Safe rewriting via rules (YAML):
-  1) Create `rule.yml`:
-     ```yaml
-     rule:
-       id: rename-func
-       language: python
-       pattern: |
-         def $NAME($PARGS):
-           $BODY
-       constraints:
-         NAME: { regex: "^old_name$" }
-       fix: |
-         def new_name($PARGS):
-           $BODY
-     ```
-  2) Dry‑run to preview: `uv run sg -r rule.yml --rewrite --diff -g 'daydreaming_dagster/**/*.py'`
-  3) Apply once reviewed: `uv run sg -r rule.yml --rewrite -g 'daydreaming_dagster/**/*.py'`
-- Tips:
-- Prefer snippet `-e` for quick greps; switch to `-p`/rules for precise structure or refactors.
-- Always use `-g` to scope searches to the repo path you intend.
-- For broad text replacements, keep sg as a guardrail (structural match) and review diffs before committing.
+## ast‑grep (sg) Quick Reference
+- Search snippets: `uv run sg -e '<pattern>' -g 'daydreaming_dagster/**/*.py' -n 3`.
+- Structural search: `uv run sg -p "call[name='read_text']" -g 'daydreaming_dagster/**/*.py'`.
+- Rewrite (dry‑run): `uv run sg -r rule.yml --rewrite --diff -g 'daydreaming_dagster/**/*.py'`.
+- Tips: prefer `-e` for quick greps; use `-p`/rules for precise refactors; always scope with `-g`.
 
 ## Design Principles
-- Dependency injection for testability: pass external services (LLM clients, IO managers, configs) into functions/classes rather than creating them internally, so units are easy to mock and verify in isolation.
-- Fail early rather than over‑defensive code: validate inputs and invariants up front and raise clear errors with actionable metadata, instead of silently tolerating bad state.
+- Dependency injection for testability; avoid creating external services internally.
+- Fail early; validate inputs/invariants with clear errors over silent tolerance.
 
 ## Project Goals (Summary)
-- Purpose: Demonstrate that DayDreaming‑style workflows enable pre‑June‑2025 offline LLMs to generate genuinely novel ideas; use DayDreaming LLMs as a falsifiable benchmark while maintaining generality beyond this target.
-- Benchmark strategy: Existence goal over a finite concept‑combination space; fixed inputs stay target‑neutral; derived inputs may include benchmark terms if model‑produced; scaffolding should surface other novel syntheses.
-- Success criteria: Includes all current novel elements, presents a coherent causal justification, is technically plausible and non‑derivative, and meets evaluation thresholds (e.g., ≥7.5/10 avg) with agreement plus binary gates (reinvention yes/no; all novel elements present).
-- Scope: In‑scope idea generation (currently two‑phase drafts → essay) with evaluation and minimal bookkeeping; out‑of‑scope search/ranking heuristics, retrieval/browsing, or target‑specific hints.
-- Design guidance: Templates and concepts must be target‑neutral, parseable, general, stable/versioned; concepts come from a universal pool with traceable metadata distinguishing pool vs. experiment subset.
-- Evaluation: Score across axes (mechanistic completeness, structure, justification, novelty, grounding/coherence, coverage of novel elements) and apply binary gates; track inter‑evaluator variance and rubric versions.
-- DayDreaming checklist: Multi‑stage process with state; feedback signals; memory/externalization/tool use; selection/filters; termination/roll‑over criteria.
+- Purpose: show DayDreaming‑style workflows enable pre‑Jun‑2025 offline LLMs to produce genuinely novel ideas; serves as a falsifiable benchmark while staying target‑neutral.
+- Strategy: existence goal over finite concept‑combination space; fixed inputs remain neutral; derived inputs may include benchmark terms if model‑produced.
+- Success: all novel elements present; coherent causal justification; technically plausible; ≥7.5/10 average evaluations; agreement + binary gates (reinvention yes/no; all novel elements present).
+- Scope: in‑scope generation (drafts → essay), evaluation, minimal bookkeeping; out‑of‑scope ranking heuristics, retrieval/browsing, target‑specific hints.
+
+## Agent Notes
+- Follow TDD: write/adjust tests first; keep unit vs integration boundaries.
+- Prefer explicit plans; use small iterations; validate after each step.
+- For expensive paths, use dry‑runs, single partitions, or filtered tests.
