@@ -110,16 +110,7 @@ def _load_phase1_text_by_parent_doc(context, parent_gen_id: str) -> tuple[str, s
     return str(gen.parsed_text).replace("\r\n", "\n"), "draft_gens_parent"
 
 
-def _load_phase1_text_by_combo_model(context, combo_id: str, model_id: str) -> tuple[str, str]:
-    raise Failure(
-        description="combo/model-based resolution is not supported; provide parent_gen_id",
-        metadata={
-            "function": MetadataValue.text("_load_phase1_text_by_combo_model"),
-            "combo_id": MetadataValue.text(str(combo_id)),
-            "model_id": MetadataValue.text(str(model_id)),
-            "resolution": MetadataValue.text("Use parent_gen_id (draft gen id) in essay_generation_tasks.csv"),
-        },
-    )
+# Note: combo/model-based resolution removed — parent_gen_id is required for essays.
 
 
 def _essay_prompt_impl(context, essay_generation_tasks) -> str:
