@@ -269,17 +269,12 @@ def llm_client_resource(context) -> LLMClientResource:
 - **Version Control**: Text-based formats for diff tracking
 - **Portability**: Standard formats for external tool integration
 
-### 4. Versioned Files Helper (`utils/versioned_files.py`)
+### 4. Storage Helpers
 
-**Purpose**: Centralize versioned filename handling for `{stem}_vN.ext` artifacts.
+**Purpose**: Use the gens store as the single source of truth: `data/gens/<stage>/<gen_id>/{raw.txt,parsed.txt,prompt.txt,metadata.json}`.
 
-**Functions**:
-- `latest_versioned_path(dir, stem, ext)`: Return the highest version path or `None`.
-- `next_versioned_path(dir, stem, ext)`: Compute the next version filename (v1 if none).
-- `save_versioned_text(dir, stem, text, ext)`: Write text to the next version and return the path.
-
-**Usage**:
-- Used for legacy flows only; the pipeline persists artifacts in the gens store.
+- Prefer reading/writing via the gens store layout and metadata.
+- Avoid versioned side-writes; create new `gen_id` partitions for new outputs.
 
 ## Partitioning Architecture
 
@@ -367,8 +362,7 @@ data/
 - Task CSVs in `data/2_tasks/` are rewritten by their assets on materialization.
 - Dynamic partitions for tasks are managed by the task definition assets (`draft_generation_tasks`, `essay_generation_tasks`, `evaluation_tasks`).
 - Prompts are allowed to overwrite to reflect current templates.
-- Runtime persistence uses the gens store: `data/gens/<stage>/<gen_id>` with metadata. RAW side‑writes (for debugging) may be versioned using utility functions in `utils/versioned_files.py`.
-- Legacy directories under `data/3_generation/` are retained for historical analysis; scripts may read the latest versioned file when present. New runs write canonical artifacts to the gens store.
+- Runtime persistence uses the gens store: `data/gens/<stage>/<gen_id>` with metadata. Legacy directories under `data/3_generation/` are retained for historical analysis; scripts may read them for migration only. New runs write canonical artifacts to the gens store and do not create versioned files.
 
 ## Performance and Scalability
 

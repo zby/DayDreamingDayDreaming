@@ -147,28 +147,6 @@ Notes:
 - Each stage’s `metadata.json` includes `cohort_id`; task CSVs add a `cohort_id` column.
 - Prefer deterministic cohorts for the full Cartesian baseline; use explicit/timestamped IDs for curated or ad‑hoc runs to avoid overwrites.
 
-### Versioned Files Utility
-
-To keep versioned artifact handling consistent, use the helpers in `daydreaming_dagster/utils/versioned_files.py` instead of re‑implementing regex logic:
-
-- `latest_versioned_path(dir, stem, ext=".txt")`: Returns the latest `{stem}_vN{ext}` or `None`.
-- `next_versioned_path(dir, stem, ext=".txt")`: Returns the next path to write (v1 if none exist).
-- `save_versioned_text(dir, stem, text, ext=".txt")`: Writes `text` to the next versioned file and returns the path.
-
-Example:
-```python
-from pathlib import Path
-from daydreaming_dagster.utils.versioned_files import save_versioned_text, latest_versioned_path
-
-# RAW is persisted in the gens store; no legacy side-write directories are used.
-path_str = save_versioned_text(raw_dir, task_id, raw_text)
-
-essay_dir = Path(data_root) / "3_generation" / "essay_responses"
-latest = latest_versioned_path(essay_dir, task_id)
-```
-
-These functions are used by core utilities like `evaluation_processing`, and should be preferred for any new versioned I/O.
-
 **Important**: Set `DAGSTER_HOME=$(pwd)/dagster_home` to use the project's Dagster configuration, which includes auto-materialization settings. Without this, Dagster uses temporary storage and ignores the project configuration.
 
 ### Pipeline Parameters
