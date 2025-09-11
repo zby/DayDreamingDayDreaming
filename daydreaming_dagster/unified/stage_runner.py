@@ -24,6 +24,8 @@ class StageRunSpec:
     parser_name: Optional[str] = None
     pass_through_from: Optional[Path] = None
     max_tokens: Optional[int] = None
+    # Optional: provide pre-rendered prompt; when set, template is not loaded/rendered
+    prompt_text: Optional[str] = None
 
 
 class StageRunner:
@@ -95,9 +97,12 @@ class StageRunner:
             (stage_dir / "metadata.json").write_text(__import__("json").dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8")
             return {"parsed": parsed, "metadata": meta}
 
-        # LLM mode: render prompt first
-        template_text = self._load_template_text(spec.stage, spec.template_id)
-        prompt = self._render_prompt(template_text, spec.values)
+        # LLM mode: render prompt first (or use provided prompt)
+        if isinstance(spec.prompt_text, str):
+            prompt = spec.prompt_text
+        else:
+            template_text = self._load_template_text(spec.stage, spec.template_id)
+            prompt = self._render_prompt(template_text, spec.values)
         (stage_dir / "prompt.txt").write_text(prompt, encoding="utf-8")
 
         # LLM path

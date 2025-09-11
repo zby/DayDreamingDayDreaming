@@ -13,6 +13,7 @@ from .partitions import draft_gens_partitions
 from ..utils.template_loader import load_generation_template
 from ..utils.raw_readers import read_draft_templates
 from ..utils.draft_parsers import get_draft_parser
+from ..unified.stage_runner import StageRunner, StageRunSpec
 from ..utils.membership_lookup import find_membership_row_by_gen
 from ..utils.generation import Generation
 from ..utils.metadata import build_generation_metadata
@@ -132,78 +133,21 @@ def _draft_response_impl(context, draft_prompt, **_kwargs) -> str:
             },
         )
 
-    llm_client = context.resources.openrouter_client
-    experiment_config = context.resources.experiment_config
-    max_tokens = experiment_config.draft_generation_max_tokens
-    # Unified client path
-    text, info = llm_client.generate_with_info(draft_prompt, model=model_id, max_tokens=max_tokens)
-
-    # Normalize newlines and persist RAW immediately (before any validation) to aid debugging
-    normalized = str(text).replace("\r\n", "\n")
+    # Run via unified runner using pre-rendered prompt
     data_root = Path(getattr(context.resources, "data_root", "data"))
-    # Persist RAW to gens store right away so it exists even if parsing fails
-    try:
-        from ..utils.generation import Generation as _Gen
-        _gen = _Gen(
-            stage=DRAFT,
-            gen_id=str(gen_id),
-            parent_gen_id=None,
-            raw_text=normalized,
-            parsed_text=None,
-            prompt_text=draft_prompt if isinstance(draft_prompt, str) else None,
-            metadata={
-                "function": "draft_response",
-                "gen_id": str(gen_id),
-            },
-        )
-        _gen.write_files(data_root / "gens")
-        raw_path_str = str((_gen.target_dir(data_root / "gens") / FILE_RAW).resolve())
-    except Exception:
-        raw_path_str = None
-
-    # Validate minimum lines after ensuring RAW is persisted
-    response_lines = [line.strip() for line in normalized.split("\n") if line.strip()]
-    min_lines = getattr(experiment_config, "min_draft_lines", 3)
-    if len(response_lines) < int(min_lines):
-        raise Failure(
-            description=f"Draft response insufficient for gen {gen_id}",
-            metadata={
-                "function": MetadataValue.text("draft_response"),
-                "gen_id": MetadataValue.text(str(gen_id)),
-                "model_id": MetadataValue.text(model_id),
-                "response_line_count": MetadataValue.int(len(response_lines)),
-                "minimum_required": MetadataValue.int(int(min_lines)),
-                "response_content_preview": MetadataValue.text(
-                    normalized[:200] + "..." if len(normalized) > 200 else normalized
-                ),
-                **({"raw_path": MetadataValue.path(raw_path_str)} if raw_path_str else {}),
-            },
-        )
-
-    # If the response was truncated (e.g., hit token limit), mark as failure after saving RAW
-    finish_reason = (info or {}).get("finish_reason") if isinstance(info, dict) else None
-    was_truncated = bool((info or {}).get("truncated") if isinstance(info, dict) else False)
-    if was_truncated:
-        usage = (info or {}).get("usage") if isinstance(info, dict) else None
-        completion_tokens = None
-        requested_max = None
-        if isinstance(usage, dict):
-            completion_tokens = usage.get("completion_tokens")
-            requested_max = usage.get("max_tokens")
-        raise Failure(
-            description=f"Draft response truncated for gen {gen_id}",
-            metadata={
-                "function": MetadataValue.text("draft_response"),
-                "gen_id": MetadataValue.text(str(gen_id)),
-                "model_id": MetadataValue.text(model_id),
-                "finish_reason": MetadataValue.text(str(finish_reason)),
-                "truncated": MetadataValue.bool(True),
-                "raw_chars": MetadataValue.int(len(normalized)),
-                **({"completion_tokens": MetadataValue.int(int(completion_tokens))} if isinstance(completion_tokens, int) else {}),
-                **({"requested_max_tokens": MetadataValue.int(int(requested_max))} if isinstance(requested_max, int) else {}),
-                **({"raw_path": MetadataValue.path(raw_path_str)} if raw_path_str else {}),
-            },
-        )
+    runner = StageRunner()
+    spec = StageRunSpec(
+        stage="draft",
+        gen_id=str(gen_id),
+        template_id=str(row.get("template_id") or row.get("draft_template") or ""),
+        values={},  # prompt provided below
+        out_dir=data_root / "gens",
+        mode="llm",
+        model=model_id,
+        parser_name=None,  # set below if CSV defines it
+        max_tokens=context.resources.experiment_config.draft_generation_max_tokens,
+        prompt_text=str(draft_prompt) if isinstance(draft_prompt, str) else "",
+    )
 
     # Parse RAW response according to draft template's parser (identity if unspecified)
     draft_template = None
@@ -224,63 +168,50 @@ def _draft_response_impl(context, draft_prompt, **_kwargs) -> str:
                         parser_name = s
     except Exception:
         parser_name = None
-
-    parsed_text = normalized
-    parser_used = parser_name or "identity"
-    if parser_name:
-        parser_fn = get_draft_parser(parser_name)
-        if parser_fn is None:
-            raise Failure(
-                description=(f"Parser '{parser_name}' not found in registry for draft template"),
-                metadata={
-                    "function": MetadataValue.text("draft_response"),
-                    "gen_id": MetadataValue.text(str(gen_id)),
-                    "draft_template": MetadataValue.text(str(draft_template)),
-                    "parser": MetadataValue.text(str(parser_name)),
-                    "resolution": MetadataValue.text("Use a registered parser name in data/1_raw/draft_templates.csv or leave blank for identity."),
-                },
-            )
-        try:
-            parsed_text = parser_fn(normalized)
-        except Exception as e:
-            desc = "Parser raised an exception while processing RAW draft"
-            if raw_path_str:
-                desc += f" (RAW: {raw_path_str})"
-            meta = {
+    # Set parser into spec to let runner try parsing
+    spec.parser_name = parser_name
+    result = runner.run(spec, llm_client=context.resources.openrouter_client)
+    raw_text = result.get("raw") or ""
+    parsed_text = result.get("parsed") or raw_text
+    # Validate min lines after writing RAW
+    response_lines = [line.strip() for line in raw_text.split("\n") if line.strip()]
+    min_lines = int(getattr(context.resources.experiment_config, "min_draft_lines", 3))
+    if len(response_lines) < min_lines:
+        raise Failure(
+            description=f"Draft response insufficient for gen {gen_id}",
+            metadata={
+                "function": MetadataValue.text("draft_response"),
+                "gen_id": MetadataValue.text(str(gen_id)),
+                "model_id": MetadataValue.text(model_id),
+                "response_line_count": MetadataValue.int(len(response_lines)),
+                "minimum_required": MetadataValue.int(min_lines),
+                "response_content_preview": MetadataValue.text(
+                    raw_text[:200] + "..." if len(raw_text) > 200 else raw_text
+                ),
+            },
+        )
+    # If parser requested but failed to produce output, raise
+    if parser_name and (result.get("parsed") is None):
+        raise Failure(
+            description="Parser returned empty/invalid text",
+            metadata={
                 "function": MetadataValue.text("draft_response"),
                 "gen_id": MetadataValue.text(str(gen_id)),
                 "draft_template": MetadataValue.text(str(draft_template)),
                 "parser": MetadataValue.text(str(parser_name)),
-                "error": MetadataValue.text(str(e)),
-            }
-            if raw_path_str:
-                meta["raw_path"] = MetadataValue.path(raw_path_str)
-                meta["raw_chars"] = MetadataValue.int(len(normalized))
-            raise Failure(
-                description=desc,
-                metadata=meta,
-            ) from e
-        if not isinstance(parsed_text, str) or not parsed_text.strip():
-            raise Failure(
-                description="Parser returned empty/invalid text",
-                metadata={
-                    "function": MetadataValue.text("draft_response"),
-                    "gen_id": MetadataValue.text(str(gen_id)),
-                    "draft_template": MetadataValue.text(str(draft_template)),
-                    "parser": MetadataValue.text(str(parser_name)),
-                },
-            )
+            },
+        )
 
     # Final metadata and output
     context.log.info(
-        f"Generated draft response for gen {gen_id} ({len(response_lines)} raw lines); parser={parser_used}"
+        f"Generated draft response for gen {gen_id} ({len(response_lines)} raw lines); parser={parser_name or 'identity'}"
     )
     meta = {
         "function": MetadataValue.text("draft_response"),
         "raw_line_count": MetadataValue.int(len(response_lines)),
         # Intentionally omit provider model from reports to simplify
         "max_tokens": MetadataValue.int(int(max_tokens) if isinstance(max_tokens, (int, float)) else 0),
-        "parser": MetadataValue.text(parser_used),
+        "parser": MetadataValue.text(parser_name or "identity"),
         "parsed_chars": MetadataValue.int(len(parsed_text)),
     }
     if raw_path_str:
@@ -306,75 +237,4 @@ def draft_response(context, draft_prompt) -> str:
     Uses cohort_membership for config. Keeps CSV fallback internally (no asset dep).
     """
     parsed = _draft_response_impl(context, draft_prompt)
-
-    # Write generation files under data_root/gens/draft using Generation helper
-    import time
-    from pathlib import Path as _Path
-
-    gen_id = context.partition_key
-    # Resolve membership details for metadata
-    data_root = Path(getattr(context.resources, "data_root", "data"))
-    mrow, cohort = find_membership_row_by_gen(data_root, "draft", str(gen_id))
-    combo_id = mrow.get("combo_id") if mrow is not None else None
-    draft_template = (mrow.get("template_id") if mrow is not None else None) or (
-        mrow.get("draft_template") if mrow is not None else None
-    )
-    model_id = None
-    if mrow is not None:
-        model_id = (mrow.get("llm_model_id") or None)
-    # Partition key is the gen_id
-    if not (isinstance(gen_id, str) and gen_id.strip()):
-        raise Failure(
-            description="Missing gen_id for draft task",
-            metadata={
-                "function": MetadataValue.text("draft_response"),
-                "gen_id": MetadataValue.text(str(gen_id)),
-                "resolution": MetadataValue.text("Partition key must be a valid draft gen_id from cohort membership"),
-            },
-        )
-
-    # Reuse RAW written earlier by _draft_response_impl; if missing, fall back to parsed
-    try:
-        existing = Generation.load(data_root / "gens", DRAFT, str(gen_id))
-        raw_text = existing.raw_text or parsed
-    except Exception:
-        raw_text = parsed
-
-    # Build generation and write files
-    gens_root = _Path(getattr(context.resources, "data_root", "data")) / "gens"
-    run_id = getattr(getattr(context, "run", object()), "run_id", None) or getattr(context, "run_id", None)
-    metadata_json = build_generation_metadata(
-        stage=DRAFT,
-        gen_id=str(gen_id),
-        parent_gen_id=None,
-        template_id=str(draft_template) if draft_template else None,
-        model_id=str(model_id) if model_id else None,
-        task_id=str(""),
-        function="draft_response",
-        run_id=str(run_id) if run_id else None,
-        cohort_id=str(cohort) if isinstance(cohort, str) and cohort else None,
-        usage=None,
-        extra={
-            "combo_id": combo_id,
-        },
-    )
-    # Copy the prompt alongside the document for traceability when available
-    prompt_text = draft_prompt if isinstance(draft_prompt, str) else None
-    doc = Generation(
-        stage=DRAFT,
-        gen_id=gen_id,
-        parent_gen_id=None,
-        raw_text=raw_text,
-        parsed_text=parsed,
-        prompt_text=prompt_text,
-        metadata=metadata_json,
-    )
-    target_dir = doc.write_files(gens_root)
-    context.add_output_metadata(
-        {
-            "gen_id": MetadataValue.text(str(gen_id)),
-            "gen_dir": MetadataValue.path(str(target_dir)),
-        }
-    )
-
     return parsed
