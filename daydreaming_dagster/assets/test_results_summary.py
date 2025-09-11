@@ -4,7 +4,6 @@ import pytest
 import pandas as pd
 import numpy as np
 from unittest.mock import patch
-from .results_summary import get_generation_response_path
 
 
 class TestPivotSummaryLogic:
@@ -248,7 +247,7 @@ class TestPathGeneration:
     """Test essay path generation (doc-id-first; evaluations target essays)."""
 
     def test_essay_response_path_generation(self):
-        from daydreaming_dagster.assets.results_summary import get_generation_response_path as gen_path
-        path = gen_path("combo_123", "creative-synthesis-v8", "creative-synthesis-v8", "qwen-model")
-        expected = "data/3_generation/essay_responses/combo_123_creative-synthesis-v8_qwen-model_creative-synthesis-v8.txt"
-        assert path == expected
+        # Legacy fallback removed; path should be provided by parsed_scores enrichment.
+        # This test now asserts the legacy builder is no longer available.
+        with pytest.raises(ImportError):
+            from daydreaming_dagster.assets.results_summary import get_generation_response_path  # noqa: F401

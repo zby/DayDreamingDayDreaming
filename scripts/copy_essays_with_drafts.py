@@ -308,7 +308,6 @@ def get_all_current_generations(
 def get_top_from_big_pivot(
     n: int = 5,
     pivot_csv: str = "data/7_cross_experiment/evaluation_scores_by_template_model.csv",
-    evaluation_tasks_csv: str = "data/2_tasks/evaluation_tasks.csv",
 ) -> Tuple[List[str], List[dict]]:
     """
     Compute top N essays using the cross-experiment pivot, summing only the columns
@@ -323,17 +322,12 @@ def get_top_from_big_pivot(
         raise FileNotFoundError(f"Evaluation tasks CSV not found: {evaluation_tasks_csv}")
 
     df = pd.read_csv(pivot_csv)
-    et = pd.read_csv(evaluation_tasks_csv)
-
-    # Determine required evaluation columns as template__evaluator (strict: require evaluation_llm_model)
-    if "evaluation_llm_model" not in et.columns:
-        raise ValueError("evaluation_tasks.csv must include 'evaluation_llm_model' column")
-    et_cols = (
-        et[["evaluation_template", "evaluation_llm_model"]]
-        .dropna()
-        .drop_duplicates()
-        .assign(col=lambda d: d["evaluation_template"].astype(str) + "__" + d["evaluation_llm_model"].astype(str))
-    )["col"].tolist()
+    # Determine required evaluation columns as template__evaluator (strict) from raw definitions
+    eval_templates = pd.read_csv("data/1_raw/evaluation_templates.csv")
+    models = pd.read_csv("data/1_raw/llm_models.csv")
+    active_tpls = eval_templates[eval_templates.get('active', True) == True]['template_id'].astype(str).tolist()
+    eval_models = models[models.get('for_evaluation', False) == True]['id'].astype(str).tolist()
+    et_cols = [f"{t}__{m}" for t in active_tpls for m in eval_models]
 
     # Ensure required columns exist (missing treated as NaN => excluded in sum)
     for c in et_cols:
@@ -368,6 +362,7 @@ def get_top_from_big_pivot(
             "template": row.get("generation_template"),
             "draft_template": draft_template,  # May be None for old data
             "draft_task_id": draft_task_id,
+            # Display strict model id
             "model": row.get("generation_model"),
             "score": row.get("sum_scores", 0.0),
         })
