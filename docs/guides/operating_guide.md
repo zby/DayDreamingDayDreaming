@@ -264,7 +264,7 @@ Tip
 
 ### Where Assets Live
 
-- task_definitions (cohort/selection): `daydreaming_dagster/assets/group_cohorts.py`
+- cohort (membership/selection): `daydreaming_dagster/assets/group_cohorts.py`
 - generation_draft: `daydreaming_dagster/assets/group_generation_draft.py`
 - generation_essays: `daydreaming_dagster/assets/group_generation_essays.py`
 - evaluation: `daydreaming_dagster/assets/group_evaluation.py`

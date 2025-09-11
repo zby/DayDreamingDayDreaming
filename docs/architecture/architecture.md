@@ -86,7 +86,7 @@ Assets are organized into logical groups for easy selection and understanding:
 | Group | Assets | Purpose |
 |-------|--------|---------|
 | **`raw_data`** | concepts, llm_models, draft/essay/evaluation templates | Load external data files |
-| **`task_definitions`** | cohort_id, selected_combo_mappings, content_combinations, cohort_membership | Cohort-first membership and selection (register dynamic partitions) |
+| **`cohort`** | cohort_id, selected_combo_mappings, content_combinations, cohort_membership | Cohort-first membership and selection (register dynamic partitions) |
 | **`generation_draft`** 🚀 | draft_prompt, draft_response | Phase‑1 generation; applies parser (if configured) and saves RAW + parsed outputs |
 | **`generation_essays`** | essay_prompt, essay_response | Phase‑2 generation; modes: `llm` (default) and `copy` (parsed draft passthrough) |
 | **`evaluation`** | evaluation_prompt, evaluation_response | LLM evaluation (partitioned by evaluation gen_id from cohort membership) |

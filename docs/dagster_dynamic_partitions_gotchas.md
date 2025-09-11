@@ -4,7 +4,7 @@ Short, current guidance for our two-phase (draft → essay → evaluation) pipel
 
 Current Model
 - Partitions: `draft_gens`, `essay_gens`, `evaluation_gens` (DynamicPartitionsDefinition), keyed by `gen_id`.
-- Registration: created by `cohort_membership` (group `task_definitions`) from `data/cohorts/<cohort_id>/membership.csv`.
+- Registration: created by `cohort_membership` (group `cohort`) from `data/cohorts/<cohort_id>/membership.csv`.
 - I/O: GensPromptIOManager persists prompts to `data/gens/<stage>/<gen_id>/prompt.txt`; assets write responses to `data/gens/<stage>/<gen_id>/{raw,parsed,metadata}.txt/json`. Cross‑phase reads use `parent_gen_id` to load parents from the gens store.
 
 Gotchas (and fixes)
@@ -18,7 +18,7 @@ Why not multi‑dimensional partitions?
 - Dagster supports only 2D multi‑partitions; our model has ≥3 dimensions. Encoding them into composite keys adds more complexity than our task tables + dynamic partitions. We’ll revisit if Dagster adds richer partitioning.
 
 Common commands
-- Initialize tasks (optional): `uv run dagster asset materialize --select "group:task_definitions" -f daydreaming_dagster/definitions.py`
+- Initialize cohort (optional): `uv run dagster asset materialize --select "group:cohort" -f daydreaming_dagster/definitions.py`
 - Run a draft: `uv run dagster asset materialize --select "group:generation_draft" --partition "$DRAFT_GEN_ID" -f daydreaming_dagster/definitions.py`
 - Run an essay: `uv run dagster asset materialize --select "group:generation_essays" --partition "$ESSAY_GEN_ID" -f daydreaming_dagster/definitions.py`
 - Evaluate an essay: `uv run dagster asset materialize --select "evaluation_prompt,evaluation_response" --partition "$EVALUATION_GEN_ID" -f daydreaming_dagster/definitions.py`

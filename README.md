@@ -28,7 +28,7 @@ CLI flow (minimal):
 # Seed tasks and register partitions
 uv sync
 export DAGSTER_HOME=$(pwd)/dagster_home
-uv run dagster asset materialize --select "group:task_definitions" -f daydreaming_dagster/definitions.py
+uv run dagster asset materialize --select "group:cohort" -f daydreaming_dagster/definitions.py
 
 # Run a single draft or essay partition by gen_id (from data/2_tasks/*.csv)
 uv run dagster asset materialize --select "group:generation_draft"   --partition <gen_id> -f daydreaming_dagster/definitions.py
@@ -61,7 +61,7 @@ export DAGSTER_HOME="$(pwd)/dagster_home"
 uv run dagster asset materialize --select "cohort_id,cohort_membership" -f daydreaming_dagster/definitions.py
 
 # 3) Materialize drafts → essays → evaluations using the registered partitions
-uv run dagster asset materialize --select "group:task_definitions" -f daydreaming_dagster/definitions.py
+uv run dagster asset materialize --select "group:cohort" -f daydreaming_dagster/definitions.py
 ```
 
 The membership asset writes `data/cohorts/<cohort_id>/membership.csv` (wide rows by stage) and registers dynamic partitions add‑only. Task assets project their tables from membership; generation/evaluation assets run as before.
@@ -91,7 +91,7 @@ Note: Auto‑materializing appenders were removed. Derive views on demand from t
 ### Raw CSV Change Handling (Schedule)
 
 - The project includes a lightweight schedule that scans the raw CSVs under `data/1_raw/` (concepts_metadata.csv, llm_models.csv, draft_templates.csv, essay_templates.csv, evaluation_templates.csv).
-- On detecting a change, the schedule writes a pending fingerprint and launches a run (run_key = fingerprint) that refreshes the core/task layer (`group:task_definitions`).
+- On detecting a change, the schedule writes a pending fingerprint and launches a run (run_key = fingerprint) that refreshes the cohort/membership layer (`group:cohort`).
 - If the run fails or is canceled, a future tick will retry the same pending fingerprint (same run_key). On success, the schedule promotes the pending fingerprint to last and skips until the next change.
 - This gives at‑least‑once behavior for task updates without auto‑running any LLM assets. Downstream runs still “pull” and rebuild stale upstream as needed.
 
@@ -123,7 +123,7 @@ uv run pytest --cov=daydreaming_dagster
 
 ### Cohorts (deterministic run IDs)
 
-- A dedicated asset `cohort_id` (group `task_definitions`) computes a deterministic cohort identifier from the current manifest of combos, active templates, and models.
+- A dedicated asset `cohort_id` (group `cohort`) computes a deterministic cohort identifier from the current manifest of combos, active templates, and models.
 - The manifest is written to `data/cohorts/<cohort_id>/manifest.json`; the `cohort_id` value is threaded into all task CSVs and gens metadata when present.
 - Gen IDs are reserved as `reserve_gen_id(stage, task_id, run_id=cohort_id)` so all artifacts are tied to a visible, reproducible cohort.
 
@@ -131,7 +131,7 @@ Usage:
 - Default deterministic cohort (recommended baseline):
   - `uv run dagster asset materialize --select cohort_id -f daydreaming_dagster/definitions.py`
   - Then materialize tasks (inherits the same cohort):
-    `uv run dagster asset materialize --select "group:task_definitions" -f daydreaming_dagster/definitions.py`
+    `uv run dagster asset materialize --select "group:cohort" -f daydreaming_dagster/definitions.py`
 - Override explicitly for curated re-runs:
   - Env var: `export DD_COHORT=my-curated-2025-09-09` (tasks will use this value)
   - Asset config (Dagster UI or YAML):
@@ -255,7 +255,7 @@ Active draft templates are controlled in `data/1_raw/draft_templates.csv` via th
    **Solution**: Template assets need their metadata dependencies. Use one of these approaches:
    ```bash
    # Recommended: Use asset groups
-   uv run dagster asset materialize --select "group:raw_data,group:task_definitions" -f daydreaming_dagster/definitions.py
+   uv run dagster asset materialize --select "group:raw_data,group:cohort" -f daydreaming_dagster/definitions.py
    
    # Alternative: Use dependency resolution
    uv run dagster asset materialize --select "+generation_tasks,+evaluation_tasks" -f daydreaming_dagster/definitions.py

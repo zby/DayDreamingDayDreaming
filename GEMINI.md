@@ -14,7 +14,7 @@ Concise, high-signal rules for working in this repo. Keep changes focused, valid
 - Use project venv: prefer `.venv/bin/python` and `.venv/bin/pytest` (or `uv run <cmd>`).
 - Dagster UI: `export DAGSTER_HOME=$(pwd)/dagster_home && uv run dagster dev -f daydreaming_dagster/definitions.py`.
 - Auto-rematerialize on `data/1_raw/**/*` changes: run Dagster with the daemon as above.
-- Seed once: `uv run dagster asset materialize --select "group:task_definitions" -f daydreaming_dagster/definitions.py`.
+- Seed once: `uv run dagster asset materialize --select "group:cohort" -f daydreaming_dagster/definitions.py`.
 - Two‑phase generation:
   - Drafts: `uv run dagster asset materialize --select "group:generation_draft" --partition <gen_id> -f daydreaming_dagster/definitions.py`
   - Essays: `uv run dagster asset materialize --select "group:generation_essays" --partition <gen_id> -f daydreaming_dagster/definitions.py`

@@ -7,12 +7,12 @@ See also
   (this content has been merged below; see Curated Selection Quickstart)
 
 What the assets do
-- Asset `cohort_id` (group `task_definitions`) computes a deterministic ID from a manifest of:
+- Asset `cohort_id` (group `cohort`) computes a deterministic ID from a manifest of:
   - combo IDs (from `content_combinations`)
   - active draft/essay/evaluation templates
   - active generation/evaluation model IDs
   - Writes the manifest to `data/cohorts/<cohort_id>/manifest.json` and returns the cohort ID.
-- Asset `cohort_membership` (group `task_definitions`) builds an authoritative membership file and registers dynamic partitions:
+- Asset `cohort_membership` (group `cohort`) builds an authoritative membership file and registers dynamic partitions:
   - Reads `data/2_tasks/selected_essays.txt` (one gen_id per line) when present; otherwise uses the active axes (Cartesian).
   - Writes `data/cohorts/<cohort_id>/membership.csv` with normalized rows (same columns for all stages, no task_id columns):
     - `stage`, `gen_id`, `cohort_id`, `parent_gen_id`, `combo_id`, `template_id`, `llm_model_id`
