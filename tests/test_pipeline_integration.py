@@ -142,29 +142,26 @@ class TestPipelineIntegration:
     def _verify_expected_files(self, test_directory, test_gen_partitions, test_eval_partitions):
         """Comprehensive verification of all expected pipeline output files."""
         
-        # Task definition files (02_tasks/) - draft/essay tasks and evaluation tasks
-        task_files = [
-            test_directory / "2_tasks" / "draft_generation_tasks.csv",
-            test_directory / "2_tasks" / "essay_generation_tasks.csv",
-            test_directory / "2_tasks" / "evaluation_tasks.csv",
-        ]
-        
-        for file_path in task_files:
-            assert file_path.exists(), f"Task file not created: {file_path}"
-            assert file_path.stat().st_size > 0, f"Task file is empty: {file_path}"
-        
-        # Verify task file contents
-        gen_tasks_file = test_directory / "2_tasks" / "draft_generation_tasks.csv"
-        if gen_tasks_file.exists():
-            gen_tasks_df = pd.read_csv(gen_tasks_file)
-            assert len(gen_tasks_df) > 0, "Generation tasks should not be empty"
-            required_columns = ["draft_task_id", "combo_id", "draft_template", "generation_model"]
-            for col in required_columns:
-                assert col in gen_tasks_df.columns, f"Missing required column: {col}"
-            
-            # Verify combo_id format
-            for combo_id in gen_tasks_df["combo_id"].unique():
-                assert combo_id.startswith("combo_"), f"Invalid combo_id format: {combo_id}"
+        # Task CSVs are optional in membership-first mode; only assert when writes are enabled
+        import os as _os
+        if _os.environ.get("DD_DISABLE_TASK_CSV_WRITES") != "1":
+            task_files = [
+                test_directory / "2_tasks" / "draft_generation_tasks.csv",
+                test_directory / "2_tasks" / "essay_generation_tasks.csv",
+                test_directory / "2_tasks" / "evaluation_tasks.csv",
+            ]
+            for file_path in task_files:
+                assert file_path.exists(), f"Task file not created: {file_path}"
+                assert file_path.stat().st_size > 0, f"Task file is empty: {file_path}"
+            gen_tasks_file = test_directory / "2_tasks" / "draft_generation_tasks.csv"
+            if gen_tasks_file.exists():
+                gen_tasks_df = pd.read_csv(gen_tasks_file)
+                assert len(gen_tasks_df) > 0, "Generation tasks should not be empty"
+                required_columns = ["draft_task_id", "combo_id", "draft_template", "generation_model"]
+                for col in required_columns:
+                    assert col in gen_tasks_df.columns, f"Missing required column: {col}"
+                for combo_id in gen_tasks_df["combo_id"].unique():
+                    assert combo_id.startswith("combo_"), f"Invalid combo_id format: {combo_id}"
         
         # Gen store verification under data/gens/
         gens_root = test_directory / "gens"
@@ -587,9 +584,10 @@ class TestPipelineIntegration:
                 assert result.success, "Template filtering test materialization should succeed"
                 
                 # Load results and verify filtering
+                import os as _os
                 gen_tasks_file = temp_data_dir / "2_tasks" / "draft_generation_tasks.csv"
-                assert gen_tasks_file.exists(), "draft_generation_tasks.csv should be created"
-                
+                if _os.environ.get("DD_DISABLE_TASK_CSV_WRITES") == "1":
+                    pytest.skip("Task CSV writes disabled via DD_DISABLE_TASK_CSV_WRITES=1")
                 gen_tasks_df = pd.read_csv(gen_tasks_file)
                 
                 # Check that only active templates are used
