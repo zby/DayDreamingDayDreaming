@@ -6,7 +6,6 @@ import pytest
 from dagster import build_asset_context
 
 from daydreaming_dagster.assets.group_cohorts import cohort_membership
-from daydreaming_dagster.assets import group_task_definitions as tasks
 
 
 def _write_json(p: Path, data: dict) -> None:
@@ -75,22 +74,11 @@ def test_cohort_membership_curated_and_projection(tmp_path: Path, monkeypatch):
     essay_row = mdf[mdf["stage"] == "essay"].iloc[0]
     assert essay_row["parent_gen_id"] == draft_id
 
-    # Projection by task assets from membership (read from disk via resolved cohort)
-    monkeypatch.setenv("DD_COHORT", cid)
-    # Drafts
-    dctx = build_asset_context(resources={"data_root": str(data_root)})
-    ddf = tasks.draft_generation_tasks(dctx, content_combinations=[])
-    assert not ddf.empty and set(ddf.columns) >= {"gen_id", "cohort_id", "draft_task_id"}
-
-    # Essays
-    ectx = build_asset_context(resources={"data_root": str(data_root)})
-    edf = tasks.essay_generation_tasks(ectx, content_combinations=[], draft_generation_tasks=ddf)
-    assert not edf.empty and set(edf.columns) >= {"gen_id", "cohort_id", "essay_task_id", "parent_gen_id"}
-
-    # Evaluations
-    vctx = build_asset_context(resources={"data_root": str(data_root)})
-    vdf = tasks.evaluation_tasks(vctx, essay_generation_tasks=edf, draft_generation_tasks=ddf)
-    assert not vdf.empty and set(vdf.columns) >= {"gen_id", "cohort_id", "evaluation_task_id", "parent_gen_id"}
+    # Projection layer removed; verify membership rows directly
+    drafts = mdf[mdf["stage"] == "draft"]
+    essays = mdf[mdf["stage"] == "essay"]
+    evals = mdf[mdf["stage"] == "evaluation"]
+    assert not drafts.empty and not essays.empty and not evals.empty
 
 
 def test_cohort_membership_missing_parent_fails(tmp_path: Path, monkeypatch):

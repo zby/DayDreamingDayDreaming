@@ -226,8 +226,8 @@ def _essay_prompt_impl(context, essay_generation_tasks=None) -> str:
     io_manager_key="essay_prompt_io_manager",
     required_resource_keys={"data_root", "experiment_config"},
 )
-def essay_prompt(context, essay_generation_tasks) -> str:
-    return _essay_prompt_impl(context, essay_generation_tasks)
+def essay_prompt(context) -> str:
+    return _essay_prompt_impl(context)
 
 
 def _essay_response_impl(context, essay_prompt, essay_generation_tasks=None) -> str:

@@ -16,10 +16,17 @@ from dagster import Failure, MetadataValue, asset
 
 from ..utils.ids import reserve_gen_id
 from ..utils.raw_readers import (
+    read_concepts,
     read_draft_templates,
     read_essay_templates,
     read_evaluation_templates,
     read_llm_models,
+)
+from ..models import ContentCombination
+from ..utils.cohorts import (
+    get_env_cohort_id,
+    compute_cohort_id,
+    write_manifest,
 )
 from .partitions import (
     draft_gens_partitions,
@@ -439,3 +446,133 @@ def cohort_membership(
     )
 
     return df
+@asset(
+    group_name="task_definitions",
+    io_manager_key="io_manager",
+    required_resource_keys={"data_root"},
+)
+def cohort_id(context, content_combinations: list[ContentCombination]) -> str:
+    """Compute a deterministic cohort_id from the current manifest and persist it."""
+    data_root = Path(getattr(context.resources, "data_root", "data"))
+    # Build manifest from active axes
+    try:
+        ddf = read_draft_templates(data_root)
+        if "active" in ddf.columns:
+            ddf = ddf[ddf["active"] == True]
+        drafts = sorted(ddf["template_id"].astype(str).tolist()) if not ddf.empty else []
+    except Exception:
+        drafts = []
+    try:
+        edf = read_essay_templates(data_root)
+        if "active" in edf.columns:
+            edf = edf[edf["active"] == True]
+        essays = sorted(edf["template_id"].astype(str).tolist()) if not edf.empty else []
+    except Exception:
+        essays = []
+    try:
+        vdf = read_evaluation_templates(data_root)
+        if "active" in vdf.columns:
+            vdf = vdf[vdf["active"] == True]
+        evals = sorted(vdf["template_id"].astype(str).tolist()) if not vdf.empty else []
+    except Exception:
+        evals = []
+    try:
+        mdf = read_llm_models(data_root)
+        gen_models = sorted(mdf[mdf["for_generation"] == True]["id"].astype(str).tolist())
+        eval_models = sorted(mdf[mdf["for_evaluation"] == True]["id"].astype(str).tolist())
+    except Exception:
+        gen_models, eval_models = [], []
+    combos = sorted([str(c.combo_id) for c in (content_combinations or [])])
+    manifest = {
+        "combos": combos,
+        "templates": {"draft": drafts, "essay": essays, "evaluation": evals},
+        "llms": {"generation": gen_models, "evaluation": eval_models},
+    }
+    override = None
+    try:
+        if hasattr(context, "asset_config") and context.asset_config:
+            override = context.asset_config.get("override")
+        elif hasattr(context, "op_config") and context.op_config:
+            override = context.op_config.get("override")
+    except Exception:
+        override = None
+    env_override = get_env_cohort_id()
+    cid = compute_cohort_id("cohort", manifest, explicit=(override or env_override))
+    write_manifest(str(data_root), cid, manifest)
+    context.add_output_metadata({
+        "cohort_id": MetadataValue.text(cid),
+        "manifest_path": MetadataValue.path(str((data_root / "cohorts" / cid / "manifest.json").resolve())),
+    })
+    return cid
+
+
+@asset(
+    group_name="task_definitions",
+    io_manager_key="csv_io_manager",
+    required_resource_keys={"experiment_config", "data_root"},
+)
+def selected_combo_mappings(context) -> pd.DataFrame:
+    """Regenerate selected combo mappings from active concepts (deterministic ID)."""
+    from ..utils.combo_ids import ComboIDManager
+    data_root = Path(getattr(context.resources, "data_root", "data"))
+    cfg = context.resources.experiment_config
+    level = getattr(cfg, "description_level", "paragraph")
+    k_max = int(getattr(cfg, "k_max", 2))
+    concepts = read_concepts(data_root, filter_active=True)
+    if not concepts:
+        context.add_output_metadata({"count": MetadataValue.int(0), "reason": MetadataValue.text("no active concepts")})
+        return pd.DataFrame(columns=["combo_id","version","concept_id","description_level","k_max","created_at"])  # empty
+    selected = concepts[: max(1, min(k_max, len(concepts)))]
+    manager = ComboIDManager(str(data_root / "combo_mappings.csv"))
+    combo_id = manager.get_or_create_combo_id([c.concept_id for c in selected], level, k_max)
+    rows: list[dict] = []
+    now = None
+    for c in sorted([c.concept_id for c in selected]):
+        rows.append({
+            "combo_id": combo_id,
+            "version": "v1",
+            "concept_id": c,
+            "description_level": level,
+            "k_max": int(k_max),
+            "created_at": now or "",
+        })
+    df = pd.DataFrame(rows)
+    context.add_output_metadata({"count": MetadataValue.int(len(df)), "combo_id": MetadataValue.text(combo_id)})
+    return df
+
+
+@asset(
+    group_name="task_definitions",
+    io_manager_key="io_manager",
+    required_resource_keys={"experiment_config", "data_root"},
+)
+def content_combinations(context) -> list[ContentCombination]:
+    """Build combinations for generation. Preferred source: selected_combo_mappings.csv."""
+    data_root = Path(getattr(context.resources, "data_root", "data"))
+    try:
+        import pandas as _pd
+        selected_path = data_root / "2_tasks" / "selected_combo_mappings.csv"
+        sel = _pd.read_csv(selected_path)
+        if not sel.empty:
+            all_concepts = {c.concept_id: c for c in read_concepts(data_root, filter_active=False)}
+            combos: list[ContentCombination] = []
+            for combo_id, group in sel.groupby("combo_id"):
+                level = str(group.iloc[0]["description_level"]) if "description_level" in group.columns else "paragraph"
+                concept_ids = [str(cid) for cid in group["concept_id"].astype(str).tolist()]
+                concepts = [all_concepts[cid] for cid in concept_ids if cid in all_concepts]
+                if len(concepts) != len(concept_ids):
+                    continue
+                combos.append(ContentCombination(contents=[{"name": all_concepts[cid].name, "content": all_concepts[cid].content} for cid in concept_ids if cid in all_concepts], combo_id=str(combo_id), concept_ids=concept_ids))
+            if combos:
+                return combos
+    except Exception:
+        pass
+    # Fallback: derive from active concepts using description_level/k_max
+    cfg = context.resources.experiment_config
+    level = getattr(cfg, "description_level", "paragraph")
+    k_max = int(getattr(cfg, "k_max", 2))
+    concepts = [c for c in read_concepts(data_root, filter_active=True)]
+    concepts = concepts[: max(1, min(k_max, len(concepts)))]
+    from daydreaming_dagster.models.content_combination import ContentCombination, generate_combo_id
+    combo_id = generate_combo_id([c.concept_id for c in concepts], level, k_max)
+    return [ContentCombination.from_concepts(concepts, level=level, combo_id=combo_id)]

@@ -31,7 +31,7 @@ def _stub_tables(monkeypatch, m):
 
 
 def test_cohort_id_deterministic_and_manifest_written(tmp_path, monkeypatch):
-    import daydreaming_dagster.assets.group_task_definitions as m
+    import daydreaming_dagster.assets.group_cohorts as m
 
     _stub_tables(monkeypatch, m)
 
@@ -59,7 +59,7 @@ def test_cohort_id_deterministic_and_manifest_written(tmp_path, monkeypatch):
 
 
 def test_cohort_id_override_precedence_config_over_env(tmp_path, monkeypatch):
-    import daydreaming_dagster.assets.group_task_definitions as m
+    import daydreaming_dagster.assets.group_cohorts as m
 
     _stub_tables(monkeypatch, m)
     monkeypatch.setenv("DD_COHORT", "ENV-COHORT-123")
@@ -81,7 +81,7 @@ def test_cohort_id_override_precedence_config_over_env(tmp_path, monkeypatch):
 
 
 def test_draft_generation_tasks_includes_cohort_id(tmp_path, monkeypatch):
-    import daydreaming_dagster.assets.group_task_definitions as m
+    import daydreaming_dagster.assets.group_cohorts as m
 
     # Stub draft templates and models to compute expected gen_id
     draft_templates_df = pd.DataFrame([{"template_id": "draft-A", "active": True}])
@@ -114,10 +114,11 @@ def test_draft_generation_tasks_includes_cohort_id(tmp_path, monkeypatch):
 
     ctx = build_asset_context(resources={"data_root": str(tmp_path)}, asset_config={})
     combos = [ContentCombination(contents=[{"name": "a", "content": "x"}], combo_id="combo-1", concept_ids=["a"])]
-    df = m.draft_generation_tasks(ctx, content_combinations=combos)
-
-    assert not df.empty
-    assert set(df.columns) >= {"gen_id", "cohort_id", "draft_task_id"}
-    assert (df["cohort_id"] == cohort).all()
-    assert df["draft_task_id"].iloc[0] == draft_task_id
-    assert df["gen_id"].iloc[0] == expected_gen_id
+    # Validate via membership (task projections removed)
+    mpath = cohort_dir / "membership.csv"
+    assert mpath.exists()
+    df = pd.read_csv(mpath)
+    drafts = df[df["stage"] == "draft"]
+    assert not drafts.empty
+    assert (drafts["cohort_id"] == cohort).all()
+    assert expected_gen_id in drafts["gen_id"].astype(str).tolist()
