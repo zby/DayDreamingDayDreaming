@@ -14,6 +14,7 @@ from ..utils.dataframe_helpers import get_task_row, resolve_llm_model_id
 from ..utils.membership_lookup import find_membership_row_by_gen
 from ..utils.generation import Generation
 from ..utils.metadata import build_generation_metadata
+from ..unified.stage_runner import StageRunner, StageRunSpec
 from ..constants import DRAFT, ESSAY, FILE_RAW
 
 # Reuse a single Jinja environment
@@ -259,8 +260,20 @@ def _essay_response_impl(context, essay_prompt) -> str:
             },
         )
 
+    runner = StageRunner()
+    values = {"draft_block": draft_text, "links_block": draft_text}
+    data_root = Path(getattr(context.resources, "data_root", "data"))
     if mode == "copy":
-        text = draft_text
+        spec = StageRunSpec(
+            stage="essay",
+            gen_id=str(gen_id),
+            template_id=template_name,
+            values=values,
+            out_dir=data_root / "gens",
+            mode="copy",
+            pass_through_from=(data_root / "gens" / DRAFT / str(parent_gen_id) / "parsed.txt"),
+        )
+        result = runner.run(spec, llm_client=context.resources.openrouter_client)
         context.add_output_metadata(
             {
                 "function": MetadataValue.text("essay_response"),
@@ -268,84 +281,42 @@ def _essay_response_impl(context, essay_prompt) -> str:
                 "gen_id": MetadataValue.text(str(gen_id)),
                 "parent_gen_id": MetadataValue.text(str(parent_gen_id)),
                 "source": MetadataValue.text(used_source),
-                "chars": MetadataValue.int(len(text)),
-                "lines": MetadataValue.int(sum(1 for _ in text.splitlines())),
+                "chars": MetadataValue.int(len(draft_text)),
+                "lines": MetadataValue.int(sum(1 for _ in draft_text.splitlines())),
             }
         )
-        return text
-    # Default LLM path (persist RAW early; apply truncation guard). Use model id from membership
+        return result.get("parsed") or draft_text
+    # LLM path
     model_id = str(mrow.get("llm_model_id") or "").strip() if mrow is not None else ""
     if not model_id:
         raise Failure(
-            description="Missing generation_model for essay task",
+            description="Missing generation model for essay task",
             metadata={
                 "function": MetadataValue.text("_essay_response_impl"),
                 "gen_id": MetadataValue.text(str(gen_id)),
                 "resolution": MetadataValue.text("Ensure cohort membership includes an llm_model_id for this essay"),
             },
         )
-    llm_client = context.resources.openrouter_client
-    max_tokens = context.resources.experiment_config.essay_generation_max_tokens
-    text, info = llm_client.generate_with_info(essay_prompt, model=model_id, max_tokens=max_tokens)
-
-    normalized = str(text).replace("\r\n", "\n")
-
-    # Persist RAW to gens store immediately so it exists even if we later fail (e.g., truncation)
-    data_root = Path(getattr(context.resources, "data_root", "data"))
-    try:
-        _gen0 = Generation(
-            stage=ESSAY,
-            gen_id=str(gen_id),
-            parent_gen_id=str(parent_gen_id) if parent_gen_id else None,
-            raw_text=normalized,
-            parsed_text=None,
-            prompt_text=essay_prompt if isinstance(essay_prompt, str) else None,
-            metadata={
-                "function": "essay_response",
-                "gen_id": str(gen_id),
-                "parent_gen_id": str(parent_gen_id) if parent_gen_id else "",
-            },
-        )
-        _gen0.write_files(data_root / "gens")
-        raw_path_str = str((_gen0.target_dir(data_root / "gens") / FILE_RAW).resolve())
-    except Exception:
-        raw_path_str = None
-
-    # Truncation detection: explicit flag or finish_reason=length
-    finish_reason = (info or {}).get("finish_reason") if isinstance(info, dict) else None
-    was_truncated = bool((info or {}).get("truncated") if isinstance(info, dict) else False)
-    usage = (info or {}).get("usage") if isinstance(info, dict) else None
-    completion_tokens = usage.get("completion_tokens") if isinstance(usage, dict) else None
-    requested_max = usage.get("max_tokens") if isinstance(usage, dict) else None
-    if was_truncated:
-        meta = {
-            "function": MetadataValue.text("essay_response"),
-            "gen_id": MetadataValue.text(str(gen_id)),
-            # Intentionally omit provider model from reports to simplify
-            "max_tokens": MetadataValue.int(int(max_tokens) if isinstance(max_tokens, (int, float)) else 0),
-            "finish_reason": MetadataValue.text(str(finish_reason)),
-            "truncated": MetadataValue.bool(True),
-        }
-        if isinstance(completion_tokens, int):
-            meta["completion_tokens"] = MetadataValue.int(completion_tokens)
-        if isinstance(requested_max, int):
-            meta["requested_max_tokens"] = MetadataValue.int(requested_max)
-        if raw_path_str:
-            meta["raw_path"] = MetadataValue.path(raw_path_str)
-            meta["raw_chars"] = MetadataValue.int(len(normalized))
-        raise Failure(description=f"Essay response truncated for gen {gen_id}", metadata=meta)
-
+    spec = StageRunSpec(
+        stage="essay",
+        gen_id=str(gen_id),
+        template_id=template_name,
+        values=values,
+        out_dir=data_root / "gens",
+        mode="llm",
+        model=model_id,
+        max_tokens=context.resources.experiment_config.essay_generation_max_tokens,
+    )
+    result = runner.run(spec, llm_client=context.resources.openrouter_client)
     context.add_output_metadata(
         {
             "function": MetadataValue.text("essay_response"),
             "gen_id": MetadataValue.text(str(gen_id)),
-            # Intentionally omit provider model from reports to simplify
-            "chars": MetadataValue.int(len(normalized)),
+            "chars": MetadataValue.int(len(result.get("raw") or "")),
             "truncated": MetadataValue.bool(False),
-            **({"raw_path": MetadataValue.path(raw_path_str)} if raw_path_str else {}),
         }
     )
-    return normalized
+    return result.get("raw") or ""
 
 
 @asset(

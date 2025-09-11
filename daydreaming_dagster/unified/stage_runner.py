@@ -74,10 +74,6 @@ class StageRunner:
         stage_dir.mkdir(parents=True, exist_ok=True)
 
         t0 = time.time()
-        template_text = self._load_template_text(spec.stage, spec.template_id)
-        prompt = self._render_prompt(template_text, spec.values)
-        (stage_dir / "prompt.txt").write_text(prompt, encoding="utf-8")
-
         if spec.mode == "copy":
             if not isinstance(spec.pass_through_from, (str, Path)):
                 raise ValueError("pass_through_from path required for copy mode")
@@ -91,13 +87,18 @@ class StageRunner:
                 "template_path": str((self.templates_root / spec.stage / f"{spec.template_id}.txt").resolve()),
                 "mode": "copy",
                 "files": {
-                    "prompt": str((stage_dir / "prompt.txt").resolve()),
+                    # No prompt in copy-mode by default
                     "parsed": str((stage_dir / "parsed.txt").resolve()),
                 },
                 "duration_s": round(time.time() - t0, 3),
             }
             (stage_dir / "metadata.json").write_text(__import__("json").dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8")
-            return {"prompt": prompt, "parsed": parsed, "metadata": meta}
+            return {"parsed": parsed, "metadata": meta}
+
+        # LLM mode: render prompt first
+        template_text = self._load_template_text(spec.stage, spec.template_id)
+        prompt = self._render_prompt(template_text, spec.values)
+        (stage_dir / "prompt.txt").write_text(prompt, encoding="utf-8")
 
         # LLM path
         if not spec.model:
@@ -128,4 +129,3 @@ class StageRunner:
         }
         (stage_dir / "metadata.json").write_text(__import__("json").dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8")
         return {"prompt": prompt, "raw": normalized, "parsed": parsed, "metadata": meta}
-
