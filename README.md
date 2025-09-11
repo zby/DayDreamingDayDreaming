@@ -176,7 +176,7 @@ config = ExperimentConfig(
 
 ### Input Data
 - **Concepts**: `data/1_raw/concepts/day_dreaming_concepts.json`
-- **Templates**: `data/1_raw/generation_templates/` (Jinja2 templates with two-phase structure; override root with `GEN_TEMPLATES_ROOT`)
+- **Templates**: `data/1_raw/templates/` (Jinja2 templates with two-phase structure; override root with `GEN_TEMPLATES_ROOT`)
 - **Models**: `data/1_raw/llm_models.csv` (available LLM models; flags `for_generation`, `for_evaluation`)
 
 #### Template Structure (Two-Phase)
@@ -184,7 +184,7 @@ config = ExperimentConfig(
 Templates are organized in a two-phase structure:
 
 ```
-data/1_raw/generation_templates/
+data/1_raw/templates/
 ├── draft/                    # Phase 1: Concept draft generation
 │   ├── creative-synthesis-v7.txt
 │   ├── systematic-analytical.txt
@@ -201,7 +201,7 @@ data/1_raw/generation_templates/
 - Template variables: `concepts` (list with name, content)
 
 Adding a new draft template:
-- Place the template file under `data/1_raw/generation_templates/draft/<template_id>.txt`.
+- Place the template file under `data/1_raw/templates/draft/<template_id>.txt`.
 - Register it in `data/1_raw/draft_templates.csv` with the same `template_id` and set `active=true` (set others to `false`). If the draft output requires extraction into an essay‑ready fragment, set the `parser` column (e.g., `essay_idea_last`). Supported parser names live in `daydreaming_dagster/utils/draft_parsers.py`. Missing or unknown parsers cause a hard failure during draft generation (Phase‑1), and the RAW draft is still saved for debugging.
 - Optional: set `GEN_TEMPLATES_ROOT` to point to a different root if you maintain templates outside the repo.
 
@@ -250,7 +250,7 @@ Active draft templates are controlled in `data/1_raw/draft_templates.csv` via th
 
 1. **Missing Asset Dependencies**:
    ```
-   FileNotFoundError: [Errno 2] No such file or directory: '.../storage/generation_templates_metadata'
+   FileNotFoundError: [Errno 2] No such file or directory: '.../storage/templates_metadata'
    ```
    **Solution**: Template assets need their metadata dependencies. Use one of these approaches:
    ```bash

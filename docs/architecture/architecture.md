@@ -42,7 +42,7 @@ The DayDreaming pipeline is built on **Dagster**, a modern data orchestration pl
 ```
 
 Dimensionality (axes)
-- Generation: `combos × generation_templates × generation_models → draft documents`.
+- Generation: `combos × templates/draft × generation_models → draft documents`.
 - Evaluation: `documents × evaluation_templates × evaluation_models → evaluator outputs`.
 
 ## Dagster Implementation Structure
@@ -99,7 +99,7 @@ Assets are organized into logical groups for easy selection and understanding:
 
 ### 1. Raw Data Loading (`raw_data.py`)
 
-**Assets**: `concepts`, `llm_models`, `generation_templates`, `evaluation_templates`
+**Assets**: `concepts`, `llm_models`, `templates/{draft,essay,evaluation}`, `evaluation_templates`
 
 **Purpose**: Load and validate external data files from `data/1_raw/`.
 Note: Observable source assets were removed for simplicity during development. When inputs change, re‑materialize the raw loader assets to refresh downstream tasks.
@@ -172,14 +172,15 @@ Two assets groups implement the two‑phase flow:
 2) Phase‑2 — Essay Generation (`group_generation_essays.py`)
    - Assets: `essay_prompt`, `essay_response` (partitioned by `gen_id`).
    - Modes: `llm` (default; uses parsed draft as input) and `copy` (returns parsed draft verbatim). Essay‑level parser mode is deprecated after parser‑first.
-   - Essay templates live under `data/1_raw/generation_templates/essay/` and typically include a placeholder like `{{ links_block }}` / `{{ draft_block }}` to include the Phase‑1 text in prompts.
+   - Essay templates live under `data/1_raw/templates/essay/` and typically include a placeholder like `{{ links_block }}` / `{{ draft_block }}` to include the Phase‑1 text in prompts.
    - Behavior: Writes prompt/raw/parsed/metadata to `data/gens/essay/<gen_id>/`; loads the parent draft via `parent_gen_id` from `data/gens/draft/<parent>/parsed.txt`.
 
 **Template Structure**:
 ```
-data/1_raw/generation_templates/
-├── draft/   # Phase‑1 templates
-└── essay/   # Phase‑2 templates
+data/1_raw/templates/
+├── draft/       # Phase‑1 templates
+├── essay/       # Phase‑2 templates
+└── evaluation/  # Evaluator prompt templates
 ```
 
 ### 6. Results Processing (`results_processing.py`)
@@ -306,7 +307,7 @@ data/
 ├── 1_raw/                      # External inputs only
 │   ├── concepts/
 │   ├── concepts_metadata.csv
-│   ├── generation_templates/
+│   ├── templates/
 │   │   ├── draft/              # Phase‑1 draft Jinja templates
 │   │   └── essay/              # Phase‑2 essay Jinja templates
 │   ├── draft_templates.csv     # Active draft templates (+ optional parser)

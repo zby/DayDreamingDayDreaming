@@ -48,7 +48,7 @@ def load_known_templates(base_data: Path) -> Dict[str, Set[str]]:
 
     # Evaluation templates from CSV and directory
     eval_csv = base_data / "1_raw" / "evaluation_templates.csv"
-    eval_dir = base_data / "1_raw" / "evaluation_templates"
+    eval_dir = base_data / "1_raw" / "templates" / "evaluation"
     if eval_csv.exists():
         try:
             df = pd.read_csv(eval_csv)
@@ -64,9 +64,9 @@ def load_known_templates(base_data: Path) -> Dict[str, Set[str]]:
     link_csv = base_data / "1_raw" / "link_templates.csv"
     draft_csv = base_data / "1_raw" / "draft_templates.csv"
     essay_csv = base_data / "1_raw" / "essay_templates.csv"
-    link_dir = base_data / "1_raw" / "generation_templates" / "links"
-    draft_dir = base_data / "1_raw" / "generation_templates" / "draft"
-    essay_dir = base_data / "1_raw" / "generation_templates" / "essay"
+    link_dir = base_data / "1_raw" / "templates" / "draft"
+    draft_dir = base_data / "1_raw" / "templates" / "draft"
+    essay_dir = base_data / "1_raw" / "templates" / "essay"
     if link_csv.exists():
         try:
             df = pd.read_csv(link_csv)

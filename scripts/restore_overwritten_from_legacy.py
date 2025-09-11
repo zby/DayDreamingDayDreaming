@@ -52,9 +52,9 @@ def _load_known_templates(base_data: Path):
                 essay.update(df["template_id"].astype(str).tolist())
     except Exception:
         pass
-    for p in (base_data / "1_raw" / "generation_templates" / "draft").glob("*.txt"):
+    for p in (base_data / "1_raw" / "templates" / "draft").glob("*.txt"):
         draft.add(p.stem)
-    for p in (base_data / "1_raw" / "generation_templates" / "essay").glob("*.txt"):
+    for p in (base_data / "1_raw" / "templates" / "essay").glob("*.txt"):
         essay.add(p.stem)
     return draft, essay
 

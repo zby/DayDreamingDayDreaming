@@ -37,4 +37,4 @@ Note: prefer `.venv/bin/pytest` instead of `uv run pytest` — uv may attempt to
 - Use dependency injection for testability
 - Fail early with clear error messages rather than defensive programming  
 - Commit formatting changes separately from functional changes
-- Don't edit `data/1_raw/generation_templates/gwern_original.txt` - it's copied from the essay
+- Don't edit `data/1_raw/templates/draft/gwern_original.txt` - it's copied from the essay

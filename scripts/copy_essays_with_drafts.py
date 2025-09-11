@@ -25,8 +25,8 @@ What it does:
    - Essay responses from `data/3_generation/essay_responses/`
    - Draft responses from `data/3_generation/draft_responses/` (falls back to legacy `links_responses/`) as `<name>_draft.txt`
    - Template files from the two-phase generation system:
-       * Essay templates: `{essay_template}.txt` from `data/1_raw/generation_templates/essay/`
-       * Draft templates: `{draft_template}.txt` from `data/1_raw/generation_templates/draft/`
+       * Essay templates: `{essay_template}.txt` from `data/1_raw/templates/essay/`
+       * Draft templates: `{draft_template}.txt` from `data/1_raw/templates/draft/`
 
 Notes:
 - Supports the two-phase generation system where drafts and essays use different templates
@@ -376,8 +376,8 @@ def copy_essays_with_drafts(
     generation_info: List[dict],
     essay_responses_dir: str = "data/3_generation/essay_responses",
     draft_responses_dir: str = "data/3_generation/draft_responses",
-    essay_templates_dir: str = "data/1_raw/generation_templates/essay",
-    draft_templates_dir: str = "data/1_raw/generation_templates/draft",
+    essay_templates_dir: str = "data/1_raw/templates/essay",
+    draft_templates_dir: str = "data/1_raw/templates/draft",
     evaluation_responses_dir: str = "data/4_evaluation/evaluation_responses",
     evaluation_model_id: str = "sonnet-4",
     evaluation_output_subdir: str = "evaluations_sonnet",
@@ -392,7 +392,7 @@ def copy_essays_with_drafts(
         essay_responses_dir: Directory containing essay response files
         draft_responses_dir: Directory containing draft response files (falls back to legacy links_responses)
         essay_templates_dir: Directory containing essay template files
-        draft_templates_dir: Directory containing draft template files (falls back to legacy generation_templates/links)
+        draft_templates_dir: Directory containing draft template files (falls back to legacy links if detected)
         output_dir: Output directory to copy files to
     """
     

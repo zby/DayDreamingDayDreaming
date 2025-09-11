@@ -67,7 +67,7 @@ The pipeline uses a two‑phase generation approach for quality and control:
 
 Templates are organized by phase:
 ```
-data/1_raw/generation_templates/
+data/1_raw/templates/
 ├── draft/                    # Phase 1: Draft templates
 │   ├── creative-synthesis-v7.txt
 │   └── systematic-analytical.txt
@@ -123,14 +123,14 @@ Edit the template CSV files to control which templates are active:
 - Parser column: if the draft output requires extraction, set a valid `parser` name (e.g., `essay_idea_last`). Parsing happens in Phase‑1 and failures there will fail the draft with a clear error. RAW LLM output remains saved under `data/gens/draft/<gen_id>/raw.txt` for debugging.
 - Parser registry: supported parser names are defined in `daydreaming_dagster/utils/draft_parsers.py`. To add a new parser, implement and register it there.
 - To introduce a new draft template:
-  - Add a file under `data/1_raw/generation_templates/draft/<template_id>.txt`.
+  - Add a file under `data/1_raw/templates/draft/<template_id>.txt`.
   - Add a row to `data/1_raw/draft_templates.csv` with the same `template_id`, set `active=true`, and set `parser` if needed.
 
 **Essay Templates** (`data/1_raw/essay_templates.csv`):
 - Set desired essay-phase templates to `active: true`.
 - Generator column (`generator`): `llm` (default) uses the parsed draft as input; `copy` returns the parsed draft verbatim. Essay‑level parser mode is deprecated after parser‑first.
 
-This limits generation to specific prompt styles for each phase of the two-phase generation process. You can also override the template root by setting `GEN_TEMPLATES_ROOT` (defaults to `data/1_raw/generation_templates`).
+This limits generation to specific prompt styles for each phase of the two-phase generation process. You can also override the template root by setting `GEN_TEMPLATES_ROOT` (defaults to `data/1_raw/templates`).
 
 #### 3. Mark Experiment Metadata
 
