@@ -9,44 +9,26 @@ from ..constants import FILE_PROMPT, STAGES
 class GensPromptIOManager(IOManager):
     """
     IO manager that persists prompts to the gens store (data/gens/<stage>/<gen_id>/prompt.txt)
-    and reads them back for downstream assets. Gen IDs are read from a configured
-    tasks CSV under data/2_tasks/ by matching the partition key column.
+    and reads them back for downstream assets. Partition keys are gen_ids.
 
     Config:
     - gens_root: base generations directory (data/gens)
-    - tasks_root: tasks directory (data/2_tasks)
     - stage: one of {draft, essay, evaluation}
-    - tasks_csv_name: name of the tasks CSV (e.g., draft_generation_tasks.csv)
-    - id_col: partition key column (must be gen_id when using doc-id partitions)
+
+    Backward-compat constructor parameters for tasks are accepted but ignored.
     """
 
-    def __init__(self, gens_root: Path, tasks_root: Path, *, stage: str, tasks_csv_name: str | None, id_col: str):
+    def __init__(self, gens_root: Path, tasks_root: Path | None = None, *, stage: str, tasks_csv_name: str | None = None, id_col: str | None = None):
         self.gens_root = Path(gens_root)
-        self.tasks_root = Path(tasks_root)
         stage_str = str(stage)
         if stage_str not in STAGES:
             raise ValueError(f"Invalid stage '{stage_str}'. Expected one of {STAGES}.")
         self.stage = stage_str
-        self.tasks_csv_name = str(tasks_csv_name) if tasks_csv_name is not None else None
-        self.id_col = str(id_col)
+        # tasks_* parameters are ignored in membership-first mode
 
     def _resolve_gen_id(self, partition_key: str) -> str:
-        # If id_col is already gen_id, the partition key is the gen id.
-        if self.id_col == "gen_id" or self.tasks_csv_name is None:
-            return str(partition_key)
-        csv = self.tasks_root / str(self.tasks_csv_name)
-        if not csv.exists():
-            raise FileNotFoundError(f"Tasks CSV not found: {csv}")
-        df = pd.read_csv(csv)
-        if "gen_id" not in df.columns:
-            raise ValueError(f"Tasks CSV missing required 'gen_id' column: {csv}")
-        m = df[df[self.id_col] == partition_key]
-        if m.empty:
-            raise KeyError(f"No row in {csv} for {self.id_col}={partition_key}")
-        gen_id = str(m.iloc[0]["gen_id"])  # type: ignore[index]
-        if not gen_id or gen_id.lower() == "nan":
-            raise ValueError(f"Empty gen_id in {csv} for {self.id_col}={partition_key}")
-        return gen_id
+        # Partition key is the gen_id in membership-first mode
+        return str(partition_key)
 
     def handle_output(self, context: OutputContext, obj: str):
         pk = context.partition_key

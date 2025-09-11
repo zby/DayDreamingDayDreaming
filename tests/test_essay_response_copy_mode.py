@@ -73,18 +73,14 @@ def test_essay_response_copy_mode_returns_draft_content(tmp_path: Path):
     draft_content = "Line A\nLine B\nLine C\n"
     (draft_dir / "parsed.txt").write_text(draft_content, encoding="utf-8")
 
-    tasks = pd.DataFrame(
-        [
-            {
-                "essay_task_id": essay_task_id,
-                "parent_gen_id": parent_gen_id,
-                "draft_template": "deliberate-rolling-thread-v2",
-                "essay_template": essay_template,
-                "generation_model": "unused_model",
-                "gen_id": essay_gen_id,
-            }
-        ]
-    )
+    # Seed membership.csv to resolve parent and template
+    cohort = "TEST-COPY"
+    (tmp_path / "cohorts" / cohort).mkdir(parents=True, exist_ok=True)
+    membership = pd.DataFrame([
+        {"stage": "draft", "gen_id": parent_gen_id, "cohort_id": cohort, "parent_gen_id": "", "combo_id": "c1", "template_id": "deliberate-rolling-thread-v2", "llm_model_id": "unused_model"},
+        {"stage": "essay", "gen_id": essay_gen_id, "cohort_id": cohort, "parent_gen_id": parent_gen_id, "combo_id": "c1", "template_id": essay_template, "llm_model_id": "unused_model"},
+    ])
+    (tmp_path / "cohorts" / cohort / "membership.csv").write_text(membership.to_csv(index=False), encoding="utf-8")
 
     ctx = _FakeContext(
         partition_key=essay_gen_id,
@@ -92,7 +88,7 @@ def test_essay_response_copy_mode_returns_draft_content(tmp_path: Path):
         draft_io=_FakeDraftIO(draft_content),
     )
 
-    result = essay_response_impl(ctx, essay_prompt="COPY_MODE", essay_generation_tasks=tasks)
+    result = essay_response_impl(ctx, essay_prompt="COPY_MODE")
 
     assert result == draft_content
     mode = ctx._meta.get("mode")

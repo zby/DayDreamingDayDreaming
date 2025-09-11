@@ -32,28 +32,15 @@ from ..constants import ESSAY, EVALUATION
 def evaluation_prompt(context) -> str:
     gen_id = context.partition_key
     mrow, _cohort = find_membership_row_by_gen(getattr(context.resources, "data_root", "data"), "evaluation", str(gen_id))
-    if mrow is None:
-        # BACKCOMPAT: read tasks CSV directly
-        import pandas as _pd
-        _data_root = Path(getattr(context.resources, "data_root", "data"))
-        try:
-            _df = _pd.read_csv(_data_root / "2_tasks" / "evaluation_tasks.csv")
-            _row = _df[_df["gen_id"].astype(str) == str(gen_id)].iloc[0]
-            parent_gen_id = _row.get("parent_gen_id")
-            evaluation_template = _row.get("evaluation_template")
-        except Exception:
-            parent_gen_id = None
-            evaluation_template = None
-    else:
-        parent_gen_id = mrow.get("parent_gen_id")
-        evaluation_template = mrow.get("template_id")
+    parent_gen_id = mrow.get("parent_gen_id") if mrow is not None else None
+    evaluation_template = mrow.get("template_id") if mrow is not None else None
     if not (isinstance(parent_gen_id, str) and parent_gen_id.strip()):
         raise Failure(
             description="Missing parent_gen_id for evaluation task",
             metadata={
                 "function": MetadataValue.text("evaluation_prompt"),
                 "gen_id": MetadataValue.text(str(gen_id)),
-                "resolution": MetadataValue.text("Provide parent_gen_id (essay gen id) in evaluation_tasks.csv"),
+                "resolution": MetadataValue.text("Ensure evaluation row exists in cohort membership with a valid parent_gen_id"),
             },
         )
     data_root = Path(getattr(context.resources, "data_root", "data"))
@@ -126,25 +113,14 @@ def evaluation_prompt(context) -> str:
 def evaluation_response(context, evaluation_prompt) -> str:
     gen_id = context.partition_key
     mrow, _cohort = find_membership_row_by_gen(getattr(context.resources, "data_root", "data"), "evaluation", str(gen_id))
-    if mrow is not None:
-        model_name = str(mrow.get("llm_model_id") or mrow.get("evaluation_model") or "").strip()
-    else:
-        # Use model_id from CSV fallback
-        import pandas as _pd
-        _data_root = Path(getattr(context.resources, "data_root", "data"))
-        try:
-            _df = _pd.read_csv(_data_root / "2_tasks" / "evaluation_tasks.csv")
-            _row = _df[_df["gen_id"].astype(str) == str(gen_id)].iloc[0]
-            model_name = resolve_llm_model_id(_row, "evaluation")
-        except Exception:
-            model_name = ""
+    model_name = str(mrow.get("llm_model_id") or mrow.get("evaluation_model") or "").strip() if mrow is not None else ""
     if not model_name:
         raise Failure(
             description="Missing evaluator model for evaluation task",
             metadata={
                 "function": MetadataValue.text("evaluation_response"),
                 "gen_id": MetadataValue.text(str(gen_id)),
-                "resolution": MetadataValue.text("Ensure evaluation_tasks.csv includes an evaluation_llm_model (model id) column"),
+                "resolution": MetadataValue.text("Ensure evaluation row in cohort membership includes an llm_model_id"),
             },
         )
     llm_client = context.resources.openrouter_client
@@ -158,31 +134,16 @@ def evaluation_response(context, evaluation_prompt) -> str:
     # Write to filesystem gens/evaluation
     import time
     from pathlib import Path as _Path
-    if mrow is not None:
-        parent_gen_id = mrow.get("parent_gen_id")
-        evaluation_template = mrow.get("template_id")
-        model_id = str(mrow.get("llm_model_id") or mrow.get("evaluation_model") or "")
-    else:
-        # CSV fallback
-        import pandas as _pd
-        _data_root = Path(getattr(context.resources, "data_root", "data"))
-        try:
-            _df = _pd.read_csv(_data_root / "2_tasks" / "evaluation_tasks.csv")
-            _row = _df[_df["gen_id"].astype(str) == str(gen_id)].iloc[0]
-            parent_gen_id = _row.get("parent_gen_id")
-            evaluation_template = _row.get("evaluation_template")
-            model_id = _row.get("evaluation_llm_model") or _row.get("evaluation_model") or _row.get("evaluation_model_id")
-        except Exception:
-            parent_gen_id = None
-            evaluation_template = None
-            model_id = None
+    parent_gen_id = mrow.get("parent_gen_id") if mrow is not None else None
+    evaluation_template = mrow.get("template_id") if mrow is not None else None
+    model_id = str(mrow.get("llm_model_id") or mrow.get("evaluation_model") or "") if mrow is not None else None
     if not (isinstance(gen_id, str) and gen_id.strip()):
         raise Failure(
             description="Missing gen_id for evaluation task",
             metadata={
                 "function": MetadataValue.text("evaluation_response"),
                 "gen_id": MetadataValue.text(str(gen_id)),
-                "resolution": MetadataValue.text("Ensure evaluation_tasks.csv includes a gen_id column"),
+                "resolution": MetadataValue.text("Partition key must be a valid evaluation gen_id from cohort membership"),
             },
         )
     docs_root = _Path(getattr(context.resources, "data_root", "data")) / "gens"

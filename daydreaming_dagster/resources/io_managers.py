@@ -20,19 +20,7 @@ class CSVIOManager(IOManager):
         if obj is None or (hasattr(obj, 'empty') and obj.empty):
             context.log.info(f"Skipping output for {context.asset_key} as it is empty")
             return
-        # TEMPORARY: allow disabling task CSV writes to advance task-layer removal
-        # Only applies when this manager writes under data/2_tasks and the flag is set.
-        try:
-            if os.environ.get('DD_DISABLE_TASK_CSV_WRITES') == '1':
-                base_last = str(self.base_path).rstrip('/').split('/')[-1]
-                if base_last == '2_tasks':
-                    context.log.warning(
-                        "DD_DISABLE_TASK_CSV_WRITES=1: skipping CSV write for %s",
-                        "/".join(context.asset_key.path),
-                    )
-                    return
-        except Exception:
-            pass
+        # No special-casing for legacy task CSV locations; writes are always enabled.
             
         asset_name = context.asset_key.path[-1]
         file_path = self.base_path / f"{asset_name}.csv"

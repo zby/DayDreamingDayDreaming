@@ -13,9 +13,7 @@ from .partitions import draft_gens_partitions
 from ..utils.template_loader import load_generation_template
 from ..utils.raw_readers import read_draft_templates
 from ..utils.draft_parsers import get_draft_parser
-from ..utils.dataframe_helpers import resolve_llm_model_id
 from ..utils.membership_lookup import find_membership_row_by_gen
-import pandas as _pd
 from ..utils.generation import Generation
 from ..utils.metadata import build_generation_metadata
 from ..constants import DRAFT, FILE_RAW
@@ -40,40 +38,14 @@ def draft_prompt(
     data_root = Path(getattr(context.resources, "data_root", "data"))
     row, cohort = find_membership_row_by_gen(data_root, "draft", str(gen_id))
     if row is None:
-        # BACKCOMPAT: fall back to provided tasks DF first; then tasks CSV
-        tdf = None
-        try:
-            tdf = _pd.read_csv(data_root / "2_tasks" / "draft_generation_tasks.csv")
-        except Exception:
-            tdf = None
-        if tdf is not None and not tdf.empty:
-            mask = tdf["gen_id"].astype(str) == str(gen_id)
-            if mask.any():
-                trow = tdf[mask].iloc[0]
-                combo_id = str(trow.get("combo_id") or "")
-                template_name = str(trow.get("draft_template") or "")
-            else:
-                # FINAL FALLBACK: use first active draft template and first combo
-                try:
-                    from ..utils.raw_readers import read_draft_templates as _read_dt
-                    ddf = _read_dt(data_root)
-                    if "active" in ddf.columns:
-                        ddf = ddf[ddf["active"] == True]
-                    template_name = str(ddf.iloc[0]["template_id"]) if not ddf.empty else ""
-                except Exception:
-                    template_name = ""
-                combo_id = str(content_combinations[0].combo_id) if content_combinations else ""
-        else:
-            # FINAL FALLBACK as above
-            try:
-                from ..utils.raw_readers import read_draft_templates as _read_dt
-                ddf = _read_dt(data_root)
-                if "active" in ddf.columns:
-                    ddf = ddf[ddf["active"] == True]
-                template_name = str(ddf.iloc[0]["template_id"]) if not ddf.empty else ""
-            except Exception:
-                template_name = ""
-            combo_id = str(content_combinations[0].combo_id) if content_combinations else ""
+        raise Failure(
+            description="Cohort membership row not found for draft gen_id",
+            metadata={
+                "function": MetadataValue.text("draft_prompt"),
+                "gen_id": MetadataValue.text(str(gen_id)),
+                "resolution": MetadataValue.text("Materialize cohort_id,cohort_membership to register this gen_id; use that partition key"),
+            },
+        )
     else:
         combo_id = str(row.get("combo_id") or "")
         template_name = str(row.get("template_id") or row.get("draft_template") or "")
@@ -133,45 +105,32 @@ def draft_prompt(
     return prompt
 
 
-def _draft_response_impl(context, draft_prompt, draft_generation_tasks=None, **_kwargs) -> str:
+def _draft_response_impl(context, draft_prompt, **_kwargs) -> str:
     """Generate Phase 1 LLM responses for drafts (core implementation)."""
     gen_id = context.partition_key
     # Resolve model id from cohort membership
     data_root = Path(getattr(context.resources, "data_root", "data"))
     row, cohort = find_membership_row_by_gen(data_root, "draft", str(gen_id))
     if row is None:
-        # BACKCOMPAT: try provided tasks DF first, then tasks CSV to get fields
-        try:
-            tdf = _pd.read_csv(data_root / "2_tasks" / "draft_generation_tasks.csv")
-            mask = tdf["gen_id"].astype(str) == str(gen_id)
-            if not mask.any():
-                raise IndexError("gen_id not found in tasks")
-            row = tdf[mask].iloc[0]
-        except Exception:
-            row = None
+        raise Failure(
+            description="Cohort membership row not found for draft gen_id",
+            metadata={
+                "function": MetadataValue.text("draft_response"),
+                "gen_id": MetadataValue.text(str(gen_id)),
+                "resolution": MetadataValue.text("Ensure cohort membership includes this draft gen_id"),
+            },
+        )
     # Use model_id from membership; LLM client maps id -> provider internally
-    model_id = str(row.get("llm_model_id") or row.get("generation_model") or "").strip() if row is not None else ""
+    model_id = str(row.get("llm_model_id") or row.get("generation_model") or "").strip()
     if not model_id:
-        # Fallback to resolver for backwards compatibility if columns differ
-        model_id = resolve_llm_model_id(row, "draft") if row is not None else ""
-    if not model_id:
-        # FINAL FALLBACK: choose first active generation model
-        try:
-            from ..utils.raw_readers import read_llm_models as _read_models
-            mdf = _read_models(data_root)
-            mdf = mdf[mdf["for_generation"] == True]
-            model_id = str(mdf.iloc[0]["id"]) if not mdf.empty else ""
-        except Exception:
-            model_id = ""
-        if not model_id:
-            raise Failure(
-                description="Missing generation_model for draft task",
-                metadata={
-                    "function": MetadataValue.text("draft_response"),
-                    "gen_id": MetadataValue.text(str(gen_id)),
-                    "resolution": MetadataValue.text("Ensure a generation-capable model is present in data/1_raw/llm_models.csv"),
-                },
-            )
+        raise Failure(
+            description="Missing generation model for draft task",
+            metadata={
+                "function": MetadataValue.text("draft_response"),
+                "gen_id": MetadataValue.text(str(gen_id)),
+                "resolution": MetadataValue.text("Ensure cohort membership contains llm_model_id for this draft"),
+            },
+        )
 
     llm_client = context.resources.openrouter_client
     experiment_config = context.resources.experiment_config
@@ -370,7 +329,7 @@ def draft_response(context, draft_prompt) -> str:
             metadata={
                 "function": MetadataValue.text("draft_response"),
                 "gen_id": MetadataValue.text(str(gen_id)),
-                "resolution": MetadataValue.text("Ensure draft_generation_tasks.csv includes a gen_id column"),
+                "resolution": MetadataValue.text("Partition key must be a valid draft gen_id from cohort membership"),
             },
         )
 

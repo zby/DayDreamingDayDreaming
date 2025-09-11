@@ -114,33 +114,12 @@ def _load_phase1_text_by_parent_doc(context, parent_gen_id: str) -> tuple[str, s
 # Note: combo/model-based resolution removed — parent_gen_id is required for essays.
 
 
-def _essay_prompt_impl(context, essay_generation_tasks=None) -> str:
+def _essay_prompt_impl(context) -> str:
     """Generate Phase‑2 prompts based on Phase‑1 drafts."""
     gen_id = context.partition_key
-    # Prefer cohort membership lookup; fall back to tasks for backcompat
     mrow, _cohort = find_membership_row_by_gen(getattr(context.resources, "data_root", "data"), "essay", str(gen_id))
-    if mrow is not None:
-        template_name = str(mrow.get("template_id") or mrow.get("essay_template") or "")
-        parent_gen_id = mrow.get("parent_gen_id")
-    else:
-        # BACKCOMPAT: prefer provided tasks DF; else read tasks CSV
-        _row = None
-        try:
-            import pandas as _pd
-            if isinstance(essay_generation_tasks, _pd.DataFrame) and not essay_generation_tasks.empty:
-                tdf = essay_generation_tasks
-            else:
-                _data_root = Path(getattr(context.resources, "data_root", "data"))
-                tdf = _pd.read_csv(_data_root / "2_tasks" / "essay_generation_tasks.csv")
-            mask = tdf["gen_id"].astype(str) == str(gen_id)
-            if mask.any():
-                _row = tdf[mask].iloc[0]
-            elif len(tdf) > 0:
-                _row = tdf.iloc[0]
-        except Exception:
-            _row = None
-        template_name = str((_row.get("essay_template") if _row is not None else "") or "")
-        parent_gen_id = _row.get("parent_gen_id") if _row is not None else None
+    template_name = str(mrow.get("template_id") or mrow.get("essay_template") or "") if mrow is not None else ""
+    parent_gen_id = mrow.get("parent_gen_id") if mrow is not None else None
 
     generator_mode = _get_essay_generator_mode(context.resources.data_root, template_name)
     if generator_mode == "copy":
@@ -160,7 +139,7 @@ def _essay_prompt_impl(context, essay_generation_tasks=None) -> str:
             metadata={
                 "function": MetadataValue.text("essay_prompt"),
                 "gen_id": MetadataValue.text(str(gen_id)),
-                "resolution": MetadataValue.text("Provide parent_gen_id (draft gen id) in essay_generation_tasks.csv"),
+                "resolution": MetadataValue.text("Ensure essay row exists in cohort membership with a valid parent_gen_id"),
             },
         )
     draft_text, used_source = _load_phase1_text_by_parent_doc(context, str(parent_gen_id))
@@ -230,7 +209,7 @@ def essay_prompt(context) -> str:
     return _essay_prompt_impl(context)
 
 
-def _essay_response_impl(context, essay_prompt, essay_generation_tasks=None) -> str:
+def _essay_response_impl(context, essay_prompt) -> str:
     """Generate Phase‑2 essay responses.
 
     Always resolves and loads the Phase‑1 (draft) text via parent_gen_id first,
@@ -242,24 +221,8 @@ def _essay_response_impl(context, essay_prompt, essay_generation_tasks=None) -> 
         template_name = str(mrow.get("template_id") or mrow.get("essay_template") or "")
         parent_gen_id = mrow.get("parent_gen_id")
     else:
-        # BACKCOMPAT: prefer provided tasks DF; else read tasks CSV
-        _row = None
-        try:
-            import pandas as _pd
-            if isinstance(essay_generation_tasks, _pd.DataFrame) and not essay_generation_tasks.empty:
-                tdf = essay_generation_tasks
-            else:
-                _data_root = Path(getattr(context.resources, "data_root", "data"))
-                tdf = _pd.read_csv(_data_root / "2_tasks" / "essay_generation_tasks.csv")
-            mask = tdf["gen_id"].astype(str) == str(gen_id)
-            if mask.any():
-                _row = tdf[mask].iloc[0]
-            elif len(tdf) > 0:
-                _row = tdf.iloc[0]
-        except Exception:
-            _row = None
-        template_name = str((_row.get("essay_template") if _row is not None else "") or "")
-        parent_gen_id = _row.get("parent_gen_id") if _row is not None else None
+        template_name = ""
+        parent_gen_id = None
     # Allow explicit COPY_MODE hint from caller/tests to bypass template lookup
     if isinstance(essay_prompt, str) and essay_prompt.strip().upper().startswith("COPY_MODE"):
         mode = "copy"
@@ -273,7 +236,7 @@ def _essay_response_impl(context, essay_prompt, essay_generation_tasks=None) -> 
             metadata={
                 "function": MetadataValue.text("_essay_response_impl"),
                 "gen_id": MetadataValue.text(str(gen_id)),
-                "resolution": MetadataValue.text("Provide parent_gen_id (draft gen id) in essay_generation_tasks.csv"),
+                "resolution": MetadataValue.text("Ensure essay row exists in cohort membership with a valid parent_gen_id"),
             },
         )
     draft_text, used_source = _load_phase1_text_by_parent_doc(context, str(parent_gen_id))
@@ -310,37 +273,15 @@ def _essay_response_impl(context, essay_prompt, essay_generation_tasks=None) -> 
             }
         )
         return text
-    # Default LLM path (persist RAW early; apply truncation guard)
-    # Use model id from membership; fall back to tasks for backcompat
-    if mrow is not None:
-        model_id = str(mrow.get("llm_model_id") or mrow.get("generation_model") or "").strip()
-    else:
-        # Fallback: prefer provided tasks DF; else read tasks CSV
-        import pandas as _pd
-        try:
-            if isinstance(essay_generation_tasks, _pd.DataFrame) and not essay_generation_tasks.empty:
-                tdf = essay_generation_tasks
-            else:
-                _data_root = Path(getattr(context.resources, "data_root", "data"))
-                tdf = _pd.read_csv(_data_root / "2_tasks" / "essay_generation_tasks.csv")
-            mask = tdf["gen_id"].astype(str) == str(gen_id)
-            if mask.any():
-                _row = tdf[mask].iloc[0]
-                model_id = resolve_llm_model_id(_row, "essay")
-            elif len(tdf) > 0:
-                _row = tdf.iloc[0]
-                model_id = resolve_llm_model_id(_row, "essay")
-            else:
-                model_id = ""
-        except Exception:
-            model_id = ""
+    # Default LLM path (persist RAW early; apply truncation guard). Use model id from membership
+    model_id = str(mrow.get("llm_model_id") or mrow.get("generation_model") or "").strip() if mrow is not None else ""
     if not model_id:
         raise Failure(
             description="Missing generation_model for essay task",
             metadata={
                 "function": MetadataValue.text("_essay_response_impl"),
                 "gen_id": MetadataValue.text(str(gen_id)),
-                "resolution": MetadataValue.text("Ensure essay_generation_tasks.csv includes a generation_model (model id) column"),
+                "resolution": MetadataValue.text("Ensure cohort membership includes an llm_model_id for this essay"),
             },
         )
     llm_client = context.resources.openrouter_client
@@ -427,19 +368,9 @@ def essay_response(context, essay_prompt) -> str:
         model_id = (mrow.get("llm_model_id") or mrow.get("generation_model"))
         parent_gen_id = mrow.get("parent_gen_id")
     else:
-        # BACKCOMPAT CSV fallback
-        import pandas as _pd
-        _data_root = Path(getattr(context.resources, "data_root", "data"))
-        try:
-            _df = _pd.read_csv(_data_root / "2_tasks" / "essay_generation_tasks.csv")
-            _row = _df[_df["gen_id"].astype(str) == str(gen_id)].iloc[0]
-            essay_template = _row.get("essay_template")
-            model_id = _row.get("generation_model") or _row.get("generation_model_id")
-            parent_gen_id = _row.get("parent_gen_id")
-        except Exception:
-            essay_template = None
-            model_id = None
-            parent_gen_id = None
+        essay_template = None
+        model_id = None
+        parent_gen_id = None
     generator_mode = (_get_essay_generator_mode(context.resources.data_root, essay_template) or "llm").lower()
 
     if not (isinstance(parent_gen_id, str) and parent_gen_id and parent_gen_id.strip()):
@@ -448,7 +379,7 @@ def essay_response(context, essay_prompt) -> str:
             metadata={
                 "function": MetadataValue.text("essay_response"),
                 "gen_id": MetadataValue.text(str(gen_id)),
-                "resolution": MetadataValue.text("Provide parent_gen_id (draft gen id) in essay_generation_tasks.csv"),
+                "resolution": MetadataValue.text("Ensure cohort membership includes a valid parent_gen_id for this essay"),
             },
         )
     gen_id_value = str(gen_id)
@@ -458,7 +389,7 @@ def essay_response(context, essay_prompt) -> str:
             metadata={
                 "function": MetadataValue.text("essay_response"),
                 "gen_id": MetadataValue.text(str(gen_id)),
-                "resolution": MetadataValue.text("Ensure essay_generation_tasks.csv includes a gen_id column"),
+                "resolution": MetadataValue.text("Partition key must be a valid essay gen_id from cohort membership"),
             },
         )
 
