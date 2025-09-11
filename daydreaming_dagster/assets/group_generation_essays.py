@@ -10,7 +10,6 @@ from jinja2 import Environment
 from .partitions import essay_gens_partitions
 from ..utils.template_loader import load_generation_template
 from ..utils.raw_readers import read_essay_templates
-from ..utils.dataframe_helpers import get_task_row, resolve_llm_model_id
 from ..utils.membership_lookup import find_membership_row_by_gen
 from ..utils.generation import Generation
 from ..unified.stage_runner import StageRunner, StageRunSpec

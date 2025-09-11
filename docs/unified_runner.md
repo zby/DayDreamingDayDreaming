@@ -34,6 +34,62 @@ Usage in assets
 - Essay: `mode` from `essay_templates.csv` `generator` (`llm` or `copy`); for copy, set `pass_through_from` to draft parsed path.
 - Evaluation: `parser_name` from `evaluation_templates.csv`; values include the essay `parsed.txt` under `response`.
 
+Examples
+
+- Draft (LLM path with pre-rendered prompt):
+```
+from daydreaming_dagster.unified.stage_runner import StageRunner, StageRunSpec
+
+runner = StageRunner()
+spec = StageRunSpec(
+  stage="draft",
+  gen_id=gen_id,
+  template_id=draft_template_id,
+  values={},                 # prompt provided
+  out_dir=data_root/"gens",
+  mode="llm",
+  model=generation_model_id, # from membership
+  prompt_text=draft_prompt,  # from draft_prompt asset
+  parser_name=optional_draft_parser,
+  max_tokens=cfg.draft_generation_max_tokens,
+)
+res = runner.run(spec, llm_client=context.resources.openrouter_client)
+```
+
+- Essay (copy mode):
+```
+spec = StageRunSpec(
+  stage="essay",
+  gen_id=gen_id,
+  template_id=essay_template_id,
+  values={"draft_block": draft_text, "links_block": draft_text},
+  out_dir=data_root/"gens",
+  mode="copy",
+  pass_through_from=(data_root/"gens"/"draft"/parent_gen_id/"parsed.txt"),
+)
+res = runner.run(spec, llm_client=context.resources.openrouter_client)
+```
+
+- Evaluation (LLM + parse):
+```
+from daydreaming_dagster.utils.evaluation_parsing_config import load_parser_map, require_parser_for_template
+
+parser_map = load_parser_map(data_root)
+parser_name = require_parser_for_template(evaluation_template_id, parser_map)
+spec = StageRunSpec(
+  stage="evaluation",
+  gen_id=gen_id,
+  template_id=evaluation_template_id,
+  values={"response": essay_parsed_text},
+  out_dir=data_root/"gens",
+  mode="llm",
+  model=evaluation_model_id,
+  parser_name=parser_name,
+  max_tokens=cfg.evaluation_max_tokens,
+)
+res = runner.run(spec, llm_client=context.resources.openrouter_client)
+```
+
 Files written
 - `data/gens/<stage>/<gen_id>/prompt.txt` (LLM mode)
 - `data/gens/<stage>/<gen_id>/raw.txt` (LLM mode)
@@ -43,4 +99,3 @@ Files written
 Strict schema
 - Template CSVs are strict: `generator` present in all files (`llm` for draft/evaluation; `llm` or `copy` for essay), `parser` required for evaluation; `active` column placed last.
 - Membership is the only source for `llm_model_id`, `template_id`, and parent linkage.
-
