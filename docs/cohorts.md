@@ -4,6 +4,7 @@ Cohorts are explicit, reproducible identifiers that bind a complete run of the p
 
 See also
 - Curated Runs Quickstart: docs/guides/selection_and_cube.md
+  (this content has been merged below; see Curated Selection Quickstart)
 
 What the assets do
 - Asset `cohort_id` (group `task_definitions`) computes a deterministic ID from a manifest of:
@@ -79,6 +80,71 @@ Evaluating historical essays
 - Create or edit `data/2_tasks/selected_essays.txt` with one essay `gen_id` per line.
 - Materialize `cohort_id,cohort_membership` to register evaluation partitions for active axes.
 - Materialize `evaluation_prompt,evaluation_response` for the desired evaluation `gen_id`s.
+
+## Curated Selection Quickstart
+
+This section summarizes the curated workflow previously documented in the selection guide.
+
+Prerequisites
+- Set `DAGSTER_HOME` to a writable directory, e.g. `export DAGSTER_HOME=$(pwd)/dagster_home`.
+- Optional: build cross‑experiment scores if you plan to select by prior‑art top‑N:
+  `uv run python scripts/aggregate_scores.py --output data/7_cross_experiment/parsed_scores.csv`.
+- Start Dagster for a richer experience: `uv run dagster dev -f daydreaming_dagster/definitions.py`.
+
+Step 1 — Select essay gen_ids
+- Use `scripts/select_top_prior_art.py` to pick top‑N by prior‑art scores. The script writes `data/2_tasks/selected_essays.txt` with one essay `gen_id` per line.
+
+Example
+```bash
+uv run python scripts/select_top_prior_art.py \
+  --top-n 25 \
+  --parsed-scores data/7_cross_experiment/parsed_scores.csv \
+  # optional: --prior-art-templates gemini-prior-art-eval gemini-prior-art-eval-v2
+```
+
+Notes
+- `selected_essays.txt` is the input signal for curated cohort builds.
+- When pivoting or aggregating parsed results, prefer `parent_gen_id` (the essay `gen_id`) for stable grouping.
+
+Step 2 — Build cohort and register partitions
+```bash
+uv run dagster asset materialize --select "cohort_id,cohort_membership" -f daydreaming_dagster/definitions.py
+```
+
+What happens
+- Reads `data/2_tasks/selected_essays.txt` (if present) to build a curated cohort; otherwise falls back to Cartesian from active axes.
+- Writes `data/cohorts/<cohort_id>/membership.csv`;
+  registers dynamic partitions add‑only for draft/essay/evaluation; validates parent integrity.
+
+Running the curated set
+- From the UI, materialize partitions using the registered `gen_id`s (see “Getting partition keys”). Or via CLI:
+
+Drafts and essays (by `gen_id`)
+```bash
+uv run dagster asset materialize -f daydreaming_dagster/definitions.py \
+  --select "draft_prompt,draft_response" --partition "<draft_gen_id>"
+
+uv run dagster asset materialize -f daydreaming_dagster/definitions.py \
+  --select "essay_prompt,essay_response" --partition "<essay_gen_id>"
+```
+
+Evaluations (by `gen_id`)
+```bash
+uv run dagster asset materialize -f daydreaming_dagster/definitions.py \
+  --select "evaluation_prompt,evaluation_response" --partition "<evaluation_gen_id>"
+```
+
+Parsing and summaries
+```bash
+uv run dagster asset materialize -f daydreaming_dagster/definitions.py \
+  --select parsed_scores,final_results
+```
+
+Environment tip
+- Set `DD_COHORT=<cohort_id>` when materializing to ensure new generations reserve IDs under the same cohort. If unset, `cohort_id` is computed deterministically from the manifest, and `cohort_membership` writes both the manifest and membership.
+
+Analysis tip
+- When comparing different curated runs or baselines, include `cohort_id` in your pivots and group by `parent_gen_id` to keep comparisons stable across attempts.
 
 One‑phase essay (copy) vs two‑phase essay (LLM)
 - The essay stage supports two generator modes configured per essay template in `data/1_raw/essay_templates.csv` via the `generator` column:
