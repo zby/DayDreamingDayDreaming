@@ -6,10 +6,10 @@ This guide shows the current, simple flow to run curated drafts/essays/evaluatio
 
 See also
 - Cohorts & membership: docs/cohorts.md
-- Full Active Experiment Cube: docs/architecture/active_experiment_cube.md
+  
 
 Note on cohorts
-- Curated runs now carry a `cohort_id` to keep runs isolated and reproducible. By default, curated scripts use a timestamped cohort (or you can pass an explicit name). The full Active Experiment Cube (AEC) path uses a deterministic cohort by manifest hash. See `docs/architecture/active_experiment_cube.md` for details.
+- Curated runs carry a `cohort_id` to keep runs isolated and reproducible. By default, curated scripts use a timestamped cohort (or you can pass an explicit name). Baseline “full cube” runs use a deterministic cohort computed from a manifest of active combos/templates/models.
 
 ## Prerequisites
 
@@ -52,20 +52,19 @@ What it does
 
 From the Dagster UI, materialize only the partitions you just registered. Or use the CLI, for example:
 
-Drafts and essays
+Drafts and essays (by gen_id)
 ```bash
 uv run dagster asset materialize -f daydreaming_dagster/definitions.py \
-  --select "draft_prompt,draft_response" --partition "<draft_task_id>"
+  --select "draft_prompt,draft_response" --partition "<draft_gen_id>"
 
 uv run dagster asset materialize -f daydreaming_dagster/definitions.py \
-  --select "essay_prompt,essay_response" --partition "<essay_task_id>"
+  --select "essay_prompt,essay_response" --partition "<essay_gen_id>"
 ```
 
-Evaluations
+Evaluations (by gen_id)
 ```bash
 uv run dagster asset materialize -f daydreaming_dagster/definitions.py \
-  --select "evaluation_prompt,evaluation_response" \
-  --partition "<parent_gen_id>__<evaluation_template>__<evaluation_llm_model>"
+  --select "evaluation_prompt,evaluation_response" --partition "<evaluation_gen_id>"
 ```
 
 Parsing and summaries
@@ -79,6 +78,6 @@ Pivoting by parent_gen_id
 - Include `cohort_id` in your pivots when comparing different curated runs or baselines.
 
 Environment tip
-- You can set `DD_COHORT=<cohort_id>` when materializing assets so generation/evaluation assets reserve `gen_id`s seeded by the same cohort. If unset, task assets compute `cohort_id` deterministically; cohort_membership persists the manifest.
+- You can set `DD_COHORT=<cohort_id>` when materializing assets so generation/evaluation assets reserve `gen_id`s seeded by the same cohort. If unset, the cohort assets compute a deterministic `cohort_id`; cohort_membership writes the manifest and membership.
 
 That’s it: one selection script plus a Dagster asset to register only what you want to run — independent of `k_max` or the full cube — with cohorts keeping curated runs isolated and reproducible.

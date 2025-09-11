@@ -11,6 +11,7 @@ from dagster import (
     SkipReason,
     define_asset_job,
 )
+from ..assets.group_cohorts import cohort_id as cohort_id_asset, cohort_membership as cohort_membership_asset
 
 from ..utils.file_fingerprint import FileEntry, combined_fingerprint, scan_files
 from ..utils.raw_state import FingerprintState, read_last_state, write_last_state
@@ -28,7 +29,7 @@ RAW_CSVS = [
 # Recompute cohort membership when raw CSVs change (idempotent; cohort-scoped prune inside)
 raw_reload_job = define_asset_job(
     "raw_reload_job",
-    selection=AssetSelection.keys("cohort_id", "cohort_membership"),
+    selection=AssetSelection.assets(cohort_id_asset, cohort_membership_asset),
 )
 
 

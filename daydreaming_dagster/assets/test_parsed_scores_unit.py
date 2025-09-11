@@ -33,13 +33,8 @@ def test_parsed_scores_enrichment_minimal(tmp_path, monkeypatch):
         fake_parse_all_scores,
     )
 
-    # Keep evaluation_tasks focused to the relevant gen_id
-    eval_tasks = pd.DataFrame([
-        {"gen_id": "E123"},
-    ])
-
     ctx = build_asset_context(resources={"data_root": str(tmp_path)})
-    df = parsed_scores(ctx, evaluation_tasks=eval_tasks)
+    df = parsed_scores(ctx)
 
     # Columns mapped/enriched
     assert "evaluation_llm_model" in df.columns
@@ -50,4 +45,3 @@ def test_parsed_scores_enrichment_minimal(tmp_path, monkeypatch):
     # Path construction is deterministic from data_root + gens + essay + parent + parsed.txt
     expected_path = str(tmp_path / "gens" / "essay" / "D999" / "parsed.txt")
     assert df.loc[0, "generation_response_path"] == expected_path
-

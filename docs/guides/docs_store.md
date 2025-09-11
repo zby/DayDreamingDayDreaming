@@ -27,7 +27,7 @@ Each `metadata.json` should include at least:
 
 ## Invariants
 
-- Task CSVs include a `gen_id` column for every row. Assets write to `data/gens/<stage>/<gen_id>` from that column.
+- Membership (data/cohorts/<cohort_id>/membership.csv) includes a `gen_id` per row and is the source of truth. Assets write to `data/gens/<stage>/<gen_id>` based on that.
 - Essays and evaluations require a valid `parent_gen_id` that exists on disk:
   - `draft` parent for essays
   - `essay` parent for evaluations
@@ -50,7 +50,7 @@ text = gen.parsed_text  # or gen.raw_text / gen.prompt_text / gen.metadata
 ## Troubleshooting
 
 - Missing generation dir:
-  - Check that the relevant task CSV in `data/2_tasks/*.csv` contains `gen_id` for the partition key.
+  - Check that `data/cohorts/<cohort>/membership.csv` lists the `gen_id` for the stage.
   - Ensure upstream parents exist (for essays/evaluations).
 - Empty `parsed.txt` but present `raw.txt`:
   - The generator or parser may have failed; inspect `raw.txt` and `metadata.json`.

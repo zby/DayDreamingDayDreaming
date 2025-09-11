@@ -93,8 +93,9 @@ class InMemoryIOManager(IOManager):
         self._store[key] = obj
 
     def load_input(self, context: InputContext):
+        # Avoid deprecated upstream_output.partition_key access — use InputContext.partition_key
         upstream = context.upstream_output
-        key = (tuple(upstream.asset_key.path), upstream.partition_key)
+        key = (tuple(upstream.asset_key.path), context.partition_key)
         if key not in self._store:
             raise KeyError(f"InMemoryIOManager: no object stored for {key}")
         return self._store[key]

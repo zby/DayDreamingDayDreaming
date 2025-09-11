@@ -23,9 +23,9 @@ The DayDreaming pipeline is built on **Dagster**, a modern data orchestration pl
        │
        ▼
 ┌──────────────────────────────────────────────────────────────┐
-│ Task Definitions (02_tasks)                                   │
-│ • generation_tasks = combos × gen_templates × gen_models      │
-│ • evaluation_tasks = documents × eval_templates × eval_models │
+│ Cohorts (cohort_id + membership)                              │
+│ • cohort_id = deterministic manifest (combos, templates, llms)│
+│ • cohort_membership = normalized rows + partition registration│
 └───────────────┬───────────────────────────────┬───────────────┘
                 │                               │
                 ▼                               ▼
@@ -34,8 +34,7 @@ The DayDreaming pipeline is built on **Dagster**, a modern data orchestration pl
 │ generation_prompt → response  │        │ evaluation_prompt → response  │
 └──────────────┬────────────────┘        └──────────────┬────────────────┘
                │                                        ▲
-               └─ documents = generation_responses      │ joined by file_path
-                          ∪ curated historical ─────────┘
+               └─ parent links via gens store ──────────┘
 
 ┌───────────────────────────────┐
 │ Parsing & Summary (05, 06)    │  score parsing, aggregation
@@ -90,7 +89,7 @@ Assets are organized into logical groups for easy selection and understanding:
 | **`task_definitions`** | cohort_id, selected_combo_mappings, content_combinations, cohort_membership | Cohort-first membership and selection (register dynamic partitions) |
 | **`generation_draft`** 🚀 | draft_prompt, draft_response | Phase‑1 generation; applies parser (if configured) and saves RAW + parsed outputs |
 | **`generation_essays`** | essay_prompt, essay_response | Phase‑2 generation; modes: `llm` (default) and `copy` (parsed draft passthrough) |
-| **`evaluation`** | evaluation_prompt, evaluation_response | LLM evaluation (partitioned by evaluation_task_id) |
+| **`evaluation`** | evaluation_prompt, evaluation_response | LLM evaluation (partitioned by evaluation gen_id from cohort membership) |
 | **`results_processing`** | parsed_scores | Parse evaluation scores |
 | **`results_summary`** | final_results, perfect_score_paths, generation_scores_pivot, evaluation_model_template_pivot | Final aggregated results |
 | **`results_analysis`** | evaluator_agreement_analysis, comprehensive_variance_analysis | Statistical analysis |
@@ -122,21 +121,21 @@ def concepts(context) -> List[Concept]:
 
 LLM generation/evaluation assets remain manual to avoid surprise API usage/costs.
 
-### 2. Core Processing (`core.py`)
+### 2. Core Processing (Cohorts & Selection)
 
-**Assets**: `content_combinations`, `generation_tasks`, `evaluation_tasks`
+**Assets**: `cohort_id`, `selected_combo_mappings`, `content_combinations`, `cohort_membership`
 
-**Purpose**: Generate experiment structure and task definitions
+**Purpose**: Generate experiment structure and authoritative cohort membership
 
 **Data Flow**:
-1. **Concept Combinations**: Generate k_max-sized combinations from concepts or consume a `selected_combo_mappings` DataFrame.
-2. **Generation Tasks**: Cross-product combinations with templates and models
-3. **Evaluation Tasks**: Cross-product generation tasks with evaluation templates and models
+1. **Concept Combinations**: Generate k_max-sized combinations from concepts or consume a curated `selected_combo_mappings` CSV.
+2. **Cohort ID**: Compute deterministic ID from active combos/templates/models and write manifest.
+3. **Cohort Membership**: Build normalized rows for `draft`, `essay`, and `evaluation` and register dynamic partitions by `gen_id`.
 
 **Key Features**:
 - **Combinatorial Generation**: Efficient k-sized combination generation
-- **Task Hierarchies**: Structured task dependencies (generation → evaluation)
-- **CSV Output**: Human-readable task definitions for debugging
+- **Membership Hierarchies**: Structured parent links (draft → essay → evaluation)
+- **CSV Output**: Human-readable `membership.csv` for debugging
 
 **Search Strategy**: The experiment currently uses a **focused search strategy** that tests only k_max-sized concept combinations (e.g., if k_max=4, only 4-concept combinations are tested). This approach is based on the insight that richer contextual combinations are more likely to elicit the complex DayDreaming concept from LLMs.
 
@@ -151,15 +150,15 @@ LLM generation/evaluation assets remain manual to avoid surprise API usage/costs
 
 ### 3. Partition Management (`partitions.py`)
 
-**Assets**: `task_definitions`
+**Assets**: `cohort_membership`
 
-**Purpose**: Create dynamic partitions from generated tasks
+**Purpose**: Register dynamic partitions from cohort membership
 
-**Critical Function**: This asset reads the CSV task files and registers each task ID as a dynamic partition in Dagster, enabling partitioned LLM processing.
+**Critical Function**: Reads `data/cohorts/<cohort_id>/membership.csv` and registers each stage’s `gen_id` as a dynamic partition; prunes cohort-scoped stale partitions before re-registering to stay idempotent.
 
 **Why This Is Required**:
 - Dagster's dynamic partitions don't exist until explicitly created
-- Each LLM task becomes an independent partition for caching and recovery
+- Each `gen_id` becomes an independent partition for caching and recovery
 - Partitions must be registered before partitioned assets can be materialized
 
 ### 4. Two‑Phase LLM Generation
@@ -193,7 +192,7 @@ data/1_raw/generation_templates/
 1. **Sequential File Processing**: Read evaluation response files one at a time to avoid memory issues
 2. **Multi-Format Score Extraction**: Automatically detect and parse various LLM response formats
 3. **Strategy Selection**: Parsing strategy is driven by `data/1_raw/evaluation_templates.csv` column `parser` (`in_last_line` or `complex`). The `parser` column is required per template.
-4. **Metadata Enhancement**: Add task metadata (combo, template, model info) via DataFrame joins
+4. **Metadata Enhancement**: Enrich with combo/template/model and parent links via gens-store metadata (and membership when available)
 5. **Aggregation**: Calculate summary statistics and perfect score analysis
 6. **CSV Output**: Structured results for further analysis
 
@@ -280,24 +279,10 @@ def llm_client_resource(context) -> LLMClientResource:
 
 ### Dynamic Partitioning Strategy
 
-The pipeline uses Dagster's dynamic partitioning to create fine-grained, recoverable processing:
+The pipeline uses Dagster's dynamic partitions keyed by `gen_id` for each stage (`draft`, `essay`, `evaluation`).
 
-1. **Task Definition Phase**:
-   ```python
-   # task_definitions asset creates partitions
-   context.instance.add_dynamic_partitions(
-       partition_def_name="generation_tasks_partition",
-       partition_keys=list(task_ids)
-   )
-   ```
-
-2. **Partitioned Asset Execution**:
-   ```python
-   @asset(partitions_def=generation_tasks_partition)
-   def generation_response(context, generation_prompt):
-       partition_key = context.partition_key
-       # Process specific task
-   ```
+- Registration: the `cohort_membership` asset writes `data/cohorts/<cohort_id>/membership.csv` and registers each `gen_id` as a dynamic partition for the appropriate stage. It prunes stale partitions for the same cohort before re-registering to remain idempotent.
+- Execution: partitioned assets read `context.partition_key` (a `gen_id`) and resolve metadata (template/model/parents) via cohort membership and the gens store.
 
 ### Benefits of This Architecture
 
@@ -309,12 +294,8 @@ The pipeline uses Dagster's dynamic partitioning to create fine-grained, recover
 
 ### Partition Key Structure
 
-**Generation Tasks**: `{combo_id}_{template}_{model}`
-- Stable combo IDs follow `combo_v1_<12-hex>` (e.g., `combo_v1_1f3a9c2d7b2c_02_problem_solving_deepseek`).
-- Legacy format `combo_XXX_...` remains supported in older artifacts/tests.
-
-**Evaluation Tasks**: `{generation_task}_{eval_template}_{eval_model}/{eval_model_version}`
-- Example with stable ID: `combo_v1_1f3a9c2d7b2c_02_problem_solving_deepseek_creativity_metrics_deepseek/deepseek-r1:free`
+- Single key per stage: `gen_id`
+- Parent pointers: `parent_gen_id` in membership (essays point to draft `gen_id`; evaluations point to essay `gen_id`)
 
 ## Storage Architecture
 
@@ -332,11 +313,9 @@ data/
 │   ├── essay_templates.csv     # Active essay templates (+ generator: llm|copy)
 │   ├── evaluation_templates.csv
 │   └── llm_models.csv          # Available models with flags: for_generation|for_evaluation
-├── 2_tasks/                    # Generated task definitions
-│   ├── content_combinations.csv
-│   ├── draft_generation_tasks.csv
-│   ├── essay_generation_tasks.csv
-│   └── evaluation_tasks.csv
+├── cohorts/<cohort_id>/        # Cohort manifest + authoritative membership
+│   ├── manifest.json
+│   └── membership.csv
 ├── gens/                       # Canonical gens store (prompt/raw/parsed/metadata)
 │   ├── draft/<gen_id>/{prompt.txt,raw.txt,parsed.txt,metadata.json}
 │   ├── essay/<gen_id>/{prompt.txt,raw.txt,parsed.txt,metadata.json}
@@ -359,8 +338,7 @@ data/
 
 ### Overwrite and Retention Policy
 
-- Task CSVs in `data/2_tasks/` are rewritten by their assets on materialization.
-- Dynamic partitions for tasks are managed by the task definition assets (`draft_generation_tasks`, `essay_generation_tasks`, `evaluation_tasks`).
+- Membership is authoritative; dynamic partitions are registered by the `cohort_membership` asset.
 - Prompts are allowed to overwrite to reflect current templates.
 - Runtime persistence uses the gens store: `data/gens/<stage>/<gen_id>` with metadata. Legacy directories under `data/3_generation/` are retained for historical analysis; scripts may read them for migration only. New runs write canonical artifacts to the gens store and do not create versioned files.
 
@@ -416,48 +394,22 @@ The pipeline is designed for efficient concurrent processing:
 
 ## Evaluation Asset Architecture
 
-### Partition Relationship Challenge
+### Membership-First Evaluation
 
-The evaluation flow is document-centric and decoupled from cross-partition IO. Key elements:
+The evaluation flow is cohort- and gen-id–centric with explicit parent links:
 
-- `document_index` (Hybrid Document Axis): unified view of all evaluable documents with normalized columns.
-- `evaluation_tasks`: builds dynamic partitions by taking a cross-product of selected documents × active evaluation templates × evaluation models.
-- `evaluation_prompt`: reads the source document directly from a concrete `file_path` carried in each `evaluation_tasks` row and renders the evaluation template with `response=<document text>`.
-
-### Unified Document Axis (document_index)
-
-Each row is one evaluable document with explicit provenance and lookup fields:
-- `document_id`, `stage` (`draft`), `origin` (`draft | legacy`), `file_path`
-- `combo_id`, `generation_template`, `generation_model`
-- `generation_task_id`, `source_asset`, `source_dir`
-
-Sources merged:
-- Generated drafts from `data/3_generation/generation_responses/`
-- Curated historical docs emitted via standard generation task CSVs and placed under canonical folders (no legacy directory scan).
-
-### Evaluation Task Identity
-
-- `evaluation_task_id = {gen_id}__{evaluation_template}__{evaluation_llm_model}` (double-underscore separators)
-- `evaluation_tasks` rows are denormalized with all document fields plus evaluation template/model names.
-
-### Prompt Loading (Direct Path)
-
-- `evaluation_prompt` loads document content via `file_path` (no FK hop to IO managers), renders the Jinja template, and records rich metadata including `source_asset`, `source_dir`, and content length.
+- `cohort_membership` registers evaluation partitions by expanding essay parents × active evaluation templates × evaluation models.
+- `evaluation_prompt` reads the essay text from the gens store via `parent_gen_id` and renders the Jinja template for the evaluator model.
+- Partitions are keyed by evaluation `gen_id`; parent pointers remain stable across re-runs.
 
 ### Results Processing
 
-- `parsed_scores` parses evaluator responses; cross‑experiment aggregation reads `template_id` and `model_id` from metadata.json directly (no join required).
-- Normalized outputs include `stage`, `origin`, `generation_response_path` (copied from document `file_path`), `source_asset`, `source_dir`.
-- `generation_scores_pivot` pivots by `combo_id`, `stage`, `generation_template`, `generation_model`.
+- `parsed_scores` parses evaluator responses under `data/gens/evaluation/<gen_id>`; enrichment (combo_id, generation template/model, parent links) is read from gens-store metadata (and cohort membership when available).
+- `generation_scores_pivot` pivots by `combo_id`, `generation_template`, `generation_model` and uses `parent_gen_id` for deterministic grouping.
 
 ### Legacy Inputs
 
-- Historical single‑phase artifacts may exist under `data/3_generation/generation_responses/`. The `document_index`/`evaluation_tasks` flow can incorporate them as one‑phase documents when building evaluation sets.
-
-### Notes
-
-- Evaluation reads source documents by path for uniformity across stages/sources.
-- Legacy directory scanning has been removed from evaluation task discovery; curated inclusion is handled by writing standard generation task CSVs and placing files in canonical folders.
+- Historical artifacts under `data/3_generation/generation_responses/` are not auto-discovered. To evaluate historical essays, write their `gen_id`s to `data/2_tasks/selected_essays.txt` and materialize `cohort_id,cohort_membership` to register evaluation partitions for the active evaluation axes.
 
 ## Migration Benefits from Kedro
 

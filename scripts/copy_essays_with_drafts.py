@@ -4,10 +4,11 @@ Copy top-scoring essays (and their drafts + templates) for manual review.
 
 Usage:
     python scripts/copy_essays_with_drafts.py [N]
-    # Or use cross-experiment pivot and current experiment eval tasks
+    # Or use cross-experiment pivot (eval axes auto-resolved from raw tables)
     python scripts/copy_essays_with_drafts.py --use-big-pivot --n 10 \
-        --big-pivot data/7_cross_experiment/evaluation_scores_by_template_model.csv \
-        --evaluation-tasks data/2_tasks/evaluation_tasks.csv
+        --big-pivot data/7_cross_experiment/evaluation_scores_by_template_model.csv
+    # Optional: override eval axes with a curated tasks CSV
+    python scripts/copy_essays_with_drafts.py --use-big-pivot --evaluation-tasks data/2_tasks/evaluation_tasks.csv
     # Or copy all current generation files (ignores pivot tables)
     python scripts/copy_essays_with_drafts.py --use-all-generations
 
@@ -558,11 +559,11 @@ def main():
     parser = argparse.ArgumentParser(description="Copy top-scoring essays with drafts, templates, and evaluations")
     parser.add_argument("pos_n", nargs="?", type=int, help="Top N to copy (back-compat positional, ignored with --use-all-generations)")
     parser.add_argument("--n", type=int, default=None, help="Top N to copy (overrides positional, ignored with --use-all-generations)")
-    parser.add_argument("--use-big-pivot", action="store_true", help="Use cross-experiment pivot + current eval tasks to compute totals")
+    parser.add_argument("--use-big-pivot", action="store_true", help="Use cross-experiment pivot (eval axes inferred from evaluation_templates.csv × llm_models.csv unless overridden)")
     parser.add_argument("--use-all-generations", action="store_true", help="Copy all current generation files (ignores N and pivot tables)")
     parser.add_argument("--scores-csv", type=str, default="data/6_summary/generation_scores_pivot.csv", help="Path to experiment pivot (default mode)")
     parser.add_argument("--big-pivot", type=str, default="data/7_cross_experiment/evaluation_scores_by_template_model.csv", help="Path to cross-experiment pivot table")
-    parser.add_argument("--evaluation-tasks", type=str, default="data/2_tasks/evaluation_tasks.csv", help="Path to evaluation_tasks.csv (to select eval template+model columns)")
+    parser.add_argument("--evaluation-tasks", type=str, default=None, help="Optional: path to curated evaluation_tasks.csv to select eval template+model columns; defaults to active evaluation_templates × llm_models")
     parser.add_argument("--essay-responses-dir", type=str, default="data/3_generation/essay_responses", help="Directory containing essay response files")
     parser.add_argument("--concepts-metadata", type=str, default="data/1_raw/concepts_metadata.csv", help="Path to concepts metadata CSV")
     parser.add_argument(
@@ -606,7 +607,7 @@ def main():
             
             if args.use_big_pivot:
                 essay_filenames, generation_info = get_top_from_big_pivot(
-                    n=n, pivot_csv=args.big_pivot, evaluation_tasks_csv=args.evaluation_tasks
+                    n=n, pivot_csv=args.big_pivot, evaluation_tasks_csv=args.evaluation_tasks or ""
                 )
             else:
                 essay_filenames, generation_info = get_top_scoring_generations(n=n, scores_csv=args.scores_csv)
@@ -623,7 +624,7 @@ def main():
             print("- If missing or empty, run:")
             print("    uv run python scripts/aggregate_scores.py --output data/7_cross_experiment/parsed_scores.csv")
             print("    uv run python scripts/build_pivot_tables.py --parsed-scores data/7_cross_experiment/parsed_scores.csv")
-            print("- Also confirm evaluation_tasks.csv lists the template+model pairs for this experiment.")
+            print("- Confirm evaluation_templates.csv and llm_models.csv have active evaluation axes; or pass --evaluation-tasks to override.")
         else:
             print("No generations found in scores CSV (data/6_summary/generation_scores_pivot.csv)")
         sys.exit(1)

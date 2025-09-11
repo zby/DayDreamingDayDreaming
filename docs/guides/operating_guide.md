@@ -149,7 +149,7 @@ Optionally stash selection files for traceability:
 ### Basic Pipeline Execution
 
 1. **Setup auto-updates (daemon):**
-   Ensure the daemon is running so raw data loaders and task definitions auto-update when `data/1_raw/**/*` changes.
+   Ensure the daemon is running so raw data loaders and cohort assets auto-update when `data/1_raw/**/*` changes.
    ```bash
    export DAGSTER_HOME=$(pwd)/dagster_home
    uv run dagster dev -f daydreaming_dagster/definitions.py
@@ -157,9 +157,9 @@ Optionally stash selection files for traceability:
 
    Raw loaders are standalone (no observable sources). When files under `data/1_raw/**/*` change, re‑materialize `group:raw_data` to refresh downstream tasks.
 
-   Optional one-time seed (creates initial task CSVs and partitions):
+   Optional one-time seed (registers cohort partitions):
    ```bash
-   uv run dagster asset materialize -f daydreaming_dagster/definitions.py --select "group:task_definitions"
+   uv run dagster asset materialize -f daydreaming_dagster/definitions.py --select "cohort_id,cohort_membership"
    ```
 
 2. **Run generation assets:**
@@ -182,24 +182,23 @@ Optionally stash selection files for traceability:
 
 ### Auto-Materializing Assets
 
-Only `raw_data` and `task_definitions` use eager auto‑materialization during development:
+Only `raw_data` and cohort assets use eager auto‑materialization during development:
 
 - Raw loaders (`group:raw_data`) can be re‑materialized after editing files under `data/1_raw/**/*`.
-- Task definitions (`group:task_definitions`) refresh when raw assets update.
+- Cohort assets (`cohort_id`, `cohort_membership`) refresh when raw assets update.
 
 Cross‑experiment tracking no longer uses auto‑appenders. Use analysis assets (`filtered_evaluation_results`, `template_version_comparison_pivot`) and scripts for backfills under `data/7_cross_experiment/`.
 
 ---
 
-## Unified Evaluation Update (2025-09)
+## Evaluation Flow (Membership‑First)
 
-This repository now uses a generation-centric evaluation flow:
+Evaluation is cohort‑driven and gen‑id keyed:
 
-- `document_index` unifies drafts, two-phase essays, and legacy one-phase documents with normalized columns and concrete `file_path`.
-- `evaluation_tasks` creates partitions with IDs formatted as `{parent_gen_id}__{evaluation_template}__{evaluation_model_id}` (gen‑id first).
-- `evaluation_prompt` loads the source document by `file_path` and renders the evaluation template (`response=<document text>`). No cross-partition IO is required for evaluation.
-- `parsed_scores` contains normalized outputs and `generation_response_path` sourced from the document `file_path`. When available, use `parent_gen_id` as the canonical key (first token of `evaluation_task_id`).
-- Pivots and selection scripts should key rows by `parent_gen_id` (the essay generation id for evaluations) for deterministic grouping across runs.
+- `cohort_membership` expands evaluation rows from essay parents × active evaluation templates × evaluation models, and registers dynamic partitions for those `gen_id`s.
+- `evaluation_prompt` loads the source essay via `parent_gen_id` from the gens store and renders the evaluation template with the essay text.
+- `parsed_scores` parses outputs from `data/gens/evaluation/<gen_id>` and filters to evaluation `gen_id`s present in cohort membership when available.
+- `parsed_scores` contains normalized outputs and sets `generation_response_path` to the essay’s `parsed.txt` under the gens store. Downstream pivots should key by `parent_gen_id` (the essay `gen_id`) for deterministic grouping across runs.
 
 Lineage and IDs (gen‑id first)
 - `gen_id`: unique identifier of a concrete generation under `data/gens/<stage>/<gen_id>/`.
@@ -209,24 +208,26 @@ Lineage and IDs (gen‑id first)
   - Evaluations: `parent_gen_id` = `gen_id` of the essay being evaluated.
 - Tasks and assets must pass/require `parent_gen_id` for essays and evaluations (fail fast if missing). This removes all “latest‑by‑task” ambiguity and makes pivots deterministic.
 
-Note on legacy directory scan:
-- Evaluation no longer discovers documents by scanning `data/3_generation/generation_responses/`. To evaluate historical outputs, write standard generation task CSVs (draft/essay) and place/symlink their texts under `draft_responses/` (or legacy `links_responses/`) or `essay_responses/`. Then materialize `evaluation_tasks` to register only those curated documents.
+Note on legacy data:
+- If you need to evaluate historical essays not part of the current cohort, write their essay `gen_id`s into `data/2_tasks/selected_essays.txt`, then materialize `cohort_id,cohort_membership` to register evaluation partitions for the active evaluation axes.
 
 ### Targeted Evaluations (No full cube)
 
 To run a specific evaluation (e.g., `novelty`) only on chosen documents (e.g., prior-art winners):
 
-1. Ensure the evaluation template exists and is active in `data/1_raw/evaluation_templates.csv`.
-2. Materialize `evaluation_tasks` once to register partitions.
-3. Materialize only the desired partitions by key (gen‑id first):
+1. Ensure the evaluation template exists and is active in `data/1_raw/evaluation_templates.csv` and the evaluation models are flagged `for_evaluation` in `llm_models.csv`.
+2. Build cohort membership (either Cartesian from actives or curated via `selected_essays.txt`):
+   ```bash
+   uv run dagster asset materialize --select "cohort_id,cohort_membership" -f daydreaming_dagster/definitions.py
+   ```
+3. Materialize the evaluation assets for the registered partitions (by `gen_id`). To target a subset, select specific partition keys from `data/cohorts/<cohort_id>/membership.csv` where `stage == 'evaluation'`:
    ```bash
    uv run dagster asset materialize --select "evaluation_prompt,evaluation_response" \
-     --partition "{parent_gen_id}__novelty__{evaluation_model_id}" \
-     -f daydreaming_dagster/definitions.py
+     --partition "<evaluation_gen_id>" -f daydreaming_dagster/definitions.py
    ```
 4. Re-run `parsed_scores` to ingest the new results.
 
-For cross-experiment winners, place or symlink their generation texts under the canonical folders (`draft_responses/` (or legacy `links_responses/`), `essay_responses/`, or `generation_responses/`) so they appear in `document_index`/`evaluation_tasks` without changing CSV actives.
+For cross-experiment winners, include their essay `gen_id`s in `data/2_tasks/selected_essays.txt` and rebuild cohort membership to register evaluation partitions for the active axes.
 
 ### Curated Selection Quick Start (Drafts, Essays, Evaluations)
 
@@ -299,39 +300,38 @@ Then materialize generation in two steps:
 ```bash
 # Free-tier generation (serialized globally)
 uv run dagster asset materialize -f daydreaming_dagster/definitions.py \
-  --select "content_combinations,generation_tasks,generation_prompt,generation_response_free" \
+  --select "content_combinations,draft_prompt,draft_response" \
   --tag experiment_id=exp_free_vs_paid
 
 # Paid generation (parallel per pool)
 uv run dagster asset materialize -f daydreaming_dagster/definitions.py \
-  --select "content_combinations,generation_tasks,generation_prompt,generation_response_paid" \
+  --select "content_combinations,draft_prompt,draft_response" \
   --tag experiment_id=exp_free_vs_paid
 ```
 
 For evaluation with a paid model:
 ```bash
 uv run dagster asset materialize -f daydreaming_dagster/definitions.py \
-  --select "evaluation_tasks,evaluation_prompt,evaluation_response_paid" \
+  --select "evaluation_prompt,evaluation_response" \
   --tag experiment_id=exp_free_vs_paid
 ```
 
 ### Output Locations
 
-- Generated/evaluated files follow the existing `data/` folder conventions:
-  - `data/3_generation/` - Generation prompts and responses
-    - **Two‑Phase**: `draft_prompts/`, `draft_responses/`, `essay_prompts/`, `essay_responses/`
-    - **Legacy**: `generation_prompts/`, `generation_responses/` (deprecated)
-    - **Legacy interface**: `parsed_generation_responses/` (historical; two‑phase writes directly to draft_/essay_)
-  - `data/4_evaluation/` - Evaluation prompts and responses
+- Generated/evaluated files are stored in the gens store and summary folders:
+  - `data/gens/` - Canonical gens store
+    - `draft/<gen_id>/{prompt.txt,raw.txt,parsed.txt,metadata.json}`
+    - `essay/<gen_id>/{prompt.txt,raw.txt,parsed.txt,metadata.json}`
+    - `evaluation/<gen_id>/{prompt.txt,raw.txt,parsed.txt,metadata.json}`
   - `data/5_parsing/` - Parsed evaluation scores
   - `data/6_summary/` - Final aggregated results
-  - `data/7_cross_experiment/` - Cross-experiment tracking tables (NEW)
+  - `data/7_cross_experiment/` - Cross-experiment tracking tables
 
 - If you used a run tag, the tag appears in Dagster's run metadata for filtering
 
 ### Bulk Results Table Generation
 
-For initial setup or when you need to rebuild the cross‑experiment outputs from existing gens:
+For initial setup or when you need to rebuild the cross‑experiment outputs from the gens store:
 
 ```bash
 # Build parsed scores and pivot from the gens store
@@ -353,7 +353,7 @@ Use the scripts/assets that construct reports under `reports/`. Add an `experime
 
 **Error Message:**
 ```
-Missing generation response required for evaluation task 'eval_001_creativity_claude' (FK: combo_v1_1f3a9c2d7b2c_essay-inventive-synthesis_claude_f)
+Missing parent essay parsed.txt for evaluation gen_id '<EVAL_GEN_ID>' (parent_gen_id '<ESSAY_GEN_ID>')
 ```
 
 **Symptoms:**
@@ -367,31 +367,35 @@ Missing generation response required for evaluation task 'eval_001_creativity_cl
 - File was deleted or moved outside of Dagster
 
 **Diagnostic Steps:**
-1. Check if the referenced `essay_task_id` exists:
+1. Find the parent essay for the evaluation gen_id in membership:
    ```bash
-   ls data/3_generation/generation_responses/ | grep combo_001_essay-inventive-synthesis_claude_f
+   EVAL=<evaluation_gen_id>
+   awk -F',' 'NR==1 || ($1=="evaluation" && $2==envvar("EVAL"))' data/cohorts/*/membership.csv
    ```
 
-2. Check Dagster logs for `generation_response` materialization:
+2. Check that the expected essay parsed file exists in the gens store:
    ```bash
-   # In Dagster UI: Assets -> generation_response -> filter by partition
+   ESSAY=<parent_gen_id>
+   ls -l data/gens/essay/${ESSAY}/parsed.txt
    ```
 
-3. Verify the FK relationship in evaluation_tasks:
+3. Verify parent links in membership:
    ```bash
-   grep "combo_.*_essay-inventive-synthesis_claude_f" data/2_tasks/evaluation_tasks.csv
+   awk -F',' 'NR==1 || ($1=="evaluation" && $4!="")' data/cohorts/*/membership.csv | head -10
    ```
 
 **Solutions:**
 ```bash
-# Option 1: Materialize the specific missing partition
-uv run dagster asset materialize --select generation_response --partition combo_001_essay-inventive-synthesis_claude_f -f daydreaming_dagster/definitions.py
+# Option 1: Materialize the parent essay partition by gen_id
+uv run dagster asset materialize -f daydreaming_dagster/definitions.py \
+  --select "essay_prompt,essay_response" --partition "<ESSAY_GEN_ID>"
 
-# Option 2: Materialize all generation responses (if many are missing)
-uv run dagster asset materialize --select generation_response -f daydreaming_dagster/definitions.py
+# Option 2: If the essay depends on a missing draft, materialize the draft first
+uv run dagster asset materialize -f daydreaming_dagster/definitions.py \
+  --select "draft_prompt,draft_response" --partition "<DRAFT_GEN_ID>"
 
-# Option 3: Re-materialize the entire generation chain
-uv run dagster asset materialize --select "+generation_response" -f daydreaming_dagster/definitions.py
+# Option 3: Rebuild cohort membership (registers partitions); then materialize essays
+uv run dagster asset materialize --select "cohort_id,cohort_membership" -f daydreaming_dagster/definitions.py
 ```
 
 **Prevention:**
@@ -399,7 +403,7 @@ uv run dagster asset materialize --select "+generation_response" -f daydreaming_
 - Use asset group materialization: `group:generation_draft,group:generation_essays` before `group:evaluation`
 - Set up monitoring alerts for failed generation partitions
 
-### 2. Invalid Foreign Key Reference
+### 2. Invalid Parent Link in Membership
 
 **Error Message:**
 ```
@@ -407,57 +411,38 @@ Invalid essay_task_id referenced by evaluation task 'eval_001': ''
 ```
 
 **Symptoms:**
-- `evaluation_prompt` fails immediately with FK validation error
-- `essay_task_id` field is empty, null, or malformed
+- `evaluation_prompt` fails early with a message about missing `parent_gen_id` or missing parent essay
 - Error occurs before any file access attempts
 
 **Root Causes:**
-- Data corruption in `evaluation_tasks.csv`
-- Bug in evaluation task generation logic
-- CSV parsing issues (missing quotes, special characters)
+- Missing or incorrect `parent_gen_id` in `cohort_membership`
+- Essay row not present for the referenced `parent_gen_id`
+- Inconsistent active axes vs. curated selection
 
 **Diagnostic Steps:**
-1. Inspect the evaluation tasks CSV directly:
+1. Inspect cohort membership:
    ```bash
-   head -10 data/2_tasks/evaluation_tasks.csv
-   grep "eval_001" data/2_tasks/evaluation_tasks.csv
+   awk -F',' 'NR==1 || $1=="evaluation"' data/cohorts/*/membership.csv | head -20
    ```
 
-2. Check for empty or malformed FK values:
+2. Verify the essay parent exists in membership:
    ```bash
-   awk -F',' '$2 == "" {print "Empty FK in line: " NR ": " $0}' data/2_tasks/evaluation_tasks.csv
-   ```
-
-3. Validate all FK references:
-   ```bash
-   # Extract all essay_task_ids from evaluation_tasks
-   cut -d',' -f2 data/2_tasks/evaluation_tasks.csv | sort | uniq > eval_fks.txt
-   
-   # Extract all essay_task_ids from essay_generation_tasks  
-   cut -d',' -f1 data/2_tasks/essay_generation_tasks.csv | sort | uniq > essay_ids.txt
-   
-   # Find orphaned FKs
-   comm -23 eval_fks.txt essay_ids.txt
+   PARENT=<essay_gen_id>
+   grep ",$PARENT," data/cohorts/*/membership.csv
    ```
 
 **Solutions:**
 ```bash
-# Option 1: Re-materialize task creation pipeline (tasks only)
-uv run dagster asset materialize --select "group:task_definitions" -f daydreaming_dagster/definitions.py
+# Rebuild cohort membership after fixing raw actives or curated selection
+uv run dagster asset materialize --select "cohort_id,cohort_membership" -f daydreaming_dagster/definitions.py
 
-# Option 2: Check for underlying data issues
-# Inspect concepts, templates, and models for corruption
-head data/1_raw/concepts_metadata.csv
-head data/1_raw/draft_templates.csv
+# Inspect raw inputs for issues
 head data/1_raw/essay_templates.csv
+head data/1_raw/evaluation_templates.csv
 head data/1_raw/llm_models.csv
-
-# Option 3: Clear and rebuild all task data
-rm -f data/2_tasks/*.csv
-uv run dagster asset materialize --select generation_tasks,evaluation_tasks -f daydreaming_dagster/definitions.py
 ```
 
-### 3. Evaluation Task Not Found in DataFrame
+### 3. Evaluation Partition Not Found
 
 **Error Message:**
 ```
@@ -465,9 +450,8 @@ Evaluation task 'eval_123_creativity_claude' not found in task database
 ```
 
 **Symptoms:**
-- Asset fails at the beginning when looking up partition in evaluation_tasks
-- Error shows available task samples
-- Partition exists in Dagster but not in CSV data
+- Asset fails at start when resolving membership for `gen_id`
+- Partition exists in Dagster but row is missing in `membership.csv`
 
 **Root Causes:**
 - Stale partition definitions (CSV updated but partitions not refreshed)
@@ -475,34 +459,22 @@ Evaluation task 'eval_123_creativity_claude' not found in task database
 - Manual partition creation without corresponding data
 
 **Diagnostic Steps:**
-1. Check partition count vs CSV row count:
+1. Compare Dagster partitions to membership rows (evaluation stage):
    ```bash
-   # Count CSV rows
-   wc -l data/2_tasks/evaluation_tasks.csv
-   
-   # Check Dagster partitions (use Dagster UI Assets page)
+   awk -F',' 'NR==1 || $1=="evaluation"' data/cohorts/*/membership.csv | wc -l
    ```
 
-2. Look for the specific partition in CSV:
+2. Look for the specific `gen_id` in membership:
    ```bash
-   grep "eval_123_creativity_claude" data/2_tasks/evaluation_tasks.csv
-   ```
-
-3. Check for recent task regeneration:
-   ```bash
-   ls -la data/2_tasks/evaluation_tasks.csv  # Check modification time
+   grep ",<evaluation_gen_id>," data/cohorts/*/membership.csv
    ```
 
 **Solutions:**
 ```bash
-# Option 1: Refresh evaluation_tasks and partitions
-uv run dagster asset materialize --select evaluation_tasks -f daydreaming_dagster/definitions.py
+# Refresh cohort partitions (prunes cohort-scoped stale keys, re-registers)
+uv run dagster asset materialize --select "cohort_id,cohort_membership" -f daydreaming_dagster/definitions.py
 
-# Option 2: If partitions are out of sync, restart Dagster
-# (This clears in-memory partition caches)
-
-# Option 3: Full task rebuild
-uv run dagster asset materialize --select generation_tasks,evaluation_tasks -f daydreaming_dagster/definitions.py
+# Restart Dagster to clear in-memory partition caches if needed
 ```
 
 ### 4. Base Directory Not Found
@@ -510,7 +482,7 @@ uv run dagster asset materialize --select generation_tasks,evaluation_tasks -f d
 **Error Message:**
 ```
 Base directory exists: False
-Expected path: /path/to/data/3_generation/generation_responses/combo_001.txt
+Expected path: /path/to/data/gens/essay/<ESSAY_GEN_ID>/parsed.txt
 ```
 
 **Symptoms:**
@@ -526,8 +498,8 @@ Expected path: /path/to/data/3_generation/generation_responses/combo_001.txt
 **Diagnostic Steps:**
 1. Check directory structure:
    ```bash
-   tree data/ -L 3
-   ls -la data/3_generation/
+   tree data/gens -L 3
+   ls -la data/gens/essay/
    ```
 
 2. Verify IO manager configuration:
@@ -539,21 +511,14 @@ Expected path: /path/to/data/3_generation/generation_responses/combo_001.txt
 3. Check permissions and disk space:
    ```bash
    df -h .
-   ls -ld data/3_generation/generation_responses/
+   ls -ld data/gens/essay/
    ```
 
 **Solutions:**
 ```bash
-# Option 1: Create missing directories
-mkdir -p data/3_generation/generation_responses
-mkdir -p data/4_evaluation/evaluation_prompts
-mkdir -p data/4_evaluation/evaluation_responses
-
-# Option 2: Seed task definitions (creates expected directories under data/2_tasks/)
-uv run dagster asset materialize --select "group:task_definitions" -f daydreaming_dagster/definitions.py
-
-# Option 3: Check and fix permissions
-chmod 755 data/3_generation/generation_responses/
+# Rebuild cohort membership (registers partitions) and materialize required assets
+uv run dagster asset materialize --select "cohort_id,cohort_membership" -f daydreaming_dagster/definitions.py
+uv run dagster asset materialize --select "essay_prompt,essay_response" --partition "<ESSAY_GEN_ID>" -f daydreaming_dagster/definitions.py
 ```
 
 ---
@@ -586,18 +551,24 @@ Create a validation script:
 import pandas as pd
 
 # Load both task tables
-essay_tasks = pd.read_csv("data/2_tasks/essay_generation_tasks.csv")
-eval_tasks = pd.read_csv("data/2_tasks/evaluation_tasks.csv")
+from pathlib import Path
+membership = pd.read_csv(next(Path("data/cohorts").glob("*/membership.csv")))
+eval_tasks = membership[membership["stage"]=="evaluation"][[
+    "gen_id","parent_gen_id","template_id","llm_model_id"
+]].rename(columns={
+    "template_id":"evaluation_template",
+    "llm_model_id":"evaluation_llm_model"
+})
 
-# Check FK integrity
-essay_ids = set(essay_tasks["essay_task_id"])
-eval_fks = set(eval_tasks["essay_task_id"])
+# Check parent link integrity (each eval's parent_gen_id must be present as an essay gen_id)
+essay_ids = set(membership[membership["stage"]=="essay"]["gen_id"].astype(str))
+eval_parents = set(eval_tasks["parent_gen_id"].astype(str))
+orphaned = sorted(eval_parents - essay_ids)
+print(f"Orphaned evaluation parents: {orphaned[:10]} (showing up to 10)")
 
-orphaned = eval_fks - essay_ids
-print(f"Orphaned FKs: {orphaned}")
-
-# Check for duplicates
-print(f"Duplicate eval tasks: {eval_tasks['evaluation_task_id'].duplicated().sum()}")
+# Check for duplicate evaluation gen_ids
+dups = eval_tasks["gen_id"].duplicated().sum()
+print(f"Duplicate evaluation gen_ids: {dups}")
 ```
 
 #### Monitor Resource Usage
@@ -610,8 +581,8 @@ df -h data/
 # Check memory usage during materialization
 htop
 
-# Check for large files
-du -sh data/3_generation/generation_responses/ | head -20
+# Check for large files in gens store
+du -sh data/gens | head -20
 ```
 
 ### Recovery Procedures
@@ -620,35 +591,30 @@ du -sh data/3_generation/generation_responses/ | head -20
 
 If multiple issues persist:
 ```bash
-# 1. Clear all generated data (keep raw data)
-rm -rf data/2_tasks/*.csv
-rm -rf data/3_generation/*
-rm -rf data/4_evaluation/*
+# 1. Clear cohort membership and gens store (keep raw data)
+rm -rf data/cohorts/*
+rm -rf data/gens/*
 
-# 2. Seed task definitions (daemon will keep them updated)
-uv run dagster asset materialize --select "group:task_definitions" -f daydreaming_dagster/definitions.py
+# 2. Rebuild cohort and verify
+uv run dagster asset materialize --select "cohort_id,cohort_membership" -f daydreaming_dagster/definitions.py
+head data/cohorts/*/membership.csv
 
-# 3. Verify task integrity before proceeding
-head data/2_tasks/generation_tasks.csv
-head data/2_tasks/evaluation_tasks.csv
-
-# 4. Run a small subset of LLM assets to test
-uv run dagster asset materialize --select generation_prompt --partition combo_001_essay-inventive-synthesis_claude_f -f daydreaming_dagster/definitions.py
+# 3. Run a small subset of LLM assets to test (by gen_id)
+uv run dagster asset materialize --select draft_prompt,draft_response --partition <DRAFT_GEN_ID> -f daydreaming_dagster/definitions.py
 ```
 
 #### Selective Partition Recovery
 
 For specific broken partitions:
 ```bash
-# 1. Identify the broken partition
-PARTITION="combo_001_essay-inventive-synthesis_claude_f"
+# 1. Identify the broken partition (by gen_id)
+ESSAY_GEN_ID=<id>
 
-# 2. Clean up any partial files
-rm -f data/3_generation/generation_responses/${PARTITION}.txt
-rm -f data/4_evaluation/evaluation_prompts/*${PARTITION}*
+# 2. Rematerialize the essay assets for that gen_id
+uv run dagster asset materialize --select essay_prompt,essay_response --partition ${ESSAY_GEN_ID} -f daydreaming_dagster/definitions.py
 
-# 3. Re-materialize the chain
-uv run dagster asset materialize --select generation_prompt,generation_response --partition ${PARTITION} -f daydreaming_dagster/definitions.py
+# 3. If the parent draft is missing, materialize it first
+uv run dagster asset materialize --select draft_prompt,draft_response --partition <DRAFT_GEN_ID> -f daydreaming_dagster/definitions.py
 ```
 
 ### When to Escalate

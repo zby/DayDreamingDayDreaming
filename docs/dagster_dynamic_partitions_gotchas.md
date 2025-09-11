@@ -4,11 +4,11 @@ Short, current guidance for our two-phase (draft → essay → evaluation) pipel
 
 Current Model
 - Partitions: `draft_gens`, `essay_gens`, `evaluation_gens` (DynamicPartitionsDefinition), keyed by `gen_id`.
-- Registration: created by assets in `group:task_definitions` and written to `data/2_tasks/`.
+- Registration: created by `cohort_membership` (group `task_definitions`) from `data/cohorts/<cohort_id>/membership.csv`.
 - I/O: GensPromptIOManager persists prompts to `data/gens/<stage>/<gen_id>/prompt.txt`; assets write responses to `data/gens/<stage>/<gen_id>/{raw,parsed,metadata}.txt/json`. Cross‑phase reads use `parent_gen_id` to load parents from the gens store.
 
 Gotchas (and fixes)
-- Registration order: start Dagster with the daemon; raw + task assets auto-update when `data/1_raw/**/*` changes. If needed, seed `group:task_definitions` once before generation/evaluation assets.
+- Registration order: start Dagster with the daemon; raw + cohort assets auto-update when `data/1_raw/**/*` changes. If needed, seed `cohort_id,cohort_membership` once before generation/evaluation assets.
 - Key consistency: `gen_id` is the ground truth for partitions. Use `parent_gen_id` to link stages.
 - Cross‑phase reads: assets like `essay_prompt` and `evaluation_prompt` load upstream text by `parent_gen_id` directly from the filesystem (`data/gens/<stage>/<gen_id>`); no cross‑partition IO‑manager context is needed.
 - Stale CSVs: if a downstream asset expects new columns in `parsed_scores` (e.g., `draft_template`) and fails, rematerialize upstream with a clear error. Example: `uv run dagster asset materialize --select parsed_scores -f daydreaming_dagster/definitions.py`.

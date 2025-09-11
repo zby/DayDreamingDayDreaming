@@ -492,8 +492,8 @@ def cohort_id(context, content_combinations: list[ContentCombination]) -> str:
     try:
         if hasattr(context, "asset_config") and context.asset_config:
             override = context.asset_config.get("override")
-        elif hasattr(context, "op_config") and context.op_config:
-            override = context.op_config.get("override")
+        elif hasattr(context, "op_execution_context") and getattr(context.op_execution_context, "op_config", None):
+            override = context.op_execution_context.op_config.get("override")
     except Exception:
         override = None
     env_override = get_env_cohort_id()

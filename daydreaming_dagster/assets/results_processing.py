@@ -1,4 +1,4 @@
-from dagster import asset, MetadataValue, AssetIn
+from dagster import asset, MetadataValue
 from pathlib import Path
 import pandas as pd
 import numpy as np
@@ -11,14 +11,10 @@ from ..constants import ESSAY, DRAFT, FILE_PARSED, FILE_METADATA
     group_name="results_processing",
     io_manager_key="parsing_results_io_manager",
     required_resource_keys={"data_root"},
-    ins={
-        # Limit to the current experiment's evaluation tasks
-        "evaluation_tasks": AssetIn(),
-    },
-    description="Parse evaluation scores from gens store for current evaluation_tasks only",
+    description="Parse evaluation scores from gens store (filtered to cohort membership if present)",
     compute_kind="pandas",
 )
-def parsed_scores(context, evaluation_tasks: pd.DataFrame) -> pd.DataFrame:
+def parsed_scores(context) -> pd.DataFrame:
     """Parse evaluation scores from the gens store and write a consolidated DataFrame.
 
     Reads data/gens/evaluation/<gen_id>/{parsed.txt,metadata.json} and uses
@@ -27,12 +23,14 @@ def parsed_scores(context, evaluation_tasks: pd.DataFrame) -> pd.DataFrame:
     data_root = Path(getattr(context.resources, "data_root", "data"))
     out_csv = data_root / "5_parsing" / "parsed_scores.csv"
     df = parse_all_scores(data_root, out_csv)
-    # Filter to current evaluation tasks only (gen-id-first)
+    # Filter to evaluation gen_ids found in cohort membership (if any)
     try:
-        if isinstance(evaluation_tasks, pd.DataFrame) and not evaluation_tasks.empty and "gen_id" in evaluation_tasks.columns:
-            keep = set(evaluation_tasks["gen_id"].astype(str).dropna().tolist())
-            if "gen_id" in df.columns and keep:
-                df = df[df["gen_id"].astype(str).isin(keep)].reset_index(drop=True)
+        from ..utils.membership_lookup import stage_gen_ids
+
+        keep_list = stage_gen_ids(data_root, "evaluation")
+        keep = set(keep_list)
+        if isinstance(df, pd.DataFrame) and not df.empty and "gen_id" in df.columns and keep:
+            df = df[df["gen_id"].astype(str).isin(keep)].reset_index(drop=True)
     except Exception:
         pass
     # Enrich with generation metadata by reading gens store metadata for parents

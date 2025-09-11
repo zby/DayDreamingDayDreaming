@@ -58,8 +58,8 @@ class GensPromptIOManager(IOManager):
         (base / FILE_PROMPT).write_text(obj, encoding="utf-8")
 
     def load_input(self, context: InputContext) -> str:
-        upstream = context.upstream_output
-        pk = upstream.partition_key
+        # Avoid deprecated upstream_output.partition_key; use InputContext.partition_key
+        pk = context.partition_key
         gen_id = self._resolve_gen_id(pk)
         base = self.gens_root / self.stage / gen_id
         fp = base / FILE_PROMPT
