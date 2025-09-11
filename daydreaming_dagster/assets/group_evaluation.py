@@ -8,10 +8,7 @@ from dagster import asset, Failure, MetadataValue
 from pathlib import Path
 from .partitions import evaluation_gens_partitions
 from ..utils.generation import Generation
-from ..utils.metadata import build_generation_metadata
- 
 from jinja2 import Environment
-from ..utils.dataframe_helpers import get_task_row, resolve_llm_model_id
 from ..utils.membership_lookup import find_membership_row_by_gen
 from ..utils.raw_readers import read_evaluation_templates
 from .raw_data import EVALUATION_TEMPLATES_KEY

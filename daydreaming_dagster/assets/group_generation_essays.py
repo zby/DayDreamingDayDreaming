@@ -13,9 +13,8 @@ from ..utils.raw_readers import read_essay_templates
 from ..utils.dataframe_helpers import get_task_row, resolve_llm_model_id
 from ..utils.membership_lookup import find_membership_row_by_gen
 from ..utils.generation import Generation
-from ..utils.metadata import build_generation_metadata
 from ..unified.stage_runner import StageRunner, StageRunSpec
-from ..constants import DRAFT, ESSAY, FILE_RAW
+from ..constants import DRAFT, ESSAY
 
 # Reuse a single Jinja environment
 JINJA = Environment()
@@ -326,8 +325,7 @@ def _essay_response_impl(context, essay_prompt) -> str:
     required_resource_keys={"openrouter_client", "experiment_config", "data_root"},
 )
 def essay_response(context, essay_prompt) -> str:
-    text = _essay_response_impl(context, essay_prompt)
-
+    return _essay_response_impl(context, essay_prompt)
     # Write to filesystem (gens)
     import time
     from pathlib import Path as _Path
