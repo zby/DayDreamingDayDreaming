@@ -63,6 +63,9 @@ Align these fields across template CSVs while maintaining backward compatibility
 | `content` | any | Inline template | Optional; if present, used instead of file |
 | `template_path` | any | File override | Optional; otherwise infer from `data/1_raw/...` |
 
+Column order
+- When editing CSVs, place the `active` column as the last column in each file for consistency (`template_id, ..., active`).
+
 ### D. Dagster Integration (Membership-First, strict)
 
 * Keep existing asset groups and `gen_id` partitions
@@ -206,6 +209,7 @@ data/1_raw/llm_models.csv (for_generation/for_evaluation flags)
      - `data/1_raw/evaluation_templates.csv`: add column `generator` with value `llm` for all rows; ensure `parser` is present and valid (e.g., `in_last_line`, `complex`) for each active row.
    * Validate inputs:
      - Spot-check CSV headers and values.
+     - Reorder columns so that `active` is the last column in each CSV (`template_id, ..., active`).
      - Seed strict CSVs in `1_raw/` with required columns (generator present in all; parser present in evaluation) for tests.
    * From this point on, the codebase treats the unified schema as authoritative (no fallbacks).
 
