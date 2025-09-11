@@ -25,10 +25,10 @@ RAW_CSVS = [
 ]
 
 
-# After removing intermediate raw assets, recompute task definitions on CSV change
+# Recompute cohort membership when raw CSVs change (idempotent; cohort-scoped prune inside)
 raw_reload_job = define_asset_job(
     "raw_reload_job",
-    selection=AssetSelection.groups("task_definitions"),
+    selection=AssetSelection.keys("cohort_id", "cohort_membership"),
 )
 
 

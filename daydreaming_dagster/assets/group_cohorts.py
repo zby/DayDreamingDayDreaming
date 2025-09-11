@@ -105,6 +105,42 @@ def cohort_membership(
     cohort_dir = data_root / "cohorts" / str(cohort_id)
     cohort_dir.mkdir(parents=True, exist_ok=True)
     out_path = cohort_dir / "membership.csv"
+    # Cohort-scoped prune: remove previously registered partitions for this cohort
+    # before recomputing and re-registering a fresh set for idempotency.
+    try:
+        if out_path.exists():
+            prev = pd.read_csv(out_path)
+            if not prev.empty and {"stage", "gen_id"}.issubset(prev.columns):
+                instance = context.instance
+                def _delete_for(stage_name: str) -> int:
+                    try:
+                        ids = prev[prev["stage"].astype(str) == stage_name]["gen_id"].astype(str).dropna().unique().tolist()
+                        part_name = (
+                            draft_gens_partitions.name if stage_name == "draft" else (
+                                essay_gens_partitions.name if stage_name == "essay" else evaluation_gens_partitions.name
+                            )
+                        )
+                        count = 0
+                        for k in ids:
+                            try:
+                                instance.delete_dynamic_partition(part_name, str(k))
+                                count += 1
+                            except Exception:
+                                pass
+                        return count
+                    except Exception:
+                        return 0
+                deleted_draft = _delete_for("draft")
+                deleted_essay = _delete_for("essay")
+                deleted_eval = _delete_for("evaluation")
+                context.add_output_metadata({
+                    "partitions_deleted_draft": MetadataValue.int(int(deleted_draft)),
+                    "partitions_deleted_essay": MetadataValue.int(int(deleted_essay)),
+                    "partitions_deleted_evaluation": MetadataValue.int(int(deleted_eval)),
+                })
+    except Exception:
+        # Non-fatal; proceed with recomputation
+        pass
 
     selected_essays = _load_selected_essays_list(data_root)
     # Cohort membership depends on model_id only (provider names omitted).
