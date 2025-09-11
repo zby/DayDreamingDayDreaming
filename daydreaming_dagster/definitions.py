@@ -40,15 +40,12 @@ from daydreaming_dagster.checks.documents_checks import (
     essay_files_exist_check,
     evaluation_files_exist_check,
 )
-from daydreaming_dagster.assets.raw_data import RAW_SOURCE_ASSETS, TASK_SOURCE_ASSETS
+from daydreaming_dagster.assets.raw_data import RAW_SOURCE_ASSETS
 from daydreaming_dagster.schedules.raw_schedule import raw_schedule
 from daydreaming_dagster.assets.group_task_definitions import (
     cohort_id,
     selected_combo_mappings,
     content_combinations,
-    draft_generation_tasks,
-    essay_generation_tasks,
-    evaluation_tasks,
 )
 from daydreaming_dagster.assets.group_cross_experiment import (
     filtered_evaluation_results,
@@ -81,9 +78,6 @@ defs = Definitions(
         cohort_membership,
         selected_combo_mappings,
         content_combinations,
-        draft_generation_tasks,
-        essay_generation_tasks,
-        evaluation_tasks,
         
         # Two-phase generation assets
         draft_prompt,
@@ -111,7 +105,6 @@ defs = Definitions(
         prune_dynamic_partitions,
         # Source assets (CSV-only)
         *RAW_SOURCE_ASSETS,
-        *TASK_SOURCE_ASSETS,
     ],
     asset_checks=[
         draft_files_exist_check,
