@@ -121,7 +121,7 @@ def _draft_response_impl(context, draft_prompt, **_kwargs) -> str:
             },
         )
     # Use model_id from membership; LLM client maps id -> provider internally
-    model_id = str(row.get("llm_model_id") or row.get("generation_model") or "").strip()
+    model_id = str(row.get("llm_model_id") or "").strip()
     if not model_id:
         raise Failure(
             description="Missing generation model for draft task",
@@ -321,7 +321,7 @@ def draft_response(context, draft_prompt) -> str:
     )
     model_id = None
     if mrow is not None:
-        model_id = (mrow.get("llm_model_id") or mrow.get("generation_model") or None)
+        model_id = (mrow.get("llm_model_id") or None)
     # Partition key is the gen_id
     if not (isinstance(gen_id, str) and gen_id.strip()):
         raise Failure(

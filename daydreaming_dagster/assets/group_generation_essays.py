@@ -274,7 +274,7 @@ def _essay_response_impl(context, essay_prompt) -> str:
         )
         return text
     # Default LLM path (persist RAW early; apply truncation guard). Use model id from membership
-    model_id = str(mrow.get("llm_model_id") or mrow.get("generation_model") or "").strip() if mrow is not None else ""
+    model_id = str(mrow.get("llm_model_id") or "").strip() if mrow is not None else ""
     if not model_id:
         raise Failure(
             description="Missing generation_model for essay task",
@@ -365,7 +365,7 @@ def essay_response(context, essay_prompt) -> str:
     mrow, cohort = find_membership_row_by_gen(getattr(context.resources, "data_root", "data"), "essay", str(gen_id))
     if mrow is not None:
         essay_template = mrow.get("template_id")
-        model_id = (mrow.get("llm_model_id") or mrow.get("generation_model"))
+        model_id = (mrow.get("llm_model_id") or None)
         parent_gen_id = mrow.get("parent_gen_id")
     else:
         essay_template = None
