@@ -263,7 +263,7 @@ Tip
 
 ### Where Assets Live
 
-- task_definitions: `daydreaming_dagster/assets/group_task_definitions.py`
+- task_definitions (cohort/selection): `daydreaming_dagster/assets/group_cohorts.py`
 - generation_draft: `daydreaming_dagster/assets/group_generation_draft.py`
 - generation_essays: `daydreaming_dagster/assets/group_generation_essays.py`
 - evaluation: `daydreaming_dagster/assets/group_evaluation.py`
@@ -278,7 +278,7 @@ Quick navigation
 **Note**: Auto-materialization requires the Dagster daemon to be running. In development, you can manually trigger assets if needed:
 ```bash
 # Manually materialize a specific asset
-uv run dagster asset materialize --select "content_combinations,draft_generation_tasks,essay_generation_tasks,evaluation_tasks" -f daydreaming_dagster/definitions.py
+uv run dagster asset materialize --select "cohort_id,cohort_membership,content_combinations" -f daydreaming_dagster/definitions.py
 ```
 
 ### Free vs Paid LLM Runs (Separate Pools)

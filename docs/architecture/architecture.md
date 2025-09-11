@@ -60,7 +60,7 @@ daydreaming_dagster/
 │   ├── results_analysis.py     # Statistical analysis assets
 │   ├── cross_experiment.py     # Cross-experiment tracking
 │   └── groups/                 # Grouped assets by domain
-│       ├── group_task_definitions.py
+│       ├── group_cohorts.py
 │       ├── group_generation_draft.py
 │       ├── group_generation_essays.py
 │       ├── group_evaluation.py
@@ -87,7 +87,7 @@ Assets are organized into logical groups for easy selection and understanding:
 | Group | Assets | Purpose |
 |-------|--------|---------|
 | **`raw_data`** | concepts, llm_models, draft/essay/evaluation templates | Load external data files |
-| **`task_definitions`** | content_combinations, draft_generation_tasks, essay_generation_tasks, evaluation_tasks | Build partitioned tasks from active CSVs |
+| **`task_definitions`** | cohort_id, selected_combo_mappings, content_combinations, cohort_membership | Cohort-first membership and selection (register dynamic partitions) |
 | **`generation_draft`** 🚀 | draft_prompt, draft_response | Phase‑1 generation; applies parser (if configured) and saves RAW + parsed outputs |
 | **`generation_essays`** | essay_prompt, essay_response | Phase‑2 generation; modes: `llm` (default) and `copy` (parsed draft passthrough) |
 | **`evaluation`** | evaluation_prompt, evaluation_response | LLM evaluation (partitioned by evaluation_task_id) |
