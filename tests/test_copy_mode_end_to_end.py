@@ -52,10 +52,7 @@ def test_copy_mode_essay_is_verbatim_draft(tmp_path: Path):
         # IO managers used by essay assets
         "essay_prompt_io_manager": GensPromptIOManager(
             gens_root=data_root / "gens",
-            tasks_root=data_root / "2_tasks",
             stage="essay",
-            tasks_csv_name=None,
-            id_col="gen_id",
         ),
         "essay_response_io_manager": InMemoryIOManager(),
     }

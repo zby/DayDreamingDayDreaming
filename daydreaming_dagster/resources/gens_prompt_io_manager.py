@@ -14,17 +14,14 @@ class GensPromptIOManager(IOManager):
     Config:
     - gens_root: base generations directory (data/gens)
     - stage: one of {draft, essay, evaluation}
-
-    Backward-compat constructor parameters for tasks are accepted but ignored.
     """
 
-    def __init__(self, gens_root: Path, tasks_root: Path | None = None, *, stage: str, tasks_csv_name: str | None = None, id_col: str | None = None):
+    def __init__(self, gens_root: Path, *, stage: str):
         self.gens_root = Path(gens_root)
         stage_str = str(stage)
         if stage_str not in STAGES:
             raise ValueError(f"Invalid stage '{stage_str}'. Expected one of {STAGES}.")
         self.stage = stage_str
-        # tasks_* parameters are ignored in membership-first mode
 
     def _resolve_gen_id(self, partition_key: str) -> str:
         # Partition key is the gen_id in membership-first mode

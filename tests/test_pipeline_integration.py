@@ -252,26 +252,17 @@ class TestPipelineIntegration:
                     # Prompt IO to gens store; responses written by assets to gens store; keep responses in-memory
                     "draft_prompt_io_manager": GensPromptIOManager(
                         gens_root=pipeline_data_root / "gens",
-                        tasks_root=pipeline_data_root / "2_tasks",
                         stage="draft",
-                        tasks_csv_name=None,
-                        id_col="gen_id",
                     ),
                     "draft_response_io_manager": InMemoryIOManager(),
                     "essay_prompt_io_manager": GensPromptIOManager(
                         gens_root=pipeline_data_root / "gens",
-                        tasks_root=pipeline_data_root / "2_tasks",
                         stage="essay",
-                        tasks_csv_name=None,
-                        id_col="gen_id",
                     ),
                     "essay_response_io_manager": InMemoryIOManager(),
                     "evaluation_prompt_io_manager": GensPromptIOManager(
                         gens_root=pipeline_data_root / "gens",
-                        tasks_root=pipeline_data_root / "2_tasks",
                         stage="evaluation",
-                        tasks_csv_name=None,
-                        id_col="gen_id",
                     ),
                     "evaluation_response_io_manager": InMemoryIOManager(),
                     "parsing_results_io_manager": CSVIOManager(base_path=pipeline_data_root / "5_parsing"),

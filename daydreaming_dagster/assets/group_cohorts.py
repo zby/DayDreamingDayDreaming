@@ -87,7 +87,7 @@ def _eval_axes(data_root: Path) -> Tuple[List[str], List[str], Dict[str, str], D
 
 
 @asset(
-    group_name="task_definitions",
+    group_name="cohort",
     required_resource_keys={"data_root"},
 )
 def cohort_membership(
@@ -507,7 +507,7 @@ def cohort_id(context, content_combinations: list[ContentCombination]) -> str:
 
 
 @asset(
-    group_name="task_definitions",
+    group_name="cohort",
     io_manager_key="csv_io_manager",
     required_resource_keys={"experiment_config", "data_root"},
 )
@@ -542,7 +542,7 @@ def selected_combo_mappings(context) -> pd.DataFrame:
 
 
 @asset(
-    group_name="task_definitions",
+    group_name="cohort",
     io_manager_key="io_manager",
     required_resource_keys={"experiment_config", "data_root"},
 )

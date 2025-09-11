@@ -24,7 +24,7 @@ def _desired_gen_ids(csv_path: Path) -> set[str]:
 
 
 @asset(
-    group_name="task_definitions",
+    group_name="cohort",
     description="Remove ALL registered dynamic partitions for draft/essay/evaluation (registry only).",
 )
 def prune_dynamic_partitions(context) -> dict:
