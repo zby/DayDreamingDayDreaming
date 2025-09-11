@@ -409,7 +409,7 @@ def copy_essays_with_drafts(
     essay_templates_path = Path(essay_templates_dir)
     draft_templates_path = Path(draft_templates_dir)
     if not draft_templates_path.exists():
-        legacy_tpl = Path("data/1_raw/generation_templates/links")
+        legacy_tpl = Path("data/1_raw/templates/draft")
         if legacy_tpl.exists():
             draft_templates_path = legacy_tpl
     evaluation_responses_path = Path(evaluation_responses_dir)
