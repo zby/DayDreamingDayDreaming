@@ -532,7 +532,7 @@ class TestPipelineIntegration:
             
             # Create actual template files (all of them, including inactive ones)
             # For the new architecture, create template files in the draft subdirectory
-            gen_templates_dir = raw_data / "generation_templates"
+            gen_templates_dir = raw_data / "templates"
             draft_dir = gen_templates_dir / "draft"
             draft_dir.mkdir(parents=True)
             draft_dir.joinpath("active-template-1.txt").write_text("Active template 1 content")
