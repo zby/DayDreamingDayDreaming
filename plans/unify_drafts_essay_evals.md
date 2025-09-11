@@ -199,6 +199,16 @@ data/1_raw/llm_models.csv (for_generation/for_evaluation flags)
 
 ## 7) Rollout Plan (Sequential PRs)
 
+0. **PR-0: Data Migration (Unified CSVs; Strict)**
+   * Edit the three template CSVs to the unified, strict schema before any code changes:
+     - `data/1_raw/draft_templates.csv`: add column `generator` with value `llm` for all rows; keep/optionally add `parser` (draft parser is optional).
+     - `data/1_raw/essay_templates.csv`: ensure column `generator` exists and is set to `llm` or `copy` for each row (copy mode drives pass-through).
+     - `data/1_raw/evaluation_templates.csv`: add column `generator` with value `llm` for all rows; ensure `parser` is present and valid (e.g., `in_last_line`, `complex`) for each active row.
+   * Validate inputs:
+     - Spot-check CSV headers and values.
+     - Seed strict CSVs in `1_raw/` with required columns (generator present in all; parser present in evaluation) for tests.
+   * From this point on, the codebase treats the unified schema as authoritative (no fallbacks).
+
 1. **PR-A: Core Runner**
    * Add `unified/stage_runner.py` with comprehensive unit tests
    * Reuse existing `resources/llm_client.py`
