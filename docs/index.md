@@ -8,6 +8,7 @@ Start here to find the right guide for your task.
 ## Core Concepts
 - Cohorts and Membership: docs/cohorts.md
 - One‑phase essay (copy mode): docs/guides/one_phase_copy_mode.md
+- Unified Runner: docs/unified_runner.md
 - Two‑Phase Generation (draft → essay): README.md#two-phase-generation-system-
 
 ## How‑To Guides
