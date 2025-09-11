@@ -68,12 +68,14 @@ def main() -> int:
     filt = df[cond_tpl & cond_err & cond_score & cond_parent].copy()
 
     # Exclude evaluations run by Gemini models (empirically noisy for prior-art)
-    if "evaluation_model" in filt.columns:
+    if "evaluation_llm_model" in filt.columns:
+        id_col = filt["evaluation_llm_model"]
+    elif "evaluation_model" in filt.columns:
         id_col = filt["evaluation_model"]
     elif "model" in filt.columns:
         id_col = filt["model"]
     else:
-        print("ERROR: parsed_scores must include 'evaluation_model' or 'model'", file=sys.stderr)
+        print("ERROR: parsed_scores must include 'evaluation_llm_model', 'evaluation_model' or 'model'", file=sys.stderr)
         return 2
     id_is_gemini = id_col.fillna("").str.contains("gemini", case=False)
     mask = ~id_is_gemini

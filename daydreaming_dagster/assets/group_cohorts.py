@@ -286,9 +286,10 @@ def cohort_membership(
         draft_rows = [r for r in rows if r.get("stage") == "draft"]
         for d in draft_rows:
             draft_cohort_gen = str(d.get("gen_id"))
-            draft_tpl = str(d.get("draft_template"))
+            # Normalized membership uses template_id + llm_model_id
+            draft_tpl = str(d.get("template_id"))
             combo_id = str(d.get("combo_id"))
-            mid = str(d.get("generation_model"))
+            mid = str(d.get("llm_model_id"))
             # provider model name omitted
             draft_task_id = f"{combo_id}__{draft_tpl}__{mid}"
             for _, et in essay_tpl_df.iterrows():

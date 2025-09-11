@@ -325,12 +325,13 @@ def get_top_from_big_pivot(
     df = pd.read_csv(pivot_csv)
     et = pd.read_csv(evaluation_tasks_csv)
 
-    # Determine required evaluation columns as template__model
+    # Determine required evaluation columns as template__evaluator
+    eval_model_col = "evaluation_llm_model" if "evaluation_llm_model" in et.columns else "evaluation_model"
     et_cols = (
-        et[["evaluation_template", "evaluation_model"]]
+        et[["evaluation_template", eval_model_col]]
         .dropna()
         .drop_duplicates()
-        .assign(col=lambda d: d["evaluation_template"].astype(str) + "__" + d["evaluation_model"].astype(str))
+        .assign(col=lambda d: d["evaluation_template"].astype(str) + "__" + d[eval_model_col].astype(str))
     )["col"].tolist()
 
     # Ensure required columns exist (missing treated as NaN => excluded in sum)

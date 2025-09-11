@@ -31,20 +31,17 @@ def build_pivot(parsed_scores: Path, out_dir: Path) -> None:
 
     # Ensure required columns exist (canonical uses draft_template; support legacy link_template)
     # Accept either 'template_id' (new) or 'evaluation_template' (legacy)
-    required = [
+    required_base = [
         "essay_task_id",
         "combo_id",
         "generation_template",
         "generation_model",
-        # 'template_id' preferred; will map below
-        "evaluation_model",
         "score",
     ]
-    missing = [c for c in required if c not in df.columns]
+    missing = [c for c in required_base if c not in df.columns]
     if missing:
-        # if only missing evaluation template col, allow template_id
-        if missing == ["evaluation_model"] or missing == ["score"]:
-            raise ValueError(f"Missing columns in parsed scores: {missing}")
+        raise ValueError(f"Missing columns in parsed scores: {missing}
+Required base columns: {required_base}")
     # Normalize template column name
     if "template_id" in df.columns:
         df = df.rename(columns={"template_id": "evaluation_template"})
@@ -59,8 +56,11 @@ def build_pivot(parsed_scores: Path, out_dir: Path) -> None:
             # Keep a column for downstream selection even if empty
             df["draft_template"] = None
 
-    # Compose column key as template__model
-    df["evaluation_template_model"] = df["evaluation_template"].astype(str) + "__" + df["evaluation_model"].astype(str)
+    # Compose column key as template__evaluator (prefer evaluation_llm_model over evaluation_model)
+    eval_model_col = "evaluation_llm_model" if "evaluation_llm_model" in df.columns else "evaluation_model"
+    if eval_model_col not in df.columns:
+        raise ValueError("Missing evaluator id column: expected 'evaluation_llm_model' or 'evaluation_model'")
+    df["evaluation_template_model"] = df["evaluation_template"].astype(str) + "__" + df[eval_model_col].astype(str)
     # Deterministic order before pivot
     df_sorted = df.sort_values(["essay_task_id", "evaluation_template_model"])  # deterministic
 
