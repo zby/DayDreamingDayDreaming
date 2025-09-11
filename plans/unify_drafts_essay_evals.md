@@ -40,7 +40,7 @@ A unified module (`daydreaming_dagster/unified/stage_runner.py`) that:
 * **Required**: `stage`, `gen_id`, `template_id`, `values`, `out_dir`
 * **LLM path**: add `model` and `parser_name`
 * **Pass-through (essay)**: set `mode="copy"` and `pass_through_from=<path to draft parsed.txt>`
-* Template resolution: the runner locates the template file by `template_id` in the stage’s standard directory (no `template_path` field). If a CSV row provides inline `content`, the runner uses it instead of loading from file.
+* Template resolution: the runner locates the template file by `template_id` under `data/1_raw/templates/{stage}/` (no inline content and no template_path inputs).
 * **Options**: `overwrite=True/False`, `metadata={...}`
 
 ### B. Parser Registry with Stage Awareness
@@ -57,11 +57,10 @@ Align these fields across template CSVs while maintaining backward compatibility
 
 | Column | Where | Usage | Notes (strict) |
 |--------|-------|-------|-----------------|
-| `template_id` | all | Stable ID | Must exist in every row; matches file stem by default |
-| `active` | all | Selection switch | Required; cohort Cartesian uses this |
-| `generator` | all | Generation mode | Required in ALL CSVs; use `llm` for draft/evaluation; `llm` or `copy` for essay |
+| `template_id` | all | Stable ID | Must exist in every row; matches file stem under `data/1_raw/templates/{stage}/` |
+| `generator` | all | Generation mode | Required in ALL CSVs; `llm` for draft/evaluation; `llm` or `copy` for essay |
 | `parser` | draft/eval | Parser name | Required for evaluation (e.g., `in_last_line`, `complex`); optional for draft; not used for essay |
-| `content` | any | Inline template | Optional; if present, used instead of file |
+| `active` | all | Selection switch | Required; cohort Cartesian uses this (place as last column) |
 
 Column order
 - When editing CSVs, place the `active` column as the last column in each file for consistency (`template_id, ..., active`).
@@ -104,12 +103,12 @@ daydreaming_dagster/assets/
   └─ group_evaluation.py           # Use unified runner; resolve eval parser from `evaluation_templates.csv`
 ```
 
-**Existing (unchanged)**
+**Filesystem layout (target)**
 ```
 daydreaming_dagster/utils/{draft,essay,evaluation}_parsers.py
 daydreaming_dagster/resources/llm_client.py
-data/1_raw/generation_templates/{draft,essay}/
-data/1_raw/evaluation_templates.csv (+ optional files under `1_raw/evaluation_templates/`)
+data/1_raw/templates/{draft,essay,evaluation}/
+data/1_raw/evaluation_templates.csv
 data/1_raw/llm_models.csv (for_generation/for_evaluation flags)
 ```
 
@@ -123,7 +122,7 @@ data/1_raw/llm_models.csv (for_generation/for_evaluation flags)
   "stage": "essay",
   "gen_id": "gen_abc123",
   "template_id": "essay_v19", 
-  "template_path": "data/1_raw/generation_templates/essay/essay_v19.txt",
+  "template_path": "data/1_raw/templates/essay/essay_v19.txt",
   "template_sha1": "abc123...",
   "model": "anthropic/claude-3-sonnet",
   "parser_name": "essay_idea_last",
@@ -157,7 +156,7 @@ data/1_raw/llm_models.csv (for_generation/for_evaluation flags)
 
 ### Draft Assets (wrapper)
 * **Values**: Concept combinations for the membership `combo_id` (via `content_combinations`), description level from ExperimentConfig
-* **Template**: `data/1_raw/generation_templates/draft/{template_id}.txt`
+* **Template**: `data/1_raw/templates/draft/{template_id}.txt`
 * **Model**: From membership `llm_model_id` (validated against `llm_models.csv` `for_generation=true`)
 * **Parser**: Optional for draft; if present, use it; otherwise treat draft parsing as identity in the runner spec (no CSV fallback is needed since omission is allowed)
 * **Output**: `data/gens/draft/{gen_id}/`
@@ -166,13 +165,13 @@ data/1_raw/llm_models.csv (for_generation/for_evaluation flags)
 * **Mode**: Read `generator` from `essay_templates.csv` → `llm` or `copy`
 * **Copy mode**: set `pass_through_from = data/gens/draft/{parent_gen_id}/parsed.txt`; no LLM call
 * **LLM mode**: include draft `parsed.txt` in template `values`; call LLM; parse
-* **Template**: `data/1_raw/generation_templates/essay/{template_id}.txt`
+* **Template**: `data/1_raw/templates/essay/{template_id}.txt`
 * **Model**: From membership `llm_model_id`
 * **Output**: `data/gens/essay/{gen_id}/`
 
 ### Evaluation Assets (wrapper)
 * **Values**: Include essay `parsed.txt` content plus rubric parameters
-* **Template**: `data/1_raw/evaluation_templates/{template_id}.txt` (or inline `content` column)
+* **Template**: `data/1_raw/templates/evaluation/{template_id}.txt`
 * **Model**: From membership `llm_model_id` (validated against `llm_models.csv` `for_evaluation=true`)
 * **Parser**: Use `evaluation_templates.csv` `parser` column via the evaluation parsing config
 * **Output**: `data/gens/evaluation/{gen_id}/`
@@ -212,6 +211,14 @@ data/1_raw/llm_models.csv (for_generation/for_evaluation flags)
      - Reorder columns so that `active` is the last column in each CSV (`template_id, ..., active`).
      - Seed strict CSVs in `1_raw/` with required columns (generator present in all; parser present in evaluation) for tests.
    * From this point on, the codebase treats the unified schema as authoritative (no fallbacks).
+
+0b. **PR-0b: Template Directory Restructure (Uniform Paths)**
+   * Move template files into the unified directory layout:
+     - `data/1_raw/templates/draft/*.txt`
+     - `data/1_raw/templates/essay/*.txt`
+     - `data/1_raw/templates/evaluation/*.txt`
+   * Update loaders to read from `data/1_raw/templates/{stage}/` exclusively; remove support for legacy `generation_templates/*` and inline content.
+   * Adjust tests/fixtures to the new paths.
 
 1. **PR-A: Core Runner**
    * Add `unified/stage_runner.py` with comprehensive unit tests
