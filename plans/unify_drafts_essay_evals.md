@@ -37,9 +37,10 @@ A unified module (`daydreaming_dagster/unified/stage_runner.py`) that:
 
 **Core Interface: `StageRunSpec`**
 
-* **Required**: `stage`, `gen_id`, `template_path`, `template_id`, `values`, `out_dir`
+* **Required**: `stage`, `gen_id`, `template_id`, `values`, `out_dir`
 * **LLM path**: add `model` and `parser_name`
 * **Pass-through (essay)**: set `mode="copy"` and `pass_through_from=<path to draft parsed.txt>`
+* Template resolution: the runner locates the template file by `template_id` in the stage’s standard directory (no `template_path` field). If a CSV row provides inline `content`, the runner uses it instead of loading from file.
 * **Options**: `overwrite=True/False`, `metadata={...}`
 
 ### B. Parser Registry with Stage Awareness
@@ -61,7 +62,6 @@ Align these fields across template CSVs while maintaining backward compatibility
 | `generator` | all | Generation mode | Required in ALL CSVs; use `llm` for draft/evaluation; `llm` or `copy` for essay |
 | `parser` | draft/eval | Parser name | Required for evaluation (e.g., `in_last_line`, `complex`); optional for draft; not used for essay |
 | `content` | any | Inline template | Optional; if present, used instead of file |
-| `template_path` | any | File override | Optional; otherwise infer from `data/1_raw/...` |
 
 Column order
 - When editing CSVs, place the `active` column as the last column in each file for consistency (`template_id, ..., active`).
