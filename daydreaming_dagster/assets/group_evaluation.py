@@ -16,7 +16,7 @@ from ..utils.membership_lookup import find_membership_row_by_gen
 from ..utils.raw_readers import read_evaluation_templates
 from .raw_data import EVALUATION_TEMPLATES_KEY
 from ..utils.evaluation_parsing_config import load_parser_map, require_parser_for_template
-from ..utils.eval_response_parser import parse_llm_response
+from ..unified.stage_runner import StageRunSpec, StageRunner
 from ..constants import ESSAY, EVALUATION
 
  
@@ -109,8 +109,18 @@ def evaluation_prompt(context) -> str:
 )
 def evaluation_response(context, evaluation_prompt) -> str:
     gen_id = context.partition_key
-    mrow, _cohort = find_membership_row_by_gen(getattr(context.resources, "data_root", "data"), "evaluation", str(gen_id))
-    model_name = str(mrow.get("llm_model_id") or mrow.get("evaluation_model") or "").strip() if mrow is not None else ""
+    data_root = Path(getattr(context.resources, "data_root", "data"))
+    mrow, _cohort = find_membership_row_by_gen(data_root, "evaluation", str(gen_id))
+    if mrow is None:
+        raise Failure(
+            description="Cohort membership row not found for evaluation gen_id",
+            metadata={
+                "function": MetadataValue.text("evaluation_response"),
+                "gen_id": MetadataValue.text(str(gen_id)),
+                "resolution": MetadataValue.text("Materialize cohort_id,cohort_membership to register this gen_id; use that partition key"),
+            },
+        )
+    model_name = str(mrow.get("llm_model_id") or "").strip()
     if not model_name:
         raise Failure(
             description="Missing evaluator model for evaluation task",
@@ -120,76 +130,73 @@ def evaluation_response(context, evaluation_prompt) -> str:
                 "resolution": MetadataValue.text("Ensure evaluation row in cohort membership includes an llm_model_id"),
             },
         )
-    llm_client = context.resources.openrouter_client
-    max_tokens = getattr(context.resources.experiment_config, "evaluation_max_tokens", None)
-    text, info = llm_client.generate_with_info(evaluation_prompt, model=model_name, max_tokens=max_tokens)
-    context.add_output_metadata({
-        "gen_id": MetadataValue.text(str(gen_id)),
-        "finish_reason": MetadataValue.text(str((info or {}).get("finish_reason"))),
-    })
-    context.log.info(f"Generated evaluation response for gen {gen_id}")
-    # Write to filesystem gens/evaluation
-    import time
-    from pathlib import Path as _Path
-    parent_gen_id = mrow.get("parent_gen_id") if mrow is not None else None
-    evaluation_template = mrow.get("template_id") if mrow is not None else None
-    model_id = str(mrow.get("llm_model_id") or mrow.get("evaluation_model") or "") if mrow is not None else None
-    if not (isinstance(gen_id, str) and gen_id.strip()):
+    evaluation_template = str(mrow.get("template_id") or "").strip()
+    if not evaluation_template:
         raise Failure(
-            description="Missing gen_id for evaluation task",
+            description="Missing evaluation template for evaluation task",
             metadata={
                 "function": MetadataValue.text("evaluation_response"),
                 "gen_id": MetadataValue.text(str(gen_id)),
-                "resolution": MetadataValue.text("Partition key must be a valid evaluation gen_id from cohort membership"),
             },
         )
-    docs_root = _Path(getattr(context.resources, "data_root", "data")) / "gens"
-    # Parse evaluation response using configured parser; write numeric-only parsed.txt
-    normalized = str(text).replace("\r\n", "\n")
-    parsed_out = None
-    score_val = None
+    parent_gen_id = str(mrow.get("parent_gen_id") or "").strip()
+    if not parent_gen_id:
+        raise Failure(
+            description="Missing parent_gen_id for evaluation task",
+            metadata={
+                "function": MetadataValue.text("evaluation_response"),
+                "gen_id": MetadataValue.text(str(gen_id)),
+            },
+        )
+    # Load target essay parsed content for prompt values
+    gens_root = data_root / "gens"
     try:
-        parser_map = load_parser_map(_Path(getattr(context.resources, "data_root", "data")))
-        strategy = require_parser_for_template(str(evaluation_template), parser_map)
-        res = parse_llm_response(normalized, strategy)
-        score_val = res.get("score")
-        if isinstance(score_val, (int, float)):
-            parsed_out = f"{float(score_val)}\n"
-    except Exception:
-        # If parsing fails, do not synthesize a SCORE line; downstream will surface the error.
-        score_val = None
-    run_id = getattr(getattr(context, "run", object()), "run_id", None) or getattr(context, "run_id", None)
-    metadata = build_generation_metadata(
-        stage=EVALUATION,
+        gen = Generation.load(gens_root, ESSAY, parent_gen_id)
+    except Exception as e:
+        raise Failure(
+            description="Target essay document not found",
+            metadata={
+                "function": MetadataValue.text("evaluation_response"),
+                "parent_gen_id": MetadataValue.text(str(parent_gen_id)),
+                "error": MetadataValue.text(str(e)),
+            },
+        )
+    if not isinstance(gen.parsed_text, str) or not gen.parsed_text:
+        raise Failure(
+            description="Missing or unreadable parsed.txt for target essay document",
+            metadata={
+                "function": MetadataValue.text("evaluation_response"),
+                "parent_gen_id": MetadataValue.text(str(parent_gen_id)),
+            },
+        )
+
+    # Resolve parser for evaluation
+    parser_map = load_parser_map(data_root)
+    parser_name = require_parser_for_template(evaluation_template, parser_map)
+
+    # Build runner spec
+    runner = StageRunner()
+    spec = StageRunSpec(
+        stage="evaluation",
         gen_id=str(gen_id),
-        parent_gen_id=str(parent_gen_id) if parent_gen_id else None,
-        template_id=str(evaluation_template) if evaluation_template else None,
-        model_id=str(model_id) if model_id else None,
-        task_id=str(""),
-        function="evaluation_response",
-        run_id=str(run_id) if run_id else None,
-        cohort_id=str(_cohort) if isinstance(_cohort, str) and _cohort else None,
-        extra={
-            "evaluation_template": evaluation_template,
-        },
+        template_id=evaluation_template,
+        values={"response": gen.parsed_text},
+        out_dir=data_root / "gens",
+        mode="llm",
+        model=model_name,
+        parser_name=parser_name,
+        max_tokens=getattr(context.resources.experiment_config, "evaluation_max_tokens", None),
     )
-    prompt_text = evaluation_prompt if isinstance(evaluation_prompt, str) else None
-    doc = Generation(
-        stage=EVALUATION,
-        gen_id=gen_id,
-        parent_gen_id=parent_gen_id,
-        raw_text=normalized,
-        parsed_text=parsed_out,  # do not write parsed.txt when parsing fails
-        prompt_text=prompt_text,
-        metadata=metadata,
-    )
-    target_dir = doc.write_files(docs_root)
+    result = runner.run(spec, llm_client=context.resources.openrouter_client)
+
+    # Emit minimal metadata for Dagster UI
     context.add_output_metadata(
         {
-            "gen_id": MetadataValue.text(gen_id),
-            "gen_dir": MetadataValue.path(str(target_dir)),
-            "parent_gen_id": MetadataValue.text(str(parent_gen_id) if parent_gen_id else ""),
+            "gen_id": MetadataValue.text(str(gen_id)),
+            "parent_gen_id": MetadataValue.text(str(parent_gen_id)),
+            "finish_reason": MetadataValue.text(str(result.get("metadata", {}).get("finish_reason"))),
         }
     )
+    context.log.info(f"Generated evaluation response for gen {gen_id}")
 
-    return text
+    return result.get("raw") or ""
