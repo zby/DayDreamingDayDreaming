@@ -17,7 +17,7 @@ def _load_essay_tasks(base: str) -> pd.DataFrame:
     try:
         df = pd.read_csv(Path(base) / "2_tasks" / "essay_generation_tasks.csv")
         # Normalize types
-        for col in ("combo_id", "draft_template", "essay_template", "generation_model", "generation_model_name", "gen_id"):
+        for col in ("combo_id", "draft_template", "essay_template", "generation_model", "gen_id"):
             if col in df.columns:
                 df[col] = df[col].astype(str)
         return df

@@ -437,7 +437,7 @@ Sources merged:
 
 ### Evaluation Task Identity
 
-- `evaluation_task_id = {gen_id}__{evaluation_template}__{evaluation_model}` (double-underscore separators)
+- `evaluation_task_id = {gen_id}__{evaluation_template}__{evaluation_llm_model}` (double-underscore separators)
 - `evaluation_tasks` rows are denormalized with all document fields plus evaluation template/model names.
 
 ### Prompt Loading (Direct Path)

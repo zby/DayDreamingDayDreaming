@@ -154,6 +154,7 @@ def parse_identifiers_from_eval_task_id(
         "generation_model": None,
         "evaluation_template": None,
         "evaluation_model": None,
+        "evaluation_llm_model": None,
     }
 
     if not evaluation_task_id:
@@ -232,6 +233,7 @@ def parse_identifiers_from_eval_task_id(
         "generation_model": gen_model,
         "evaluation_template": eval_template,
         "evaluation_model": eval_model,
+        "evaluation_llm_model": eval_model,
     })
 
     return result
@@ -436,6 +438,7 @@ def parse_all(
         "template_id",
         "evaluation_template",
         "evaluation_model",
+        "evaluation_llm_model",
         "score",
         "error",
         "evaluation_response_path",
@@ -463,6 +466,7 @@ def parse_all(
         "template_id",
         "evaluation_template",
         "evaluation_model",
+        "evaluation_llm_model",
         "score",
         "error",
         "evaluation_response_path",
@@ -482,7 +486,7 @@ def parse_all(
         df["score"] = pd.to_numeric(df["score"], errors="coerce")
     # Replace NaN with empty string for text-like columns
     text_like = [
-        "gen_id","parent_gen_id","evaluation_template","evaluation_model","evaluation_response_path","error"
+        "gen_id","parent_gen_id","evaluation_template","evaluation_model","evaluation_llm_model","evaluation_response_path","error"
     ]
     for col in text_like:
         if col in df.columns:
