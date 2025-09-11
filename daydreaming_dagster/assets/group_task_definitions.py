@@ -290,6 +290,11 @@ def draft_generation_tasks(
     context,
     content_combinations: List[ContentCombination],
 ) -> pd.DataFrame:
+    # DEPRECATION: Task CSVs are transitional and will be removed.
+    context.log.warning(
+        "DEPRECATION: draft_generation_tasks is a backcompat projection. "
+        "Use cohort_membership as the single source of truth."
+    )
     """Project draft task rows directly from cohort membership when available.
 
     Falls back to legacy active-axes derivation only when explicitly enabled via
@@ -389,6 +394,11 @@ def essay_generation_tasks(
     content_combinations: List[ContentCombination],
     draft_generation_tasks: pd.DataFrame,
 ) -> pd.DataFrame:
+    # DEPRECATION warning for essays path
+    context.log.warning(
+        "DEPRECATION: essay_generation_tasks is a backcompat projection. "
+        "Use cohort_membership as the single source of truth."
+    )
     """Project essay task rows directly from cohort membership when available.
 
     Falls back to legacy derivation (drafts × active essay templates) only when
@@ -513,6 +523,10 @@ def evaluation_tasks(
     essay_generation_tasks: pd.DataFrame,
     draft_generation_tasks: pd.DataFrame,
 ) -> pd.DataFrame:
+    context.log.warning(
+        "DEPRECATION: evaluation_tasks is a backcompat projection. "
+        "Use cohort_membership as the single source of truth."
+    )
     from ..utils.raw_readers import read_llm_models, read_evaluation_templates
 
     # use evaluation_gens_partitions for partition registration
