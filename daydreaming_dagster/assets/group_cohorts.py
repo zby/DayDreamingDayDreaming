@@ -87,7 +87,7 @@ def cohort_membership(
     context,
     cohort_id: str,
 ) -> pd.DataFrame:
-    """Build the authoritative cohort membership CSV with full task columns per stage.
+    """Build the authoritative cohort membership CSV with normalized columns per stage.
 
     Branches on the presence of data/2_tasks/selected_essays.txt:
     - If present: curated mode — recover task fields from existing gens metadata for drafts/essays
@@ -109,6 +109,8 @@ def cohort_membership(
     selected_essays = _load_selected_essays_list(data_root)
     # Cohort membership depends on model_id only (provider names omitted).
 
+    # Normalized row schema across all stages:
+    #   stage, gen_id, cohort_id, parent_gen_id, combo_id, template_id, llm_model_id
     rows: List[Dict] = []
 
     if selected_essays:
@@ -192,19 +194,20 @@ def cohort_membership(
             essay_task_id = f"{draft_task_id}__{essay_tpl}"
             essay_cohort_gen = reserve_gen_id("essay", essay_task_id, run_id=cohort_id)
 
-            # Draft row (no task_id stored; compute when needed)
+            # Draft row
             rows.append(
                 {
                     "stage": "draft",
                     "gen_id": draft_cohort_gen,
                     "cohort_id": str(cohort_id),
+                    "parent_gen_id": "",
                     "combo_id": combo_id,
-                    "draft_template": draft_tpl,
-                    "generation_model": model_id,
+                    "template_id": draft_tpl,
+                    "llm_model_id": model_id,
                 }
             )
 
-            # Essay row (no task_ids stored)
+            # Essay row
             rows.append(
                 {
                     "stage": "essay",
@@ -212,9 +215,9 @@ def cohort_membership(
                     "cohort_id": str(cohort_id),
                     "parent_gen_id": draft_cohort_gen,
                     "combo_id": combo_id,
-                    "draft_template": draft_tpl,
-                    "essay_template": essay_tpl,
-                    "generation_model": model_id,
+                    "template_id": essay_tpl,
+                    # Prefer essay model if present; else inherit draft model
+                    "llm_model_id": essay_model_id or model_id,
                 }
             )
 
@@ -232,9 +235,10 @@ def cohort_membership(
                             "gen_id": eval_gen_id,
                             "cohort_id": str(cohort_id),
                             "parent_gen_id": essay_gen_id,
-                            "evaluation_template": tpl,
-                            "evaluation_model": mid,
-                            "parser": parser_map.get(str(tpl)),
+                            # combo_id is tied to content; reuse from curated draft -> essay chain
+                            "combo_id": combo_id,
+                            "template_id": tpl,
+                            "llm_model_id": mid,
                         }
                     )
     else:
@@ -268,9 +272,10 @@ def cohort_membership(
                             "stage": "draft",
                             "gen_id": draft_cohort_gen,
                             "cohort_id": str(cohort_id),
+                            "parent_gen_id": "",
                             "combo_id": combo_id,
-                            "draft_template": draft_tpl,
-                            "generation_model": mid,
+                            "template_id": draft_tpl,
+                            "llm_model_id": mid,
                         }
                     )
 
@@ -295,12 +300,11 @@ def cohort_membership(
                         "stage": "essay",
                         "gen_id": essay_cohort_gen,
                         "cohort_id": str(cohort_id),
-                        "essay_task_id": essay_task_id,
                         "parent_gen_id": draft_cohort_gen,
                         "combo_id": combo_id,
-                        "draft_template": draft_tpl,
-                        "essay_template": essay_tpl,
-                        "generation_model": mid,
+                        "template_id": essay_tpl,
+                        # default: essay inherits generation model id
+                        "llm_model_id": mid,
                     }
                 )
 
@@ -318,9 +322,9 @@ def cohort_membership(
                             "gen_id": eval_gen_id,
                             "cohort_id": str(cohort_id),
                             "parent_gen_id": essay_gen_id,
-                            "evaluation_template": tpl,
-                            "evaluation_model": mid,
-                            "parser": parser_map.get(str(tpl)),
+                            "combo_id": combo_id,
+                            "template_id": tpl,
+                            "llm_model_id": mid,
                         }
                     )
 

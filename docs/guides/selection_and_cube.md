@@ -36,7 +36,7 @@ Notes
 
 ## Step 2: Build Cohort and Register Partitions (inside Dagster)
 
-Use the Dagster asset `cohort_membership` to build membership.csv (wide rows per stage) and register dynamic partitions directly:
+Use the Dagster asset `cohort_membership` to build membership.csv (normalized rows) and register dynamic partitions directly:
 
 ```bash
 uv run dagster asset materialize --select "cohort_id,cohort_membership" -f daydreaming_dagster/definitions.py
@@ -44,7 +44,7 @@ uv run dagster asset materialize --select "cohort_id,cohort_membership" -f daydr
 
 What it does
 - Reads `data/2_tasks/selected_essays.txt` (if present) to build a curated cohort; otherwise builds a Cartesian cohort from active axes.
-- Writes `data/cohorts/<cohort_id>/membership.csv` with full task columns per stage.
+- Writes `data/cohorts/<cohort_id>/membership.csv` with normalized rows (`stage, gen_id, cohort_id, parent_gen_id, combo_id, template_id, llm_model_id`).
 - Registers dynamic partitions for draft/essay/evaluation add‑only.
 - Enforces parent integrity: essays must point to cohort drafts; evaluations must point to cohort essays.
 
@@ -65,7 +65,7 @@ Evaluations
 ```bash
 uv run dagster asset materialize -f daydreaming_dagster/definitions.py \
   --select "evaluation_prompt,evaluation_response" \
-  --partition "<parent_gen_id>__<evaluation_template>__<evaluation_model_id>"
+  --partition "<parent_gen_id>__<evaluation_template>__<evaluation_llm_model>"
 ```
 
 Parsing and summaries

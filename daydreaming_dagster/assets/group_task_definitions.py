@@ -306,14 +306,23 @@ def draft_generation_tasks(
     mdf = _read_membership_rows(data_root, resolved_cohort)
     if mdf is not None and not mdf.empty:
         draft_df = mdf[mdf.get("stage") == "draft"].copy()
-        for c in ("combo_id","draft_template","generation_model","generation_model_name","gen_id","cohort_id"):
+        # Map normalized membership -> task columns
+        if "draft_template" not in draft_df.columns and "template_id" in draft_df.columns:
+            draft_df["draft_template"] = draft_df["template_id"].astype(str)
+        if "generation_model" not in draft_df.columns and "llm_model_id" in draft_df.columns:
+            draft_df["generation_model"] = draft_df["llm_model_id"].astype(str)
+        for c in ("combo_id","draft_template","generation_model","draft_llm_model","gen_id","cohort_id"):
             if c not in draft_df.columns:
                 draft_df[c] = pd.Series(dtype=str)
         draft_df["draft_task_id"] = draft_df.apply(
             lambda r: f"{str(r.get('combo_id') or '').strip()}__{str(r.get('draft_template') or '').strip()}__{str(r.get('generation_model') or '').strip()}",
             axis=1,
         )
-        cols = ["draft_task_id","combo_id","draft_template","generation_model","generation_model_name","gen_id","cohort_id"]
+        # Fill per-stage model id for clarity (treat NaN/empty as missing)
+        _missing_draft = draft_df["draft_llm_model"].isna() | (draft_df["draft_llm_model"].astype(str).str.strip() == "")
+        draft_df["draft_llm_model"] = draft_df["draft_llm_model"].where(~_missing_draft, draft_df["generation_model"].astype(str))
+        # Write both canonical and explicit per-stage columns
+        cols = ["draft_task_id","combo_id","draft_template","generation_model","draft_llm_model","gen_id","cohort_id"]
         out = draft_df[cols].drop_duplicates(subset=["gen_id"]).reset_index(drop=True)
         # Register partitions add-only
         existing = set(context.instance.get_dynamic_partitions(draft_gens_partitions.name))
@@ -347,6 +356,9 @@ def draft_generation_tasks(
                         "combo_id": combo.combo_id,
                         "draft_template": t["template_id"],
                         "generation_model": m["id"],
+                        # New per-stage column; mirror generation_model in legacy path
+                        "draft_llm_model": m["id"],
+                        # Keep provider name for backcompat in legacy path
                         "generation_model_name": m["model"],
                     }
                 )
@@ -391,19 +403,34 @@ def essay_generation_tasks(
     mdf = _read_membership_rows(data_root, resolved_cohort)
     if mdf is not None and not mdf.empty:
         essay_df = mdf[mdf.get("stage") == "essay"].copy()
-        for c in ("parent_gen_id","combo_id","draft_template","essay_template","generation_model","gen_id","cohort_id"):
+        # Parent draft info from membership (normalized)
+        drafts = mdf[mdf.get("stage") == "draft"][['gen_id','template_id','llm_model_id']].rename(columns={
+            'gen_id': '_p_gen_id', 'template_id': '_p_template_id', 'llm_model_id': '_p_llm_model_id'
+        })
+        essay_df = essay_df.merge(drafts, left_on='parent_gen_id', right_on='_p_gen_id', how='left')
+        # Map normalized to task columns
+        essay_df['draft_template'] = essay_df['_p_template_id'].astype(str)
+        if 'essay_template' not in essay_df.columns and 'template_id' in essay_df.columns:
+            essay_df['essay_template'] = essay_df['template_id'].astype(str)
+        if 'generation_model' not in essay_df.columns and 'llm_model_id' in essay_df.columns:
+            essay_df['generation_model'] = essay_df['llm_model_id'].astype(str)
+        # Stage-specific ids
+        essay_df['draft_llm_model'] = essay_df['_p_llm_model_id'].astype(str)
+        essay_df['essay_llm_model'] = essay_df['generation_model'].astype(str)
+        for c in ("parent_gen_id","combo_id","draft_template","essay_template","generation_model","essay_llm_model","draft_llm_model","gen_id","cohort_id"):
             if c not in essay_df.columns:
                 essay_df[c] = pd.Series(dtype=str)
         essay_df["draft_task_id"] = essay_df.apply(
-            lambda r: f"{str(r.get('combo_id') or '').strip()}__{str(r.get('draft_template') or '').strip()}__{str(r.get('generation_model') or '').strip()}",
+            lambda r: f"{str(r.get('combo_id') or '').strip()}__{str(r.get('draft_template') or '').strip()}__{str(r.get('draft_llm_model') or '').strip()}",
             axis=1,
         )
         essay_df["essay_task_id"] = essay_df.apply(
             lambda r: f"{str(r.get('draft_task_id') or '').strip()}__{str(r.get('essay_template') or '').strip()}",
             axis=1,
         )
+        # Do not include legacy 'generation_model' in essay tasks; per-stage ids only
         cols = [
-            "essay_task_id","parent_gen_id","draft_task_id","combo_id","draft_template","essay_template","generation_model","gen_id","cohort_id",
+            "essay_task_id","parent_gen_id","draft_task_id","combo_id","draft_template","essay_template","essay_llm_model","draft_llm_model","gen_id","cohort_id",
         ]
         out = essay_df[cols].drop_duplicates(subset=["gen_id"]).reset_index(drop=True)
         # Register partitions add-only
@@ -433,6 +460,8 @@ def essay_generation_tasks(
         "draft_template",
         "essay_template",
         "generation_model",
+        "essay_llm_model",
+        "draft_llm_model",
         "gen_id",
         "cohort_id",
     ]
@@ -457,6 +486,9 @@ def essay_generation_tasks(
                 "draft_template": drow.get("draft_template"),
                 "essay_template": essay_template_id,
                 "generation_model": gen_model_id,
+                # New per-stage columns mirror generation model for legacy path
+                "draft_llm_model": gen_model_id,
+                "essay_llm_model": gen_model_id,
                 "gen_id": gen_id,
                 "cohort_id": str(resolved_cohort) if resolved_cohort else "",
             }
@@ -553,28 +585,51 @@ def evaluation_tasks(
     mdf = _read_membership_rows(data_root, resolved)
     if mdf is not None and not mdf.empty:
         edf = mdf[mdf.get("stage") == "evaluation"].copy()
+        # Map normalized membership -> task columns
+        if 'evaluation_template' not in edf.columns and 'template_id' in edf.columns:
+            edf['evaluation_template'] = edf['template_id'].astype(str)
+        # Map normalized evaluator id directly to evaluation_llm_model; do not emit evaluation_model
+        if 'evaluation_llm_model' not in edf.columns and 'llm_model_id' in edf.columns:
+            edf['evaluation_llm_model'] = edf['llm_model_id'].astype(str)
+        # Pull parent essay and draft info from membership
+        essays = mdf[mdf.get('stage') == 'essay'][['gen_id','parent_gen_id','template_id','llm_model_id','combo_id']].rename(columns={
+            'gen_id':'_e_gen_id','parent_gen_id':'_e_parent','template_id':'_e_tpl','llm_model_id':'_e_llm','combo_id':'_e_combo'
+        })
+        edf = edf.merge(essays, left_on='parent_gen_id', right_on='_e_gen_id', how='left')
+        drafts = mdf[mdf.get('stage') == 'draft'][['gen_id','template_id','llm_model_id','combo_id']].rename(columns={
+            'gen_id':'_d_gen_id','template_id':'_d_tpl','llm_model_id':'_d_llm','combo_id':'_d_combo'
+        })
+        # Join drafts using the essay's draft parent id
+        edf = edf.merge(drafts, left_on='_e_parent', right_on='_d_gen_id', how='left')
+        # Denormalize for tasks
+        edf['combo_id'] = edf['_e_combo'].fillna(edf['_d_combo']).astype(str)
+        edf['draft_template'] = edf['_d_tpl'].astype(str)
+        edf['essay_template'] = edf['_e_tpl'].astype(str)
+        # Use essay model as generation_model for evaluation tasks
+        edf['draft_llm_model'] = edf['_d_llm'].astype(str)
+        edf['essay_llm_model'] = edf['_e_llm'].astype(str)
+        # evaluation_llm_model already mapped above from normalized llm_model_id
+        # Do not include legacy 'generation_model' in evaluation tasks; per-stage ids only
         cols = [
             "evaluation_task_id",
             "parent_gen_id",
-            "document_id",
-            "essay_task_id",
-            "draft_task_id",
             "combo_id",
             "draft_template",
             "essay_template",
-            "generation_model",
             "evaluation_template",
-            "evaluation_model",
-            "parser",
-            "file_path",
-            "source_dir",
-            "source_asset",
+            "draft_llm_model",
+            "essay_llm_model",
+            "evaluation_llm_model",
             "gen_id",
             "cohort_id",
         ]
         for c in cols:
             if c not in edf.columns:
                 edf[c] = pd.Series(dtype=str)
+        # Compute evaluation_task_id when absent, using evaluation_llm_model
+        edf['evaluation_task_id'] = edf['evaluation_task_id'].where(edf['evaluation_task_id'].astype(bool), edf.apply(
+            lambda r: f"{str(r.get('parent_gen_id') or '').strip()}__{str(r.get('evaluation_template') or '').strip()}__{str(r.get('evaluation_llm_model') or '').strip()}", axis=1
+        ))
         out = edf[cols].drop_duplicates(subset=["gen_id"]).reset_index(drop=True)
         existing = set(context.instance.get_dynamic_partitions(evaluation_gens_partitions.name))
         keys = [str(x) for x in out["gen_id"].astype(str).tolist()]

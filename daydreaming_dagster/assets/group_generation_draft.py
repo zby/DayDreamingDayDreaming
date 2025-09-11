@@ -13,7 +13,7 @@ from .partitions import draft_gens_partitions
 from ..utils.template_loader import load_generation_template
 from ..utils.raw_readers import read_draft_templates
 from ..utils.draft_parsers import get_draft_parser
-from ..utils.dataframe_helpers import get_task_row
+from ..utils.dataframe_helpers import get_task_row, resolve_llm_model_id
 from ..utils.generation import Generation
 from ..utils.metadata import build_generation_metadata
 from ..constants import DRAFT, FILE_RAW
@@ -100,13 +100,23 @@ def _draft_response_impl(context, draft_prompt, draft_generation_tasks) -> str:
     """Generate Phase 1 LLM responses for drafts (core implementation)."""
     gen_id = context.partition_key
     task_row = get_task_row(draft_generation_tasks, "gen_id", gen_id, context, "draft_generation_tasks")
-    model_name = task_row["generation_model_name"]
+    # Use model_id from tasks; LLM client maps id -> provider internally
+    model_id = resolve_llm_model_id(task_row, "draft")
+    if not model_id:
+        raise Failure(
+            description="Missing generation_model for draft task",
+            metadata={
+                "function": MetadataValue.text("draft_response"),
+                "gen_id": MetadataValue.text(str(gen_id)),
+                "resolution": MetadataValue.text("Ensure draft_generation_tasks.csv includes a generation_model (model id) column"),
+            },
+        )
 
     llm_client = context.resources.openrouter_client
     experiment_config = context.resources.experiment_config
     max_tokens = experiment_config.draft_generation_max_tokens
     # Unified client path
-    text, info = llm_client.generate_with_info(draft_prompt, model=model_name, max_tokens=max_tokens)
+    text, info = llm_client.generate_with_info(draft_prompt, model=model_id, max_tokens=max_tokens)
 
     # Normalize newlines and persist RAW immediately (before any validation) to aid debugging
     normalized = str(text).replace("\r\n", "\n")
@@ -140,7 +150,7 @@ def _draft_response_impl(context, draft_prompt, draft_generation_tasks) -> str:
             metadata={
                 "function": MetadataValue.text("draft_response"),
                 "gen_id": MetadataValue.text(str(gen_id)),
-                "model_name": MetadataValue.text(model_name),
+                "model_id": MetadataValue.text(model_id),
                 "response_line_count": MetadataValue.int(len(response_lines)),
                 "minimum_required": MetadataValue.int(int(min_lines)),
                 "response_content_preview": MetadataValue.text(
@@ -165,7 +175,7 @@ def _draft_response_impl(context, draft_prompt, draft_generation_tasks) -> str:
             metadata={
                 "function": MetadataValue.text("draft_response"),
                 "gen_id": MetadataValue.text(str(gen_id)),
-                "model_name": MetadataValue.text(model_name),
+                "model_id": MetadataValue.text(model_id),
                 "finish_reason": MetadataValue.text(str(finish_reason)),
                 "truncated": MetadataValue.bool(True),
                 "raw_chars": MetadataValue.int(len(normalized)),
@@ -239,7 +249,7 @@ def _draft_response_impl(context, draft_prompt, draft_generation_tasks) -> str:
 
     # Final metadata and output
     context.log.info(
-        f"Generated draft response for gen {gen_id} using model {model_name} ({len(response_lines)} raw lines); parser={parser_used}"
+        f"Generated draft response for gen {gen_id} ({len(response_lines)} raw lines); parser={parser_used}"
     )
     meta = {
         "function": MetadataValue.text("draft_response"),

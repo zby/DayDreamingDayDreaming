@@ -10,7 +10,7 @@ from jinja2 import Environment
 from .partitions import essay_gens_partitions
 from ..utils.template_loader import load_generation_template
 from ..utils.raw_readers import read_essay_templates
-from ..utils.dataframe_helpers import get_task_row
+from ..utils.dataframe_helpers import get_task_row, resolve_llm_model_id
 from ..utils.generation import Generation
 from ..utils.metadata import build_generation_metadata
 from ..constants import DRAFT, ESSAY, FILE_RAW
@@ -265,10 +265,20 @@ def _essay_response_impl(context, essay_prompt, essay_generation_tasks) -> str:
         )
         return text
     # Default LLM path (persist RAW early; apply truncation guard)
-    model_name = task_row["generation_model_name"]
+    # Use model_id from tasks; LLM client maps id -> provider internally
+    model_id = resolve_llm_model_id(task_row, "essay")
+    if not model_id:
+        raise Failure(
+            description="Missing generation_model for essay task",
+            metadata={
+                "function": MetadataValue.text("_essay_response_impl"),
+                "gen_id": MetadataValue.text(str(gen_id)),
+                "resolution": MetadataValue.text("Ensure essay_generation_tasks.csv includes a generation_model (model id) column"),
+            },
+        )
     llm_client = context.resources.openrouter_client
     max_tokens = context.resources.experiment_config.essay_generation_max_tokens
-    text, info = llm_client.generate_with_info(essay_prompt, model=model_name, max_tokens=max_tokens)
+    text, info = llm_client.generate_with_info(essay_prompt, model=model_id, max_tokens=max_tokens)
 
     normalized = str(text).replace("\r\n", "\n")
 

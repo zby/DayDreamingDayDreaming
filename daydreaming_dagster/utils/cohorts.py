@@ -47,7 +47,20 @@ def compute_cohort_id(
 
 
 def get_env_cohort_id() -> str | None:
-    return os.environ.get("DD_COHORT") or None
+    """Return a normalized DD_COHORT override when meaningful.
+
+    Treat empty strings or common "disabled" sentinels ("0", "false", "none", "null")
+    as unset to avoid accidental overrides from environment defaults.
+    """
+    raw = os.environ.get("DD_COHORT")
+    if raw is None:
+        return None
+    val = str(raw).strip()
+    if not val:
+        return None
+    if val.lower() in {"0", "false", "none", "null"}:
+        return None
+    return val
 
 
 def write_manifest(base_path: str | os.PathLike[str], cohort_id: str, manifest: dict) -> None:
@@ -58,4 +71,3 @@ def write_manifest(base_path: str | os.PathLike[str], cohort_id: str, manifest: 
     (root / "manifest.json").write_text(
         json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8"
     )
-

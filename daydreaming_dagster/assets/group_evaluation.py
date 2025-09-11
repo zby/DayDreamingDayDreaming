@@ -11,7 +11,7 @@ from ..utils.generation import Generation
 from ..utils.metadata import build_generation_metadata
  
 from jinja2 import Environment
-from ..utils.dataframe_helpers import get_task_row
+from ..utils.dataframe_helpers import get_task_row, resolve_llm_model_id
 from ..utils.raw_readers import read_evaluation_templates
 from .raw_data import EVALUATION_TEMPLATES_KEY
 from ..utils.evaluation_parsing_config import load_parser_map, require_parser_for_template
@@ -111,7 +111,17 @@ def evaluation_prompt(context, evaluation_tasks) -> str:
 def evaluation_response(context, evaluation_prompt, evaluation_tasks) -> str:
     gen_id = context.partition_key
     task_row = get_task_row(evaluation_tasks, "gen_id", gen_id, context, "evaluation_tasks")
-    model_name = task_row["evaluation_model_name"]
+    # Use model_id from tasks; LLM client maps id -> provider internally
+    model_name = resolve_llm_model_id(task_row, "evaluation")
+    if not model_name:
+        raise Failure(
+            description="Missing evaluator model for evaluation task",
+            metadata={
+                "function": MetadataValue.text("evaluation_response"),
+                "gen_id": MetadataValue.text(str(gen_id)),
+                "resolution": MetadataValue.text("Ensure evaluation_tasks.csv includes an evaluation_llm_model (model id) column"),
+            },
+        )
     llm_client = context.resources.openrouter_client
     max_tokens = getattr(context.resources.experiment_config, "evaluation_max_tokens", None)
     text, info = llm_client.generate_with_info(evaluation_prompt, model=model_name, max_tokens=max_tokens)
@@ -119,13 +129,13 @@ def evaluation_response(context, evaluation_prompt, evaluation_tasks) -> str:
         "gen_id": MetadataValue.text(str(gen_id)),
         "finish_reason": MetadataValue.text(str((info or {}).get("finish_reason"))),
     })
-    context.log.info(f"Generated evaluation response for gen {gen_id} using model {model_name}")
+    context.log.info(f"Generated evaluation response for gen {gen_id}")
     # Write to filesystem gens/evaluation
     import time
     from pathlib import Path as _Path
     parent_gen_id = task_row.get("parent_gen_id")
     evaluation_template = task_row.get("evaluation_template")
-    model_id = task_row.get("evaluation_model") or task_row.get("evaluation_model_id")
+    model_id = task_row.get("evaluation_llm_model") or task_row.get("evaluation_model") or task_row.get("evaluation_model_id")
     if not (isinstance(gen_id, str) and gen_id.strip()):
         raise Failure(
             description="Missing gen_id for evaluation task",

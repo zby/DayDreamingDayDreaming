@@ -247,7 +247,8 @@ uv run dagster asset materialize --select "cohort_id,cohort_membership" -f daydr
 ```
 
 What it does
-- Writes `data/cohorts/<cohort_id>/membership.csv` with full task columns per stage, built from the selected essays.
+- Writes `data/cohorts/<cohort_id>/membership.csv` with normalized rows (same columns for all stages):
+  `stage, gen_id, cohort_id, parent_gen_id, combo_id, template_id, llm_model_id`.
 - Registers dynamic partitions add‑only for draft/essay/evaluation.
 - Enforces parent integrity within the cohort.
 

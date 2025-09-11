@@ -428,7 +428,7 @@ The evaluation flow is document-centric and decoupled from cross-partition IO. K
 
 Each row is one evaluable document with explicit provenance and lookup fields:
 - `document_id`, `stage` (`draft`), `origin` (`draft | legacy`), `file_path`
-- `combo_id`, `generation_template`, `generation_model_id`, `generation_model_name`
+- `combo_id`, `generation_template`, `generation_model`
 - `generation_task_id`, `source_asset`, `source_dir`
 
 Sources merged:
@@ -437,7 +437,7 @@ Sources merged:
 
 ### Evaluation Task Identity
 
-- `evaluation_task_id = {gen_id}__{evaluation_template}__{evaluation_model_id}` (double-underscore separators)
+- `evaluation_task_id = {gen_id}__{evaluation_template}__{evaluation_model}` (double-underscore separators)
 - `evaluation_tasks` rows are denormalized with all document fields plus evaluation template/model names.
 
 ### Prompt Loading (Direct Path)

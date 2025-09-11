@@ -104,10 +104,10 @@ def test_draft_generation_tasks_includes_cohort_id(tmp_path, monkeypatch):
             "stage": "draft",
             "gen_id": expected_gen_id,
             "cohort_id": cohort,
+            "parent_gen_id": "",
             "combo_id": "combo-1",
-            "draft_template": "draft-A",
-            "generation_model": "gen-model-1",
-            "generation_model_name": "provider/model-1",
+            "template_id": "draft-A",
+            "llm_model_id": "gen-model-1",
         }
     ])
     (cohort_dir / "membership.csv").write_text(mdraft.to_csv(index=False), encoding="utf-8")

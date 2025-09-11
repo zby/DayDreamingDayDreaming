@@ -138,8 +138,8 @@ class TestTaskDataExtraction:
         import pandas as pd
         
         tasks_df = pd.DataFrame([
-            {"generation_task_id": "task_001", "generation_template": "template1", "generation_model_name": "model1"},
-            {"generation_task_id": "task_002", "generation_template": "template2", "generation_model_name": "model2"}
+            {"generation_task_id": "task_001", "generation_template": "template1", "generation_model": "model1"},
+            {"generation_task_id": "task_002", "generation_template": "template2", "generation_model": "model2"}
         ])
         
         task_id = "task_001"
@@ -148,14 +148,14 @@ class TestTaskDataExtraction:
         assert not matching_tasks.empty
         task_row = matching_tasks.iloc[0]
         assert task_row["generation_template"] == "template1"
-        assert task_row["generation_model_name"] == "model1"
+        assert task_row["generation_model"] == "model1"
     
     def test_task_lookup_not_found(self):
         """Test task lookup when task doesn't exist."""
         import pandas as pd
         
         tasks_df = pd.DataFrame([
-            {"generation_task_id": "task_001", "generation_template": "template1", "generation_model_name": "model1"}
+            {"generation_task_id": "task_001", "generation_template": "template1", "generation_model": "model1"}
         ])
         
         task_id = "nonexistent_task"
@@ -243,34 +243,29 @@ class TestTemplateValidation:
                 assert False, f"Should have caught invalid template: {invalid}"
 
 
-class TestModelNameExtraction:
-    """Test model name extraction and validation."""
+class TestModelIdExtraction:
+    """Test model id extraction and validation."""
     
-    def test_model_name_extraction(self):
-        """Test extracting model name from task data."""
+    def test_model_id_extraction(self):
+        """Test extracting model id from task data."""
         task_data = {
-            "generation_model_name": "test-model",
+            "generation_model": "test-model-id",
             "generation_template": "test-template"
         }
-        
-        model_name = task_data["generation_model_name"]
-        
-        assert model_name == "test-model"
-        assert isinstance(model_name, str)
-        assert len(model_name) > 0
+        model_id = task_data["generation_model"]
+        assert model_id == "test-model-id"
+        assert isinstance(model_id, str)
+        assert len(model_id) > 0
     
-    def test_model_name_validation(self):
-        """Test model name validation logic."""
-        valid_model_names = ["gpt-4", "claude-3", "test-model", "deepseek/deepseek-r1"]
-        invalid_model_names = ["", None, "   ", 123]
-        
-        for valid_name in valid_model_names:
-            assert isinstance(valid_name, str)
-            assert len(valid_name.strip()) > 0
-        
-        for invalid_name in invalid_model_names:
-            if not isinstance(invalid_name, str) or not invalid_name or not invalid_name.strip():
-                # This would be caught by validation
+    def test_model_id_validation(self):
+        """Test model id validation logic."""
+        valid_model_ids = ["deepseek_r1_f", "qwq_32b_f", "gemma_3_27b_f", "custom_model"]
+        invalid_model_ids = ["", None, "   ", 123]
+        for valid_id in valid_model_ids:
+            assert isinstance(valid_id, str)
+            assert len(valid_id.strip()) > 0
+        for invalid_id in invalid_model_ids:
+            if not isinstance(invalid_id, str) or not invalid_id or not invalid_id.strip():
                 assert True
             else:
-                assert False, f"Should have caught invalid model name: {invalid_name}"
+                assert False, f"Should have caught invalid model id: {invalid_id}"

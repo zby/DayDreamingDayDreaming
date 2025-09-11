@@ -80,7 +80,7 @@ def test_essay_response_copy_mode_returns_draft_content(tmp_path: Path):
                 "parent_gen_id": parent_gen_id,
                 "draft_template": "deliberate-rolling-thread-v2",
                 "essay_template": essay_template,
-                "generation_model_name": "unused",
+                "generation_model": "unused_model",
                 "gen_id": essay_gen_id,
             }
         ]

@@ -18,9 +18,12 @@ def test_essay_generation_tasks_projects_from_membership(tmp_path, monkeypatch):
 
     r1 = make("comboA", "links-v1", "modelX", "essay-tpl-A")
     r2 = make("comboB", "links-v1", "modelY", "essay-tpl-B")
+    # Normalized membership rows: include parent drafts and essays
     dfm = pd.DataFrame([
-        {"stage": "essay", "gen_id": r1[1], "cohort_id": cohort, "parent_gen_id": r1[0], "combo_id": "comboA", "draft_template": "links-v1", "essay_template": "essay-tpl-A", "generation_model": "modelX", "generation_model_name": "provider/modelX"},
-        {"stage": "essay", "gen_id": r2[1], "cohort_id": cohort, "parent_gen_id": r2[0], "combo_id": "comboB", "draft_template": "links-v1", "essay_template": "essay-tpl-B", "generation_model": "modelY", "generation_model_name": "provider/modelY"},
+        {"stage": "draft", "gen_id": r1[0], "cohort_id": cohort, "parent_gen_id": "", "combo_id": "comboA", "template_id": "links-v1", "llm_model_id": "modelX"},
+        {"stage": "draft", "gen_id": r2[0], "cohort_id": cohort, "parent_gen_id": "", "combo_id": "comboB", "template_id": "links-v1", "llm_model_id": "modelY"},
+        {"stage": "essay", "gen_id": r1[1], "cohort_id": cohort, "parent_gen_id": r1[0], "combo_id": "comboA", "template_id": "essay-tpl-A", "llm_model_id": "modelX"},
+        {"stage": "essay", "gen_id": r2[1], "cohort_id": cohort, "parent_gen_id": r2[0], "combo_id": "comboB", "template_id": "essay-tpl-B", "llm_model_id": "modelY"},
     ])
     (tmp_path / "cohorts" / cohort / "membership.csv").write_text(dfm.to_csv(index=False), encoding="utf-8")
     monkeypatch.setenv("DD_COHORT", cohort)

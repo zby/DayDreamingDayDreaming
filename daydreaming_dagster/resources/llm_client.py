@@ -1,7 +1,9 @@
 import logging
 import os
 import time
-from typing import Optional
+from typing import Optional, Dict
+from pathlib import Path
+import csv
 
 from dagster import ConfigurableResource
 from openai import APIError, OpenAI, RateLimitError
@@ -27,6 +29,44 @@ class LLMClientResource(ConfigurableResource):
     rate_limit_calls: int = 1
     rate_limit_period: int = 60  # 1 call per minute
     mandatory_delay: float = 65.0  # Mandatory delay between calls (65 seconds to be extra safe)
+    # Data root for loading model id -> provider mapping (llm_models.csv)
+    data_root: str = "data"
+
+    def _load_model_map(self) -> Dict[str, str]:
+        """Load id->provider model mapping from data/1_raw/llm_models.csv (best-effort).
+
+        Returns empty mapping on any failure; case-sensitive ids.
+        """
+        mapping: Dict[str, str] = {}
+        try:
+            csv_path = Path(self.data_root) / "1_raw" / "llm_models.csv"
+            if csv_path.exists():
+                with csv_path.open("r", encoding="utf-8") as f:
+                    reader = csv.DictReader(f)
+                    for row in reader:
+                        mid = str(row.get("id") or "").strip()
+                        mname = str(row.get("model") or "").strip()
+                        if mid and mname:
+                            mapping[mid] = mname
+        except Exception:
+            return {}
+        return mapping
+
+    def _resolve_model_name(self, model: str) -> str:
+        """Resolve incoming model identifier to provider model string.
+
+        If the provided `model` matches a known model_id from llm_models.csv, map it
+        to its provider string; otherwise, return it unchanged (already a provider).
+        """
+        if not isinstance(model, str) or not model:
+            return model
+        try:
+            mmap = getattr(self, "_model_map", None)
+            if isinstance(mmap, dict) and model in mmap:
+                return mmap[model]
+        except Exception:
+            pass
+        return model
     def _ensure_initialized(self):
         """Lazy initialization of OpenAI client."""
         if not hasattr(self, '_client'):
@@ -41,6 +81,8 @@ class LLMClientResource(ConfigurableResource):
                 api_key=effective_api_key,
                 base_url=self.base_url,
             )
+            # Load model id -> provider map best-effort
+            self._model_map = self._load_model_map()
 
     def generate(self, prompt: str, model: str, temperature: float = 0.7, max_tokens: Optional[int] = None) -> str:
         """Generate content and return only the text.
@@ -58,7 +100,9 @@ class LLMClientResource(ConfigurableResource):
         self._ensure_initialized()
         if not isinstance(max_tokens, int) or max_tokens <= 0:
             raise ValueError("LLMClientResource.generate_with_info requires an explicit positive max_tokens")
-        info = self._make_api_call_info(prompt, model, temperature, max_tokens)
+        # Accept either model_id or provider model string
+        resolved_model = self._resolve_model_name(model)
+        info = self._make_api_call_info(prompt, resolved_model, temperature, max_tokens)
         return info.get("text", ""), info
 
     def _make_api_call_info(self, prompt: str, model: str, temperature: float, max_tokens: int) -> dict:

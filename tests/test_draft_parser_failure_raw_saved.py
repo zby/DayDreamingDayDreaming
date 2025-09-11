@@ -79,7 +79,6 @@ def test_draft_parser_failure_saves_raw_then_fails(tmp_path: Path):
                 "combo_id": "comboX",
                 "draft_template": template_id,
                 "generation_model": "sonnet-4",
-                "generation_model_name": "sonnet-4",
                 "gen_id": gen_id,
             }
         ]

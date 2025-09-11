@@ -281,6 +281,10 @@ def get_all_current_generations(
             # Prefer canonical draft fields; fall back to legacy link_* when absent
             draft_tpl = task_row.get('draft_template') if 'draft_template' in task_row else task_row.get('link_template')
             draft_task_id = task_row.get('draft_task_id') if 'draft_task_id' in task_row else task_row.get('link_task_id')
+            # Prefer stage-specific model id if present; fall back to generation_model
+            _model_id = task_row.get('essay_llm_model') if 'essay_llm_model' in task_row else None
+            if not isinstance(_model_id, str) or not _model_id.strip():
+                _model_id = task_row.get('generation_model')
             generation_info.append({
                 'filename': expected_filename,
                 'combo_id': task_row['combo_id'],
@@ -289,7 +293,7 @@ def get_all_current_generations(
                 'draft_template': draft_tpl,  # Use template ID for file paths
                 'draft_template_name': draft_template_names.get(draft_tpl, draft_tpl),  # Display name
                 'draft_task_id': draft_task_id,  # For finding corresponding draft response
-                'model': task_row['generation_model_name'],
+                'model': _model_id,
                 'score': 0.0  # No score available when bypassing pivot tables
             })
     

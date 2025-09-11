@@ -14,11 +14,10 @@ What the assets do
   - Writes the manifest to `data/cohorts/<cohort_id>/manifest.json` and returns the cohort ID.
 - Asset `cohort_membership` (group `task_definitions`) builds an authoritative membership file and registers dynamic partitions:
   - Reads `data/2_tasks/selected_essays.txt` (one gen_id per line) when present; otherwise uses the active axes (Cartesian).
-  - Writes `data/cohorts/<cohort_id>/membership.csv` with wide rows per stage (no task_id columns):
-    - Common: `stage`, `gen_id`, `cohort_id`
-    - Draft: `combo_id`, `draft_template`, `generation_model`, `generation_model_name`
-    - Essay: `parent_gen_id` (draft), `combo_id`, `draft_template`, `essay_template`, `generation_model`, `generation_model_name`
-    - Evaluation: `parent_gen_id` (essay), `evaluation_template`, `evaluation_model`, `evaluation_model_name`, optional `parser`
+  - Writes `data/cohorts/<cohort_id>/membership.csv` with normalized rows (same columns for all stages, no task_id columns):
+    - `stage`, `gen_id`, `cohort_id`, `parent_gen_id`, `combo_id`, `template_id`, `llm_model_id`
+    - `stage` is one of `draft|essay|evaluation`.
+    - `template_id` is the stage’s template; `llm_model_id` is the stage’s model id.
   - Registers dynamic partitions add‑only for draft/essay/evaluation.
   - Enforces parent integrity (essays → drafts; evaluations → essays) within the same cohort.
 
@@ -48,3 +47,4 @@ Implementation notes
 - If a subset materialization runs tasks without the `cohort_id` asset, tasks will compute and persist the cohort manifest automatically (unless `DD_COHORT` is set), to keep subsets/tests ergonomic.
 - The deterministic ID changes when any manifest component changes (combos/templates/models, or a pipeline version constant for material changes).
 - Task assets read membership.csv implicitly (using the resolved cohort id) when present and only fall back to legacy active‑axes derivation when membership is absent.
+- Denormalized task CSVs (`data/2_tasks/*_tasks.csv`) derive their per‑stage columns (e.g., `draft_llm_model`, `essay_llm_model`, `evaluation_llm_model`) by looking up parent rows via `parent_gen_id` and projecting from the normalized membership.
