@@ -99,6 +99,9 @@ def parsed_scores(context, evaluation_tasks: pd.DataFrame) -> pd.DataFrame:
             df["stage"] = stages
         if gen_paths:
             df["generation_response_path"] = gen_paths
+        # Strict naming: require evaluator id column for downstream; map legacy if needed
+        if 'evaluation_llm_model' not in df.columns and 'evaluation_model' in df.columns:
+            df['evaluation_llm_model'] = df['evaluation_model'].astype(str)
     context.add_output_metadata({
         "rows": MetadataValue.int(int(df.shape[0]) if hasattr(df, "shape") else 0),
         "output": MetadataValue.path(str(out_csv)),

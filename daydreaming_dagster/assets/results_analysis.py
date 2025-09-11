@@ -137,7 +137,10 @@ def comprehensive_variance_analysis(context, parsed_scores: pd.DataFrame) -> pd.
     
     # Map from existing column names (always available in parsed_scores)
     valid_scores['eval_template'] = valid_scores['evaluation_template']
-    valid_scores['eval_model'] = valid_scores['evaluation_model']
+    if 'evaluation_llm_model' not in valid_scores.columns:
+        context.log.error("parsed_scores missing 'evaluation_llm_model' column")
+        return pd.DataFrame()
+    valid_scores['eval_model'] = valid_scores['evaluation_llm_model']
     
     # Now we can analyze variance across multiple dimensions
     variance_analyses = []

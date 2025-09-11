@@ -56,11 +56,10 @@ Required base columns: {required_base}")
             # Keep a column for downstream selection even if empty
             df["draft_template"] = None
 
-    # Compose column key as template__evaluator (prefer evaluation_llm_model over evaluation_model)
-    eval_model_col = "evaluation_llm_model" if "evaluation_llm_model" in df.columns else "evaluation_model"
-    if eval_model_col not in df.columns:
-        raise ValueError("Missing evaluator id column: expected 'evaluation_llm_model' or 'evaluation_model'")
-    df["evaluation_template_model"] = df["evaluation_template"].astype(str) + "__" + df[eval_model_col].astype(str)
+    # Compose column key as template__evaluator (strict: require evaluation_llm_model)
+    if "evaluation_llm_model" not in df.columns:
+        raise ValueError("Missing evaluator id column: expected 'evaluation_llm_model'")
+    df["evaluation_template_model"] = df["evaluation_template"].astype(str) + "__" + df["evaluation_llm_model"].astype(str)
     # Deterministic order before pivot
     df_sorted = df.sort_values(["essay_task_id", "evaluation_template_model"])  # deterministic
 

@@ -68,7 +68,7 @@ def generation_scores_pivot(context, parsed_scores: pd.DataFrame) -> pd.DataFram
     Pivot individual evaluation scores per generation.
 
     Rows: combo_id, generation_template, generation_model
-    Columns: Each unique (evaluation_template, evaluation_model) combination
+    Columns: Each unique (evaluation_template, evaluation_llm_model) combination
     Values: Individual score for that specific evaluator combination (no averaging)
     """
     # Load evaluation templates CSV and extract active templates
@@ -95,9 +95,17 @@ def generation_scores_pivot(context, parsed_scores: pd.DataFrame) -> pd.DataFram
         context.log.warning("No valid scores found; returning empty pivot")
         return pd.DataFrame()
 
-    # Create combined column name for (evaluation_template, evaluation_model)
+    # Require evaluator id column and compose combined key (strict)
+    if 'evaluation_llm_model' not in valid_scores.columns:
+        raise Failure(
+            description="Missing required column 'evaluation_llm_model' in parsed_scores",
+            metadata={
+                "expected": MetadataValue.text("evaluation_llm_model"),
+                "present": MetadataValue.text(", ".join(list(valid_scores.columns)))
+            }
+        )
     valid_scores['eval_template_model'] = (
-        valid_scores['evaluation_template'] + '_' + valid_scores['evaluation_model']
+        valid_scores['evaluation_template'] + '_' + valid_scores['evaluation_llm_model']
     )
 
     # Build pivot: individual score for each generation across each (template, model) combination
@@ -230,7 +238,7 @@ def final_results(context, parsed_scores: pd.DataFrame) -> pd.DataFrame:
     
     # 3. By Evaluation Model Provider
     eval_model_summary = create_pivot_summary(
-        analysis_df, ['evaluation_model'], 'by_evaluation_model'
+        analysis_df, ['evaluation_llm_model'], 'by_evaluation_model'
     )
     summaries.append(eval_model_summary)
     
@@ -248,7 +256,7 @@ def final_results(context, parsed_scores: pd.DataFrame) -> pd.DataFrame:
     
     # 6. By Generation Model + Evaluation Model combination
     gen_eval_model_summary = create_pivot_summary(
-        analysis_df, ['generation_model', 'evaluation_model'], 'by_generation_vs_evaluation_model'
+        analysis_df, ['generation_model', 'evaluation_llm_model'], 'by_generation_vs_evaluation_model'
     )
     summaries.append(gen_eval_model_summary)
     
@@ -278,7 +286,7 @@ def final_results(context, parsed_scores: pd.DataFrame) -> pd.DataFrame:
             'analysis_type',
             'generation_template', 
             'generation_model',
-            'evaluation_model',
+            'evaluation_llm_model',
             'combo_id',
             'count',
             'average',
@@ -378,34 +386,34 @@ def perfect_score_paths(context, parsed_scores: pd.DataFrame) -> pd.DataFrame:
 
         # Evaluation path: use parsed column when present
         # FALLBACK(DATA): Use legacy single-phase evaluation path when parsed_scores lacks an explicit path.
-        evaluation_path = row['evaluation_response_path'] if 'evaluation_response_path' in row else f"data/4_evaluation/evaluation_responses/{row['combo_id']}_{row['generation_template']}_{row['generation_model']}_{row.get('evaluation_template', 'daydreaming-verification-v2')}_{row['evaluation_model']}.txt"
+        evaluation_path = row['evaluation_response_path'] if 'evaluation_response_path' in row else f"data/4_evaluation/evaluation_responses/{row['combo_id']}_{row['generation_template']}_{row['generation_model']}_{row.get('evaluation_template', 'daydreaming-verification-v2')}_{row['evaluation_llm_model']}.txt"
         
         paths_data.append({
             'combo_id': row['combo_id'],
             'generation_template': row['generation_template'],
             'generation_model': row['generation_model'],
-            'evaluation_model': row['evaluation_model'],
+            'evaluation_llm_model': row['evaluation_llm_model'],
             'score': row['score'],
             'generation_response_path': generation_path,
             'evaluation_response_path': evaluation_path,
-            'notes': f"Perfect score from {row['generation_model']} generation + {row['evaluation_model']} evaluation"
+            'notes': f"Perfect score from {row['generation_model']} generation + {row['evaluation_llm_model']} evaluation"
         })
     
     result_df = pd.DataFrame(paths_data)
     
     context.log.info(f"Found {len(result_df)} perfect score responses")
-    context.log.info(f"Perfect scores by evaluator: {perfect_scores['evaluation_model'].value_counts().to_dict()}")
+    context.log.info(f"Perfect scores by evaluator: {perfect_scores['evaluation_llm_model'].value_counts().to_dict()}")
     context.log.info(f"Perfect scores by template: {perfect_scores['generation_template'].value_counts().to_dict()}")
     
     # Add output metadata
-    evaluator_counts = perfect_scores['evaluation_model'].value_counts().to_dict() if not perfect_scores.empty else {}
+    evaluator_counts = perfect_scores['evaluation_llm_model'].value_counts().to_dict() if not perfect_scores.empty else {}
     template_counts = perfect_scores['generation_template'].value_counts().to_dict() if not perfect_scores.empty else {}
     
     context.add_output_metadata({
         "perfect_scores": MetadataValue.int(len(result_df)),
         "unique_combinations": MetadataValue.int(result_df['combo_id'].nunique() if 'combo_id' in result_df.columns else 0),
         "unique_templates": MetadataValue.int(result_df['generation_template'].nunique() if 'generation_template' in result_df.columns else 0),
-        "unique_evaluators": MetadataValue.int(result_df['evaluation_model'].nunique() if 'evaluation_model' in result_df.columns else 0),
+        "unique_evaluators": MetadataValue.int(result_df['evaluation_llm_model'].nunique() if 'evaluation_llm_model' in result_df.columns else 0),
         "deepseek_perfect": MetadataValue.int(evaluator_counts.get('deepseek', 0)),
         "qwen_perfect": MetadataValue.int(evaluator_counts.get('qwen', 0)),
         "google_perfect": MetadataValue.int(evaluator_counts.get('google', 0)),
@@ -421,7 +429,7 @@ def perfect_score_paths(context, parsed_scores: pd.DataFrame) -> pd.DataFrame:
 )
 def evaluation_model_template_pivot(context, parsed_scores: pd.DataFrame) -> pd.DataFrame:
     """
-    Create pivot table with (evaluation_model, evaluation_template) combinations as columns.
+    Create pivot table with (evaluation_llm_model, evaluation_template) combinations as columns.
     
     Rows: Each generation response (combo_id, generation_template, generation_model)
     Columns: Each (evaluation_model, evaluation_template) combination  
@@ -443,9 +451,14 @@ def evaluation_model_template_pivot(context, parsed_scores: pd.DataFrame) -> pd.
         context.log.warning("No valid scores found; returning empty pivot")
         return pd.DataFrame()
     
-    # Create combined column name for (evaluation_model, evaluation_template)
+    # Require evaluator id and create combined key
+    if 'evaluation_llm_model' not in valid_scores.columns:
+        raise Failure(
+            description="Missing required column 'evaluation_llm_model' in parsed_scores",
+            metadata={"present": MetadataValue.text(", ".join(list(valid_scores.columns)))}
+        )
     valid_scores['eval_model_template'] = (
-        valid_scores['evaluation_model'] + '_' + valid_scores['evaluation_template']
+        valid_scores['evaluation_llm_model'] + '_' + valid_scores['evaluation_template']
     )
     
     # Create pivot table
