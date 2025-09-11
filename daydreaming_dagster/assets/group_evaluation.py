@@ -12,6 +12,7 @@ from ..utils.metadata import build_generation_metadata
  
 from jinja2 import Environment
 from ..utils.dataframe_helpers import get_task_row, resolve_llm_model_id
+from ..utils.membership_lookup import find_membership_row_by_gen
 from ..utils.raw_readers import read_evaluation_templates
 from .raw_data import EVALUATION_TEMPLATES_KEY
 from ..utils.evaluation_parsing_config import load_parser_map, require_parser_for_template
@@ -28,10 +29,24 @@ from ..constants import ESSAY, EVALUATION
     required_resource_keys={"data_root"},
     deps={EVALUATION_TEMPLATES_KEY},
 )
-def evaluation_prompt(context, evaluation_tasks) -> str:
+def evaluation_prompt(context) -> str:
     gen_id = context.partition_key
-    task_row = get_task_row(evaluation_tasks, "gen_id", gen_id, context, "evaluation_tasks")
-    parent_gen_id = task_row.get("parent_gen_id")
+    mrow, _cohort = find_membership_row_by_gen(getattr(context.resources, "data_root", "data"), "evaluation", str(gen_id))
+    if mrow is None:
+        # BACKCOMPAT: read tasks CSV directly
+        import pandas as _pd
+        _data_root = Path(getattr(context.resources, "data_root", "data"))
+        try:
+            _df = _pd.read_csv(_data_root / "2_tasks" / "evaluation_tasks.csv")
+            _row = _df[_df["gen_id"].astype(str) == str(gen_id)].iloc[0]
+            parent_gen_id = _row.get("parent_gen_id")
+            evaluation_template = _row.get("evaluation_template")
+        except Exception:
+            parent_gen_id = None
+            evaluation_template = None
+    else:
+        parent_gen_id = mrow.get("parent_gen_id")
+        evaluation_template = mrow.get("template_id")
     if not (isinstance(parent_gen_id, str) and parent_gen_id.strip()):
         raise Failure(
             description="Missing parent_gen_id for evaluation task",
@@ -83,7 +98,7 @@ def evaluation_prompt(context, evaluation_tasks) -> str:
             except FileNotFoundError:
                 context.log.warning(f"Evaluation template file not found: {fp}")
 
-    template_id = task_row["evaluation_template"]
+    template_id = str(evaluation_template)
     template_content = evaluation_templates_dict[template_id]
     env = Environment()
     template = env.from_string(template_content)
@@ -95,7 +110,7 @@ def evaluation_prompt(context, evaluation_tasks) -> str:
             "document_content_length": MetadataValue.int(len(doc_text or "")),
             "evaluation_prompt_length": MetadataValue.int(len(eval_prompt)),
             "source_used": MetadataValue.text(used_source or ""),
-            "template_used": MetadataValue.text(task_row["evaluation_template"]),
+            "template_used": MetadataValue.text(str(evaluation_template) if evaluation_template else ""),
         }
     )
     return eval_prompt
@@ -106,13 +121,23 @@ def evaluation_prompt(context, evaluation_tasks) -> str:
     group_name="evaluation",
     io_manager_key="evaluation_response_io_manager",
     required_resource_keys={"openrouter_client", "data_root", "experiment_config"},
-    deps=["evaluation_prompt", "evaluation_tasks"],
+    deps=["evaluation_prompt"],
 )
-def evaluation_response(context, evaluation_prompt, evaluation_tasks) -> str:
+def evaluation_response(context, evaluation_prompt) -> str:
     gen_id = context.partition_key
-    task_row = get_task_row(evaluation_tasks, "gen_id", gen_id, context, "evaluation_tasks")
-    # Use model_id from tasks; LLM client maps id -> provider internally
-    model_name = resolve_llm_model_id(task_row, "evaluation")
+    mrow, _cohort = find_membership_row_by_gen(getattr(context.resources, "data_root", "data"), "evaluation", str(gen_id))
+    if mrow is not None:
+        model_name = str(mrow.get("llm_model_id") or mrow.get("evaluation_model") or "").strip()
+    else:
+        # Use model_id from CSV fallback
+        import pandas as _pd
+        _data_root = Path(getattr(context.resources, "data_root", "data"))
+        try:
+            _df = _pd.read_csv(_data_root / "2_tasks" / "evaluation_tasks.csv")
+            _row = _df[_df["gen_id"].astype(str) == str(gen_id)].iloc[0]
+            model_name = resolve_llm_model_id(_row, "evaluation")
+        except Exception:
+            model_name = ""
     if not model_name:
         raise Failure(
             description="Missing evaluator model for evaluation task",
@@ -133,9 +158,24 @@ def evaluation_response(context, evaluation_prompt, evaluation_tasks) -> str:
     # Write to filesystem gens/evaluation
     import time
     from pathlib import Path as _Path
-    parent_gen_id = task_row.get("parent_gen_id")
-    evaluation_template = task_row.get("evaluation_template")
-    model_id = task_row.get("evaluation_llm_model") or task_row.get("evaluation_model") or task_row.get("evaluation_model_id")
+    if mrow is not None:
+        parent_gen_id = mrow.get("parent_gen_id")
+        evaluation_template = mrow.get("template_id")
+        model_id = str(mrow.get("llm_model_id") or mrow.get("evaluation_model") or "")
+    else:
+        # CSV fallback
+        import pandas as _pd
+        _data_root = Path(getattr(context.resources, "data_root", "data"))
+        try:
+            _df = _pd.read_csv(_data_root / "2_tasks" / "evaluation_tasks.csv")
+            _row = _df[_df["gen_id"].astype(str) == str(gen_id)].iloc[0]
+            parent_gen_id = _row.get("parent_gen_id")
+            evaluation_template = _row.get("evaluation_template")
+            model_id = _row.get("evaluation_llm_model") or _row.get("evaluation_model") or _row.get("evaluation_model_id")
+        except Exception:
+            parent_gen_id = None
+            evaluation_template = None
+            model_id = None
     if not (isinstance(gen_id, str) and gen_id.strip()):
         raise Failure(
             description="Missing gen_id for evaluation task",
@@ -167,10 +207,10 @@ def evaluation_response(context, evaluation_prompt, evaluation_tasks) -> str:
         parent_gen_id=str(parent_gen_id) if parent_gen_id else None,
         template_id=str(evaluation_template) if evaluation_template else None,
         model_id=str(model_id) if model_id else None,
-        task_id=str(task_row.get("evaluation_task_id") or ""),
+        task_id=str(""),
         function="evaluation_response",
         run_id=str(run_id) if run_id else None,
-        cohort_id=str(task_row.get("cohort_id")).strip() if isinstance(task_row.get("cohort_id"), str) else None,
+        cohort_id=str(_cohort) if isinstance(_cohort, str) and _cohort else None,
         extra={
             "evaluation_template": evaluation_template,
         },

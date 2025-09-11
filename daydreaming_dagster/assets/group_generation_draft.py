@@ -13,7 +13,9 @@ from .partitions import draft_gens_partitions
 from ..utils.template_loader import load_generation_template
 from ..utils.raw_readers import read_draft_templates
 from ..utils.draft_parsers import get_draft_parser
-from ..utils.dataframe_helpers import get_task_row, resolve_llm_model_id
+from ..utils.dataframe_helpers import resolve_llm_model_id
+from ..utils.membership_lookup import find_membership_row_by_gen
+import pandas as _pd
 from ..utils.generation import Generation
 from ..utils.metadata import build_generation_metadata
 from ..constants import DRAFT, FILE_RAW
@@ -29,17 +31,52 @@ JINJA = Environment()
 )
 def draft_prompt(
     context,
-    draft_generation_tasks,
     content_combinations,
+    draft_generation_tasks=None,
 ) -> str:
     """Generate Phase 1 prompts for draft generation."""
     gen_id = context.partition_key
 
-    task_row = get_task_row(
-        draft_generation_tasks, "gen_id", gen_id, context, "draft_generation_tasks"
-    )
-    combo_id = task_row["combo_id"]
-    template_name = task_row["draft_template"]
+    # Read membership to resolve combo/template
+    data_root = Path(getattr(context.resources, "data_root", "data"))
+    row, cohort = find_membership_row_by_gen(data_root, "draft", str(gen_id))
+    if row is None:
+        # BACKCOMPAT: fall back to provided tasks DF first; then tasks CSV
+        tdf = None
+        try:
+            if isinstance(draft_generation_tasks, _pd.DataFrame) and not draft_generation_tasks.empty:
+                tdf = draft_generation_tasks
+            else:
+                tdf = _pd.read_csv(data_root / "2_tasks" / "draft_generation_tasks.csv")
+        except Exception:
+            tdf = None
+        if tdf is not None and not tdf.empty:
+            mask = tdf["gen_id"].astype(str) == str(gen_id)
+            if mask.any():
+                trow = tdf[mask].iloc[0]
+                combo_id = str(trow.get("combo_id") or "")
+                template_name = str(trow.get("draft_template") or "")
+            else:
+                raise Failure(
+                    description="Draft gen_id not found in cohort membership or tasks CSV",
+                    metadata={
+                        "function": MetadataValue.text("draft_prompt"),
+                        "gen_id": MetadataValue.text(str(gen_id)),
+                        "resolution": MetadataValue.text("Ensure draft_generation_tasks.csv includes the partition gen_id or materialize cohort_membership"),
+                    },
+                )
+        else:
+            raise Failure(
+                description="Draft gen_id not found in cohort membership",
+                metadata={
+                    "function": MetadataValue.text("draft_prompt"),
+                    "gen_id": MetadataValue.text(str(gen_id)),
+                    "resolution": MetadataValue.text("Materialize cohort_membership or verify the gen_id"),
+                },
+            )
+    else:
+        combo_id = str(row.get("combo_id") or "")
+        template_name = str(row.get("template_id") or row.get("draft_template") or "")
 
     # Resolve content combination; curated combos are provided via content_combinations
     content_combination = next((c for c in content_combinations if c.combo_id == combo_id), None)
@@ -96,12 +133,37 @@ def draft_prompt(
     return prompt
 
 
-def _draft_response_impl(context, draft_prompt, draft_generation_tasks) -> str:
+def _draft_response_impl(context, draft_prompt, draft_generation_tasks=None, **_kwargs) -> str:
     """Generate Phase 1 LLM responses for drafts (core implementation)."""
     gen_id = context.partition_key
-    task_row = get_task_row(draft_generation_tasks, "gen_id", gen_id, context, "draft_generation_tasks")
-    # Use model_id from tasks; LLM client maps id -> provider internally
-    model_id = resolve_llm_model_id(task_row, "draft")
+    # Resolve model id from cohort membership
+    data_root = Path(getattr(context.resources, "data_root", "data"))
+    row, cohort = find_membership_row_by_gen(data_root, "draft", str(gen_id))
+    if row is None:
+        # BACKCOMPAT: try provided tasks DF first, then tasks CSV to get fields
+        try:
+            if isinstance(draft_generation_tasks, _pd.DataFrame) and not draft_generation_tasks.empty:
+                tdf = draft_generation_tasks
+            else:
+                tdf = _pd.read_csv(data_root / "2_tasks" / "draft_generation_tasks.csv")
+            mask = tdf["gen_id"].astype(str) == str(gen_id)
+            if not mask.any():
+                raise IndexError("gen_id not found in tasks")
+            row = tdf[mask].iloc[0]
+        except Exception:
+            raise Failure(
+                description="Draft gen_id not found in cohort membership",
+                metadata={
+                    "function": MetadataValue.text("draft_response"),
+                    "gen_id": MetadataValue.text(str(gen_id)),
+                    "resolution": MetadataValue.text("Materialize cohort_membership or verify the gen_id")
+                },
+            )
+    # Use model_id from membership; LLM client maps id -> provider internally
+    model_id = str(row.get("llm_model_id") or row.get("generation_model") or "").strip()
+    if not model_id:
+        # Fallback to resolver for backwards compatibility if columns differ
+        model_id = resolve_llm_model_id(row, "draft")
     if not model_id:
         raise Failure(
             description="Missing generation_model for draft task",
@@ -186,7 +248,11 @@ def _draft_response_impl(context, draft_prompt, draft_generation_tasks) -> str:
         )
 
     # Parse RAW response according to draft template's parser (identity if unspecified)
-    draft_template = task_row.get("draft_template")
+    draft_template = None
+    try:
+        draft_template = str(row.get("template_id") or row.get("draft_template") or "").strip()
+    except Exception:
+        draft_template = None
     parser_name = None
     try:
         df = read_draft_templates(Path(data_root), filter_active=False)
@@ -276,20 +342,28 @@ def _draft_response_impl(context, draft_prompt, draft_generation_tasks) -> str:
     io_manager_key="draft_response_io_manager",
     required_resource_keys={"openrouter_client", "experiment_config", "data_root"},
 )
-def draft_response(context, draft_prompt, draft_generation_tasks) -> str:
-    """Generate Phase 1 LLM responses for drafts."""
-    parsed = _draft_response_impl(context, draft_prompt, draft_generation_tasks)
+def draft_response(context, draft_prompt) -> str:
+    """Generate Phase 1 LLM responses for drafts.
+
+    Uses cohort_membership for config. Keeps CSV fallback internally (no asset dep).
+    """
+    parsed = _draft_response_impl(context, draft_prompt)
 
     # Write generation files under data_root/gens/draft using Generation helper
     import time
     from pathlib import Path as _Path
 
     gen_id = context.partition_key
-    # Pull task row again to avoid plumb-through changes
-    task_row = get_task_row(draft_generation_tasks, "gen_id", gen_id, context, "draft_generation_tasks")
-    combo_id = task_row.get("combo_id")
-    draft_template = task_row.get("draft_template")
-    model_id = task_row.get("generation_model") or task_row.get("model_id")
+    # Resolve membership details for metadata
+    data_root = Path(getattr(context.resources, "data_root", "data"))
+    mrow, cohort = find_membership_row_by_gen(data_root, "draft", str(gen_id))
+    combo_id = mrow.get("combo_id") if mrow is not None else None
+    draft_template = (mrow.get("template_id") if mrow is not None else None) or (
+        mrow.get("draft_template") if mrow is not None else None
+    )
+    model_id = None
+    if mrow is not None:
+        model_id = (mrow.get("llm_model_id") or mrow.get("generation_model") or None)
     # Partition key is the gen_id
     if not (isinstance(gen_id, str) and gen_id.strip()):
         raise Failure(
@@ -301,7 +375,12 @@ def draft_response(context, draft_prompt, draft_generation_tasks) -> str:
             },
         )
 
-    raw_text = parsed
+    # Reuse RAW written earlier by _draft_response_impl; if missing, fall back to parsed
+    try:
+        existing = Generation.load(data_root / "gens", DRAFT, str(gen_id))
+        raw_text = existing.raw_text or parsed
+    except Exception:
+        raw_text = parsed
 
     # Build generation and write files
     gens_root = _Path(getattr(context.resources, "data_root", "data")) / "gens"
@@ -312,10 +391,10 @@ def draft_response(context, draft_prompt, draft_generation_tasks) -> str:
         parent_gen_id=None,
         template_id=str(draft_template) if draft_template else None,
         model_id=str(model_id) if model_id else None,
-        task_id=str(task_row.get("draft_task_id") or ""),
+        task_id=str(""),
         function="draft_response",
         run_id=str(run_id) if run_id else None,
-        cohort_id=str(task_row.get("cohort_id")).strip() if isinstance(task_row.get("cohort_id"), str) else None,
+        cohort_id=str(cohort) if isinstance(cohort, str) and cohort else None,
         usage=None,
         extra={
             "combo_id": combo_id,
