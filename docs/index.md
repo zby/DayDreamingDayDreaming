@@ -4,10 +4,10 @@ Start here to find the right guide for your task.
 
 ## Quickstarts
 - Curated Runs (Top‑N or manual list): docs/guides/selection_and_cube.md
-- Full Active Experiment Cube: docs/architecture/active_experiment_cube.md
 
 ## Core Concepts
 - Cohorts and Membership: docs/cohorts.md
+- One‑phase essay (copy mode): docs/guides/one_phase_copy_mode.md
 - Two‑Phase Generation (draft → essay): README.md#two-phase-generation-system-
 
 ## How‑To Guides
@@ -22,4 +22,3 @@ Start here to find the right guide for your task.
 ## Reference
 - Membership CSV schema: docs/cohorts.md#what-the-assets-do
 - Directory layout and gens store: README.md
-

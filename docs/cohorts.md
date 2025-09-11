@@ -3,7 +3,6 @@
 Cohorts are explicit, reproducible identifiers that bind a complete run of the pipeline (task set and generated artifacts) to a single ID.
 
 See also
-- Active Experiment Cube: docs/architecture/active_experiment_cube.md
 - Curated Runs Quickstart: docs/guides/selection_and_cube.md
 
 What the assets do
@@ -21,8 +20,24 @@ What the assets do
   - Registers dynamic partitions add‑only for draft/essay/evaluation.
   - Enforces parent integrity (essays → drafts; evaluations → essays) within the same cohort.
 
+Two ways to build a cohort
+- Curated mode (selection-driven):
+  - Input: write essay `gen_id`s to `data/2_tasks/selected_essays.txt` (one per line).
+  - Behavior: reconstructs draft/essay rows from the gens store metadata for the selected essays, then expands evaluations across the active evaluation axes (templates × models).
+  - When to use: reproducing or re-evaluating a specific subset of historical essays; migrating legacy outputs; ad‑hoc comparisons.
+  - Pros: no Cartesian explosion; exactly the rows you want. Cons: requires existing gens and accurate parent links in metadata.
+- Cartesian mode (active-axes-driven):
+  - Input: no `selected_essays.txt`. Cohort derives from active rows in `data/1_raw/*.csv` and the curated `selected_combo_mappings.csv`.
+  - Behavior: builds drafts from `content_combinations × draft_templates × generation_models`, essays from `drafts × essay_templates`, and evaluations from `essays × evaluation_templates × evaluation_models`.
+  - When to use: fresh experiments over a controlled search space (explicit “cube”). Pros: reproducible full-factor run. Cons: can get large quickly; you must manage which templates/models are marked `active=true`.
+
+Practical tips
+- Always start Dagster with the daemon so `cohort_membership` can register dynamic partitions automatically when `data/1_raw/**/*` changes.
+- Use `DD_COHORT` to separate curated reruns from baseline cohorts and avoid partition churn across contexts.
+- For tight, reproducible subsets, prefer curated mode with `selected_essays.txt` or narrow actives in the CSVs.
+
 How it propagates
-- Task assets (`draft_generation_tasks`, `essay_generation_tasks`, `evaluation_tasks`) project their tables directly from membership.csv when present and compute task_id columns from the other fields. Otherwise they fall back to legacy active‑axes derivation.
+- Generation/evaluation assets read cohort membership at runtime to resolve templates, models, parents, and combo IDs. Task CSVs are optional curated inputs only.
 - All gens `metadata.json` files include `cohort_id`.
 
 Overrides
@@ -37,14 +52,40 @@ CLI examples
 ```bash
 # Curated: write selected essays then build cohort
 uv run python scripts/select_top_prior_art.py --top-n 25 --parsed-scores data/7_cross_experiment/parsed_scores.csv
-uv run dagster asset materialize --select "cohort_id,cohort_membership,group:task_definitions" -f daydreaming_dagster/definitions.py
+uv run dagster asset materialize --select "cohort_id,cohort_membership" -f daydreaming_dagster/definitions.py
 
 # Cartesian: no selection file; cohort_membership derives from active axes
-uv run dagster asset materialize --select "cohort_id,cohort_membership,group:task_definitions" -f daydreaming_dagster/definitions.py
+uv run dagster asset materialize --select "cohort_id,cohort_membership" -f daydreaming_dagster/definitions.py
 ```
 
 Implementation notes
-- If a subset materialization runs tasks without the `cohort_id` asset, tasks will compute and persist the cohort manifest automatically (unless `DD_COHORT` is set), to keep subsets/tests ergonomic.
+- If a subset materialization runs without `cohort_id`, assets still resolve membership via the latest cohort files unless `DD_COHORT` pins an explicit ID.
 - The deterministic ID changes when any manifest component changes (combos/templates/models, or a pipeline version constant for material changes).
-- Task assets read membership.csv implicitly (using the resolved cohort id) when present and only fall back to legacy active‑axes derivation when membership is absent.
-- Denormalized task CSVs (`data/2_tasks/*_tasks.csv`) derive their per‑stage columns (e.g., `draft_llm_model`, `essay_llm_model`, `evaluation_llm_model`) by looking up parent rows via `parent_gen_id` and projecting from the normalized membership.
+- Generation/evaluation assets consult membership.csv directly and keep narrow CSV fallbacks for back‑compat only.
+
+Operational flow
+- Set actives in `data/1_raw/*.csv` and ExperimentConfig (k_max, level).
+- Optional curated selection: write essay gen_ids to `data/2_tasks/selected_essays.txt`.
+- Materialize `cohort_id,cohort_membership` to register dynamic partitions by `gen_id`.
+- Materialize per-stage assets by partition key (`gen_id`): drafts, essays, evaluations.
+- Parse and summarize results (`parsed_scores`, `final_results`).
+
+Getting partition keys (gen_ids)
+- Drafts: `awk -F',' 'NR==1 || $1=="draft"' data/cohorts/*/membership.csv | cut -d',' -f2 | tail -n +2`
+- Essays: `awk -F',' 'NR==1 || $1=="essay"' data/cohorts/*/membership.csv | cut -d',' -f2 | tail -n +2`
+- Evaluations: `awk -F',' 'NR==1 || $1=="evaluation"' data/cohorts/*/membership.csv | cut -d',' -f2 | tail -n +2`
+
+Evaluating historical essays
+- Create or edit `data/2_tasks/selected_essays.txt` with one essay `gen_id` per line.
+- Materialize `cohort_id,cohort_membership` to register evaluation partitions for active axes.
+- Materialize `evaluation_prompt,evaluation_response` for the desired evaluation `gen_id`s.
+
+One‑phase essay (copy) vs two‑phase essay (LLM)
+- The essay stage supports two generator modes configured per essay template in `data/1_raw/essay_templates.csv` via the `generator` column:
+  - `copy`: the essay is a verbatim copy of the parsed draft text (one‑phase pipeline). No LLM call happens in the essay stage; evaluation targets the essay copy.
+  - `llm`: the essay is generated by an LLM using the draft as input (two‑phase pipeline).
+- In Cartesian mode, every active draft will pair with every active essay template, regardless of mode. To avoid mixing one‑phase and two‑phase essays in the same cohort:
+  - Option A: activate only the desired essay templates (e.g., keep only a `copy` template active for a pure one‑phase cohort), or
+  - Option B: use curated mode (selected_essays.txt) to include only the essays you want, or
+  - Option C: build separate cohorts (IDs) for one‑phase and two‑phase runs.
+- See also: docs/architecture/architecture.md, section “Two‑Phase LLM Generation” for where `copy`/`llm` is enforced at runtime.
