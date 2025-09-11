@@ -53,8 +53,8 @@ def pipeline_data_root_prepared():
             shutil.copy2(item, dest)
     
     # Ensure template directories are properly copied with all files
-    gen_templates_dir = pipeline_data_root / "1_raw" / "generation_templates"
-    eval_templates_dir = pipeline_data_root / "1_raw" / "evaluation_templates"
+    gen_templates_dir = pipeline_data_root / "1_raw" / "templates"
+    eval_templates_dir = pipeline_data_root / "1_raw" / "templates" / "evaluation"
     
     # Verify template files exist (two-phase layout: draft/ and essay/)
     if gen_templates_dir.exists():
@@ -94,8 +94,8 @@ def pipeline_data_root_prepared():
 
     # Link and Essay templates: verify creative-synthesis-v10 files exist
     target_template = "creative-synthesis-v10"
-    draft_file = pipeline_data_root / "1_raw" / "generation_templates" / "draft" / f"{target_template}.txt"
-    essay_file = pipeline_data_root / "1_raw" / "generation_templates" / "essay" / f"{target_template}.txt"
+    draft_file = pipeline_data_root / "1_raw" / "templates" / "draft" / f"{target_template}.txt"
+    essay_file = pipeline_data_root / "1_raw" / "templates" / "essay" / f"{target_template}.txt"
     
     if draft_file.exists() and essay_file.exists():
         print(f"✓ Verified {target_template} template with two-phase structure")

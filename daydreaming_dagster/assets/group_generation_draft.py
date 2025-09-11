@@ -74,7 +74,7 @@ def draft_prompt(
                 "phase": MetadataValue.text("draft"),
                 "error": MetadataValue.text(str(e)),
                 "resolution": MetadataValue.text(
-                    "Ensure the template exists in data/1_raw/generation_templates/draft/"
+                    "Ensure the template exists in data/1_raw/templates/draft/"
                 ),
             },
         )
@@ -84,7 +84,7 @@ def draft_prompt(
         template = JINJA.from_string(template_content)
     except TemplateSyntaxError as e:
         # Reconstruct expected template path for better diagnostics
-        templates_root = Path(os.environ.get("GEN_TEMPLATES_ROOT", "data/1_raw/generation_templates"))
+        templates_root = Path(os.environ.get("GEN_TEMPLATES_ROOT", "data/1_raw/templates"))
         template_path = templates_root / "draft" / f"{template_name}.txt"
         preview = template_content[:300]
         raise Failure(

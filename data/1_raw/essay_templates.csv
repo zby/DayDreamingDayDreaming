@@ -1,9 +1,9 @@
-template_id,template_name,description,active,generator
-creative-synthesis-v10,Creative Synthesis V10,Enhanced two-phase generation - Essay Phase,false,llm
-synthesis-theme-narrative-v16,Essay Synthesis V16,Main theme narrative approach with focused development,false,llm
-synthesis-theme-narrative-v17,Essay Synthesis V17,Consistent naming,false,llm
-synthesis-theme-narrative-v18,Essay Synthesis V18,Twice-shorter main theme narrative (600±200 words),false,llm
-synthesis-theme-narrative-v19,Essay Synthesis V19,Main theme narrative tuned for rolling-thread notes (600±200),false,llm
-parsed-from-links-v1,Parsed From Links (Final Idea),Parse final <essay-idea> from links output; no LLM,true,copy
-creative-synthesis-v8,Creative Synthesis V8,Two phase,false,llm
-creative-synthesis-v9,Creative Synthesis V9,Two phase,false,llm
+template_id,template_name,description,generator,active
+creative-synthesis-v10,Creative Synthesis V10,Enhanced two-phase generation - Essay Phase,llm,False
+synthesis-theme-narrative-v16,Essay Synthesis V16,Main theme narrative approach with focused development,llm,False
+synthesis-theme-narrative-v17,Essay Synthesis V17,Consistent naming,llm,False
+synthesis-theme-narrative-v18,Essay Synthesis V18,Twice-shorter main theme narrative (600±200 words),llm,False
+synthesis-theme-narrative-v19,Essay Synthesis V19,Main theme narrative tuned for rolling-thread notes (600±200),llm,False
+parsed-from-links-v1,Parsed From Links (Final Idea),Parse final <essay-idea> from links output; no LLM,copy,True
+creative-synthesis-v8,Creative Synthesis V8,Two phase,llm,False
+creative-synthesis-v9,Creative Synthesis V9,Two phase,llm,False

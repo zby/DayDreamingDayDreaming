@@ -19,7 +19,7 @@ def load_generation_template(template_name: str, phase: PHASE) -> str:
         FileNotFoundError: If template file doesn't exist for the specified phase
     """
     # Determine templates root; allow env override for tests
-    templates_root = Path(os.environ.get("GEN_TEMPLATES_ROOT", "data/1_raw/generation_templates"))
+    templates_root = Path(os.environ.get("GEN_TEMPLATES_ROOT", "data/1_raw/templates"))
     if phase == "essay":
         path = templates_root / "essay" / f"{template_name}.txt"
     else:  # draft
