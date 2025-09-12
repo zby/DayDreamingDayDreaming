@@ -8,6 +8,19 @@ from dagster import ConfigurableResource
 import tempfile
 from pathlib import Path
 
+import os
+
+
+# Ensure DAGSTER_HOME points to a temp path for all tests
+# Matches project docs: set DAGSTER_HOME to an absolute path per test run
+import pytest
+@pytest.fixture(scope="session", autouse=True)
+def _dagster_home_env(tmp_path_factory):
+    tmp_home = tmp_path_factory.mktemp("dagster_home")
+    os.environ["DAGSTER_HOME"] = str(tmp_home)
+    return str(tmp_home)
+
+
 
 class MockLLMClient:
     """Stateful mock LLM client for testing."""
@@ -142,3 +155,111 @@ def small_test_data():
             {"model_name": "test-eval-model", "active": True}
         ])
     }
+
+
+# ------------------------------
+# Helper-style integration support
+# ------------------------------
+
+import os
+import copy
+
+
+def _mk_response(prompt: str, *, lines: int, tail_score: str) -> str:
+    """Deterministic-ish LLM body used by helper-based tests.
+
+    The last line embeds a SCORE token for evaluation parsing.
+    """
+    # Normalize to avoid negative hashes differing across runs
+    seed = abs(hash(prompt)) % 1000
+    chunks = [f"L{i+1}: {seed}" for i in range(max(int(lines), 1))]
+    body = "\n".join(chunks)
+    return f"{body}\nSCORE: {tail_score}"
+
+
+@pytest.fixture
+def mock_llm(request):
+    """Configurable mock LLM implementing generate_with_info(prompt, model, max_tokens).
+
+    Configure via @pytest.mark.llm_cfg(lines=..., truncated=..., tail_score=...).
+    Defaults: lines=3, truncated=False, tail_score="7.0".
+    """
+    cfg = request.node.get_closest_marker("llm_cfg")
+    lines = (cfg.kwargs.get("lines") if cfg else None) or 3
+    truncated = (cfg.kwargs.get("truncated") if cfg else None) or False
+    tail_score = (cfg.kwargs.get("tail_score") if cfg else None) or "7.0"
+
+    class _FakeLLM:
+        def generate_with_info(self, prompt: str, *, model: str, max_tokens=None):
+            text = _mk_response(prompt, lines=lines, tail_score=tail_score)
+            info = {
+                "finish_reason": "stop",
+                "truncated": bool(truncated),
+                "usage": {"prompt_tokens": 1, "completion_tokens": 1},
+            }
+            return text, info
+
+    return _FakeLLM()
+
+
+@pytest.fixture
+def canon_meta():
+    """Canonicalize metadata dicts by dropping volatile fields and baselining file paths."""
+    def _canon(meta: dict) -> dict:
+        m = copy.deepcopy(meta)
+        m.pop("duration_s", None)
+        files = m.get("files")
+        if isinstance(files, dict):
+            m["files"] = {k: (os.path.basename(v) if isinstance(v, str) else v) for k, v in files.items()}
+        return m
+
+    return _canon
+
+
+@pytest.fixture
+def tiny_data_root(tmp_path: Path) -> Path:
+    """Lay down a minimal data root for helper-based integration tests.
+
+    Structure mirrors project expectations under <tmp>/1_raw and templates.
+    """
+    base = tmp_path
+    raw = base / "1_raw"
+    (raw / "templates" / "draft").mkdir(parents=True, exist_ok=True)
+    (raw / "templates" / "essay").mkdir(parents=True, exist_ok=True)
+    (raw / "templates" / "evaluation").mkdir(parents=True, exist_ok=True)
+    # CSVs
+    (raw / "llm_models.csv").write_text(
+        "model_id,for_generation,for_evaluation,active\n"
+        "m-gen,True,False,True\n"
+        "m-eval,False,True,True\n",
+        encoding="utf-8",
+    )
+    (raw / "draft_templates.csv").write_text(
+        "template_id,template_name,description,parser,generator,active\n"
+        "test-draft,T Draft,Desc,essay_block,llm,True\n",
+        encoding="utf-8",
+    )
+    (raw / "essay_templates.csv").write_text(
+        "template_id,template_name,description,generator,active\n"
+        "test-essay-llm,T Essay,Desc,llm,True\n"
+        "test-essay-copy,T Essay,Desc,copy,True\n",
+        encoding="utf-8",
+    )
+    (raw / "evaluation_templates.csv").write_text(
+        "template_id,template_name,description,parser,active\n"
+        "test-eval,T Eval,Desc,in_last_line,True\n",
+        encoding="utf-8",
+    )
+    # Templates
+    (raw / "templates" / "draft" / "test-draft.txt").write_text(
+        "Draft for: {% for c in concepts %}{{ c.name }};{% endfor %}", encoding="utf-8"
+    )
+    (raw / "templates" / "essay" / "test-essay-llm.txt").write_text(
+        "Essay:\n{{ draft_block }}\n--\n{{ links_block }}",
+        encoding="utf-8",
+    )
+    (raw / "templates" / "essay" / "test-essay-copy.txt").write_text("Copy essay", encoding="utf-8")
+    (raw / "templates" / "evaluation" / "test-eval.txt").write_text("Score this: {{ response }}", encoding="utf-8")
+    # gens root
+    (base / "gens").mkdir(parents=True, exist_ok=True)
+    return base
