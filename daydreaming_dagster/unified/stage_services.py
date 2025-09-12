@@ -504,15 +504,35 @@ def response_asset(context, prompt_text, stage: Stage) -> str:
     # If not copy mode, require an LLM model across all stages
     model_id = str(row.get("llm_model_id") or "").strip()
     parent_gen_id = str(row.get("parent_gen_id") or "").strip() if "parent_gen_id" in row.index else None
-    # Early copy path (essay only): pass through parsed draft to essay/parsed.txt
-    if stage == "essay" and mode == "copy":
+    # Early copy path: pass-through from parent stage where applicable
+    if mode == "copy":
+        parent_map = {"essay": DRAFT, "evaluation": "essay"}
+        pstage = parent_map.get(stage)
+        if not pstage:
+            raise Failure(
+                description=f"Copy mode is unsupported for stage '{stage}'",
+                metadata={
+                    "function": MetadataValue.text(f"{stage}_response"),
+                    "gen_id": MetadataValue.text(str(gen_id)),
+                    "resolution": MetadataValue.text("Use generator=llm for draft or provide a parent_gen_id for pass-through"),
+                },
+            )
+        if not parent_gen_id:
+            raise Failure(
+                description=f"Copy mode requires parent_gen_id for stage '{stage}'",
+                metadata={
+                    "function": MetadataValue.text(f"{stage}_response"),
+                    "gen_id": MetadataValue.text(str(gen_id)),
+                    "resolution": MetadataValue.text("Ensure cohort membership has a valid parent_gen_id"),
+                },
+            )
         result = execute_copy(
             out_dir=data_root / "gens",
             stage=stage,
             gen_id=str(gen_id),
             template_id=template_id,
-            parent_gen_id=str(parent_gen_id or ""),
-            pass_through_from=(data_root / "gens" / DRAFT / str(parent_gen_id or "") / "parsed.txt"),
+            parent_gen_id=str(parent_gen_id),
+            pass_through_from=(data_root / "gens" / pstage / str(parent_gen_id) / "parsed.txt"),
             metadata_extra={
                 "function": f"{stage}_response",
                 "run_id": get_run_id(context),
@@ -523,7 +543,7 @@ def response_asset(context, prompt_text, stage: Stage) -> str:
             function=f"{stage}_response",
             gen_id=str(gen_id),
             result=result,
-            extras={"mode": "copy", "parent_gen_id": str(parent_gen_id or "")},
+            extras={"mode": "copy", "parent_gen_id": str(parent_gen_id)},
         )
         return result.parsed_text or ""
     elif not model_id:
@@ -537,17 +557,11 @@ def response_asset(context, prompt_text, stage: Stage) -> str:
                 ),
             },
         )
-    # Tokens and min-lines per stage (evaluation uses a different key)
+    # Tokens/min-lines via constructed keys
     exp_cfg = getattr(context.resources, "experiment_config", object())
-    if stage == "evaluation":
-        max_tokens = getattr(exp_cfg, "evaluation_max_tokens", None)
-        min_lines = None
-    elif stage == "draft":
-        max_tokens = getattr(exp_cfg, "draft_generation_max_tokens", None)
-        min_lines = int(getattr(exp_cfg, "min_draft_lines", 3))
-    else:  # essay
-        max_tokens = getattr(exp_cfg, "essay_generation_max_tokens", None)
-        min_lines = None
+    max_tokens_key = "evaluation_max_tokens" if stage == "evaluation" else f"{stage}_generation_max_tokens"
+    max_tokens = getattr(exp_cfg, max_tokens_key, None)
+    min_lines = int(getattr(exp_cfg, "min_draft_lines", 3)) if stage == "draft" else None
 
     result = execute_llm(
         stage=stage,
