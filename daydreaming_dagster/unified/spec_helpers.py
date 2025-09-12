@@ -17,11 +17,8 @@ from typing import Any, Literal, Optional
 
 from dagster import Failure, MetadataValue
 
-from .stage_runner import StageRunSpec, StageRunner
+from .stage_runner import StageRunner
 from ..utils.membership_lookup import find_membership_row_by_gen
-from ..utils.raw_readers import read_essay_templates
-from ..utils.evaluation_parsing_config import load_parser_map, require_parser_for_template
-from ..constants import DRAFT, ESSAY
 
 
 Stage = Literal["draft", "essay", "evaluation"]
@@ -79,116 +76,47 @@ def build_generation_spec_from_membership(
     stage: Stage,
     gen_id: str,
     data_root: Path,
-    out_dir: Path,
-    experiment_config: Any,
-    values: Optional[dict[str, Any]] = None,
-    prompt_text: Optional[str] = None,
-) -> StageRunSpec:
-    """Construct a StageRunSpec from cohort membership and configuration.
+) -> "MembershipInfo":
+    """Resolve unified membership fields for a given stage/gen_id.
 
-    - draft: resolves template_id and llm_model_id; sets min_lines and max_tokens.
-    - essay: resolves parent_gen_id and template_id; determines generator mode
-      from essay_templates.csv; if copy, sets pass_through_from path; if llm,
-      sets llm_model_id and max_tokens.
-    - evaluation: resolves parent_gen_id, template_id, llm_model_id; sets parser_name
-      via evaluation_templates.csv; sets max_tokens.
+    Returns MembershipInfo with common fields only (stage, gen_id, template_id,
+    llm_model_id, parent_gen_id, cohort_id when available). Stage-specific policy
+    (generator mode, parser, token caps, validations) is left to assets or StageRunner.
     """
     if not isinstance(gen_id, str) or not gen_id:
-        raise Failure(description="Invalid gen_id", metadata={"function": MetadataValue.text("build_generation_spec_from_membership")})
+        raise Failure(description="Invalid gen_id", metadata={"function": MetadataValue.text("resolve_membership_common")})
 
-    mrow, _cohort = find_membership_row_by_gen(data_root, stage, str(gen_id))
+    mrow, cohort_id = find_membership_row_by_gen(data_root, stage, str(gen_id))
     if mrow is None:
         raise Failure(
             description=f"Cohort membership row not found for {stage} gen_id",
             metadata={
-                "function": MetadataValue.text("build_generation_spec_from_membership"),
+                "function": MetadataValue.text("resolve_membership_common"),
                 "stage": MetadataValue.text(stage),
                 "gen_id": MetadataValue.text(str(gen_id)),
             },
         )
 
-    # Common fields
     template_id = str(mrow.get("template_id") or "").strip()
-    model_id = str(mrow.get("llm_model_id") or "").strip()
+    llm_model_id = str(mrow.get("llm_model_id") or "").strip() or None
+    parent_gen_id = str(mrow.get("parent_gen_id") or "").strip() or None
 
-    if stage == "draft":
-        if not model_id:
-            raise Failure(
-                description="Missing generation model for draft task",
-                metadata={"function": MetadataValue.text("build_generation_spec_from_membership"), "gen_id": MetadataValue.text(str(gen_id))},
-            )
-        return StageRunSpec(
-            stage="draft",
-            gen_id=str(gen_id),
-            template_id=template_id,
-            values=values or {},
-            out_dir=out_dir,
-            mode="llm",
-            model=model_id,
-            max_tokens=getattr(experiment_config, "draft_generation_max_tokens", None),
-            prompt_text=prompt_text,
-            min_lines=int(getattr(experiment_config, "min_draft_lines", 0) or 0),
-        )
+    return MembershipInfo(
+        stage=stage,
+        gen_id=str(gen_id),
+        template_id=template_id,
+        llm_model_id=llm_model_id,
+        parent_gen_id=parent_gen_id,
+        cohort_id=str(cohort_id) if isinstance(cohort_id, str) and cohort_id else None,
+    )
 
-    if stage == "essay":
-        parent_gen_id = str(mrow.get("parent_gen_id") or "").strip()
-        if not parent_gen_id:
-            raise Failure(
-                description="Missing parent_gen_id for essay task",
-                metadata={"function": MetadataValue.text("build_generation_spec_from_membership"), "gen_id": MetadataValue.text(str(gen_id))},
-            )
-        # Determine generator mode from essay_templates.csv
-        df = read_essay_templates(data_root, filter_active=False)
-        mode = "llm"
-        if not df.empty and "generator" in df.columns:
-            row = df[df["template_id"].astype(str) == template_id]
-            if not row.empty:
-                v = str(row.iloc[0].get("generator") or "").strip().lower()
-                if v in ("llm", "copy"):
-                    mode = v
-        spec = StageRunSpec(
-            stage="essay",
-            gen_id=str(gen_id),
-            template_id=template_id,
-            values=values or {},
-            out_dir=out_dir,
-            mode=mode,
-            model=(model_id or None),
-            max_tokens=getattr(experiment_config, "essay_generation_max_tokens", None),
-            prompt_text=prompt_text,
-            parent_gen_id=parent_gen_id,
-        )
-        if mode == "copy":
-            spec.pass_through_from = Path(out_dir) / DRAFT / parent_gen_id / "parsed.txt"
-        return spec
 
-    if stage == "evaluation":
-        parent_gen_id = str(mrow.get("parent_gen_id") or "").strip()
-        if not parent_gen_id:
-            raise Failure(
-                description="Missing parent_gen_id for evaluation task",
-                metadata={"function": MetadataValue.text("build_generation_spec_from_membership"), "gen_id": MetadataValue.text(str(gen_id))},
-            )
-        if not model_id:
-            raise Failure(
-                description="Missing evaluator model for evaluation task",
-                metadata={"function": MetadataValue.text("build_generation_spec_from_membership"), "gen_id": MetadataValue.text(str(gen_id))},
-            )
-        parser_map = load_parser_map(data_root)
-        parser_name = require_parser_for_template(template_id, parser_map)
-        return StageRunSpec(
-            stage="evaluation",
-            gen_id=str(gen_id),
-            template_id=template_id,
-            values=values or {},
-            out_dir=out_dir,
-            mode="llm",
-            model=model_id,
-            parser_name=parser_name,
-            max_tokens=getattr(experiment_config, "evaluation_max_tokens", None),
-            prompt_text=prompt_text,
-            parent_gen_id=parent_gen_id,
-        )
-
-    raise Failure(description=f"Unsupported stage: {stage}", metadata={"function": MetadataValue.text("build_generation_spec_from_membership")})
+@dataclass
+class MembershipInfo:
+    stage: Stage
+    gen_id: str
+    template_id: str
+    llm_model_id: Optional[str]
+    parent_gen_id: Optional[str]
+    cohort_id: Optional[str] = None
 
