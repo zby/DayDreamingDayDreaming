@@ -17,7 +17,7 @@ from typing import Any, Literal, Optional
 
 from dagster import Failure, MetadataValue
 
-from .stage_runner import StageRunner
+from .stage_services import render_template
 from ..utils.membership_lookup import find_membership_row_by_gen
 
 
@@ -35,7 +35,7 @@ def build_prompt_from_membership(
     stage: Stage,
     gen_id: str,
     data_root: Path,
-    runner: Optional[StageRunner] = None,
+    runner: Optional[object] = None,
     values: Optional[dict[str, Any]] = None,
 ) -> str:
     """Render a prompt using StageRunner's StrictUndefined Jinja, based on membership.
@@ -67,8 +67,8 @@ def build_prompt_from_membership(
                 "gen_id": MetadataValue.text(str(gen_id)),
             },
         )
-    r = runner or StageRunner()
-    return r.render_template(stage, template_id, values or {})
+    # BACKCOMPAT: accept runner param but ignore; use shared render_template
+    return render_template(stage, template_id, values or {})
 
 
 def build_generation_spec_from_membership(
