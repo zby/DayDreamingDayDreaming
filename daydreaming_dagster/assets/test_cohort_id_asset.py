@@ -24,9 +24,15 @@ def _stub_tables(monkeypatch, m):
             {"id": "eval-model-1", "for_generation": False, "for_evaluation": True},
         ]
     )
-    monkeypatch.setattr(m, "read_draft_templates", lambda _root: draft_templates_df)
-    monkeypatch.setattr(m, "read_essay_templates", lambda _root: essay_templates_df)
-    monkeypatch.setattr(m, "read_evaluation_templates", lambda _root: evaluation_templates_df)
+    def _read_templates(_root, kind, filter_active=True):
+        if kind == "draft":
+            return draft_templates_df
+        if kind == "essay":
+            return essay_templates_df
+        if kind == "evaluation":
+            return evaluation_templates_df
+        return pd.DataFrame([])
+    monkeypatch.setattr(m, "read_templates", _read_templates)
     monkeypatch.setattr(m, "read_llm_models", lambda _root: models_df)
 
 
@@ -88,7 +94,7 @@ def test_draft_generation_tasks_includes_cohort_id(tmp_path, monkeypatch):
     models_df = pd.DataFrame([
         {"id": "gen-model-1", "model": "provider/model-1", "for_generation": True},
     ])
-    monkeypatch.setattr(m, "read_draft_templates", lambda _root: draft_templates_df)
+    monkeypatch.setattr(m, "read_templates", lambda _root, kind, filter_active=True: draft_templates_df if kind == "draft" else pd.DataFrame([]))
     monkeypatch.setattr(m, "read_llm_models", lambda _root: models_df)
 
     # Provide cohort via env and pre-write membership.csv for projection

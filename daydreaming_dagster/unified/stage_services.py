@@ -75,39 +75,63 @@ def generate_llm(
     return normalized, info or {}
 
 
-def resolve_draft_parser_name(
+def resolve_parser_name(
     data_root: Path,
+    stage: Stage,
     template_id: str,
     provided: Optional[str] = None,
 ) -> Optional[str]:
+    """Resolve a parser name for a given stage/template.
+
+    Behavior:
+    - If `provided` is a non-empty string, return it.
+    - For stage "draft": best-effort CSV fallback from draft_templates.csv (returns None on any issue).
+    - For stage "evaluation": best-effort lookup via evaluation_templates.csv using evaluation_parsing_config.
+    - For other stages: return None.
+    """
     if isinstance(provided, str) and provided.strip():
         return provided.strip()
-    # CSV fallback (best-effort, never raise)
     try:
-        from daydreaming_dagster.utils.raw_readers import read_draft_templates
+        if stage == "draft":
+            from daydreaming_dagster.utils.raw_readers import read_templates
 
-        df = read_draft_templates(Path(data_root), filter_active=False)
-        if df.empty or "parser" not in df.columns:
-            return None
-        row = df[df["template_id"].astype(str) == str(template_id)]
-        if row.empty:
-            return None
-        val = row.iloc[0].get("parser")
-        if val is None:
-            return None
-        s = str(val).strip()
-        return s or None
+            df = read_templates(Path(data_root), "draft", filter_active=False)
+            if df.empty or "parser" not in df.columns:
+                return None
+            row = df[df["template_id"].astype(str) == str(template_id)]
+            if row.empty:
+                return None
+            val = row.iloc[0].get("parser")
+            if val is None:
+                return None
+            s = str(val).strip()
+            return s or None
+        if stage == "evaluation":
+            # Best-effort: use evaluation_parsing_config; swallow errors and return None
+            from daydreaming_dagster.utils.evaluation_parsing_config import (
+                load_parser_map,
+                require_parser_for_template,
+            )
+
+            parser_map = load_parser_map(Path(data_root))
+            return require_parser_for_template(str(template_id), parser_map)
     except Exception:
         return None
+    return None
 
 
-def parse_draft(raw_text: str, parser_name: Optional[str]) -> Optional[str]:
+def parse_text(stage: Stage, raw_text: str, parser_name: Optional[str]) -> Optional[str]:
+    """Unified parsing helper for all stages.
+
+    - Returns None when parser_name is missing/empty or parser not found.
+    - Catches parser exceptions and returns None for best-effort behavior.
+    """
     if not (isinstance(parser_name, str) and parser_name.strip()):
         return None
     try:
-        from daydreaming_dagster.utils.draft_parsers import get_draft_parser
+        from daydreaming_dagster.utils.parser_registry import get_parser
 
-        parser = get_draft_parser(parser_name)
+        parser = get_parser(stage, parser_name)
         if parser is None:
             return None
         return parser(str(raw_text))
@@ -115,19 +139,7 @@ def parse_draft(raw_text: str, parser_name: Optional[str]) -> Optional[str]:
         return None
 
 
-def parse_evaluation(raw_text: str, parser_name: str) -> Optional[str]:
-    if not (isinstance(parser_name, str) and parser_name.strip()):
-        return None
-    try:
-        from daydreaming_dagster.utils.eval_response_parser import parse_llm_response
-
-        res = parse_llm_response(str(raw_text), parser_name)
-        score = res.get("score")
-        if isinstance(score, (int, float)):
-            return f"{float(score)}\n"
-        return None
-    except Exception:
-        return None
+# parse_draft/parse_evaluation removed in favor of unified parse_text
 
 
 def write_generation(
@@ -196,9 +208,10 @@ def _merge_extras(meta: Dict[str, Any], extras: Optional[Dict[str, Any]]) -> Dic
     return meta
 
 
-def execute_essay_copy(
+def execute_copy(
     *,
     out_dir: Path,
+    stage: Stage,
     gen_id: str,
     template_id: str,
     parent_gen_id: str,
@@ -209,15 +222,15 @@ def execute_essay_copy(
     src = Path(pass_through_from)
     parsed = src.read_text(encoding="utf-8") if src.exists() else ""
     meta = _base_meta(
-        stage="essay", gen_id=str(gen_id), template_id=template_id, model=None, parent_gen_id=str(parent_gen_id), mode="copy"
+        stage=stage, gen_id=str(gen_id), template_id=template_id, model=None, parent_gen_id=str(parent_gen_id), mode="copy"
     )
-    base = Path(out_dir) / "essay" / str(gen_id)
+    base = Path(out_dir) / str(stage) / str(gen_id)
     meta["files"] = {"parsed": str((base / "parsed.txt").resolve())}
     meta["duration_s"] = round(time.time() - t0, 3)
     _merge_extras(meta, metadata_extra)
     write_generation(
         out_dir=out_dir,
-        stage="essay",
+        stage=stage,
         gen_id=str(gen_id),
         parent_gen_id=str(parent_gen_id),
         prompt_text=None,
@@ -253,10 +266,10 @@ def execute_draft_llm(
     raw_text, info = generate_llm(llm, prompt_text, model=model, max_tokens=max_tokens)
 
     # Resolve effective parser name via CSV fallback when not provided
-    effective_parser = resolve_draft_parser_name(Path(data_root), template_id, parser_name)
+    effective_parser = resolve_parser_name(Path(data_root), "draft", template_id, parser_name)
 
     # Parse draft (best-effort)
-    parsed = parse_draft(raw_text, effective_parser)
+    parsed = parse_text("draft", raw_text, effective_parser)
 
     # Build metadata early
     base = Path(out_dir) / "draft" / str(gen_id)
@@ -269,7 +282,6 @@ def execute_draft_llm(
         mode="llm",
     )
     meta["files"] = {
-        "prompt": str((base / "prompt.txt").resolve()),
         "raw": str((base / "raw.txt").resolve()),
     }
     meta.update(
@@ -295,7 +307,7 @@ def execute_draft_llm(
         metadata=meta,
         write_raw=True,
         write_parsed=False,
-        write_prompt=True,
+        write_prompt=False,
         write_metadata=True,
     )
 
@@ -354,7 +366,6 @@ def execute_essay_llm(
         stage="essay", gen_id=str(gen_id), template_id=template_id, model=model, parent_gen_id=str(parent_gen_id), mode="llm"
     )
     meta["files"] = {
-        "prompt": str((base / "prompt.txt").resolve()),
         "raw": str((base / "raw.txt").resolve()),
         "parsed": str((base / "parsed.txt").resolve()),
     }
@@ -379,7 +390,7 @@ def execute_essay_llm(
         metadata=meta,
         write_raw=True,
         write_parsed=True,
-        write_prompt=True,
+        write_prompt=False,
         write_metadata=True,
     )
     return ExecutionResult(prompt_text=prompt_text, raw_text=raw_text, parsed_text=parsed, info=info, metadata=meta)
@@ -409,7 +420,7 @@ def execute_evaluation_llm(
         raise ValueError("parser_name is required for evaluation stage")
     t0 = time.time()
     raw_text, info = generate_llm(llm, prompt_text, model=model, max_tokens=max_tokens)
-    parsed = parse_evaluation(raw_text, parser_name)
+    parsed = parse_text("evaluation", raw_text, parser_name)
 
     base = Path(out_dir) / "evaluation" / str(gen_id)
     meta: Dict[str, Any] = _base_meta(
@@ -421,7 +432,6 @@ def execute_evaluation_llm(
         mode="llm",
     )
     meta["files"] = {
-        "prompt": str((base / "prompt.txt").resolve()),
         "raw": str((base / "raw.txt").resolve()),
         "parsed": str((base / "parsed.txt").resolve()),
     }
@@ -447,7 +457,7 @@ def execute_evaluation_llm(
         metadata=meta,
         write_raw=True,
         write_parsed=True,
-        write_prompt=True,
+        write_prompt=False,
         write_metadata=True,
     )
     return ExecutionResult(prompt_text=prompt_text, raw_text=raw_text, parsed_text=parsed, info=info, metadata=meta)
@@ -460,11 +470,10 @@ __all__ = [
     "ExecutionResultLike",
     "render_template",
     "generate_llm",
-    "resolve_draft_parser_name",
-    "parse_draft",
-    "parse_evaluation",
+    "resolve_parser_name",
+    "parse_text",
     "write_generation",
-    "execute_essay_copy",
+    "execute_copy",
     "execute_draft_llm",
     "execute_essay_llm",
     "execute_evaluation_llm",
@@ -573,7 +582,7 @@ def essay_prompt_asset(context) -> str:
 def essay_response_asset(context, essay_prompt) -> str:
     """
     Asset-compatible response entrypoint for the essay stage.
-    Delegates to execute_essay_copy/execute_essay_llm and mirrors the asset logic/metadata.
+    Delegates to execute_copy/execute_essay_llm and mirrors the asset logic/metadata.
     """
     gen_id = context.partition_key
     # Import helpers lazily to avoid circular imports during module initialization
@@ -629,8 +638,9 @@ def essay_response_asset(context, essay_prompt) -> str:
     data_root = Path(getattr(context.resources, "data_root", "data"))
 
     if mode == "copy":
-        result = execute_essay_copy(
+        result = execute_copy(
             out_dir=data_root / "gens",
+            stage="essay",
             gen_id=str(gen_id),
             template_id=template_name,
             parent_gen_id=str(parent_gen_id),

@@ -3,7 +3,7 @@ import pandas as pd
 import numpy as np
 from pathlib import Path
 from .raw_data import EVALUATION_TEMPLATES_KEY
-from ..utils.raw_readers import read_evaluation_templates
+from ..utils.raw_readers import read_templates
 from ..constants import ESSAY, FILE_PARSED
 from functools import lru_cache
 
@@ -28,7 +28,7 @@ def generation_scores_pivot(context, parsed_scores: pd.DataFrame) -> pd.DataFram
     Values: Individual score for that specific evaluator combination (no averaging)
     """
     # Load evaluation templates CSV and extract active templates
-    eval_df = read_evaluation_templates(Path(context.resources.data_root))
+    eval_df = read_templates(Path(context.resources.data_root), "evaluation", filter_active=True)
     if eval_df is None or eval_df.empty:
         context.log.warning("No evaluation templates CSV found or empty; returning empty pivot")
         return pd.DataFrame()

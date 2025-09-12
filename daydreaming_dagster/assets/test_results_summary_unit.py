@@ -48,14 +48,16 @@ def _make_parsed_scores():
 
 
 def test_generation_scores_pivot_smoke(monkeypatch, tmp_path):
-    # Monkeypatch evaluation templates reader to return active templates
+    # Monkeypatch unified templates reader to return active evaluation templates
     monkeypatch.setattr(
         rs,
-        "read_evaluation_templates",
-        lambda _root: pd.DataFrame([
-            {"template_id": "daydreaming-verification-v2", "active": True},
-            {"template_id": "creativity-metrics", "active": True},
-        ]),
+        "read_templates",
+        lambda _root, kind, filter_active=True: (
+            pd.DataFrame([
+                {"template_id": "daydreaming-verification-v2", "active": True},
+                {"template_id": "creativity-metrics", "active": True},
+            ]) if kind == "evaluation" else pd.DataFrame([])
+        ),
     )
 
     ctx = build_asset_context(resources={"data_root": str(tmp_path)})
@@ -105,4 +107,3 @@ def test_evaluation_model_template_pivot(tmp_path):
     assert expected_combined.issubset(set(pivot.columns))
     # One row per generation
     assert len(pivot) == 1
-

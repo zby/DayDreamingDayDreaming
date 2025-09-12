@@ -9,8 +9,7 @@ from dagster import Failure, MetadataValue
 from ..utils.membership_lookup import find_membership_row_by_gen
 from ..utils.generation import Generation
 from ..constants import FILE_PARSED
-from ..utils.raw_readers import read_essay_templates
-from ..utils.raw_readers import read_evaluation_templates
+from ..utils.raw_readers import read_templates
 
 Stage = Literal["draft", "essay", "evaluation"]
 
@@ -185,10 +184,7 @@ def _resolve_generator_mode(
     if filter_active is None:
         filter_active = False if kind == "essay" else True
 
-    if kind == "essay":
-        df = read_essay_templates(Path(data_root), filter_active=filter_active)
-    else:
-        df = read_evaluation_templates(Path(data_root)) if filter_active else read_evaluation_templates(Path(data_root))
+    df = read_templates(Path(data_root), kind, filter_active=bool(filter_active))
 
     if df.empty:
         raise Failure(

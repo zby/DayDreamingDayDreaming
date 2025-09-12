@@ -17,9 +17,7 @@ from dagster import Failure, MetadataValue, asset
 from ..utils.ids import reserve_gen_id
 from ..utils.raw_readers import (
     read_concepts,
-    read_draft_templates,
-    read_essay_templates,
-    read_evaluation_templates,
+    read_templates,
     read_llm_models,
 )
 from ..models import ContentCombination
@@ -62,7 +60,7 @@ def _eval_axes(data_root: Path) -> Tuple[List[str], List[str], Dict[str, str], D
         if not evaluation_models.empty
         else {}
     )
-    eval_templates_df = read_evaluation_templates(data_root)
+    eval_templates_df = read_templates(data_root, "evaluation", filter_active=True)
     if "active" in eval_templates_df.columns:
         eval_templates_df = eval_templates_df[eval_templates_df["active"] == True]
     eval_tpl_ids = (
@@ -287,7 +285,7 @@ def cohort_membership(
     else:
         # Cartesian mode — derive from active axes
         # Drafts: content_combinations × active draft templates × generation models
-        dtpl_df = read_draft_templates(data_root)
+        dtpl_df = read_templates(data_root, "draft", filter_active=True)
         if "active" in dtpl_df.columns:
             dtpl_df = dtpl_df[dtpl_df["active"] == True]
         gen_models_df = read_llm_models(data_root)
@@ -323,7 +321,7 @@ def cohort_membership(
                     )
 
         # Essays: drafts × active essay templates
-        essay_tpl_df = read_essay_templates(data_root)
+        essay_tpl_df = read_templates(data_root, "essay", filter_active=True)
         if "active" in essay_tpl_df.columns:
             essay_tpl_df = essay_tpl_df[essay_tpl_df["active"] == True]
         draft_rows = [r for r in rows if r.get("stage") == "draft"]
@@ -456,21 +454,21 @@ def cohort_id(context, content_combinations: list[ContentCombination]) -> str:
     data_root = Path(getattr(context.resources, "data_root", "data"))
     # Build manifest from active axes
     try:
-        ddf = read_draft_templates(data_root)
+        ddf = read_templates(data_root, "draft", filter_active=True)
         if "active" in ddf.columns:
             ddf = ddf[ddf["active"] == True]
         drafts = sorted(ddf["template_id"].astype(str).tolist()) if not ddf.empty else []
     except Exception:
         drafts = []
     try:
-        edf = read_essay_templates(data_root)
+        edf = read_templates(data_root, "essay", filter_active=True)
         if "active" in edf.columns:
             edf = edf[edf["active"] == True]
         essays = sorted(edf["template_id"].astype(str).tolist()) if not edf.empty else []
     except Exception:
         essays = []
     try:
-        vdf = read_evaluation_templates(data_root)
+        vdf = read_templates(data_root, "evaluation", filter_active=True)
         if "active" in vdf.columns:
             vdf = vdf[vdf["active"] == True]
         evals = sorted(vdf["template_id"].astype(str).tolist()) if not vdf.empty else []

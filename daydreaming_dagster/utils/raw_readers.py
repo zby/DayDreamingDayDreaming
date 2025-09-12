@@ -63,13 +63,14 @@ def _validate_templates_df(df: pd.DataFrame, csv_path: Path) -> pd.DataFrame:
     return df
 
 
-def read_draft_templates(data_root: Path, filter_active: bool = True) -> pd.DataFrame:
-    return _read_templates(data_root, "draft_templates.csv", filter_active=filter_active)
+def read_templates(data_root: Path, kind: str, filter_active: bool = True) -> pd.DataFrame:
+    """Unified reader for draft/essay/evaluation templates.
 
-
-def read_essay_templates(data_root: Path, filter_active: bool = True) -> pd.DataFrame:
-    return _read_templates(data_root, "essay_templates.csv", filter_active=filter_active)
-
-
-def read_evaluation_templates(data_root: Path) -> pd.DataFrame:
-    return _read_templates(data_root, "evaluation_templates.csv", filter_active=True)
+    - kind: one of {"draft", "essay", "evaluation"}
+    - filter_active: filter rows where active == True when present
+    """
+    kind = str(kind).strip().lower()
+    if kind not in {"draft", "essay", "evaluation"}:
+        raise ValueError(f"Unknown template kind: {kind}")
+    filename = f"{kind}_templates.csv"
+    return _read_templates(data_root, filename, filter_active=filter_active)

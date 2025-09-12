@@ -9,10 +9,9 @@ import pytest
 from daydreaming_dagster.unified.stage_services import (
     render_template,
     generate_llm,
-    resolve_draft_parser_name,
-    parse_draft,
-    parse_evaluation,
-    execute_essay_copy,
+    resolve_parser_name,
+    parse_text,
+    execute_copy,
     execute_draft_llm,
     execute_essay_llm,
     execute_evaluation_llm,
@@ -58,7 +57,7 @@ def test_generate_llm_normalizes_crlf():
     assert info.get("finish_reason") == "stop"
 
 
-def test_resolve_draft_parser_name_fallback(tmp_path: Path):
+def test_resolve_parser_name_fallback(tmp_path: Path):
     csv_dir = tmp_path / "1_raw"
     csv_dir.mkdir(parents=True, exist_ok=True)
     (csv_dir / "draft_templates.csv").write_text(
@@ -66,33 +65,34 @@ def test_resolve_draft_parser_name_fallback(tmp_path: Path):
         "foo,Foo,Desc,essay_block,llm,True\n",
         encoding="utf-8",
     )
-    name = resolve_draft_parser_name(tmp_path, "foo", None)
+    name = resolve_parser_name(tmp_path, "draft", "foo", None)
     assert name == "essay_block"
     # Missing CSV: returns None
-    name2 = resolve_draft_parser_name(tmp_path / "nope", "foo", None)
+    name2 = resolve_parser_name(tmp_path / "nope", "draft", "foo", None)
     assert name2 is None
 
 
 def test_parse_draft_uses_registry():
     text = "<essay>Body</essay>"
-    parsed = parse_draft(text, "essay_block")
+    parsed = parse_text("draft", text, "essay_block")
     assert parsed == "Body"
-    assert parse_draft(text, "missing_parser") is None
+    assert parse_text("draft", text, "missing_parser") is None
 
 
 def test_parse_evaluation_in_last_line():
     txt = "Line\nSCORE: 8.5\n"
-    out = parse_evaluation(txt, "in_last_line")
+    out = parse_text("evaluation", txt, "in_last_line")
     assert out == "8.5\n"
-    assert parse_evaluation("no score", "in_last_line") is None
+    assert parse_text("evaluation", "no score", "in_last_line") is None
 
 
-def test_execute_essay_copy_writes_only_parsed_and_metadata(tmp_path: Path):
+def test_execute_copy_writes_only_parsed_and_metadata(tmp_path: Path):
     src = tmp_path / "gens" / "draft" / "D1" / "parsed.txt"
     src.parent.mkdir(parents=True, exist_ok=True)
     src.write_text("A\nB\n", encoding="utf-8")
-    res = execute_essay_copy(
+    res = execute_copy(
         out_dir=tmp_path / "gens",
+        stage="essay",
         gen_id="E1",
         template_id="t",
         parent_gen_id="D1",
@@ -128,7 +128,8 @@ def test_execute_draft_llm_happy_path(tmp_path: Path):
         min_lines=1,
     )
     base = tmp_path / "gens" / "draft" / "D1"
-    assert (base / "prompt.txt").exists()
+    # execute_draft_llm no longer writes prompt.txt
+    assert not (base / "prompt.txt").exists()
     assert (base / "raw.txt").exists()
     assert (base / "parsed.txt").read_text(encoding="utf-8").strip() == "Foo"
     md = json.loads((base / "metadata.json").read_text(encoding="utf-8"))
@@ -238,4 +239,3 @@ def test_metadata_extra_does_not_override(tmp_path: Path):
     )
     assert res.metadata.get("stage") == "essay"  # not overridden
     assert res.metadata.get("run_id") == "X"
-
