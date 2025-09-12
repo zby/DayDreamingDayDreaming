@@ -76,13 +76,13 @@ def test_evaluation_parser_in_last_line_emits_single_float_line(tiny_data_root: 
     doc_text = (e_dir / "parsed.txt").read_text(encoding="utf-8")
     _ = execute_evaluation_llm(
         llm=mock_llm,
-        out_dir=tiny_data_root / "gens",
+        root_dir=tiny_data_root,
         gen_id=eval_id,
         template_id="test-eval",
         prompt_text=render_template("evaluation", "test-eval", {"response": doc_text}, templates_root=tiny_data_root / "1_raw" / "templates"),
         model="m-eval",
-        parser_name="in_last_line",
         max_tokens=2048,
+        min_lines=None,
         parent_gen_id=essay_parent_id,
     )
 

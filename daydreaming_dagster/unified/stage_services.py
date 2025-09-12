@@ -248,12 +248,11 @@ def execute_copy(
 def execute_draft_llm(
     *,
     llm: LLMClientProto,
-    out_dir: Path,
+    root_dir: Path,
     gen_id: str,
     template_id: str,
     prompt_text: str,
     model: str,
-    data_root: Path,
     max_tokens: Optional[int],
     min_lines: Optional[int],
     fail_on_truncation: bool = True,
@@ -266,13 +265,14 @@ def execute_draft_llm(
     raw_text, info = generate_llm(llm, prompt_text, model=model, max_tokens=max_tokens)
 
     # Resolve effective parser name via CSV fallback when not provided
-    effective_parser = resolve_parser_name(Path(data_root), "draft", template_id, parser_name)
+    effective_parser = resolve_parser_name(Path(root_dir), "draft", template_id, parser_name)
 
     # Parse draft (best-effort)
     parsed = parse_text("draft", raw_text, effective_parser)
 
     # Build metadata early
-    base = Path(out_dir) / "draft" / str(gen_id)
+    out_dir = Path(root_dir) / "gens"
+    base = out_dir / "draft" / str(gen_id)
     meta: Dict[str, Any] = _base_meta(
         stage="draft",
         gen_id=str(gen_id),
@@ -347,12 +347,13 @@ def execute_draft_llm(
 def execute_essay_llm(
     *,
     llm: LLMClientProto,
-    out_dir: Path,
+    root_dir: Path,
     gen_id: str,
     template_id: str,
     prompt_text: str,
     model: str,
     max_tokens: Optional[int],
+    min_lines: Optional[int] = None,
     parent_gen_id: str,
     metadata_extra: Optional[Dict[str, Any]] = None,
 ) -> ExecutionResult:
@@ -361,13 +362,13 @@ def execute_essay_llm(
     # Essay identity parse: parsed == normalized raw
     parsed = str(raw_text)
 
-    base = Path(out_dir) / "essay" / str(gen_id)
+    out_dir = Path(root_dir) / "gens"
+    base = out_dir / "essay" / str(gen_id)
     meta: Dict[str, Any] = _base_meta(
         stage="essay", gen_id=str(gen_id), template_id=template_id, model=model, parent_gen_id=str(parent_gen_id), mode="llm"
     )
     meta["files"] = {
         "raw": str((base / "raw.txt").resolve()),
-        "parsed": str((base / "parsed.txt").resolve()),
     }
     meta.update(
         {
@@ -378,7 +379,7 @@ def execute_essay_llm(
         }
     )
     _merge_extras(meta, metadata_extra)
-
+    # First write: prompt/raw/metadata for debuggability
     write_generation(
         out_dir=out_dir,
         stage="essay",
@@ -386,43 +387,66 @@ def execute_essay_llm(
         parent_gen_id=str(parent_gen_id),
         prompt_text=prompt_text,
         raw_text=raw_text,
-        parsed_text=parsed,
+        parsed_text=None,
         metadata=meta,
         write_raw=True,
-        write_parsed=True,
+        write_parsed=False,
         write_prompt=False,
         write_metadata=True,
     )
+
+    # Validations after raw write (like draft)
+    if isinstance(min_lines, int) and min_lines > 0:
+        response_lines = [ln for ln in str(raw_text).split("\n") if ln.strip()]
+        if len(response_lines) < min_lines:
+            raise ValueError(
+                f"Essay validation failed: only {len(response_lines)} non-empty lines, minimum required {min_lines}"
+            )
+
+    # Success: write parsed identity if available
+    if isinstance(parsed, str):
+        meta["files"]["parsed"] = str((base / "parsed.txt").resolve())
+        write_generation(
+            out_dir=out_dir,
+            stage="essay",
+            gen_id=str(gen_id),
+            parent_gen_id=str(parent_gen_id),
+            prompt_text=None,
+            raw_text=None,
+            parsed_text=parsed,
+            metadata=meta,
+            write_raw=False,
+            write_parsed=True,
+            write_prompt=False,
+            write_metadata=False,
+        )
+
     return ExecutionResult(prompt_text=prompt_text, raw_text=raw_text, parsed_text=parsed, info=info, metadata=meta)
 
 
 def execute_evaluation_llm(
     *,
     llm: LLMClientProto,
-    out_dir: Path,
+    root_dir: Path,
     gen_id: str,
     template_id: str,
     prompt_text: str,
     model: str,
-    parser_name: Optional[str] = None,
     max_tokens: Optional[int],
+    min_lines: Optional[int] = None,
     parent_gen_id: str,
     metadata_extra: Optional[Dict[str, Any]] = None,
 ) -> ExecutionResult:
-    # Resolve parser_name internally only when it is truly not provided.
-    # Preserve previous contract: an explicitly empty string is invalid and raises.
-    if parser_name is None:
-        # Derive data_root from out_dir (which is typically data_root / "gens")
-        data_root_guess = Path(out_dir).parent
-        parser_map = load_parser_map(data_root_guess)
-        parser_name = require_parser_for_template(template_id, parser_map)
-    elif not (isinstance(parser_name, str) and parser_name.strip()):
+    # Resolve parser via unified resolver; require a valid name for evaluation.
+    parser_name = resolve_parser_name(Path(root_dir), "evaluation", template_id, None)
+    if not (isinstance(parser_name, str) and parser_name.strip()):
         raise ValueError("parser_name is required for evaluation stage")
     t0 = time.time()
     raw_text, info = generate_llm(llm, prompt_text, model=model, max_tokens=max_tokens)
     parsed = parse_text("evaluation", raw_text, parser_name)
 
-    base = Path(out_dir) / "evaluation" / str(gen_id)
+    out_dir = Path(root_dir) / "gens"
+    base = out_dir / "evaluation" / str(gen_id)
     meta: Dict[str, Any] = _base_meta(
         stage="evaluation",
         gen_id=str(gen_id),
@@ -433,7 +457,6 @@ def execute_evaluation_llm(
     )
     meta["files"] = {
         "raw": str((base / "raw.txt").resolve()),
-        "parsed": str((base / "parsed.txt").resolve()),
     }
     meta.update(
         {
@@ -445,7 +468,7 @@ def execute_evaluation_llm(
         }
     )
     _merge_extras(meta, metadata_extra)
-
+    # First write: prompt/raw/metadata for debuggability
     write_generation(
         out_dir=out_dir,
         stage="evaluation",
@@ -453,13 +476,40 @@ def execute_evaluation_llm(
         parent_gen_id=str(parent_gen_id),
         prompt_text=prompt_text,
         raw_text=raw_text,
-        parsed_text=parsed,
+        parsed_text=None,
         metadata=meta,
         write_raw=True,
-        write_parsed=True,
+        write_parsed=False,
         write_prompt=False,
         write_metadata=True,
     )
+
+    # Validations after raw write (like draft)
+    if isinstance(min_lines, int) and min_lines > 0:
+        response_lines = [ln for ln in str(raw_text).split("\n") if ln.strip()]
+        if len(response_lines) < min_lines:
+            raise ValueError(
+                f"Evaluation validation failed: only {len(response_lines)} non-empty lines, minimum required {min_lines}"
+            )
+
+    # Success: write parsed if available
+    if isinstance(parsed, str):
+        meta["files"]["parsed"] = str((base / "parsed.txt").resolve())
+        write_generation(
+            out_dir=out_dir,
+            stage="evaluation",
+            gen_id=str(gen_id),
+            parent_gen_id=str(parent_gen_id),
+            prompt_text=None,
+            raw_text=None,
+            parsed_text=parsed,
+            metadata=meta,
+            write_raw=False,
+            write_parsed=True,
+            write_prompt=False,
+            write_metadata=False,
+        )
+
     return ExecutionResult(prompt_text=prompt_text, raw_text=raw_text, parsed_text=parsed, info=info, metadata=meta)
 
 
@@ -672,12 +722,13 @@ def essay_response_asset(context, essay_prompt) -> str:
         )
     result = execute_essay_llm(
         llm=context.resources.openrouter_client,
-        out_dir=data_root / "gens",
+        root_dir=data_root,
         gen_id=str(gen_id),
         template_id=template_name,
         prompt_text=str(essay_prompt) if isinstance(essay_prompt, str) else render_template("essay", template_name, values),
         model=model_id,
         max_tokens=getattr(context.resources.experiment_config, "essay_generation_max_tokens", None),
+        min_lines=None,
         parent_gen_id=str(parent_gen_id),
         metadata_extra={
             "function": "essay_response",
@@ -800,7 +851,7 @@ def evaluation_response_asset(context, evaluation_prompt) -> str:
     # Execute via stage_services; prefer prompt text passed from dependency
     result = execute_evaluation_llm(
         llm=context.resources.openrouter_client,
-        out_dir=data_root / "gens",
+        root_dir=data_root,
         gen_id=str(gen_id),
         template_id=evaluation_template,
         prompt_text=str(evaluation_prompt)
@@ -811,8 +862,8 @@ def evaluation_response_asset(context, evaluation_prompt) -> str:
             {"response": load_generation_parsed_text(context, "essay", parent_gen_id, failure_fn_name="evaluation_response")},
         ),
         model=model_name,
-        parser_name=None,  # resolved internally if None
         max_tokens=getattr(context.resources.experiment_config, "evaluation_max_tokens", None),
+        min_lines=None,
         parent_gen_id=parent_gen_id,
         metadata_extra={
             "function": "evaluation_response",
@@ -947,12 +998,11 @@ def draft_response_asset(context, draft_prompt) -> str:
     # Execute via stage_services (writes files; parses via CSV fallback when configured)
     result = execute_draft_llm(
         llm=context.resources.openrouter_client,
-        out_dir=data_root / "gens",
+        root_dir=data_root,
         gen_id=str(gen_id),
         template_id=template_id,
         prompt_text=str(draft_prompt) if isinstance(draft_prompt, str) else "",
         model=model_id,
-        data_root=data_root,
         max_tokens=getattr(context.resources.experiment_config, "draft_generation_max_tokens", None),
         min_lines=int(getattr(context.resources.experiment_config, "min_draft_lines", 3)),
         fail_on_truncation=True,

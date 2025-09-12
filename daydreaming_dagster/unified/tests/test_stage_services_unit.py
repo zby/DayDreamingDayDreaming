@@ -118,12 +118,11 @@ def test_execute_draft_llm_happy_path(tmp_path: Path):
     llm = _StubLLM("header\n<essay>Foo</essay>\n", info={"finish_reason": "stop", "truncated": False})
     res = execute_draft_llm(
         llm=llm,
-        out_dir=tmp_path / "gens",
+        root_dir=tmp_path,
         gen_id="D1",
         template_id="tpl1",
         prompt_text="ignored",
         model="m1",
-        data_root=tmp_path,
         max_tokens=128,
         min_lines=1,
     )
@@ -142,12 +141,11 @@ def test_execute_draft_llm_min_lines_failure(tmp_path: Path):
     with pytest.raises(ValueError):
         execute_draft_llm(
             llm=llm,
-            out_dir=tmp_path / "gens",
+            root_dir=tmp_path,
             gen_id="D2",
             template_id="tpl",
             prompt_text="p",
             model="m",
-            data_root=tmp_path,
             max_tokens=16,
             min_lines=3,
         )
@@ -161,12 +159,11 @@ def test_execute_draft_llm_truncation_failure_after_raw(tmp_path: Path):
     with pytest.raises(ValueError):
         execute_draft_llm(
             llm=llm,
-            out_dir=tmp_path / "gens",
+            root_dir=tmp_path,
             gen_id="D3",
             template_id="tpl",
             prompt_text="p",
             model="m",
-            data_root=tmp_path,
             max_tokens=8,
             min_lines=1,
             fail_on_truncation=True,
@@ -180,12 +177,13 @@ def test_execute_essay_llm_identity_parse(tmp_path: Path):
     llm = _StubLLM("Line A\nLine B\n")
     res = execute_essay_llm(
         llm=llm,
-        out_dir=tmp_path / "gens",
+        root_dir=tmp_path,
         gen_id="E1",
         template_id="t",
         prompt_text="PROMPT",
         model="m",
         max_tokens=64,
+        min_lines=None,
         parent_gen_id="D1",
     )
     base = tmp_path / "gens" / "essay" / "E1"
@@ -198,25 +196,33 @@ def test_execute_evaluation_llm_requires_parser(tmp_path: Path):
     with pytest.raises(ValueError):
         execute_evaluation_llm(
             llm=llm,
-            out_dir=tmp_path / "gens",
+            root_dir=tmp_path,
             gen_id="V1",
             template_id="t",
             prompt_text="p",
             model="m",
-            parser_name="",
             max_tokens=8,
+            min_lines=None,
             parent_gen_id="E1",
         )
     # with parser
+    # Declare parser in evaluation_templates.csv for template 't'
+    csv_dir = tmp_path / "1_raw"
+    csv_dir.mkdir(parents=True, exist_ok=True)
+    (csv_dir / "evaluation_templates.csv").write_text(
+        "template_id,template_name,description,parser,active\n"
+        "t,T,Desc,in_last_line,True\n",
+        encoding="utf-8",
+    )
     res = execute_evaluation_llm(
         llm=llm,
-        out_dir=tmp_path / "gens",
+        root_dir=tmp_path,
         gen_id="V2",
         template_id="t",
         prompt_text="p",
         model="m",
-        parser_name="in_last_line",
         max_tokens=8,
+        min_lines=None,
         parent_gen_id="E2",
     )
     base = tmp_path / "gens" / "evaluation" / "V2"
@@ -228,12 +234,13 @@ def test_metadata_extra_does_not_override(tmp_path: Path):
     llm = _StubLLM("ok")
     res = execute_essay_llm(
         llm=llm,
-        out_dir=tmp_path / "gens",
+        root_dir=tmp_path,
         gen_id="E10",
         template_id="t",
         prompt_text="p",
         model="m",
         max_tokens=8,
+        min_lines=None,
         parent_gen_id="D",
         metadata_extra={"stage": "hack", "run_id": "X"},
     )

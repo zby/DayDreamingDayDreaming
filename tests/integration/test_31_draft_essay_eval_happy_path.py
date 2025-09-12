@@ -132,13 +132,13 @@ def test_happy_path_draft_essay_eval_chain(tiny_data_root: Path, mock_llm, canon
     doc_text = (tiny_data_root / "gens" / "essay" / essay_id / "parsed.txt").read_text(encoding="utf-8")
     _ = execute_evaluation_llm(
         llm=mock_llm,
-        out_dir=tiny_data_root / "gens",
+        root_dir=tiny_data_root,
         gen_id=eval_id,
         template_id="test-eval",
         prompt_text=render_template("evaluation", "test-eval", {"response": doc_text}),
         model="m-eval",
-        parser_name="in_last_line",
         max_tokens=2048,
+        min_lines=None,
         parent_gen_id=essay_id,
     )
 
@@ -147,13 +147,11 @@ def test_happy_path_draft_essay_eval_chain(tiny_data_root: Path, mock_llm, canon
     edir = tiny_data_root / "gens" / "essay" / essay_id
     vdir = tiny_data_root / "gens" / "evaluation" / eval_id
 
-    # Draft: prompt/raw/metadata exist; parsed may be absent depending on parser fallback
-    assert (ddir / "prompt.txt").exists()
+    # Draft: raw/metadata exist; parsed may be absent depending on parser fallback
     assert (ddir / "raw.txt").exists()
     assert (ddir / "metadata.json").exists()
 
-    # Essay: all files exist; parsed equals normalized raw
-    assert (edir / "prompt.txt").exists()
+    # Essay: all files exist; parsed equals normalized raw (prompt is not written here)
     assert (edir / "raw.txt").exists()
     assert (edir / "parsed.txt").exists()
     assert (edir / "metadata.json").exists()
@@ -162,7 +160,6 @@ def test_happy_path_draft_essay_eval_chain(tiny_data_root: Path, mock_llm, canon
     assert essay_parsed == essay_raw
 
     # Evaluation: parsed equals single float line 7.0 (default tail_score)
-    assert (vdir / "prompt.txt").exists()
     assert (vdir / "raw.txt").exists()
     assert (vdir / "parsed.txt").exists()
     assert (vdir / "metadata.json").exists()
@@ -181,7 +178,7 @@ def test_happy_path_draft_essay_eval_chain(tiny_data_root: Path, mock_llm, canon
     assert dmeta.get("llm_model_id") == "m-gen"
     assert dmeta.get("finish_reason") == "stop"
     assert dmeta.get("truncated") is False
-    assert set(dmeta.get("files", {}).keys()) == {"prompt", "raw"} or set(dmeta.get("files", {}).keys()) == {"prompt", "raw", "parsed"}
+    assert set(dmeta.get("files", {}).keys()) == {"raw"} or set(dmeta.get("files", {}).keys()) == {"raw", "parsed"}
 
     # Essay canonical fields
     assert emeta["stage"] == "essay"
@@ -191,8 +188,8 @@ def test_happy_path_draft_essay_eval_chain(tiny_data_root: Path, mock_llm, canon
     assert emeta.get("llm_model_id") == "m-gen"
     assert emeta.get("finish_reason") == "stop"
     assert emeta.get("truncated") is False
-    # Metadata may omit files.parsed in LLM path (written after metadata for debuggability)
-    assert set(emeta.get("files", {}).keys()) in ({"prompt", "raw"}, {"prompt", "raw", "parsed"})
+    # Metadata may omit files.parsed in LLM path (written after metadata for debuggability); prompt not recorded here
+    assert set(emeta.get("files", {}).keys()) in ({"raw"}, {"raw", "parsed"})
 
     # Evaluation canonical fields
     assert vmeta["stage"] == "evaluation"
@@ -204,4 +201,4 @@ def test_happy_path_draft_essay_eval_chain(tiny_data_root: Path, mock_llm, canon
     assert vmeta.get("truncated") is False
     # Parser configured via evaluation_templates.csv
     assert vmeta.get("parser_name") == "in_last_line"
-    assert set(vmeta.get("files", {}).keys()) in ({"prompt", "raw"}, {"prompt", "raw", "parsed"})
+    assert set(vmeta.get("files", {}).keys()) in ({"raw"}, {"raw", "parsed"})
