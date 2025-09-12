@@ -278,7 +278,7 @@ def execute_draft_llm(
     # Call LLM
     raw_text, info = generate_llm(llm, prompt_text, model=model, max_tokens=max_tokens)
 
-    # Resolve effective parser name via CSV fallback when not provided
+    # Resolve parser name uniformly (honors provided parser_name when present)
     effective_parser = resolve_parser_name(Path(root_dir), "draft", template_id, parser_name)
 
     # Parse draft (best-effort)
@@ -367,9 +367,11 @@ def execute_essay_llm(
     metadata_extra: Optional[Dict[str, Any]] = None,
 ) -> ExecutionResult:
     t0 = time.time()
+    # Resolve parser name uniformly via resolver (default to identity for essays)
+    parser_name = resolve_parser_name(Path(root_dir), "essay", template_id, "identity")
     raw_text, info = generate_llm(llm, prompt_text, model=model, max_tokens=max_tokens)
     # Essay identity parse via unified parse_text for consistency
-    parsed = parse_text("essay", raw_text, "identity") or str(raw_text)
+    parsed = parse_text("essay", raw_text, parser_name) or str(raw_text)
 
     out_dir = Path(root_dir) / "gens"
     base = out_dir / "essay" / str(gen_id)
@@ -381,6 +383,7 @@ def execute_essay_llm(
     }
     meta.update(
         {
+            "parser_name": parser_name,
             "finish_reason": (info or {}).get("finish_reason") if isinstance(info, dict) else None,
             "truncated": bool((info or {}).get("truncated")) if isinstance(info, dict) else False,
             "usage": (info or {}).get("usage") if isinstance(info, dict) else None,
