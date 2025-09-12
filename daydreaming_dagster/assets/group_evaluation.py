@@ -7,12 +7,9 @@ Asset definitions for the evaluation stage.
 from dagster import asset, Failure, MetadataValue
 from pathlib import Path
 from .partitions import evaluation_gens_partitions
-from ..utils.generation import Generation
 from ..utils.membership_lookup import find_membership_row_by_gen
-from ..utils.raw_readers import read_evaluation_templates
 from .raw_data import EVALUATION_TEMPLATES_KEY
 from ..utils.evaluation_parsing_config import load_parser_map, require_parser_for_template
-from ..unified.stage_runner import StageRunSpec, StageRunner
 from ..unified.stage_services import render_template, execute_evaluation_llm
 from ._helpers import (
     load_generation_parsed_text,

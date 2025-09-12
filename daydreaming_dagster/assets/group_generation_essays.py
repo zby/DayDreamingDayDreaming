@@ -7,10 +7,7 @@ Asset definitions for the essay (Phase‑2) generation stage.
 from dagster import asset, Failure, MetadataValue
 from pathlib import Path
 from .partitions import essay_gens_partitions
-from ..utils.raw_readers import read_essay_templates
 from ..utils.membership_lookup import find_membership_row_by_gen
-from ..utils.generation import Generation
-from ..unified.stage_runner import StageRunner, StageRunSpec
 from ..unified.stage_services import render_template, execute_essay_copy, execute_essay_llm
 from ._helpers import (
     load_generation_parsed_text,
@@ -82,34 +79,12 @@ def _get_essay_generator_mode(data_root: str | Path, template_id: str) -> str:
 
 
 def _load_phase1_text_by_parent_doc(context, parent_gen_id: str) -> tuple[str, str]:
-    """Load Phase‑1 text by parent_gen_id directly from the filesystem.
+    """Load Phase‑1 text by parent_gen_id via helper.
 
     Returns (normalized_text, source_label).
     """
-    data_root = Path(getattr(context.resources, "data_root", "data"))
-    gens_root = data_root / "gens"
-    base = gens_root / DRAFT / str(parent_gen_id)
-    try:
-        gen = Generation.load(gens_root, DRAFT, str(parent_gen_id))
-    except Exception as e:
-        raise Failure(
-            description="Parent draft document not found",
-            metadata={
-                "function": MetadataValue.text("_load_phase1_text_by_parent_doc"),
-                "parent_gen_id": MetadataValue.text(str(parent_gen_id)),
-                "error": MetadataValue.text(str(e)),
-            },
-        )
-    if not isinstance(gen.parsed_text, str) or not gen.parsed_text:
-        raise Failure(
-            description="Missing or unreadable parsed.txt for parent draft document",
-            metadata={
-                "function": MetadataValue.text("_load_phase1_text_by_parent_doc"),
-                "parent_gen_id": MetadataValue.text(str(parent_gen_id)),
-                "draft_gen_dir": MetadataValue.path(str(base)),
-            },
-        )
-    return str(gen.parsed_text).replace("\r\n", "\n"), "draft_gens_parent"
+    text = load_generation_parsed_text(context, "draft", str(parent_gen_id), failure_fn_name="_load_phase1_text_by_parent_doc")
+    return str(text), "draft_gens_parent"
 
 
 # Note: combo/model-based resolution removed — parent_gen_id is required for essays.
@@ -122,7 +97,7 @@ def _essay_prompt_impl(context) -> str:
     template_name = str(mrow.get("template_id") or mrow.get("essay_template") or "") if mrow is not None else ""
     parent_gen_id = mrow.get("parent_gen_id") if mrow is not None else None
 
-    generator_mode = _get_essay_generator_mode(context.resources.data_root, template_name)
+    generator_mode = resolve_essay_generator_mode(Path(context.resources.data_root), template_name)
     if generator_mode == "copy":
         context.add_output_metadata(
             {
