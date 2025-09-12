@@ -33,7 +33,7 @@ Notes and gotchas
 - Dynamic partitions: ensure `cohort_membership` runs first (or with the daemon) so draft/essay/evaluation partitions exist before materializing stage assets.
 
 Where it’s enforced in code
-- Essay generator mode resolution: `daydreaming_dagster/assets/group_generation_essays.py::_get_essay_generator_mode`
+- Essay generator mode resolution: `daydreaming_dagster/assets/_helpers.py::resolve_essay_generator_mode`
 - Essay copy path: `daydreaming_dagster/assets/group_generation_essays.py::_essay_response_impl` (mode == `copy`)
 - Cohort Cartesian expansion: `daydreaming_dagster/assets/group_cohorts.py::cohort_membership`
 

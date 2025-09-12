@@ -18,77 +18,6 @@ from ._helpers import (
 from ..constants import DRAFT, ESSAY
 
 
-def _get_essay_generator_mode(data_root: str | Path, template_id: str) -> str:
-    """Return normalized generator mode for an essay template.
-
-    Allowed values: 'llm' or 'copy'. Any other value (including missing) raises Failure.
-    """
-    df = read_essay_templates(Path(data_root), filter_active=False)
-    if df.empty:
-        raise Failure(
-            description="Essay templates table is empty; cannot resolve generator mode",
-            metadata={
-                "function": MetadataValue.text("_get_essay_generator_mode"),
-                "data_root": MetadataValue.path(str(data_root)),
-                "resolution": MetadataValue.text("Ensure data/1_raw/essay_templates.csv contains active templates with a 'generator' column"),
-            },
-        )
-    if "generator" not in df.columns:
-        raise Failure(
-            description="Essay templates CSV missing required 'generator' column",
-            metadata={
-                "function": MetadataValue.text("_get_essay_generator_mode"),
-                "data_root": MetadataValue.path(str(data_root)),
-                "resolution": MetadataValue.text("Add a 'generator' column with values 'llm' or 'copy'"),
-            },
-        )
-    row = df[df["template_id"] == template_id]
-    if row.empty:
-        raise Failure(
-            description=f"Essay template not found: {template_id}",
-            metadata={
-                "function": MetadataValue.text("_get_essay_generator_mode"),
-                "template_id": MetadataValue.text(str(template_id)),
-                "resolution": MetadataValue.text("Add the template row to essay_templates.csv or correct the essay_template id in tasks"),
-            },
-        )
-    val = row.iloc[0].get("generator")
-    if not isinstance(val, str) or not val.strip():
-        raise Failure(
-            description="Essay template has empty/invalid generator value",
-            metadata={
-                "function": MetadataValue.text("_get_essay_generator_mode"),
-                "template_id": MetadataValue.text(str(template_id)),
-                "resolution": MetadataValue.text("Set generator to 'llm' or 'copy'"),
-            },
-        )
-    mode = val.strip().lower()
-    if mode not in ("llm", "copy"):
-        raise Failure(
-            description=f"Essay template declares unsupported generator '{mode}'",
-            metadata={
-                "function": MetadataValue.text("_get_essay_generator_mode"),
-                "template_id": MetadataValue.text(str(template_id)),
-                "resolution": MetadataValue.text("Set generator to 'llm' or 'copy' in data/1_raw/essay_templates.csv"),
-            },
-        )
-    return mode
-
-
-    
-
-
-def _load_phase1_text_by_parent_doc(context, parent_gen_id: str) -> tuple[str, str]:
-    """Load Phase‑1 text by parent_gen_id via helper.
-
-    Returns (normalized_text, source_label).
-    """
-    text = load_generation_parsed_text(context, "draft", str(parent_gen_id), failure_fn_name="_load_phase1_text_by_parent_doc")
-    return str(text), "draft_gens_parent"
-
-
-# Note: combo/model-based resolution removed — parent_gen_id is required for essays.
-
 
 def _essay_prompt_impl(context) -> str:
     """Generate Phase‑2 prompts based on Phase‑1 drafts."""
@@ -118,7 +47,8 @@ def _essay_prompt_impl(context) -> str:
                 "resolution": MetadataValue.text("Ensure essay row exists in cohort membership with a valid parent_gen_id"),
             },
         )
-    draft_text, used_source = (load_generation_parsed_text(context, "draft", str(parent_gen_id), failure_fn_name="essay_prompt"), "draft_gens_parent")
+    draft_text = load_generation_parsed_text(context, "draft", str(parent_gen_id), failure_fn_name="essay_prompt")
+    used_source = "draft_gens_parent"
     draft_lines = [line.strip() for line in draft_text.split("\n") if line.strip()]
     # Enforce non-empty upstream draft text to avoid empty prompts
     # experiment_config is required via asset definition
