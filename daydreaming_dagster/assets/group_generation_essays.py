@@ -13,8 +13,6 @@ from ..utils.generation import Generation
 from ..unified.stage_runner import StageRunner, StageRunSpec
 from ..constants import DRAFT, ESSAY
 
-from ..unified.stage_runner import StageRunner
-
 
 def _get_essay_generator_mode(data_root: str | Path, template_id: str) -> str:
     """Return normalized generator mode for an essay template.
