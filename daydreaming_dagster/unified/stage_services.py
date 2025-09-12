@@ -559,13 +559,26 @@ def essay_response_asset(context, essay_prompt) -> str:
                 "resolution": MetadataValue.text("Ensure cohort membership includes an llm_model_id for this essay"),
             },
         )
+    # Require prompt to be supplied (no internal rendering here)
+    if not isinstance(essay_prompt, str) or not essay_prompt.strip():
+        raise Failure(
+            description="Upstream essay_prompt is missing or empty",
+            metadata={
+                "function": MetadataValue.text("_essay_response_impl"),
+                "gen_id": MetadataValue.text(str(gen_id)),
+                "resolution": MetadataValue.text(
+                    "Ensure essay_prompt is materialized and wired as a dependency"
+                ),
+            },
+        )
+
     result = execute_llm(
         stage="essay",
         llm=context.resources.openrouter_client,
         root_dir=data_root,
         gen_id=str(gen_id),
         template_id=template_name,
-        prompt_text=str(essay_prompt) if isinstance(essay_prompt, str) else render_template("essay", template_name, values),
+        prompt_text=str(essay_prompt),
         model=model_id,
         max_tokens=getattr(context.resources.experiment_config, "essay_generation_max_tokens", None),
         min_lines=None,
