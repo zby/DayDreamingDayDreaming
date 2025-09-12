@@ -99,10 +99,10 @@ class StageRunner:
         stage_dir.mkdir(parents=True, exist_ok=True)
 
         t0 = time.time()
-        # Enforcement: parent linkage required for essay and evaluation
-        if spec.stage in ("essay", "evaluation"):
+        # Enforcement: parent linkage required for evaluation (assets enforce essay linkage)
+        if spec.stage == "evaluation":
             if not (isinstance(spec.parent_gen_id, str) and spec.parent_gen_id.strip()):
-                raise ValueError("parent_gen_id is required for essay and evaluation stages")
+                raise ValueError("parent_gen_id is required for evaluation stage")
         # Enforcement: evaluation requires parser_name
         if spec.stage == "evaluation" and not (isinstance(spec.parser_name, str) and spec.parser_name.strip()):
             raise ValueError("parser_name is required for evaluation stage")
