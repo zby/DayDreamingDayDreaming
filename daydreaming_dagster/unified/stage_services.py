@@ -688,3 +688,136 @@ __all__ += [
     "essay_prompt_asset",
     "essay_response_asset",
 ]
+
+
+# --------------------
+# Asset-style entrypoints for Evaluation stage
+# --------------------
+
+def evaluation_prompt_asset(context) -> str:
+    """Asset-compatible evaluation prompt generation.
+
+    Mirrors existing asset behavior: loads parent essay text, renders template,
+    and emits output metadata. Does not write files here; the IO manager handles
+    persistence for prompts.
+    """
+    gen_id = context.partition_key
+    from pathlib import Path as _Path
+    from dagster import Failure as _Failure, MetadataValue as _MV
+    # Lazy imports to avoid circular imports at module import time
+    from daydreaming_dagster.utils.membership_lookup import find_membership_row_by_gen
+    from daydreaming_dagster.assets._helpers import load_generation_parsed_text
+
+    data_root = _Path(getattr(context.resources, "data_root", "data"))
+    mrow, _cohort = find_membership_row_by_gen(data_root, "evaluation", str(gen_id))
+    parent_gen_id = mrow.get("parent_gen_id") if mrow is not None else None
+    evaluation_template = mrow.get("template_id") if mrow is not None else None
+    if not (isinstance(parent_gen_id, str) and parent_gen_id.strip()):
+        raise _Failure(
+            description="Missing parent_gen_id for evaluation task",
+            metadata={
+                "function": _MV.text("evaluation_prompt"),
+                "gen_id": _MV.text(str(gen_id)),
+                "resolution": _MV.text("Ensure evaluation row exists in cohort membership with a valid parent_gen_id"),
+            },
+        )
+    # Load target essay parsed text via shared helper (emits helpful Failure metadata)
+    doc_text = load_generation_parsed_text(context, "essay", str(parent_gen_id), failure_fn_name="evaluation_prompt")
+    used_source = "essay_gens"
+
+    # Render via shared stage_services (StrictUndefined semantics preserved)
+    try:
+        eval_prompt = render_template("evaluation", str(evaluation_template), {"response": doc_text})
+    except FileNotFoundError as e:
+        raise _Failure(
+            description=f"Evaluation template '{evaluation_template}' not found",
+            metadata={
+                "function": _MV.text("evaluation_prompt"),
+                "gen_id": _MV.text(str(gen_id)),
+                "template_used": _MV.text(str(evaluation_template)),
+                "error": _MV.text(str(e)),
+            },
+        )
+    except Exception as e:
+        raise _Failure(
+            description=f"Error rendering evaluation template '{evaluation_template}'",
+            metadata={
+                "function": _MV.text("evaluation_prompt"),
+                "gen_id": _MV.text(str(gen_id)),
+                "template_used": _MV.text(str(evaluation_template)),
+                "jinja_message": _MV.text(str(e)),
+            },
+        )
+    context.add_output_metadata(
+        {
+            "gen_id": _MV.text(str(gen_id)),
+            "parent_gen_id": _MV.text(str(parent_gen_id)),
+            "document_content_length": _MV.int(len(doc_text or "")),
+            "evaluation_prompt_length": _MV.int(len(eval_prompt)),
+            "source_used": _MV.text(used_source or ""),
+            "template_used": _MV.text(str(evaluation_template) if evaluation_template else ""),
+        }
+    )
+    return eval_prompt
+
+
+def evaluation_response_asset(context, evaluation_prompt) -> str:
+    """Asset-compatible evaluation response execution.
+
+    Delegates to execute_evaluation_llm with internal parser resolution; emits
+    the same output metadata as the previous asset.
+    """
+    gen_id = context.partition_key
+    from pathlib import Path as _Path
+    from daydreaming_dagster.assets._helpers import (
+        require_membership_row,
+        load_generation_parsed_text,
+        emit_standard_output_metadata,
+        get_run_id,
+    )
+
+    data_root = _Path(getattr(context.resources, "data_root", "data"))
+    row, _cohort = require_membership_row(
+        context,
+        "evaluation",
+        str(gen_id),
+        require_columns=["llm_model_id", "template_id", "parent_gen_id"],
+    )
+    model_name = str(row.get("llm_model_id") or "").strip()
+    evaluation_template = str(row.get("template_id") or "").strip()
+    parent_gen_id = str(row.get("parent_gen_id") or "").strip()
+
+    # Execute via stage_services; prefer prompt text passed from dependency
+    result = execute_evaluation_llm(
+        llm=context.resources.openrouter_client,
+        out_dir=data_root / "gens",
+        gen_id=str(gen_id),
+        template_id=evaluation_template,
+        prompt_text=str(evaluation_prompt)
+        if isinstance(evaluation_prompt, str)
+        else render_template(
+            "evaluation",
+            evaluation_template,
+            {"response": load_generation_parsed_text(context, "essay", parent_gen_id, failure_fn_name="evaluation_response")},
+        ),
+        model=model_name,
+        parser_name=None,  # resolved internally if None
+        max_tokens=getattr(context.resources.experiment_config, "evaluation_max_tokens", None),
+        parent_gen_id=parent_gen_id,
+        metadata_extra={
+            "function": "evaluation_response",
+            "run_id": get_run_id(context),
+        },
+    )
+
+    # Emit standardized metadata for Dagster UI
+    emit_standard_output_metadata(context, function="evaluation_response", gen_id=str(gen_id), result=result)
+    context.log.info(f"Generated evaluation response for gen {gen_id}")
+
+    return result.raw_text or ""
+
+
+__all__ += [
+    "evaluation_prompt_asset",
+    "evaluation_response_asset",
+]
