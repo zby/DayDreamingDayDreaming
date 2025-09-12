@@ -366,6 +366,7 @@ __all__ = [
     "write_generation",
     "execute_copy",
     "execute_llm",
+    "response_asset",
 ]
 
 
@@ -468,13 +469,14 @@ def essay_prompt_asset(context) -> str:
     return prompt
 
 
-def essay_response_asset(context, essay_prompt) -> str:
-    """
-    Asset-compatible response entrypoint for the essay stage.
-    Delegates to execute_copy/execute_llm and mirrors the asset logic/metadata.
+def response_asset(context, prompt_text, stage: Stage) -> str:
+    """Unified response asset for all stages.
+
+    Handles stage-specific behavior (copy vs llm for essay, truncation/min-lines for draft,
+    required columns, and metadata) while delegating execution to execute_copy/execute_llm.
     """
     gen_id = context.partition_key
-    # Import helpers lazily to avoid circular imports during module initialization
+    # Lazy imports to avoid circular dependencies during module import
     from daydreaming_dagster.assets._helpers import (
         require_membership_row,
         load_generation_parsed_text,
@@ -483,118 +485,235 @@ def essay_response_asset(context, essay_prompt) -> str:
         get_run_id,
     )
 
-    row, _cohort = require_membership_row(context, "essay", str(gen_id), require_columns=["template_id", "parent_gen_id"])
-    template_name = str(row.get("template_id") or row.get("essay_template") or "")
-    parent_gen_id = row.get("parent_gen_id")
-
-    # Determine mode based on prompt or CSV
-    if isinstance(essay_prompt, str) and essay_prompt.strip().upper().startswith("COPY_MODE"):
-        mode = "copy"
-    else:
-        mode = resolve_essay_generator_mode(Path(context.resources.data_root), template_name)
-
-    # Load upstream draft text
-    if not (isinstance(parent_gen_id, str) and parent_gen_id.strip()):
-        raise Failure(
-            description="Missing parent_gen_id for essay doc",
-            metadata={
-                "function": MetadataValue.text("_essay_response_impl"),
-                "gen_id": MetadataValue.text(str(gen_id)),
-                "resolution": MetadataValue.text("Ensure essay row exists in cohort membership with a valid parent_gen_id"),
-            },
-        )
-    draft_text = load_generation_parsed_text(context, "draft", str(parent_gen_id), failure_fn_name="_essay_response_impl")
-
-    # Enforce min lines
-    min_lines = int(context.resources.experiment_config.min_draft_lines)
-    dlines = [line.strip() for line in str(draft_text).split("\n") if line.strip()]
-    if len(dlines) < max(1, min_lines):
-        data_root = Path(getattr(context.resources, "data_root", "data"))
-        draft_dir = data_root / "gens" / DRAFT / str(parent_gen_id)
-        raise Failure(
-            description="Upstream draft text is empty/too short for essay generation",
-            metadata={
-                "function": MetadataValue.text("_essay_response_impl"),
-                "gen_id": MetadataValue.text(str(gen_id)),
-                "parent_gen_id": MetadataValue.text(str(parent_gen_id)),
-                "draft_line_count": MetadataValue.int(len(dlines)),
-                "min_required_lines": MetadataValue.int(min_lines),
-                "draft_gen_dir": MetadataValue.path(str(draft_dir)),
-            },
-        )
-
-    values = {"draft_block": draft_text, "links_block": draft_text}
     data_root = Path(getattr(context.resources, "data_root", "data"))
+    fn_label = f"_{stage}_response_impl"
 
-    if mode == "copy":
-        result = execute_copy(
-            out_dir=data_root / "gens",
-            stage="essay",
+    if stage == "essay":
+        # Membership: need template and link to parent draft; model may be optional for copy mode
+        row, _cohort = require_membership_row(
+            context, "essay", str(gen_id), require_columns=["template_id", "parent_gen_id"]
+        )
+        template_name = str(row.get("template_id") or row.get("essay_template") or "")
+        parent_gen_id = str(row.get("parent_gen_id") or "").strip()
+
+        # Determine mode from prompt override or templates CSV
+        if isinstance(prompt_text, str) and prompt_text.strip().upper().startswith("COPY_MODE"):
+            mode = "copy"
+        else:
+            mode = resolve_essay_generator_mode(data_root, template_name)
+
+        # Load upstream draft text and enforce minimum lines
+        if not parent_gen_id:
+            raise Failure(
+                description=f"Missing parent_gen_id for {stage} doc",
+                metadata={
+                    "function": MetadataValue.text(fn_label),
+                    "gen_id": MetadataValue.text(str(gen_id)),
+                    "resolution": MetadataValue.text(
+                        f"Ensure {stage} row exists in cohort membership with a valid parent_gen_id"
+                    ),
+                },
+            )
+        draft_text = load_generation_parsed_text(context, "draft", parent_gen_id, failure_fn_name=fn_label)
+        min_lines = int(getattr(context.resources.experiment_config, "min_draft_lines", 1))
+        dlines = [line.strip() for line in str(draft_text).split("\n") if line.strip()]
+        if len(dlines) < max(1, min_lines):
+            draft_dir = data_root / "gens" / DRAFT / parent_gen_id
+            raise Failure(
+                description=f"Upstream draft text is empty/too short for {stage} generation",
+                metadata={
+                    "function": MetadataValue.text(fn_label),
+                    "gen_id": MetadataValue.text(str(gen_id)),
+                    "parent_gen_id": MetadataValue.text(str(parent_gen_id)),
+                    "draft_line_count": MetadataValue.int(len(dlines)),
+                    "min_required_lines": MetadataValue.int(min_lines),
+                    "draft_gen_dir": MetadataValue.path(str(draft_dir)),
+                },
+            )
+
+        # Copy path: pass through parsed draft to essay/parsed.txt
+        if mode == "copy":
+            result = execute_copy(
+                out_dir=data_root / "gens",
+                stage=stage,
+                gen_id=str(gen_id),
+                template_id=template_name,
+                parent_gen_id=parent_gen_id,
+                pass_through_from=(data_root / "gens" / DRAFT / parent_gen_id / "parsed.txt"),
+                metadata_extra={
+                    "function": f"{stage}_response",
+                    "run_id": get_run_id(context),
+                },
+            )
+            emit_standard_output_metadata(
+                context,
+                function=f"{stage}_response",
+                gen_id=str(gen_id),
+                result=result,
+                extras={"mode": "copy", "parent_gen_id": parent_gen_id},
+            )
+            return result.parsed_text or draft_text
+
+        # LLM path for essay
+        model_id = str(row.get("llm_model_id") or "").strip()
+        if not model_id:
+            raise Failure(
+                description=f"Missing generation model for {stage} task",
+                metadata={
+                    "function": MetadataValue.text(fn_label),
+                    "gen_id": MetadataValue.text(str(gen_id)),
+                    "resolution": MetadataValue.text(
+                        f"Ensure cohort membership includes an llm_model_id for this {stage}"
+                    ),
+                },
+            )
+        if not isinstance(prompt_text, str) or not prompt_text.strip():
+            raise Failure(
+                description=f"Upstream {stage}_prompt is missing or empty",
+                metadata={
+                    "function": MetadataValue.text(fn_label),
+                    "gen_id": MetadataValue.text(str(gen_id)),
+                    "resolution": MetadataValue.text(
+                        f"Ensure {stage}_prompt is materialized and wired as a dependency"
+                    ),
+                },
+            )
+
+        result = execute_llm(
+            stage=stage,
+            llm=context.resources.openrouter_client,
+            root_dir=data_root,
             gen_id=str(gen_id),
             template_id=template_name,
-            parent_gen_id=str(parent_gen_id),
-            pass_through_from=(data_root / "gens" / DRAFT / str(parent_gen_id) / "parsed.txt"),
+            prompt_text=str(prompt_text),
+            model=model_id,
+            max_tokens=getattr(context.resources.experiment_config, f"{stage}_generation_max_tokens", None),
+            min_lines=None,
+            parent_gen_id=parent_gen_id,
             metadata_extra={
-                "function": "essay_response",
+                "function": f"{stage}_response",
                 "run_id": get_run_id(context),
             },
         )
         emit_standard_output_metadata(
             context,
-            function="essay_response",
+            function=f"{stage}_response",
             gen_id=str(gen_id),
             result=result,
-            extras={"mode": "copy", "parent_gen_id": str(parent_gen_id)},
         )
-        return result.parsed_text or draft_text
+        return result.raw_text or ""
 
-    # LLM path
-    model_id = str(row.get("llm_model_id") or "").strip()
-    if not model_id:
-        raise Failure(
-            description="Missing generation model for essay task",
-            metadata={
-                "function": MetadataValue.text("_essay_response_impl"),
-                "gen_id": MetadataValue.text(str(gen_id)),
-                "resolution": MetadataValue.text("Ensure cohort membership includes an llm_model_id for this essay"),
+    elif stage == "evaluation":
+        # Membership: need model, template, and parent essay
+        from dagster import Failure as _Failure, MetadataValue as _MV
+
+        row, _cohort = require_membership_row(
+            context,
+            stage,
+            str(gen_id),
+            require_columns=["llm_model_id", "template_id", "parent_gen_id"],
+        )
+        model_name = str(row.get("llm_model_id") or "").strip()
+        evaluation_template = str(row.get("template_id") or "").strip()
+        parent_gen_id = str(row.get("parent_gen_id") or "").strip()
+
+        if not isinstance(prompt_text, str) or not prompt_text.strip():
+            raise _Failure(
+                description=f"Upstream {stage}_prompt is missing or empty",
+                metadata={
+                    "function": _MV.text(f"{stage}_response"),
+                    "gen_id": _MV.text(str(gen_id)),
+                    "resolution": _MV.text(
+                        f"Ensure {stage}_prompt is materialized and wired as a dependency"
+                    ),
+                },
+            )
+
+        result = execute_llm(
+            stage=stage,
+            llm=context.resources.openrouter_client,
+            root_dir=data_root,
+            gen_id=str(gen_id),
+            template_id=evaluation_template,
+            prompt_text=str(prompt_text),
+            model=model_name,
+            max_tokens=getattr(context.resources.experiment_config, f"{stage}_max_tokens", None),
+            min_lines=None,
+            parent_gen_id=parent_gen_id,
+            metadata_extra={
+                "function": f"{stage}_response",
+                "run_id": get_run_id(context),
             },
         )
-    # Require prompt to be supplied (no internal rendering here)
-    if not isinstance(essay_prompt, str) or not essay_prompt.strip():
-        raise Failure(
-            description="Upstream essay_prompt is missing or empty",
-            metadata={
-                "function": MetadataValue.text("_essay_response_impl"),
-                "gen_id": MetadataValue.text(str(gen_id)),
-                "resolution": MetadataValue.text(
-                    "Ensure essay_prompt is materialized and wired as a dependency"
-                ),
+        emit_standard_output_metadata(
+            context, function=f"{stage}_response", gen_id=str(gen_id), result=result
+        )
+        context.log.info(f"Generated {stage} response for gen {gen_id}")
+        return result.raw_text or ""
+
+    elif stage == "draft":
+        from dagster import Failure as _Failure, MetadataValue as _MV
+
+        # Resolve model/template from cohort membership (required columns enforced)
+        row, cohort = require_membership_row(
+            context,
+            stage,
+            str(gen_id),
+            require_columns=["llm_model_id"],
+        )
+        model_id = str(row.get("llm_model_id") or "").strip()
+        template_id = str(row.get("template_id") or row.get("draft_template") or "").strip()
+        if not model_id:
+            raise _Failure(
+                description=f"Missing generation model for {stage} task",
+                metadata={
+                    "function": _MV.text(f"{stage}_response"),
+                    "gen_id": _MV.text(str(gen_id)),
+                    "resolution": _MV.text(
+                        f"Ensure cohort membership contains llm_model_id for this {stage}"
+                    ),
+                },
+            )
+
+        result = execute_llm(
+            stage=stage,
+            llm=context.resources.openrouter_client,
+            root_dir=data_root,
+            gen_id=str(gen_id),
+            template_id=template_id,
+            prompt_text=str(prompt_text) if isinstance(prompt_text, str) else "",
+            model=model_id,
+            max_tokens=getattr(context.resources.experiment_config, f"{stage}_generation_max_tokens", None),
+            min_lines=int(getattr(context.resources.experiment_config, "min_draft_lines", 3)),
+            fail_on_truncation=True,
+            parent_gen_id=None,
+            metadata_extra={
+                "function": f"{stage}_response",
+                "cohort_id": str(cohort) if isinstance(cohort, str) and cohort else None,
+                "combo_id": str(row.get("combo_id") or "") or None,
+                "run_id": get_run_id(context),
             },
         )
 
-    result = execute_llm(
-        stage="essay",
-        llm=context.resources.openrouter_client,
-        root_dir=data_root,
-        gen_id=str(gen_id),
-        template_id=template_name,
-        prompt_text=str(essay_prompt),
-        model=model_id,
-        max_tokens=getattr(context.resources.experiment_config, "essay_generation_max_tokens", None),
-        min_lines=None,
-        parent_gen_id=str(parent_gen_id),
-        metadata_extra={
-            "function": "essay_response",
-            "run_id": get_run_id(context),
-        },
-    )
-    emit_standard_output_metadata(
-        context,
-        function="essay_response",
-        gen_id=str(gen_id),
-        result=result,
-    )
-    return result.raw_text or ""
+        # Emit standard Dagster metadata for UI
+        emit_standard_output_metadata(
+            context,
+            function=f"{stage}_response",
+            gen_id=str(gen_id),
+            result=result,
+            extras={
+                "parser_name": (result.metadata or {}).get("parser_name"),
+            },
+        )
+
+        return str(result.parsed_text or result.raw_text or "")
+
+    else:  # pragma: no cover - defensive
+        raise Failure(description=f"Unsupported stage: {stage}")
+
+
+def essay_response_asset(context, essay_prompt) -> str:
+    return response_asset(context, essay_prompt, "essay")
 
 
 # Export new entrypoints
@@ -676,67 +795,7 @@ def evaluation_prompt_asset(context) -> str:
 
 
 def evaluation_response_asset(context, evaluation_prompt) -> str:
-    """Asset-compatible evaluation response execution.
-
-    Delegates to execute_llm with internal parser resolution. Requires the
-    upstream evaluation_prompt to be provided by the dependency and does not
-    re-render the prompt here (IO manager owns persistence of prompts).
-    """
-    gen_id = context.partition_key
-    from pathlib import Path as _Path
-    from daydreaming_dagster.assets._helpers import (
-        require_membership_row,
-        emit_standard_output_metadata,
-        get_run_id,
-    )
-
-    data_root = _Path(getattr(context.resources, "data_root", "data"))
-    row, _cohort = require_membership_row(
-        context,
-        "evaluation",
-        str(gen_id),
-        require_columns=["llm_model_id", "template_id", "parent_gen_id"],
-    )
-    model_name = str(row.get("llm_model_id") or "").strip()
-    evaluation_template = str(row.get("template_id") or "").strip()
-    parent_gen_id = str(row.get("parent_gen_id") or "").strip()
-
-    # Validation: require upstream prompt from dependency (no re-render here)
-    if not isinstance(evaluation_prompt, str) or not evaluation_prompt.strip():
-        raise Failure(
-            description="Upstream evaluation_prompt is missing or empty",
-            metadata={
-                "function": MetadataValue.text("evaluation_response"),
-                "gen_id": MetadataValue.text(str(gen_id)),
-                "resolution": MetadataValue.text(
-                    "Ensure evaluation_prompt is materialized and wired as a dependency"
-                ),
-            },
-        )
-
-    # Execute via stage_services using provided prompt
-    result = execute_llm(
-        stage="evaluation",
-        llm=context.resources.openrouter_client,
-        root_dir=data_root,
-        gen_id=str(gen_id),
-        template_id=evaluation_template,
-        prompt_text=str(evaluation_prompt),
-        model=model_name,
-        max_tokens=getattr(context.resources.experiment_config, "evaluation_max_tokens", None),
-        min_lines=None,
-        parent_gen_id=parent_gen_id,
-        metadata_extra={
-            "function": "evaluation_response",
-            "run_id": get_run_id(context),
-        },
-    )
-
-    # Emit standardized metadata for Dagster UI
-    emit_standard_output_metadata(context, function="evaluation_response", gen_id=str(gen_id), result=result)
-    context.log.info(f"Generated evaluation response for gen {gen_id}")
-
-    return result.raw_text or ""
+    return response_asset(context, evaluation_prompt, "evaluation")
 
 
 __all__ += [
@@ -821,74 +880,7 @@ def draft_prompt_asset(context, content_combinations) -> str:
 
 
 def draft_response_asset(context, draft_prompt) -> str:
-    """Asset-compatible draft response generation.
-
-    Delegates to execute_llm and emits the same output metadata.
-    """
-    gen_id = context.partition_key
-    from pathlib import Path as _Path
-    from dagster import Failure as _Failure, MetadataValue as _MV
-    from daydreaming_dagster.assets._helpers import (
-        require_membership_row,
-        emit_standard_output_metadata,
-        get_run_id,
-    )
-
-    # Resolve model/template from cohort membership (required columns enforced)
-    data_root = _Path(getattr(context.resources, "data_root", "data"))
-    row, cohort = require_membership_row(
-        context,
-        "draft",
-        str(gen_id),
-        require_columns=["llm_model_id"],
-    )
-    model_id = str(row.get("llm_model_id") or "").strip()
-    template_id = str(row.get("template_id") or row.get("draft_template") or "").strip()
-    if not model_id:
-        raise _Failure(
-            description="Missing generation model for draft task",
-            metadata={
-                "function": _MV.text("draft_response"),
-                "gen_id": _MV.text(str(gen_id)),
-                "resolution": _MV.text(
-                    "Ensure cohort membership contains llm_model_id for this draft"
-                ),
-            },
-        )
-
-    # Execute via stage_services (writes files; parses via CSV fallback when configured)
-    result = execute_llm(
-        stage="draft",
-        llm=context.resources.openrouter_client,
-        root_dir=data_root,
-        gen_id=str(gen_id),
-        template_id=template_id,
-        prompt_text=str(draft_prompt) if isinstance(draft_prompt, str) else "",
-        model=model_id,
-        max_tokens=getattr(context.resources.experiment_config, "draft_generation_max_tokens", None),
-        min_lines=int(getattr(context.resources.experiment_config, "min_draft_lines", 3)),
-        fail_on_truncation=True,
-        parent_gen_id=None,
-        metadata_extra={
-            "function": "draft_response",
-            "cohort_id": str(cohort) if isinstance(cohort, str) and cohort else None,
-            "combo_id": str(row.get("combo_id") or "") or None,
-            "run_id": get_run_id(context),
-        },
-    )
-
-    # Emit standard Dagster metadata for UI
-    emit_standard_output_metadata(
-        context,
-        function="draft_response",
-        gen_id=str(gen_id),
-        result=result,
-        extras={
-            "parser_name": (result.metadata or {}).get("parser_name"),
-        },
-    )
-
-    return str(result.parsed_text or result.raw_text or "")
+    return response_asset(context, draft_prompt, "draft")
 
 
 __all__ += [
