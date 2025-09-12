@@ -10,7 +10,7 @@ from dagster import Failure
 from daydreaming_dagster.assets._helpers import (
     require_membership_row,
     load_generation_parsed_text,
-    resolve_essay_generator_mode,
+    resolve_generator_mode,
     emit_standard_output_metadata,
 )
 
@@ -87,13 +87,18 @@ def test_resolve_essay_generator_mode_csv_and_override(tmp_path: Path):
         "t2,T,Desc,copy,True\n",
         encoding="utf-8",
     )
-    assert resolve_essay_generator_mode(tmp_path, "t1") == "llm"
-    assert resolve_essay_generator_mode(tmp_path, "t2") == "copy"
+    assert resolve_generator_mode(kind="essay", data_root=tmp_path, template_id="t1") == "llm"
+    assert resolve_generator_mode(kind="essay", data_root=tmp_path, template_id="t2") == "copy"
     # invalid row -> Failure
     with pytest.raises(Failure):
-        resolve_essay_generator_mode(tmp_path, "missing")
+        resolve_generator_mode(kind="essay", data_root=tmp_path, template_id="missing")
     # override
-    assert resolve_essay_generator_mode(tmp_path, "t1", override_from_prompt="COPY_MODE: force") == "copy"
+    assert (
+        resolve_generator_mode(
+            kind="essay", data_root=tmp_path, template_id="t1", override_from_prompt="COPY_MODE: force"
+        )
+        == "copy"
+    )
 
 
 def test_emit_standard_output_metadata(tmp_path: Path):
@@ -115,4 +120,3 @@ def test_emit_standard_output_metadata(tmp_path: Path):
     assert md["raw_lines"].value == 3
     assert md["parsed_chars"].value == 4
     assert md["note"].value == "ok"
-

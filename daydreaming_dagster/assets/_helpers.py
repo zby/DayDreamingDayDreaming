@@ -241,52 +241,6 @@ def resolve_generator_mode(
     return mode  # type: ignore[return-value]
 
 
-def resolve_essay_generator_mode(
-    data_root: Path,
-    template_id: str,
-    *,
-    override_from_prompt: Optional[str] = None,
-) -> Literal["llm", "copy"]:
-    # TEMPORARY: Thin wrapper over resolve_generator_mode(kind="essay")
-    return resolve_generator_mode(
-        kind="essay",
-        data_root=data_root,
-        template_id=template_id,
-        override_from_prompt=override_from_prompt,
-        filter_active=False,
-    )
-
-
-def resolve_draft_generator_mode(
-    data_root: Path,
-    template_id: str,
-    *,
-    override_from_prompt: Optional[str] = None,
-) -> Literal["llm", "copy"]:
-    # TEMPORARY: Thin wrapper over resolve_generator_mode(kind="draft")
-    return resolve_generator_mode(
-        kind="draft",
-        data_root=data_root,
-        template_id=template_id,
-        override_from_prompt=override_from_prompt,
-        filter_active=False,
-    )
-
-
-def resolve_evaluation_generator_mode(
-    data_root: Path,
-    template_id: str,
-    *,
-    override_from_prompt: Optional[str] = None,
-) -> Literal["llm", "copy"]:
-    # TEMPORARY: Thin wrapper over resolve_generator_mode(kind="evaluation")
-    return resolve_generator_mode(
-        kind="evaluation",
-        data_root=data_root,
-        template_id=template_id,
-        override_from_prompt=override_from_prompt,
-        filter_active=False,
-    )
 
 
 def emit_standard_output_metadata(
@@ -358,7 +312,5 @@ __all__ = [
     "load_generation_parsed_text",
     "load_parent_parsed_text",
     "resolve_generator_mode",
-    "resolve_essay_generator_mode",
-    "resolve_evaluation_generator_mode",
     "emit_standard_output_metadata",
 ]
