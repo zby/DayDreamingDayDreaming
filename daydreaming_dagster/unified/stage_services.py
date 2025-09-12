@@ -725,6 +725,7 @@ def evaluation_prompt_asset(context) -> str:
     from daydreaming_dagster.assets._helpers import (
         require_membership_row,
         load_generation_parsed_text,
+        resolve_evaluation_generator_mode,
     )
 
     row, _cohort = require_membership_row(
@@ -746,6 +747,20 @@ def evaluation_prompt_asset(context) -> str:
                 ),
             },
         )
+    # Copy mode: short-circuit with sentinel prompt
+    mode = resolve_evaluation_generator_mode(Path(context.resources.data_root), evaluation_template)
+    if mode == "copy":
+        context.add_output_metadata(
+            {
+                "function": _MV.text("evaluation_prompt"),
+                "gen_id": _MV.text(str(gen_id)),
+                "parent_gen_id": _MV.text(str(parent_gen_id)),
+                "mode": _MV.text(mode),
+                "template_used": _MV.text(str(evaluation_template)),
+            }
+        )
+        return "COPY_MODE: no prompt needed"
+
     # Load target essay parsed text via shared helper (emits helpful Failure metadata)
     doc_text = load_generation_parsed_text(context, "essay", str(parent_gen_id), failure_fn_name="evaluation_prompt")
     used_source = "essay_gens"
@@ -810,12 +825,29 @@ def draft_prompt_asset(context, content_combinations) -> str:
     gen_id = context.partition_key
     from pathlib import Path as _Path
     from dagster import Failure as _Failure, MetadataValue as _MV
-    from daydreaming_dagster.assets._helpers import require_membership_row
+    from daydreaming_dagster.assets._helpers import (
+        require_membership_row,
+        resolve_draft_generator_mode,
+    )
 
     # Read membership to resolve combo/template
     row, _cohort = require_membership_row(context, "draft", str(gen_id))
     combo_id = str(row.get("combo_id") or "")
     template_name = str(row.get("template_id") or row.get("draft_template") or "")
+
+    # Copy mode: short-circuit prompt generation
+    mode = resolve_draft_generator_mode(Path(getattr(context.resources, "data_root", "data")), template_name)
+    if mode == "copy":
+        context.add_output_metadata(
+            {
+                "function": _MV.text("draft_prompt"),
+                "gen_id": _MV.text(str(gen_id)),
+                "mode": _MV.text(mode),
+                "template_name": _MV.text(template_name),
+                "combo_id": _MV.text(combo_id),
+            }
+        )
+        return "COPY_MODE: no prompt needed"
 
     # Resolve content combination; curated combos are provided via content_combinations
     content_combination = next((c for c in content_combinations if c.combo_id == combo_id), None)

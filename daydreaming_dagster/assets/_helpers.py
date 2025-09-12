@@ -161,7 +161,7 @@ def load_parent_parsed_text(
 
 def _resolve_generator_mode(
     *,
-    kind: Literal["essay", "evaluation"],
+    kind: Literal["draft", "essay", "evaluation"],
     data_root: Path,
     template_id: str,
     override_from_prompt: Optional[str] = None,
@@ -175,7 +175,9 @@ def _resolve_generator_mode(
     wrapper function names.
     """
     function_label = (
-        "resolve_essay_generator_mode" if kind == "essay" else "resolve_evaluation_generator_mode"
+        "resolve_essay_generator_mode"
+        if kind == "essay"
+        else ("resolve_evaluation_generator_mode" if kind == "evaluation" else "resolve_draft_generator_mode")
     )
     if isinstance(override_from_prompt, str) and override_from_prompt.strip().upper().startswith("COPY_MODE"):
         return "copy"
@@ -256,6 +258,22 @@ def resolve_essay_generator_mode(
         template_id=template_id,
         override_from_prompt=override_from_prompt,
         filter_active=False,
+    )
+
+
+def resolve_draft_generator_mode(
+    data_root: Path,
+    template_id: str,
+    *,
+    override_from_prompt: Optional[str] = None,
+) -> Literal["llm", "copy"]:
+    # TEMPORARY: Thin wrapper over _resolve_generator_mode(kind="draft")
+    return _resolve_generator_mode(
+        kind="draft",
+        data_root=data_root,
+        template_id=template_id,
+        override_from_prompt=override_from_prompt,
+        filter_active=True,
     )
 
 
