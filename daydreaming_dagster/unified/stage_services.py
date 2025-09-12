@@ -252,7 +252,6 @@ def execute_draft_llm(
     max_tokens: Optional[int],
     min_lines: Optional[int],
     fail_on_truncation: bool = True,
-    parser_name: Optional[str] = None,
     parent_gen_id: Optional[str] = None,
     metadata_extra: Optional[Dict[str, Any]] = None,
 ) -> ExecutionResult:
@@ -260,8 +259,8 @@ def execute_draft_llm(
     # Call LLM
     raw_text, info = generate_llm(llm, prompt_text, model=model, max_tokens=max_tokens)
 
-    # Resolve parser name uniformly (honors provided parser_name when present)
-    effective_parser = resolve_parser_name(Path(root_dir), "draft", template_id, parser_name)
+    # Resolve parser name uniformly from templates file
+    effective_parser = resolve_parser_name(Path(root_dir), "draft", template_id, None)
 
     # Parse draft (best-effort)
     parsed = parse_text("draft", raw_text, effective_parser)
@@ -345,6 +344,7 @@ def execute_essay_llm(
     model: str,
     max_tokens: Optional[int],
     min_lines: Optional[int] = None,
+    fail_on_truncation: bool = True,
     parent_gen_id: str,
     metadata_extra: Optional[Dict[str, Any]] = None,
 ) -> ExecutionResult:
@@ -392,6 +392,10 @@ def execute_essay_llm(
     # Validations after raw write (like draft)
     _validate_min_lines("essay", raw_text, min_lines)
 
+    # Truncation check
+    if bool(fail_on_truncation) and isinstance(info, dict) and info.get("truncated"):
+        raise ValueError("LLM response appears truncated (finish_reason=length or max_tokens hit)")
+
     # Success: write parsed identity if available
     if isinstance(parsed, str):
         meta["files"]["parsed"] = str((base / "parsed.txt").resolve())
@@ -423,6 +427,7 @@ def execute_evaluation_llm(
     model: str,
     max_tokens: Optional[int],
     min_lines: Optional[int] = None,
+    fail_on_truncation: bool = True,
     parent_gen_id: str,
     metadata_extra: Optional[Dict[str, Any]] = None,
 ) -> ExecutionResult:
@@ -475,6 +480,10 @@ def execute_evaluation_llm(
 
     # Validations after raw write (like draft)
     _validate_min_lines("evaluation", raw_text, min_lines)
+
+    # Truncation check
+    if bool(fail_on_truncation) and isinstance(info, dict) and info.get("truncated"):
+        raise ValueError("LLM response appears truncated (finish_reason=length or max_tokens hit)")
 
     # Success: write parsed if available
     if isinstance(parsed, str):
@@ -990,7 +999,6 @@ def draft_response_asset(context, draft_prompt) -> str:
         max_tokens=getattr(context.resources.experiment_config, "draft_generation_max_tokens", None),
         min_lines=int(getattr(context.resources.experiment_config, "min_draft_lines", 3)),
         fail_on_truncation=True,
-        parser_name=None,
         parent_gen_id=None,
         metadata_extra={
             "function": "draft_response",
