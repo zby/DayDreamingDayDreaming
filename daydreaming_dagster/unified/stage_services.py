@@ -135,7 +135,7 @@ def parse_text(stage: Stage, raw_text: str, parser_name: Optional[str]) -> Optio
         return None
 
 
-def _execute_llm(
+def execute_llm(
     *,
     stage: Stage,
     llm: LLMClientProto,
@@ -348,94 +348,10 @@ def execute_copy(
     return ExecutionResult(prompt_text=None, raw_text=None, parsed_text=parsed, info=None, metadata=meta)
 
 
-def execute_draft_llm(
-    *,
-    llm: LLMClientProto,
-    root_dir: Path,
-    gen_id: str,
-    template_id: str,
-    prompt_text: str,
-    model: str,
-    max_tokens: Optional[int],
-    min_lines: Optional[int],
-    fail_on_truncation: bool = True,
-    parent_gen_id: Optional[str] = None,
-    metadata_extra: Optional[Dict[str, Any]] = None,
-) -> ExecutionResult:
-    return _execute_llm(
-        stage="draft",
-        llm=llm,
-        root_dir=root_dir,
-        gen_id=gen_id,
-        template_id=template_id,
-        prompt_text=prompt_text,
-        model=model,
-        max_tokens=max_tokens,
-        min_lines=min_lines,
-        fail_on_truncation=fail_on_truncation,
-        parent_gen_id=parent_gen_id,
-        metadata_extra=metadata_extra,
-    )
 
 
-def execute_essay_llm(
-    *,
-    llm: LLMClientProto,
-    root_dir: Path,
-    gen_id: str,
-    template_id: str,
-    prompt_text: str,
-    model: str,
-    max_tokens: Optional[int],
-    min_lines: Optional[int] = None,
-    fail_on_truncation: bool = True,
-    parent_gen_id: str,
-    metadata_extra: Optional[Dict[str, Any]] = None,
-) -> ExecutionResult:
-    return _execute_llm(
-        stage="essay",
-        llm=llm,
-        root_dir=root_dir,
-        gen_id=gen_id,
-        template_id=template_id,
-        prompt_text=prompt_text,
-        model=model,
-        max_tokens=max_tokens,
-        min_lines=min_lines,
-        fail_on_truncation=fail_on_truncation,
-        parent_gen_id=parent_gen_id,
-        metadata_extra=metadata_extra,
-    )
 
 
-def execute_evaluation_llm(
-    *,
-    llm: LLMClientProto,
-    root_dir: Path,
-    gen_id: str,
-    template_id: str,
-    prompt_text: str,
-    model: str,
-    max_tokens: Optional[int],
-    min_lines: Optional[int] = None,
-    fail_on_truncation: bool = True,
-    parent_gen_id: str,
-    metadata_extra: Optional[Dict[str, Any]] = None,
-) -> ExecutionResult:
-    return _execute_llm(
-        stage="evaluation",
-        llm=llm,
-        root_dir=root_dir,
-        gen_id=gen_id,
-        template_id=template_id,
-        prompt_text=prompt_text,
-        model=model,
-        max_tokens=max_tokens,
-        min_lines=min_lines,
-        fail_on_truncation=fail_on_truncation,
-        parent_gen_id=parent_gen_id,
-        metadata_extra=metadata_extra,
-    )
 
 
 __all__ = [
@@ -449,9 +365,7 @@ __all__ = [
     "parse_text",
     "write_generation",
     "execute_copy",
-    "execute_draft_llm",
-    "execute_essay_llm",
-    "execute_evaluation_llm",
+    "execute_llm",
 ]
 
 
@@ -557,7 +471,7 @@ def essay_prompt_asset(context) -> str:
 def essay_response_asset(context, essay_prompt) -> str:
     """
     Asset-compatible response entrypoint for the essay stage.
-    Delegates to execute_copy/execute_essay_llm and mirrors the asset logic/metadata.
+    Delegates to execute_copy/execute_llm and mirrors the asset logic/metadata.
     """
     gen_id = context.partition_key
     # Import helpers lazily to avoid circular imports during module initialization
@@ -645,7 +559,8 @@ def essay_response_asset(context, essay_prompt) -> str:
                 "resolution": MetadataValue.text("Ensure cohort membership includes an llm_model_id for this essay"),
             },
         )
-    result = execute_essay_llm(
+    result = execute_llm(
+        stage="essay",
         llm=context.resources.openrouter_client,
         root_dir=data_root,
         gen_id=str(gen_id),
@@ -750,7 +665,7 @@ def evaluation_prompt_asset(context) -> str:
 def evaluation_response_asset(context, evaluation_prompt) -> str:
     """Asset-compatible evaluation response execution.
 
-    Delegates to execute_evaluation_llm with internal parser resolution; emits
+    Delegates to execute_llm with internal parser resolution; emits
     the same output metadata as the previous asset.
     """
     gen_id = context.partition_key
@@ -774,7 +689,8 @@ def evaluation_response_asset(context, evaluation_prompt) -> str:
     parent_gen_id = str(row.get("parent_gen_id") or "").strip()
 
     # Execute via stage_services; prefer prompt text passed from dependency
-    result = execute_evaluation_llm(
+    result = execute_llm(
+        stage="evaluation",
         llm=context.resources.openrouter_client,
         root_dir=data_root,
         gen_id=str(gen_id),
@@ -887,7 +803,7 @@ def draft_prompt_asset(context, content_combinations) -> str:
 def draft_response_asset(context, draft_prompt) -> str:
     """Asset-compatible draft response generation.
 
-    Delegates to execute_draft_llm and emits the same output metadata.
+    Delegates to execute_llm and emits the same output metadata.
     """
     gen_id = context.partition_key
     from pathlib import Path as _Path
@@ -921,7 +837,8 @@ def draft_response_asset(context, draft_prompt) -> str:
         )
 
     # Execute via stage_services (writes files; parses via CSV fallback when configured)
-    result = execute_draft_llm(
+    result = execute_llm(
+        stage="draft",
         llm=context.resources.openrouter_client,
         root_dir=data_root,
         gen_id=str(gen_id),

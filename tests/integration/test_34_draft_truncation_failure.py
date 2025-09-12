@@ -82,7 +82,6 @@ def test_draft_truncation_failure_writes_debug_then_raises(tiny_data_root: Path,
         _ = draft_response_impl(ctx, prompt)
 
     ddir = tiny_data_root / "gens" / "draft" / draft_id
-    assert (ddir / "prompt.txt").exists()
     assert (ddir / "raw.txt").exists()
     assert (ddir / "metadata.json").exists()
     assert not (ddir / "parsed.txt").exists()

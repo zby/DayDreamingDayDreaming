@@ -2,9 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 import pandas as pd
-
-# Supported parser names for evaluation responses (canonical column: 'parser')
-ALLOWED_PARSERS = {"complex", "in_last_line"}
+from .parser_registry import list_parsers
 
 
 def load_parser_map(data_root: Path) -> dict[str, str]:
@@ -20,6 +18,7 @@ def load_parser_map(data_root: Path) -> dict[str, str]:
     if "template_id" not in df.columns or "parser" not in df.columns:
         raise ValueError("evaluation_templates.csv must include 'template_id' and 'parser' columns")
     mapping: dict[str, str] = {}
+    allowed = set(list_parsers("evaluation").keys())
     for _, r in df.iterrows():
         tid = str(r["template_id"]).strip()
         if not tid:
@@ -27,8 +26,8 @@ def load_parser_map(data_root: Path) -> dict[str, str]:
         val = str(r.get("parser") or "").strip().lower()
         if not val:
             raise ValueError(f"Empty parser for template '{tid}' in evaluation_templates.csv")
-        if val not in ALLOWED_PARSERS:
-            raise ValueError(f"Invalid parsing strategy '{val}' for template '{tid}'. Allowed: {sorted(ALLOWED_PARSERS)}")
+        if val not in allowed:
+            raise ValueError(f"Invalid parsing strategy '{val}' for template '{tid}'. Allowed: {sorted(allowed)}")
         mapping[tid] = val
     if not mapping:
         raise ValueError("No valid template->parser mappings loaded from evaluation_templates.csv")
@@ -43,6 +42,7 @@ def require_parser_for_template(template_id: str, parser_map: dict[str, str]) ->
         parser = parser_map[template_id]
     except KeyError as e:
         raise ValueError(f"No parser configured for evaluation_template '{template_id}'. Update evaluation_templates.csv") from e
-    if parser not in ALLOWED_PARSERS:
+    allowed = set(list_parsers("evaluation").keys())
+    if parser not in allowed:
         raise ValueError(f"Invalid parser '{parser}' for evaluation_template '{template_id}'")
     return parser

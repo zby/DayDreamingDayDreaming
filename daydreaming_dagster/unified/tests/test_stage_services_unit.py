@@ -12,9 +12,7 @@ from daydreaming_dagster.unified.stage_services import (
     resolve_parser_name,
     parse_text,
     execute_copy,
-    execute_draft_llm,
-    execute_essay_llm,
-    execute_evaluation_llm,
+    execute_llm,
 )
 
 
@@ -116,7 +114,8 @@ def test_execute_draft_llm_happy_path(tmp_path: Path):
         encoding="utf-8",
     )
     llm = _StubLLM("header\n<essay>Foo</essay>\n", info={"finish_reason": "stop", "truncated": False})
-    res = execute_draft_llm(
+    res = execute_llm(
+        stage="draft",
         llm=llm,
         root_dir=tmp_path,
         gen_id="D1",
@@ -139,7 +138,8 @@ def test_execute_draft_llm_happy_path(tmp_path: Path):
 def test_execute_draft_llm_min_lines_failure(tmp_path: Path):
     llm = _StubLLM("one line only", info={"finish_reason": "stop", "truncated": False})
     with pytest.raises(ValueError):
-        execute_draft_llm(
+        execute_llm(
+            stage="draft",
             llm=llm,
             root_dir=tmp_path,
             gen_id="D2",
@@ -157,7 +157,8 @@ def test_execute_draft_llm_min_lines_failure(tmp_path: Path):
 def test_execute_draft_llm_truncation_failure_after_raw(tmp_path: Path):
     llm = _StubLLM("short text", info={"finish_reason": "length", "truncated": True})
     with pytest.raises(ValueError):
-        execute_draft_llm(
+        execute_llm(
+            stage="draft",
             llm=llm,
             root_dir=tmp_path,
             gen_id="D3",
@@ -175,7 +176,8 @@ def test_execute_draft_llm_truncation_failure_after_raw(tmp_path: Path):
 
 def test_execute_essay_llm_identity_parse(tmp_path: Path):
     llm = _StubLLM("Line A\nLine B\n")
-    res = execute_essay_llm(
+    res = execute_llm(
+        stage="essay",
         llm=llm,
         root_dir=tmp_path,
         gen_id="E1",
@@ -194,7 +196,8 @@ def test_execute_essay_llm_identity_parse(tmp_path: Path):
 def test_execute_evaluation_llm_requires_parser(tmp_path: Path):
     llm = _StubLLM("Response\nSCORE: 9\n")
     with pytest.raises(ValueError):
-        execute_evaluation_llm(
+        execute_llm(
+            stage="evaluation",
             llm=llm,
             root_dir=tmp_path,
             gen_id="V1",
@@ -214,7 +217,8 @@ def test_execute_evaluation_llm_requires_parser(tmp_path: Path):
         "t,T,Desc,in_last_line,True\n",
         encoding="utf-8",
     )
-    res = execute_evaluation_llm(
+    res = execute_llm(
+        stage="evaluation",
         llm=llm,
         root_dir=tmp_path,
         gen_id="V2",
@@ -232,7 +236,8 @@ def test_execute_evaluation_llm_requires_parser(tmp_path: Path):
 
 def test_metadata_extra_does_not_override(tmp_path: Path):
     llm = _StubLLM("ok")
-    res = execute_essay_llm(
+    res = execute_llm(
+        stage="essay",
         llm=llm,
         root_dir=tmp_path,
         gen_id="E10",

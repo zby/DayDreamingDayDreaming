@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pytest
 
-from daydreaming_dagster.unified.stage_services import render_template, execute_evaluation_llm
+from daydreaming_dagster.unified.stage_services import render_template, execute_llm
 
 pytestmark = pytest.mark.integration
 
@@ -74,7 +74,8 @@ def test_evaluation_parser_in_last_line_emits_single_float_line(tiny_data_root: 
 
     # Execute evaluation via stage_services directly (no Dagster context required)
     doc_text = (e_dir / "parsed.txt").read_text(encoding="utf-8")
-    _ = execute_evaluation_llm(
+    _ = execute_llm(
+        stage="evaluation",
         llm=mock_llm,
         root_dir=tiny_data_root,
         gen_id=eval_id,

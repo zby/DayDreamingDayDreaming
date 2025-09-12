@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pytest
 
-from daydreaming_dagster.unified.stage_services import render_template, execute_evaluation_llm
+from daydreaming_dagster.unified.stage_services import render_template, execute_llm
 from daydreaming_dagster.assets.group_generation_draft import _draft_response_impl as draft_response_impl
 from daydreaming_dagster.assets.group_generation_essays import _essay_response_impl as essay_response_impl
 from daydreaming_dagster.assets.group_evaluation import evaluation_response
@@ -130,7 +130,8 @@ def test_happy_path_draft_essay_eval_chain(tiny_data_root: Path, mock_llm, canon
 
     # Evaluation: run via stage_services directly
     doc_text = (tiny_data_root / "gens" / "essay" / essay_id / "parsed.txt").read_text(encoding="utf-8")
-    _ = execute_evaluation_llm(
+    _ = execute_llm(
+        stage="evaluation",
         llm=mock_llm,
         root_dir=tiny_data_root,
         gen_id=eval_id,
