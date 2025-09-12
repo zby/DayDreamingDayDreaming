@@ -74,7 +74,8 @@ def test_draft_min_lines_failure_writes_debug_then_raises(tiny_data_root: Path, 
 
     # Prepare a valid prompt
     prompt = render_template(
-        "draft", "test-draft", {"concepts": [{"name": "OnlyOne"}]}
+        "draft", "test-draft", {"concepts": [{"name": "OnlyOne"}]},
+        templates_root=tiny_data_root / "1_raw" / "templates",
     )
 
     ctx = _Ctx(draft_id, tiny_data_root, mock_llm, min_lines=3)

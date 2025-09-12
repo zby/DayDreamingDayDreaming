@@ -110,6 +110,7 @@ def test_happy_path_draft_essay_eval_chain(tiny_data_root: Path, mock_llm, canon
         "draft",
         "test-draft",
         {"concepts": [{"name": "Alpha"}, {"name": "Beta"}]},
+        templates_root=tiny_data_root / "1_raw" / "templates",
     )
     # Use a tagged LLM so the configured 'essay_block' parser produces a parsed.txt
     class _TaggedLLM:

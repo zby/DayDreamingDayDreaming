@@ -4,14 +4,11 @@ import pytest
 
 from daydreaming_dagster.unified.stage_services import render_template, execute_evaluation_llm
 
-
 pytestmark = pytest.mark.integration
-
 
 class _Log:
     def info(self, *_args, **_kwargs):
         pass
-
 
 class _Ctx:
     def __init__(self, partition_key: str, data_root: Path, llm):
@@ -27,7 +24,6 @@ class _Ctx:
 
     def add_output_metadata(self, _md: dict):
         pass
-
 
 def _write_membership(data_root: Path, rows: list[dict]):
     import pandas as pd
@@ -53,7 +49,6 @@ def _write_membership(data_root: Path, rows: list[dict]):
     df = pd.DataFrame(norm, columns=cols)
     (cdir / "membership.csv").write_text(df.to_csv(index=False), encoding="utf-8")
 
-
 @pytest.mark.llm_cfg(tail_score="8.5")
 def test_evaluation_parser_in_last_line_emits_single_float_line(tiny_data_root: Path, mock_llm):
     # Create a minimal essay parent document
@@ -77,14 +72,14 @@ def test_evaluation_parser_in_last_line_emits_single_float_line(tiny_data_root: 
         ],
     )
 
-    # Execute StageRunner directly to avoid Dagster run property requirements
+    # Execute evaluation via stage_services directly (no Dagster context required)
     doc_text = (e_dir / "parsed.txt").read_text(encoding="utf-8")
-    runner = StageRunner(templates_root=tiny_data_root / "1_raw" / "templates")
-    spec = StageRunSpec(
-        stage="evaluation",
+    _ = execute_evaluation_llm(
+        llm=mock_llm,
+        out_dir=tiny_data_root / "gens",
         gen_id=eval_id,
         template_id="test-eval",
-        prompt_text=render_template("evaluation", "test-eval", {"response": doc_text}),
+        prompt_text=render_template("evaluation", "test-eval", {"response": doc_text}, templates_root=tiny_data_root / "1_raw" / "templates"),
         model="m-eval",
         parser_name="in_last_line",
         max_tokens=2048,

@@ -79,7 +79,8 @@ def test_draft_parser_fallback_produces_parsed_text_when_configured(tiny_data_ro
 
     # Render a valid prompt and run
     prompt = render_template(
-        "draft", "test-draft", {"concepts": [{"name": "A"}, {"name": "B"}]}
+        "draft", "test-draft", {"concepts": [{"name": "A"}, {"name": "B"}]},
+        templates_root=tiny_data_root / "1_raw" / "templates",
     )
     ctx = _Ctx(draft_id, tiny_data_root, _TaggedLLM())
     parsed = draft_response_impl(ctx, prompt)

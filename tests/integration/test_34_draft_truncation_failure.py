@@ -73,7 +73,8 @@ def test_draft_truncation_failure_writes_debug_then_raises(tiny_data_root: Path,
     )
 
     prompt = render_template(
-        "draft", "test-draft", {"concepts": [{"name": "A"}, {"name": "B"}]}
+        "draft", "test-draft", {"concepts": [{"name": "A"}, {"name": "B"}]},
+        templates_root=tiny_data_root / "1_raw" / "templates",
     )
 
     ctx = _Ctx(draft_id, tiny_data_root, mock_llm)
