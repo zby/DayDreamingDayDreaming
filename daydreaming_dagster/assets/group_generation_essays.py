@@ -7,9 +7,9 @@ Asset definitions for the essay (Phase‑2) generation stage.
 from dagster import asset, Failure, MetadataValue
 from pathlib import Path
 from .partitions import essay_gens_partitions
-from ..utils.membership_lookup import find_membership_row_by_gen
 from ..unified.stage_services import render_template, execute_essay_copy, execute_essay_llm
 from ._helpers import (
+    require_membership_row,
     load_generation_parsed_text,
     resolve_essay_generator_mode,
     emit_standard_output_metadata,
@@ -93,9 +93,9 @@ def _load_phase1_text_by_parent_doc(context, parent_gen_id: str) -> tuple[str, s
 def _essay_prompt_impl(context) -> str:
     """Generate Phase‑2 prompts based on Phase‑1 drafts."""
     gen_id = context.partition_key
-    mrow, _cohort = find_membership_row_by_gen(getattr(context.resources, "data_root", "data"), "essay", str(gen_id))
-    template_name = str(mrow.get("template_id") or mrow.get("essay_template") or "") if mrow is not None else ""
-    parent_gen_id = mrow.get("parent_gen_id") if mrow is not None else None
+    row, _cohort = require_membership_row(context, "essay", str(gen_id), require_columns=["template_id", "parent_gen_id"])
+    template_name = str(row.get("template_id") or row.get("essay_template") or "")
+    parent_gen_id = row.get("parent_gen_id")
 
     generator_mode = resolve_essay_generator_mode(Path(context.resources.data_root), template_name)
     if generator_mode == "copy":
@@ -189,13 +189,9 @@ def _essay_response_impl(context, essay_prompt) -> str:
     regardless of mode, and then applies the selected generation path.
     """
     gen_id = context.partition_key
-    mrow, _cohort = find_membership_row_by_gen(getattr(context.resources, "data_root", "data"), "essay", str(gen_id))
-    if mrow is not None:
-        template_name = str(mrow.get("template_id") or mrow.get("essay_template") or "")
-        parent_gen_id = mrow.get("parent_gen_id")
-    else:
-        template_name = ""
-        parent_gen_id = None
+    row, _cohort = require_membership_row(context, "essay", str(gen_id), require_columns=["template_id", "parent_gen_id"])
+    template_name = str(row.get("template_id") or row.get("essay_template") or "")
+    parent_gen_id = row.get("parent_gen_id")
     # Allow explicit COPY_MODE hint from caller/tests to bypass template lookup
     if isinstance(essay_prompt, str) and essay_prompt.strip().upper().startswith("COPY_MODE"):
         mode = "copy"
@@ -212,7 +208,8 @@ def _essay_response_impl(context, essay_prompt) -> str:
                 "resolution": MetadataValue.text("Ensure essay row exists in cohort membership with a valid parent_gen_id"),
             },
         )
-    draft_text, used_source = _load_phase1_text_by_parent_doc(context, str(parent_gen_id))
+    draft_text = load_generation_parsed_text(context, "draft", str(parent_gen_id), failure_fn_name="_essay_response_impl")
+    used_source = "draft_gens_parent"
     # Ensure upstream draft has content even in copy mode
     # experiment_config is required by the caller asset
     min_lines = int(context.resources.experiment_config.min_draft_lines)
@@ -256,7 +253,7 @@ def _essay_response_impl(context, essay_prompt) -> str:
         )
         return result.parsed_text or draft_text
     # LLM path
-    model_id = str(mrow.get("llm_model_id") or "").strip() if mrow is not None else ""
+    model_id = str(row.get("llm_model_id") or "").strip()
     if not model_id:
         raise Failure(
             description="Missing generation model for essay task",
