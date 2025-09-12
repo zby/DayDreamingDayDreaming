@@ -107,11 +107,11 @@ class StageRunner:
         if spec.stage == "evaluation" and not (isinstance(spec.parser_name, str) and spec.parser_name.strip()):
             raise ValueError("parser_name is required for evaluation stage")
         if spec.mode == "copy":
+            from daydreaming_dagster.utils.generation import Generation
             if not isinstance(spec.pass_through_from, (str, Path)):
                 raise ValueError("pass_through_from path required for copy mode")
             src = Path(spec.pass_through_from)
             parsed = src.read_text(encoding="utf-8") if src.exists() else ""
-            self._write_atomic(stage_dir / "parsed.txt", parsed)
             meta = {
                 "stage": spec.stage,
                 "gen_id": spec.gen_id,
@@ -119,18 +119,24 @@ class StageRunner:
                 "mode": "copy",
                 "llm_model_id": spec.model,
                 **({"parent_gen_id": spec.parent_gen_id} if spec.parent_gen_id else {}),
-                "files": {
-                    # No prompt in copy-mode by default
-                    "parsed": str((stage_dir / "parsed.txt").resolve()),
-                },
+                "files": {},  # filled implicitly by readers
                 "duration_s": round(time.time() - t0, 3),
             }
-            # Merge extras without overriding core keys
             if spec.metadata_extra:
                 for k, v in spec.metadata_extra.items():
                     if k not in meta:
                         meta[k] = v
-            self._write_atomic(stage_dir / "metadata.json", json.dumps(meta, ensure_ascii=False, indent=2))
+            gen = Generation(
+                stage=spec.stage,
+                gen_id=str(spec.gen_id),
+                parent_gen_id=str(spec.parent_gen_id) if spec.parent_gen_id else None,
+                raw_text=parsed,
+                parsed_text=parsed,
+                prompt_text=None,
+                metadata=meta,
+            )
+            # Copy mode: write only parsed + metadata (no prompt/raw)
+            gen.write_files(spec.out_dir, write_raw=False, write_parsed=True, write_prompt=False, write_metadata=True)
             return {"parsed": parsed, "metadata": meta}
 
         # LLM mode: render prompt first (or use provided prompt)
@@ -139,7 +145,21 @@ class StageRunner:
         else:
             template_text = self._load_template_text(spec.stage, spec.template_id)
             prompt = self._render_prompt(template_text, spec.values)
-        self._write_atomic(stage_dir / "prompt.txt", prompt)
+        # Build metadata early; will be merged with extras below
+        meta: Dict[str, Any] = {
+            "stage": spec.stage,
+            "gen_id": spec.gen_id,
+            "template_id": spec.template_id,
+            "llm_model_id": spec.model,
+            **({"parent_gen_id": spec.parent_gen_id} if spec.parent_gen_id else {}),
+            "parser_name": None,
+            "mode": "llm",
+            "files": {},
+            "finish_reason": None,
+            "truncated": False,
+            "usage": None,
+            "duration_s": None,
+        }
 
         # LLM path
         if not spec.model:
@@ -147,21 +167,13 @@ class StageRunner:
         max_tokens = spec.max_tokens
         raw_text, info = llm_client.generate_with_info(prompt, model=spec.model, max_tokens=max_tokens)
         normalized = str(raw_text).replace("\r\n", "\n")
-        self._write_atomic(stage_dir / "raw.txt", normalized)
-        # Policy validations (after RAW write for debuggability)
+        # Policy validations will run after at least RAW is written
+        # Resolve parser (draft via CSV fallback when not provided)
         if spec.stage == "draft":
-            # Enforce minimum non-empty lines if configured
-            if isinstance(spec.min_lines, int) and spec.min_lines > 0:
-                response_lines = [ln for ln in normalized.split("\n") if ln.strip()]
-                if len(response_lines) < spec.min_lines:
-                    raise ValueError(
-                        f"Draft validation failed: only {len(response_lines)} non-empty lines, minimum required {spec.min_lines}"
-                    )
-        # Enforce truncation policy
-        if bool(spec.fail_on_truncation) and isinstance(info, dict) and info.get("truncated"):
-            raise ValueError("LLM response appears truncated (finish_reason=length or max_tokens hit)")
-        # Determine effective parser_name for drafts if not provided
-        effective_parser = spec.parser_name
+            # Determine effective parser_name for drafts if not provided
+            effective_parser = spec.parser_name
+        else:
+            effective_parser = spec.parser_name
         try:
             if spec.stage == "draft" and not (isinstance(effective_parser, str) and effective_parser.strip()):
                 # Attempt to resolve from CSV: <data_root>/1_raw/draft_templates.csv
@@ -181,31 +193,46 @@ class StageRunner:
             pass
 
         parsed = self._parse(spec.stage, normalized, effective_parser)
-        if parsed is not None:
-            self._write_atomic(stage_dir / "parsed.txt", parsed)
-
-        meta = {
-            "stage": spec.stage,
-            "gen_id": spec.gen_id,
-            "template_id": spec.template_id,
-            "llm_model_id": spec.model,
-            **({"parent_gen_id": spec.parent_gen_id} if spec.parent_gen_id else {}),
-            "parser_name": effective_parser,
-            "mode": "llm",
-            "files": {
-                "prompt": str((stage_dir / "prompt.txt").resolve()),
-                "raw": str((stage_dir / "raw.txt").resolve()),
-                **({"parsed": str((stage_dir / "parsed.txt").resolve())} if parsed is not None else {}),
-            },
-            "finish_reason": (info or {}).get("finish_reason") if isinstance(info, dict) else None,
-            "truncated": bool((info or {}).get("truncated")) if isinstance(info, dict) else False,
-            "usage": (info or {}).get("usage") if isinstance(info, dict) else None,
-            "duration_s": round(time.time() - t0, 3),
-        }
-        # Merge extras without overriding core keys
+        # Fill meta fields
+        meta.update(
+            {
+                "parser_name": effective_parser,
+                "finish_reason": (info or {}).get("finish_reason") if isinstance(info, dict) else None,
+                "truncated": bool((info or {}).get("truncated")) if isinstance(info, dict) else False,
+                "usage": (info or {}).get("usage") if isinstance(info, dict) else None,
+                "duration_s": round(time.time() - t0, 3),
+            }
+        )
         if spec.metadata_extra:
             for k, v in spec.metadata_extra.items():
                 if k not in meta:
                     meta[k] = v
-        self._write_atomic(stage_dir / "metadata.json", json.dumps(meta, ensure_ascii=False, indent=2))
+
+        # Build Generation object
+        from daydreaming_dagster.utils.generation import Generation
+        gen = Generation(
+            stage=spec.stage,
+            gen_id=str(spec.gen_id),
+            parent_gen_id=str(spec.parent_gen_id) if spec.parent_gen_id else None,
+            raw_text=normalized,
+            parsed_text=parsed,
+            prompt_text=prompt,
+            metadata=meta,
+        )
+        # First write: ensure prompt/raw/metadata are present for debuggability
+        gen.write_files(spec.out_dir, write_raw=True, write_parsed=False, write_prompt=True, write_metadata=True)
+        # Policy validations (after RAW write)
+        if spec.stage == "draft":
+            if isinstance(spec.min_lines, int) and spec.min_lines > 0:
+                response_lines = [ln for ln in normalized.split("\n") if ln.strip()]
+                if len(response_lines) < spec.min_lines:
+                    # Do not write parsed; raw already persisted
+                    raise ValueError(
+                        f"Draft validation failed: only {len(response_lines)} non-empty lines, minimum required {spec.min_lines}"
+                    )
+        if bool(spec.fail_on_truncation) and isinstance(info, dict) and info.get("truncated"):
+            raise ValueError("LLM response appears truncated (finish_reason=length or max_tokens hit)")
+        # Success path: write parsed if available
+        if isinstance(parsed, str):
+            gen.write_files(spec.out_dir, write_raw=False, write_parsed=True, write_prompt=False, write_metadata=False)
         return {"prompt": prompt, "raw": normalized, "parsed": parsed, "metadata": meta, "info": info}

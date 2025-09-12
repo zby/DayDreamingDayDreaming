@@ -33,19 +33,31 @@ class Generation:
         """Resolve the canonical generation directory from gens_root."""
         return build_gen_dir(Path(gens_root), self.stage, self.gen_id)
 
-    def write_files(self, gens_root: Path) -> Path:
-        """Write raw.txt, parsed.txt, optional prompt.txt and metadata.json.
+    def write_files(
+        self,
+        gens_root: Path,
+        *,
+        write_raw: bool = True,
+        write_parsed: bool = True,
+        write_prompt: bool = True,
+        write_metadata: bool = True,
+    ) -> Path:
+        """Write generation files with atomic replace semantics.
+
+        By default writes raw, parsed (when provided), prompt (when provided), and metadata (when provided).
+        Flags allow partial writes to support stages like copy-mode where only parsed/metadata are desired.
 
         Returns the target directory path.
         """
         base = self.target_dir(gens_root)
         base.mkdir(parents=True, exist_ok=True)
-        _write_atomic(base / FILE_RAW, self.raw_text)
-        if isinstance(self.parsed_text, str):
+        if write_raw:
+            _write_atomic(base / FILE_RAW, self.raw_text)
+        if write_parsed and isinstance(self.parsed_text, str):
             _write_atomic(base / FILE_PARSED, self.parsed_text)
-        if isinstance(self.prompt_text, str):
+        if write_prompt and isinstance(self.prompt_text, str):
             _write_atomic(base / FILE_PROMPT, self.prompt_text)
-        if isinstance(self.metadata, dict):
+        if write_metadata and isinstance(self.metadata, dict):
             _write_atomic(base / FILE_METADATA, json.dumps(self.metadata, ensure_ascii=False, indent=2))
         return base
 
