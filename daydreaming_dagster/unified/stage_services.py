@@ -418,21 +418,6 @@ def essay_prompt_asset(context) -> str:
     draft_text = load_generation_parsed_text(context, "draft", str(parent_gen_id), failure_fn_name="essay_prompt")
     used_source = "draft_gens_parent"
     draft_lines = [line.strip() for line in draft_text.split("\n") if line.strip()]
-    min_lines = int(context.resources.experiment_config.min_draft_lines)
-    if len(draft_lines) < max(1, min_lines):
-        data_root = Path(getattr(context.resources, "data_root", "data"))
-        draft_dir = data_root / "gens" / DRAFT / str(parent_gen_id)
-        raise Failure(
-            description="Upstream draft text is empty/too short for essay prompt",
-            metadata={
-                "function": MetadataValue.text("essay_prompt"),
-                "gen_id": MetadataValue.text(str(gen_id)),
-                "parent_gen_id": MetadataValue.text(str(parent_gen_id)),
-                "draft_line_count": MetadataValue.int(len(draft_lines)),
-                "min_required_lines": MetadataValue.int(min_lines),
-                "draft_gen_dir": MetadataValue.path(str(draft_dir)),
-            },
-        )
 
     try:
         prompt = render_template("essay", template_name, {"draft_block": draft_text, "links_block": draft_text})
