@@ -4,7 +4,7 @@ Group: generation_essays
 Asset definitions for the essay (Phase‑2) generation stage.
 """
 
-from dagster import asset, Failure, MetadataValue
+from dagster import Failure, MetadataValue
 from ._decorators import asset_with_boundary
 from pathlib import Path
 from .partitions import essay_gens_partitions

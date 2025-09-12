@@ -11,8 +11,6 @@ from typing import Dict, Any
 import json
 
 from ..utils.evaluation_processing import calculate_evaluation_metadata
-from ..utils.evaluation_parsing_config import load_parser_map, require_parser_for_template
-from ..utils.eval_response_parser import parse_llm_response
 from ..constants import ESSAY, EVALUATION, FILE_PARSED, FILE_RAW, FILE_METADATA
 
 class FilteredEvaluationResultsConfig(Config):
@@ -32,7 +30,7 @@ def filtered_evaluation_results(context, config: FilteredEvaluationResultsConfig
     """Collect evaluation results from gens-store and enrich with generation metadata.
 
     For each directory under `data/gens/evaluation/<gen_id>`:
-      - Prefer numeric score from parsed.txt; otherwise parse raw.txt using CSV-driven strategy
+      - Read numeric score strictly from parsed.txt
       - Read evaluation metadata (template_id/model_id/parent_gen_id)
       - Enrich with essay and draft metadata (generation_template/model, combo_id)
     """
@@ -47,13 +45,6 @@ def filtered_evaluation_results(context, config: FilteredEvaluationResultsConfig
             "gen_id", "score", "error", "evaluation_template", "evaluation_model",
             "combo_id", "generation_template", "generation_model",
         ])
-
-    # Load parsing strategies (evaluation_templates.csv)
-    try:
-        parser_map = load_parser_map(data_root)
-    except Exception as e:
-        parser_map = {}
-        context.log.warning(f"Could not load evaluation parser map: {e}")
 
     rows: list[dict] = []
     for gen_dir in sorted([p for p in eval_root.iterdir() if p.is_dir()]):
@@ -110,13 +101,8 @@ def filtered_evaluation_results(context, config: FilteredEvaluationResultsConfig
             except Exception as e:
                 error = f"Invalid parsed.txt: {e}"
         elif raw_fp.exists():
-            try:
-                strategy = require_parser_for_template(evaluation_template, parser_map)
-                res = parse_llm_response(raw_fp.read_text(encoding="utf-8"), strategy)
-                score = res.get("score")
-                error = res.get("error")
-            except Exception as e:
-                error = f"Parse error: {e}"
+            # Do not parse raw here; cross-experiment relies on pre-parsed outputs
+            error = "Missing parsed.txt for evaluation response"
         else:
             error = "Missing raw.txt and parsed.txt"
 

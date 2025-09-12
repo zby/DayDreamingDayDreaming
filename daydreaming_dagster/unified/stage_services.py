@@ -9,6 +9,10 @@ import time
 from jinja2 import Environment, StrictUndefined
 
 from daydreaming_dagster.utils.generation import Generation
+from daydreaming_dagster.utils.evaluation_parsing_config import (
+    load_parser_map,
+    require_parser_for_template,
+)
 
 # Types
 Stage = Literal["draft", "essay", "evaluation"]
@@ -387,12 +391,19 @@ def execute_evaluation_llm(
     template_id: str,
     prompt_text: str,
     model: str,
-    parser_name: str,
+    parser_name: Optional[str] = None,
     max_tokens: Optional[int],
     parent_gen_id: str,
     metadata_extra: Optional[Dict[str, Any]] = None,
 ) -> ExecutionResult:
-    if not (isinstance(parser_name, str) and parser_name.strip()):
+    # Resolve parser_name internally only when it is truly not provided.
+    # Preserve previous contract: an explicitly empty string is invalid and raises.
+    if parser_name is None:
+        # Derive data_root from out_dir (which is typically data_root / "gens")
+        data_root_guess = Path(out_dir).parent
+        parser_map = load_parser_map(data_root_guess)
+        parser_name = require_parser_for_template(template_id, parser_map)
+    elif not (isinstance(parser_name, str) and parser_name.strip()):
         raise ValueError("parser_name is required for evaluation stage")
     t0 = time.time()
     raw_text, info = generate_llm(llm, prompt_text, model=model, max_tokens=max_tokens)
@@ -456,4 +467,3 @@ __all__ = [
     "execute_essay_llm",
     "execute_evaluation_llm",
 ]
-

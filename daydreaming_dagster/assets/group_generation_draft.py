@@ -4,7 +4,7 @@ Group: generation_draft
 Asset definitions for the draft (Phase‑1) generation stage.
 """
 
-from dagster import asset, Failure, MetadataValue
+from dagster import Failure, MetadataValue
 from ._decorators import asset_with_boundary
 from pathlib import Path
  
