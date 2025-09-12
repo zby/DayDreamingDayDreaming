@@ -75,6 +75,20 @@ def generate_llm(
     return normalized, info or {}
 
 
+def _validate_min_lines(stage: Stage, raw_text: str, min_lines: Optional[int]) -> None:
+    """Enforce a minimum number of non-empty lines across stages.
+
+    Writes are performed before this check; on failure a ValueError is raised,
+    keeping raw/metadata for debuggability and omitting parsed.txt.
+    """
+    if isinstance(min_lines, int) and min_lines > 0:
+        response_lines = [ln for ln in str(raw_text).split("\n") if ln.strip()]
+        if len(response_lines) < min_lines:
+            raise ValueError(
+                f"{str(stage).capitalize()} validation failed: only {len(response_lines)} non-empty lines, minimum required {min_lines}"
+            )
+
+
 def resolve_parser_name(
     data_root: Path,
     stage: Stage,
@@ -312,12 +326,7 @@ def execute_draft_llm(
     )
 
     # Validations after raw write
-    if isinstance(min_lines, int) and min_lines > 0:
-        response_lines = [ln for ln in str(raw_text).split("\n") if ln.strip()]
-        if len(response_lines) < min_lines:
-            raise ValueError(
-                f"Draft validation failed: only {len(response_lines)} non-empty lines, minimum required {min_lines}"
-            )
+    _validate_min_lines("draft", raw_text, min_lines)
     if bool(fail_on_truncation) and isinstance(info, dict) and info.get("truncated"):
         raise ValueError("LLM response appears truncated (finish_reason=length or max_tokens hit)")
 
@@ -396,12 +405,7 @@ def execute_essay_llm(
     )
 
     # Validations after raw write (like draft)
-    if isinstance(min_lines, int) and min_lines > 0:
-        response_lines = [ln for ln in str(raw_text).split("\n") if ln.strip()]
-        if len(response_lines) < min_lines:
-            raise ValueError(
-                f"Essay validation failed: only {len(response_lines)} non-empty lines, minimum required {min_lines}"
-            )
+    _validate_min_lines("essay", raw_text, min_lines)
 
     # Success: write parsed identity if available
     if isinstance(parsed, str):
@@ -485,12 +489,7 @@ def execute_evaluation_llm(
     )
 
     # Validations after raw write (like draft)
-    if isinstance(min_lines, int) and min_lines > 0:
-        response_lines = [ln for ln in str(raw_text).split("\n") if ln.strip()]
-        if len(response_lines) < min_lines:
-            raise ValueError(
-                f"Evaluation validation failed: only {len(response_lines)} non-empty lines, minimum required {min_lines}"
-            )
+    _validate_min_lines("evaluation", raw_text, min_lines)
 
     # Success: write parsed if available
     if isinstance(parsed, str):
