@@ -720,23 +720,30 @@ def evaluation_prompt_asset(context) -> str:
     persistence for prompts.
     """
     gen_id = context.partition_key
-    from pathlib import Path as _Path
     from dagster import Failure as _Failure, MetadataValue as _MV
     # Lazy imports to avoid circular imports at module import time
-    from daydreaming_dagster.utils.membership_lookup import find_membership_row_by_gen
-    from daydreaming_dagster.assets._helpers import load_generation_parsed_text
+    from daydreaming_dagster.assets._helpers import (
+        require_membership_row,
+        load_generation_parsed_text,
+    )
 
-    data_root = _Path(getattr(context.resources, "data_root", "data"))
-    mrow, _cohort = find_membership_row_by_gen(data_root, "evaluation", str(gen_id))
-    parent_gen_id = mrow.get("parent_gen_id") if mrow is not None else None
-    evaluation_template = mrow.get("template_id") if mrow is not None else None
-    if not (isinstance(parent_gen_id, str) and parent_gen_id.strip()):
+    row, _cohort = require_membership_row(
+        context,
+        "evaluation",
+        str(gen_id),
+        require_columns=["parent_gen_id", "template_id"],
+    )
+    parent_gen_id = str(row.get("parent_gen_id") or "").strip()
+    evaluation_template = str(row.get("template_id") or "").strip()
+    if not parent_gen_id:
         raise _Failure(
             description="Missing parent_gen_id for evaluation task",
             metadata={
                 "function": _MV.text("evaluation_prompt"),
                 "gen_id": _MV.text(str(gen_id)),
-                "resolution": _MV.text("Ensure evaluation row exists in cohort membership with a valid parent_gen_id"),
+                "resolution": _MV.text(
+                    "Ensure evaluation row exists in cohort membership with a valid parent_gen_id"
+                ),
             },
         )
     # Load target essay parsed text via shared helper (emits helpful Failure metadata)
@@ -803,22 +810,10 @@ def draft_prompt_asset(context, content_combinations) -> str:
     gen_id = context.partition_key
     from pathlib import Path as _Path
     from dagster import Failure as _Failure, MetadataValue as _MV
-    from daydreaming_dagster.utils.membership_lookup import find_membership_row_by_gen
+    from daydreaming_dagster.assets._helpers import require_membership_row
 
     # Read membership to resolve combo/template
-    data_root = _Path(getattr(context.resources, "data_root", "data"))
-    row, _cohort = find_membership_row_by_gen(data_root, "draft", str(gen_id))
-    if row is None:
-        raise _Failure(
-            description="Cohort membership row not found for draft gen_id",
-            metadata={
-                "function": _MV.text("draft_prompt"),
-                "gen_id": _MV.text(str(gen_id)),
-                "resolution": _MV.text(
-                    "Materialize cohort_id,cohort_membership to register this gen_id; use that partition key"
-                ),
-            },
-        )
+    row, _cohort = require_membership_row(context, "draft", str(gen_id))
     combo_id = str(row.get("combo_id") or "")
     template_name = str(row.get("template_id") or row.get("draft_template") or "")
 
