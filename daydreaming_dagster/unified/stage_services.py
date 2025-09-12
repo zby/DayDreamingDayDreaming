@@ -821,3 +821,156 @@ __all__ += [
     "evaluation_prompt_asset",
     "evaluation_response_asset",
 ]
+
+
+# --------------------
+# Asset-style entrypoints for Draft stage
+# --------------------
+
+def draft_prompt_asset(context, content_combinations) -> str:
+    """Asset-compatible draft prompt generation.
+
+    Mirrors existing asset behavior: resolves membership row, locates the
+    content combination, renders the draft template, returns prompt text, and
+    logs context info. IO manager persists the prompt, no file writes here.
+    """
+    gen_id = context.partition_key
+    from pathlib import Path as _Path
+    from dagster import Failure as _Failure, MetadataValue as _MV
+    from daydreaming_dagster.utils.membership_lookup import find_membership_row_by_gen
+
+    # Read membership to resolve combo/template
+    data_root = _Path(getattr(context.resources, "data_root", "data"))
+    row, _cohort = find_membership_row_by_gen(data_root, "draft", str(gen_id))
+    if row is None:
+        raise _Failure(
+            description="Cohort membership row not found for draft gen_id",
+            metadata={
+                "function": _MV.text("draft_prompt"),
+                "gen_id": _MV.text(str(gen_id)),
+                "resolution": _MV.text(
+                    "Materialize cohort_id,cohort_membership to register this gen_id; use that partition key"
+                ),
+            },
+        )
+    combo_id = str(row.get("combo_id") or "")
+    template_name = str(row.get("template_id") or row.get("draft_template") or "")
+
+    # Resolve content combination; curated combos are provided via content_combinations
+    content_combination = next((c for c in content_combinations if c.combo_id == combo_id), None)
+    if content_combination is None:
+        available_combos = [combo.combo_id for combo in content_combinations[:5]]
+        raise _Failure(
+            description=f"Content combination '{combo_id}' not found in combinations database",
+            metadata={
+                "combo_id": _MV.text(combo_id),
+                "available_combinations_sample": _MV.text(str(available_combos)),
+                "total_combinations": _MV.int(len(content_combinations)),
+            },
+        )
+
+    try:
+        prompt = render_template("draft", template_name, {"concepts": content_combination.contents})
+    except FileNotFoundError as e:
+        raise _Failure(
+            description=f"Draft template '{template_name}' not found",
+            metadata={
+                "template_name": _MV.text(template_name),
+                "phase": _MV.text("draft"),
+                "error": _MV.text(str(e)),
+                "resolution": _MV.text("Ensure the template exists in data/1_raw/templates/draft/"),
+            },
+        )
+    except Exception as e:
+        templates_root = Path(os.environ.get("GEN_TEMPLATES_ROOT", "data/1_raw/templates"))
+        template_path = templates_root / "draft" / f"{template_name}.txt"
+        raise _Failure(
+            description=f"Error rendering draft template '{template_name}'",
+            metadata={
+                "template_name": _MV.text(template_name),
+                "phase": _MV.text("draft"),
+                "template_path": _MV.path(str(template_path)),
+                "jinja_message": _MV.text(str(e)),
+            },
+        ) from e
+
+    context.log.info(f"Generated draft prompt for gen {gen_id} using template {template_name}")
+    return prompt
+
+
+def draft_response_asset(context, draft_prompt) -> str:
+    """Asset-compatible draft response generation.
+
+    Delegates to execute_draft_llm and emits the same output metadata.
+    """
+    gen_id = context.partition_key
+    from pathlib import Path as _Path
+    from dagster import Failure as _Failure, MetadataValue as _MV
+    from daydreaming_dagster.assets._helpers import (
+        require_membership_row,
+        emit_standard_output_metadata,
+        get_run_id,
+    )
+
+    # Resolve model/template from cohort membership (required columns enforced)
+    data_root = _Path(getattr(context.resources, "data_root", "data"))
+    row, cohort = require_membership_row(
+        context,
+        "draft",
+        str(gen_id),
+        require_columns=["llm_model_id"],
+    )
+    model_id = str(row.get("llm_model_id") or "").strip()
+    template_id = str(row.get("template_id") or row.get("draft_template") or "").strip()
+    if not model_id:
+        raise _Failure(
+            description="Missing generation model for draft task",
+            metadata={
+                "function": _MV.text("draft_response"),
+                "gen_id": _MV.text(str(gen_id)),
+                "resolution": _MV.text(
+                    "Ensure cohort membership contains llm_model_id for this draft"
+                ),
+            },
+        )
+
+    # Execute via stage_services (writes files; parses via CSV fallback when configured)
+    result = execute_draft_llm(
+        llm=context.resources.openrouter_client,
+        out_dir=data_root / "gens",
+        gen_id=str(gen_id),
+        template_id=template_id,
+        prompt_text=str(draft_prompt) if isinstance(draft_prompt, str) else "",
+        model=model_id,
+        data_root=data_root,
+        max_tokens=getattr(context.resources.experiment_config, "draft_generation_max_tokens", None),
+        min_lines=int(getattr(context.resources.experiment_config, "min_draft_lines", 3)),
+        fail_on_truncation=True,
+        parser_name=None,
+        parent_gen_id=None,
+        metadata_extra={
+            "function": "draft_response",
+            "cohort_id": str(cohort) if isinstance(cohort, str) and cohort else None,
+            "combo_id": str(row.get("combo_id") or "") or None,
+            "run_id": get_run_id(context),
+        },
+    )
+
+    # Emit standard Dagster metadata for UI
+    emit_standard_output_metadata(
+        context,
+        function="draft_response",
+        gen_id=str(gen_id),
+        result=result,
+        extras={
+            "parser_name": (result.metadata or {}).get("parser_name"),
+        },
+    )
+
+    return str(result.parsed_text or result.raw_text or "")
+
+
+__all__ += [
+    "draft_prompt_asset",
+    "draft_response_asset",
+]
