@@ -5,12 +5,10 @@ Asset definitions for the draft (Phase‑1) generation stage.
 """
 
 from dagster import asset, Failure, MetadataValue
-import pandas as pd
 from pathlib import Path
  
 import os
 from .partitions import draft_gens_partitions
-from ..utils.raw_readers import read_draft_templates
 from ..unified.stage_runner import StageRunner, StageRunSpec
 from ..utils.membership_lookup import find_membership_row_by_gen
 from ..constants import DRAFT
@@ -127,33 +125,13 @@ def _draft_response_impl(context, draft_prompt, **_kwargs) -> str:
         out_dir=data_root / "gens",
         mode="llm",
         model=model_id,
-        parser_name=None,  # set below if CSV defines it
+        parser_name=None,  # allow runner to resolve from CSV when present
         max_tokens=context.resources.experiment_config.draft_generation_max_tokens,
         prompt_text=str(draft_prompt) if isinstance(draft_prompt, str) else "",
         min_lines=int(getattr(context.resources.experiment_config, "min_draft_lines", 3)),
     )
 
-    # Parse RAW response according to draft template's parser (identity if unspecified)
-    draft_template = None
-    try:
-        draft_template = str(row.get("template_id") or row.get("draft_template") or "").strip()
-    except Exception:
-        draft_template = None
-    parser_name = None
-    try:
-        df = read_draft_templates(Path(data_root), filter_active=False)
-        if not df.empty and "parser" in df.columns and isinstance(draft_template, str):
-            row = df[df["template_id"] == draft_template]
-            if not row.empty:
-                val = row.iloc[0].get("parser")
-                if val is not None and not pd.isna(val):
-                    s = val.strip() if isinstance(val, str) else str(val).strip()
-                    if s:
-                        parser_name = s
-    except Exception:
-        parser_name = None
-    # Set parser into spec to let runner try parsing
-    spec.parser_name = parser_name
+    # Let the runner resolve parser by template when not explicitly set
     # Pass contextual extras for metadata
     run_id = getattr(getattr(context, "run", object()), "run_id", None) or getattr(context, "run_id", None)
     combo_id = str(row.get("combo_id") or "")
@@ -167,8 +145,9 @@ def _draft_response_impl(context, draft_prompt, **_kwargs) -> str:
     raw_text = result.get("raw") or ""
     parsed_text = result.get("parsed") or raw_text
     response_lines = [line.strip() for line in raw_text.split("\n") if line.strip()]
+    parser_used = (result.get("metadata", {}) or {}).get("parser_name") or "identity"
     context.log.info(
-        f"Generated draft response for gen {gen_id} ({len(response_lines)} raw lines); parser={parser_name or 'identity'}"
+        f"Generated draft response for gen {gen_id} ({len(response_lines)} raw lines); parser={parser_used}"
     )
     context.add_output_metadata(
         {
@@ -176,7 +155,7 @@ def _draft_response_impl(context, draft_prompt, **_kwargs) -> str:
             "gen_id": MetadataValue.text(str(gen_id)),
             "raw_line_count": MetadataValue.int(len(response_lines)),
             "parsed_chars": MetadataValue.int(len(parsed_text)),
-            "parser": MetadataValue.text(parser_name or "identity"),
+            "parser": MetadataValue.text(parser_used),
             "finish_reason": MetadataValue.text(str((result.get("info") or {}).get("finish_reason"))),
             "truncated": MetadataValue.bool(bool((result.get("info") or {}).get("truncated"))),
         }

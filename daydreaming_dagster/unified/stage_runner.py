@@ -160,7 +160,27 @@ class StageRunner:
         # Enforce truncation policy
         if bool(spec.fail_on_truncation) and isinstance(info, dict) and info.get("truncated"):
             raise ValueError("LLM response appears truncated (finish_reason=length or max_tokens hit)")
-        parsed = self._parse(spec.stage, normalized, spec.parser_name)
+        # Determine effective parser_name for drafts if not provided
+        effective_parser = spec.parser_name
+        try:
+            if spec.stage == "draft" and not (isinstance(effective_parser, str) and effective_parser.strip()):
+                # Attempt to resolve from CSV: <data_root>/1_raw/draft_templates.csv
+                data_root = Path(spec.out_dir).parent
+                from daydreaming_dagster.utils.raw_readers import read_draft_templates
+
+                df = read_draft_templates(Path(data_root), filter_active=False)
+                if not df.empty and "parser" in df.columns:
+                    row = df[df["template_id"].astype(str) == str(spec.template_id)]
+                    if not row.empty:
+                        val = row.iloc[0].get("parser")
+                        if val is not None:
+                            s = str(val).strip()
+                            effective_parser = s or None
+        except Exception:
+            # Best-effort; leave parser unset on any failure
+            pass
+
+        parsed = self._parse(spec.stage, normalized, effective_parser)
         if parsed is not None:
             self._write_atomic(stage_dir / "parsed.txt", parsed)
 
@@ -170,7 +190,7 @@ class StageRunner:
             "template_id": spec.template_id,
             "llm_model_id": spec.model,
             **({"parent_gen_id": spec.parent_gen_id} if spec.parent_gen_id else {}),
-            "parser_name": spec.parser_name,
+            "parser_name": effective_parser,
             "mode": "llm",
             "files": {
                 "prompt": str((stage_dir / "prompt.txt").resolve()),
