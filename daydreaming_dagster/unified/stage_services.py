@@ -172,7 +172,9 @@ def execute_llm(
             raise ValueError("parser_name is required for evaluation stage")
 
     # Parse via registry
+    print(f"Using parser '{parser_name}' for stage '{stage}'")
     parsed = parse_text(stage, raw_text, parser_name)
+    print(f"Parsed text (first 100 chars): {str(parsed)[:100]!r}")
     if stage == "essay" and not isinstance(parsed, str):
         parsed = str(raw_text)
 
@@ -586,6 +588,8 @@ def response_asset(context, prompt_text, stage: Stage) -> str:
         result=result,
     )
     context.log.info(f"Generated {stage} response for gen {gen_id}")
+    if stage == "draft":
+        return str(result.parsed_text or result.raw_text or "")
     return result.raw_text or ""
 
 def essay_response_asset(context, essay_prompt) -> str:
