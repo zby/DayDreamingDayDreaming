@@ -11,7 +11,6 @@ from pathlib import Path
 import os
 from .partitions import draft_gens_partitions
 from ..utils.raw_readers import read_draft_templates
-from ..utils.draft_parsers import get_draft_parser
 from ..unified.stage_runner import StageRunner, StageRunSpec
 from ..utils.membership_lookup import find_membership_row_by_gen
 from ..constants import DRAFT, FILE_RAW
