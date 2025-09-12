@@ -119,7 +119,9 @@ class StageRunner:
                 "mode": "copy",
                 "llm_model_id": spec.model,
                 **({"parent_gen_id": spec.parent_gen_id} if spec.parent_gen_id else {}),
-                "files": {},  # filled implicitly by readers
+                "files": {
+                    "parsed": str((stage_dir / "parsed.txt").resolve()),
+                },
                 "duration_s": round(time.time() - t0, 3),
             }
             if spec.metadata_extra:
@@ -154,7 +156,10 @@ class StageRunner:
             **({"parent_gen_id": spec.parent_gen_id} if spec.parent_gen_id else {}),
             "parser_name": None,
             "mode": "llm",
-            "files": {},
+            "files": {
+                "prompt": str((stage_dir / "prompt.txt").resolve()),
+                "raw": str((stage_dir / "raw.txt").resolve()),
+            },
             "finish_reason": None,
             "truncated": False,
             "usage": None,
@@ -234,5 +239,6 @@ class StageRunner:
             raise ValueError("LLM response appears truncated (finish_reason=length or max_tokens hit)")
         # Success path: write parsed if available
         if isinstance(parsed, str):
+            meta["files"]["parsed"] = str((stage_dir / "parsed.txt").resolve())
             gen.write_files(spec.out_dir, write_raw=False, write_parsed=True, write_prompt=False, write_metadata=False)
         return {"prompt": prompt, "raw": normalized, "parsed": parsed, "metadata": meta, "info": info}
