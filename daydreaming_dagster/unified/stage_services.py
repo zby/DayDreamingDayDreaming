@@ -665,14 +665,14 @@ def evaluation_prompt_asset(context) -> str:
 def evaluation_response_asset(context, evaluation_prompt) -> str:
     """Asset-compatible evaluation response execution.
 
-    Delegates to execute_llm with internal parser resolution; emits
-    the same output metadata as the previous asset.
+    Delegates to execute_llm with internal parser resolution. Requires the
+    upstream evaluation_prompt to be provided by the dependency and does not
+    re-render the prompt here (IO manager owns persistence of prompts).
     """
     gen_id = context.partition_key
     from pathlib import Path as _Path
     from daydreaming_dagster.assets._helpers import (
         require_membership_row,
-        load_generation_parsed_text,
         emit_standard_output_metadata,
         get_run_id,
     )
@@ -688,20 +688,27 @@ def evaluation_response_asset(context, evaluation_prompt) -> str:
     evaluation_template = str(row.get("template_id") or "").strip()
     parent_gen_id = str(row.get("parent_gen_id") or "").strip()
 
-    # Execute via stage_services; prefer prompt text passed from dependency
+    # Validation: require upstream prompt from dependency (no re-render here)
+    if not isinstance(evaluation_prompt, str) or not evaluation_prompt.strip():
+        raise Failure(
+            description="Upstream evaluation_prompt is missing or empty",
+            metadata={
+                "function": MetadataValue.text("evaluation_response"),
+                "gen_id": MetadataValue.text(str(gen_id)),
+                "resolution": MetadataValue.text(
+                    "Ensure evaluation_prompt is materialized and wired as a dependency"
+                ),
+            },
+        )
+
+    # Execute via stage_services using provided prompt
     result = execute_llm(
         stage="evaluation",
         llm=context.resources.openrouter_client,
         root_dir=data_root,
         gen_id=str(gen_id),
         template_id=evaluation_template,
-        prompt_text=str(evaluation_prompt)
-        if isinstance(evaluation_prompt, str)
-        else render_template(
-            "evaluation",
-            evaluation_template,
-            {"response": load_generation_parsed_text(context, "essay", parent_gen_id, failure_fn_name="evaluation_response")},
-        ),
+        prompt_text=str(evaluation_prompt),
         model=model_name,
         max_tokens=getattr(context.resources.experiment_config, "evaluation_max_tokens", None),
         min_lines=None,
