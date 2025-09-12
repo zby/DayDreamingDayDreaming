@@ -88,5 +88,5 @@ def test_draft_parser_fallback_produces_parsed_text_when_configured(tiny_data_ro
     ddir = tiny_data_root / "gens" / "draft" / draft_id
     assert (ddir / "parsed.txt").exists()
     assert (ddir / "parsed.txt").read_text(encoding="utf-8").strip() == "Parsed Body"
-    # Also ensure function return matches parsed text
-    assert parsed.strip() == "Parsed Body"
+    # Function returns raw text uniformly; parsed file holds the extracted body
+    assert "Parsed Body" in parsed

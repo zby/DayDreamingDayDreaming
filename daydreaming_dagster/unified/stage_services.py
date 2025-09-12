@@ -588,8 +588,7 @@ def response_asset(context, prompt_text, stage: Stage) -> str:
         result=result,
     )
     context.log.info(f"Generated {stage} response for gen {gen_id}")
-    if stage == "draft":
-        return str(result.parsed_text or result.raw_text or "")
+    # Uniform return shape across stages: raw model output
     return result.raw_text or ""
 
 def essay_response_asset(context, essay_prompt) -> str:
