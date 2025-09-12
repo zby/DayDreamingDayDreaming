@@ -135,6 +135,113 @@ def parse_text(stage: Stage, raw_text: str, parser_name: Optional[str]) -> Optio
         return None
 
 
+def _execute_llm(
+    *,
+    stage: Stage,
+    llm: LLMClientProto,
+    root_dir: Path,
+    gen_id: str,
+    template_id: str,
+    prompt_text: str,
+    model: str,
+    max_tokens: Optional[int],
+    min_lines: Optional[int] = None,
+    fail_on_truncation: bool = True,
+    parent_gen_id: Optional[str] = None,
+    metadata_extra: Optional[Dict[str, Any]] = None,
+) -> ExecutionResult:
+    """Unified LLM execution for draft/essay/evaluation.
+
+    Differences by stage:
+    - draft: parent_gen_id optional; parser best-effort; parsed may be None.
+    - essay: parent_gen_id required; parser resolved from CSV (typically 'identity'); parsed falls back to raw.
+    - evaluation: parent_gen_id required; parser required; parsed must exist.
+    """
+    if stage in ("essay", "evaluation"):
+        if not (isinstance(parent_gen_id, str) and parent_gen_id.strip()):
+            raise ValueError("parent_gen_id is required for essay and evaluation stages")
+
+    t0 = time.time()
+    raw_text, info = generate_llm(llm, prompt_text, model=model, max_tokens=max_tokens)
+
+    # Resolve parser uniformly from templates; default to identity hint for essay
+    default_hint = "identity" if stage == "essay" else None
+    parser_name = resolve_parser_name(Path(root_dir), stage, template_id, default_hint)
+    if stage == "evaluation":
+        if not (isinstance(parser_name, str) and parser_name.strip()):
+            raise ValueError("parser_name is required for evaluation stage")
+
+    # Parse via registry
+    parsed = parse_text(stage, raw_text, parser_name)
+    if stage == "essay" and not isinstance(parsed, str):
+        parsed = str(raw_text)
+
+    out_dir = Path(root_dir) / "gens"
+    base = out_dir / str(stage) / str(gen_id)
+
+    # Base metadata
+    meta: Dict[str, Any] = _base_meta(
+        stage=stage,
+        gen_id=str(gen_id),
+        template_id=template_id,
+        model=model,
+        parent_gen_id=str(parent_gen_id) if parent_gen_id else None,
+        mode="llm",
+    )
+    meta["files"] = {"raw": str((base / "raw.txt").resolve())}
+    meta.update(
+        {
+            "parser_name": parser_name,
+            "finish_reason": (info or {}).get("finish_reason") if isinstance(info, dict) else None,
+            "truncated": bool((info or {}).get("truncated")) if isinstance(info, dict) else False,
+            "usage": (info or {}).get("usage") if isinstance(info, dict) else None,
+            "duration_s": round(time.time() - t0, 3),
+        }
+    )
+    _merge_extras(meta, metadata_extra)
+
+    # First write: raw + metadata
+    write_generation(
+        out_dir=out_dir,
+        stage=stage,
+        gen_id=str(gen_id),
+        parent_gen_id=str(parent_gen_id) if parent_gen_id else None,
+        prompt_text=prompt_text,
+        raw_text=raw_text,
+        parsed_text=parsed,
+        metadata=meta,
+        write_raw=True,
+        write_parsed=False,
+        write_prompt=False,
+        write_metadata=True,
+    )
+
+    # Validations
+    _validate_min_lines(stage, raw_text, min_lines)
+    if bool(fail_on_truncation) and isinstance(info, dict) and info.get("truncated"):
+        raise ValueError("LLM response appears truncated (finish_reason=length or max_tokens hit)")
+
+    # Success: write parsed if available
+    if isinstance(parsed, str):
+        meta["files"]["parsed"] = str((base / "parsed.txt").resolve())
+        write_generation(
+            out_dir=out_dir,
+            stage=stage,
+            gen_id=str(gen_id),
+            parent_gen_id=str(parent_gen_id) if parent_gen_id else None,
+            prompt_text=None,
+            raw_text=None,
+            parsed_text=parsed,
+            metadata=meta,
+            write_raw=False,
+            write_parsed=True,
+            write_prompt=False,
+            write_metadata=False,
+        )
+
+    return ExecutionResult(prompt_text=prompt_text, raw_text=raw_text, parsed_text=parsed, info=info, metadata=meta)
+
+
 # parse_draft/parse_evaluation removed in favor of unified parse_text
 
 
@@ -255,82 +362,19 @@ def execute_draft_llm(
     parent_gen_id: Optional[str] = None,
     metadata_extra: Optional[Dict[str, Any]] = None,
 ) -> ExecutionResult:
-    t0 = time.time()
-    # Call LLM
-    raw_text, info = generate_llm(llm, prompt_text, model=model, max_tokens=max_tokens)
-
-    # Resolve parser name uniformly from templates file
-    effective_parser = resolve_parser_name(Path(root_dir), "draft", template_id, None)
-
-    # Parse draft (best-effort)
-    parsed = parse_text("draft", raw_text, effective_parser)
-
-    # Build metadata early
-    out_dir = Path(root_dir) / "gens"
-    base = out_dir / "draft" / str(gen_id)
-    meta: Dict[str, Any] = _base_meta(
+    return _execute_llm(
         stage="draft",
-        gen_id=str(gen_id),
+        llm=llm,
+        root_dir=root_dir,
+        gen_id=gen_id,
         template_id=template_id,
-        model=model,
-        parent_gen_id=str(parent_gen_id) if parent_gen_id else None,
-        mode="llm",
-    )
-    meta["files"] = {
-        "raw": str((base / "raw.txt").resolve()),
-    }
-    meta.update(
-        {
-            "parser_name": effective_parser,
-            "finish_reason": (info or {}).get("finish_reason") if isinstance(info, dict) else None,
-            "truncated": bool((info or {}).get("truncated")) if isinstance(info, dict) else False,
-            "usage": (info or {}).get("usage") if isinstance(info, dict) else None,
-            "duration_s": round(time.time() - t0, 3),
-        }
-    )
-    _merge_extras(meta, metadata_extra)
-
-    # First write: prompt/raw/metadata for debuggability
-    write_generation(
-        out_dir=out_dir,
-        stage="draft",
-        gen_id=str(gen_id),
-        parent_gen_id=str(parent_gen_id) if parent_gen_id else None,
         prompt_text=prompt_text,
-        raw_text=raw_text,
-        parsed_text=parsed,
-        metadata=meta,
-        write_raw=True,
-        write_parsed=False,
-        write_prompt=False,
-        write_metadata=True,
-    )
-
-    # Validations after raw write
-    _validate_min_lines("draft", raw_text, min_lines)
-    if bool(fail_on_truncation) and isinstance(info, dict) and info.get("truncated"):
-        raise ValueError("LLM response appears truncated (finish_reason=length or max_tokens hit)")
-
-    # Success: write parsed if available
-    if isinstance(parsed, str):
-        meta["files"]["parsed"] = str((base / "parsed.txt").resolve())
-        write_generation(
-            out_dir=out_dir,
-            stage="draft",
-            gen_id=str(gen_id),
-            parent_gen_id=str(parent_gen_id) if parent_gen_id else None,
-            prompt_text=None,
-            raw_text=None,
-            parsed_text=parsed,
-            metadata=meta,
-            write_raw=False,
-            write_parsed=True,
-            write_prompt=False,
-            write_metadata=False,
-        )
-
-    return ExecutionResult(
-        prompt_text=prompt_text, raw_text=raw_text, parsed_text=parsed, info=info, metadata=meta
+        model=model,
+        max_tokens=max_tokens,
+        min_lines=min_lines,
+        fail_on_truncation=fail_on_truncation,
+        parent_gen_id=parent_gen_id,
+        metadata_extra=metadata_extra,
     )
 
 
@@ -348,73 +392,20 @@ def execute_essay_llm(
     parent_gen_id: str,
     metadata_extra: Optional[Dict[str, Any]] = None,
 ) -> ExecutionResult:
-    t0 = time.time()
-    # Resolve parser name uniformly via resolver (default to identity for essays)
-    parser_name = resolve_parser_name(Path(root_dir), "essay", template_id, "identity")
-    raw_text, info = generate_llm(llm, prompt_text, model=model, max_tokens=max_tokens)
-    # Essay identity parse via unified parse_text for consistency
-    parsed = parse_text("essay", raw_text, parser_name) or str(raw_text)
-
-    out_dir = Path(root_dir) / "gens"
-    base = out_dir / "essay" / str(gen_id)
-    meta: Dict[str, Any] = _base_meta(
-        stage="essay", gen_id=str(gen_id), template_id=template_id, model=model, parent_gen_id=str(parent_gen_id), mode="llm"
-    )
-    meta["files"] = {
-        "raw": str((base / "raw.txt").resolve()),
-    }
-    meta.update(
-        {
-            "parser_name": parser_name,
-            "finish_reason": (info or {}).get("finish_reason") if isinstance(info, dict) else None,
-            "truncated": bool((info or {}).get("truncated")) if isinstance(info, dict) else False,
-            "usage": (info or {}).get("usage") if isinstance(info, dict) else None,
-            "duration_s": round(time.time() - t0, 3),
-        }
-    )
-    _merge_extras(meta, metadata_extra)
-    # First write: prompt/raw/metadata for debuggability
-    write_generation(
-        out_dir=out_dir,
+    return _execute_llm(
         stage="essay",
-        gen_id=str(gen_id),
-        parent_gen_id=str(parent_gen_id),
+        llm=llm,
+        root_dir=root_dir,
+        gen_id=gen_id,
+        template_id=template_id,
         prompt_text=prompt_text,
-        raw_text=raw_text,
-        parsed_text=None,
-        metadata=meta,
-        write_raw=True,
-        write_parsed=False,
-        write_prompt=False,
-        write_metadata=True,
+        model=model,
+        max_tokens=max_tokens,
+        min_lines=min_lines,
+        fail_on_truncation=fail_on_truncation,
+        parent_gen_id=parent_gen_id,
+        metadata_extra=metadata_extra,
     )
-
-    # Validations after raw write (like draft)
-    _validate_min_lines("essay", raw_text, min_lines)
-
-    # Truncation check
-    if bool(fail_on_truncation) and isinstance(info, dict) and info.get("truncated"):
-        raise ValueError("LLM response appears truncated (finish_reason=length or max_tokens hit)")
-
-    # Success: write parsed identity if available
-    if isinstance(parsed, str):
-        meta["files"]["parsed"] = str((base / "parsed.txt").resolve())
-        write_generation(
-            out_dir=out_dir,
-            stage="essay",
-            gen_id=str(gen_id),
-            parent_gen_id=str(parent_gen_id),
-            prompt_text=None,
-            raw_text=None,
-            parsed_text=parsed,
-            metadata=meta,
-            write_raw=False,
-            write_parsed=True,
-            write_prompt=False,
-            write_metadata=False,
-        )
-
-    return ExecutionResult(prompt_text=prompt_text, raw_text=raw_text, parsed_text=parsed, info=info, metadata=meta)
 
 
 def execute_evaluation_llm(
@@ -431,79 +422,20 @@ def execute_evaluation_llm(
     parent_gen_id: str,
     metadata_extra: Optional[Dict[str, Any]] = None,
 ) -> ExecutionResult:
-    # Resolve parser via unified resolver; require a valid name for evaluation.
-    parser_name = resolve_parser_name(Path(root_dir), "evaluation", template_id, None)
-    if not (isinstance(parser_name, str) and parser_name.strip()):
-        raise ValueError("parser_name is required for evaluation stage")
-    t0 = time.time()
-    raw_text, info = generate_llm(llm, prompt_text, model=model, max_tokens=max_tokens)
-    parsed = parse_text("evaluation", raw_text, parser_name)
-
-    out_dir = Path(root_dir) / "gens"
-    base = out_dir / "evaluation" / str(gen_id)
-    meta: Dict[str, Any] = _base_meta(
+    return _execute_llm(
         stage="evaluation",
-        gen_id=str(gen_id),
+        llm=llm,
+        root_dir=root_dir,
+        gen_id=gen_id,
         template_id=template_id,
-        model=model,
-        parent_gen_id=str(parent_gen_id),
-        mode="llm",
-    )
-    meta["files"] = {
-        "raw": str((base / "raw.txt").resolve()),
-    }
-    meta.update(
-        {
-            "parser_name": parser_name,
-            "finish_reason": (info or {}).get("finish_reason") if isinstance(info, dict) else None,
-            "truncated": bool((info or {}).get("truncated")) if isinstance(info, dict) else False,
-            "usage": (info or {}).get("usage") if isinstance(info, dict) else None,
-            "duration_s": round(time.time() - t0, 3),
-        }
-    )
-    _merge_extras(meta, metadata_extra)
-    # First write: prompt/raw/metadata for debuggability
-    write_generation(
-        out_dir=out_dir,
-        stage="evaluation",
-        gen_id=str(gen_id),
-        parent_gen_id=str(parent_gen_id),
         prompt_text=prompt_text,
-        raw_text=raw_text,
-        parsed_text=None,
-        metadata=meta,
-        write_raw=True,
-        write_parsed=False,
-        write_prompt=False,
-        write_metadata=True,
+        model=model,
+        max_tokens=max_tokens,
+        min_lines=min_lines,
+        fail_on_truncation=fail_on_truncation,
+        parent_gen_id=parent_gen_id,
+        metadata_extra=metadata_extra,
     )
-
-    # Validations after raw write (like draft)
-    _validate_min_lines("evaluation", raw_text, min_lines)
-
-    # Truncation check
-    if bool(fail_on_truncation) and isinstance(info, dict) and info.get("truncated"):
-        raise ValueError("LLM response appears truncated (finish_reason=length or max_tokens hit)")
-
-    # Success: write parsed if available
-    if isinstance(parsed, str):
-        meta["files"]["parsed"] = str((base / "parsed.txt").resolve())
-        write_generation(
-            out_dir=out_dir,
-            stage="evaluation",
-            gen_id=str(gen_id),
-            parent_gen_id=str(parent_gen_id),
-            prompt_text=None,
-            raw_text=None,
-            parsed_text=parsed,
-            metadata=meta,
-            write_raw=False,
-            write_parsed=True,
-            write_prompt=False,
-            write_metadata=False,
-        )
-
-    return ExecutionResult(prompt_text=prompt_text, raw_text=raw_text, parsed_text=parsed, info=info, metadata=meta)
 
 
 __all__ = [
