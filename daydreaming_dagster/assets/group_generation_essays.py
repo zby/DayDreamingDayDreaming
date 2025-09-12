@@ -6,17 +6,14 @@ Asset definitions for the essay (Phase‑2) generation stage.
 
 from dagster import asset, Failure, MetadataValue
 from pathlib import Path
-from jinja2 import Environment
 from .partitions import essay_gens_partitions
-from ..utils.template_loader import load_generation_template
 from ..utils.raw_readers import read_essay_templates
 from ..utils.membership_lookup import find_membership_row_by_gen
 from ..utils.generation import Generation
 from ..unified.stage_runner import StageRunner, StageRunSpec
 from ..constants import DRAFT, ESSAY
 
-# Reuse a single Jinja environment
-JINJA = Environment()
+from ..unified.stage_runner import StageRunner
 
 
 def _get_essay_generator_mode(data_root: str | Path, template_id: str) -> str:
@@ -161,8 +158,9 @@ def _essay_prompt_impl(context) -> str:
             },
         )
 
+    runner = StageRunner()
     try:
-        tmpl = load_generation_template(template_name, "essay")
+        prompt = runner.render_template("essay", template_name, {"draft_block": draft_text, "links_block": draft_text})
     except FileNotFoundError as e:
         raise Failure(
             description=f"Essay template '{template_name}' not found",
@@ -173,19 +171,16 @@ def _essay_prompt_impl(context) -> str:
                 "error": MetadataValue.text(str(e)),
             },
         )
-    # Provide both preferred and legacy variables to templates
-    # - draft_lines: list[str] of non-empty lines
-    # - draft_block: entire upstream draft text as a block
-    # - links_block: legacy alias used by historical templates
-    env = JINJA
-    template = env.from_string(tmpl)
-    # legacy-fallback: keep 'links_block' for historical templates that reference it directly.
-    # Intentionally lowercased to avoid automated sweeps that remove FALLBACK(...) tags.
-    # We are not changing historical templates, so this alias must remain.
-    prompt = template.render(
-        draft_block=draft_text,
-        links_block=draft_text,
-    )
+    except Exception as e:
+        raise Failure(
+            description=f"Error rendering essay template '{template_name}'",
+            metadata={
+                "function": MetadataValue.text("essay_prompt"),
+                "gen_id": MetadataValue.text(str(gen_id)),
+                "essay_template": MetadataValue.text(template_name),
+                "jinja_message": MetadataValue.text(str(e)),
+            },
+        )
     context.add_output_metadata(
         {
             "function": MetadataValue.text("essay_prompt"),
@@ -270,6 +265,12 @@ def _essay_response_impl(context, essay_prompt) -> str:
             out_dir=data_root / "gens",
             mode="copy",
             pass_through_from=(data_root / "gens" / DRAFT / str(parent_gen_id) / "parsed.txt"),
+            parent_gen_id=str(parent_gen_id),
+            metadata_extra={
+                "function": "essay_response",
+                "cohort_id": str(_cohort) if isinstance(_cohort, str) and _cohort else None,
+                "run_id": str(getattr(getattr(context, "run", object()), "run_id", None) or getattr(context, "run_id", None) or ""),
+            },
         )
         result = runner.run(spec, llm_client=context.resources.openrouter_client)
         context.add_output_metadata(
@@ -304,6 +305,12 @@ def _essay_response_impl(context, essay_prompt) -> str:
         mode="llm",
         model=model_id,
         max_tokens=context.resources.experiment_config.essay_generation_max_tokens,
+        parent_gen_id=str(parent_gen_id),
+        metadata_extra={
+            "function": "essay_response",
+            "cohort_id": str(_cohort) if isinstance(_cohort, str) and _cohort else None,
+            "run_id": str(getattr(getattr(context, "run", object()), "run_id", None) or getattr(context, "run_id", None) or ""),
+        },
     )
     result = runner.run(spec, llm_client=context.resources.openrouter_client)
     context.add_output_metadata(
@@ -311,7 +318,8 @@ def _essay_response_impl(context, essay_prompt) -> str:
             "function": MetadataValue.text("essay_response"),
             "gen_id": MetadataValue.text(str(gen_id)),
             "chars": MetadataValue.int(len(result.get("raw") or "")),
-            "truncated": MetadataValue.bool(False),
+            "finish_reason": MetadataValue.text(str((result.get("info") or {}).get("finish_reason"))),
+            "truncated": MetadataValue.bool(bool((result.get("info") or {}).get("truncated"))),
         }
     )
     return result.get("raw") or ""
@@ -325,78 +333,3 @@ def _essay_response_impl(context, essay_prompt) -> str:
 )
 def essay_response(context, essay_prompt) -> str:
     return _essay_response_impl(context, essay_prompt)
-    # Write to filesystem (gens)
-    import time
-    from pathlib import Path as _Path
-
-    gen_id = context.partition_key
-    mrow, cohort = find_membership_row_by_gen(getattr(context.resources, "data_root", "data"), "essay", str(gen_id))
-    if mrow is not None:
-        essay_template = mrow.get("template_id")
-        model_id = (mrow.get("llm_model_id") or None)
-        parent_gen_id = mrow.get("parent_gen_id")
-    else:
-        essay_template = None
-        model_id = None
-        parent_gen_id = None
-    generator_mode = (_get_essay_generator_mode(context.resources.data_root, essay_template) or "llm").lower()
-
-    if not (isinstance(parent_gen_id, str) and parent_gen_id and parent_gen_id.strip()):
-        raise Failure(
-            description="Missing parent_gen_id for essay doc",
-            metadata={
-                "function": MetadataValue.text("essay_response"),
-                "gen_id": MetadataValue.text(str(gen_id)),
-                "resolution": MetadataValue.text("Ensure cohort membership includes a valid parent_gen_id for this essay"),
-            },
-        )
-    gen_id_value = str(gen_id)
-    if not (isinstance(gen_id_value, str) and gen_id_value.strip()):
-        raise Failure(
-            description="Missing gen_id for essay doc",
-            metadata={
-                "function": MetadataValue.text("essay_response"),
-                "gen_id": MetadataValue.text(str(gen_id)),
-                "resolution": MetadataValue.text("Partition key must be a valid essay gen_id from cohort membership"),
-            },
-        )
-
-    gens_root = Path(getattr(context.resources, "data_root", "data")) / "gens"
-    # Build document using helper
-    run_id = getattr(getattr(context, "run", object()), "run_id", None) or getattr(context, "run_id", None)
-    metadata = build_generation_metadata(
-        stage=ESSAY,
-        gen_id=str(gen_id_value),
-        parent_gen_id=str(parent_gen_id) if parent_gen_id else None,
-        template_id=str(essay_template) if essay_template else None,
-        model_id=str(model_id) if model_id else None,
-        task_id=str(""),
-        function="essay_response",
-        run_id=str(run_id) if run_id else None,
-        cohort_id=str(cohort) if isinstance(cohort, str) and cohort else None,
-        extra={
-            "essay_template": essay_template,
-        },
-    )
-    prompt_text = essay_prompt if (generator_mode == "llm" and isinstance(essay_prompt, str)) else None
-
-    doc = Generation(
-        stage=ESSAY,
-        gen_id=gen_id_value,
-        parent_gen_id=parent_gen_id,
-        raw_text=text,
-        parsed_text=text,
-        prompt_text=prompt_text,
-        metadata=metadata,
-    )
-    target_dir = doc.write_files(gens_root)
-
-    context.add_output_metadata(
-        {
-            "gen_id": MetadataValue.text(gen_id_value),
-            "gen_dir": MetadataValue.path(str(target_dir)),
-            "parent_gen_id": MetadataValue.text(str(parent_gen_id) if parent_gen_id else ""),
-        }
-    )
-
-    return text

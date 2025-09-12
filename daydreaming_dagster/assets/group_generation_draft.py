@@ -7,16 +7,13 @@ Asset definitions for the draft (Phase‑1) generation stage.
 from dagster import asset, Failure, MetadataValue
 import pandas as pd
 from pathlib import Path
-from jinja2 import Environment, TemplateSyntaxError
+from jinja2 import Environment
 import os
 from .partitions import draft_gens_partitions
-from ..utils.template_loader import load_generation_template
 from ..utils.raw_readers import read_draft_templates
 from ..utils.draft_parsers import get_draft_parser
 from ..unified.stage_runner import StageRunner, StageRunSpec
 from ..utils.membership_lookup import find_membership_row_by_gen
-from ..utils.generation import Generation
-from ..utils.metadata import build_generation_metadata
 from ..constants import DRAFT, FILE_RAW
 
 # Reuse a single Jinja environment
@@ -64,9 +61,9 @@ def draft_prompt(
             },
         )
 
-    # Load draft template (phase 'draft')
+    runner = StageRunner()
     try:
-        template_content = load_generation_template(template_name, "draft")
+        prompt = runner.render_template("draft", template_name, {"concepts": content_combination.contents})
     except FileNotFoundError as e:
         raise Failure(
             description=f"Draft template '{template_name}' not found",
@@ -74,33 +71,21 @@ def draft_prompt(
                 "template_name": MetadataValue.text(template_name),
                 "phase": MetadataValue.text("draft"),
                 "error": MetadataValue.text(str(e)),
-                "resolution": MetadataValue.text(
-                    "Ensure the template exists in data/1_raw/templates/draft/"
-                ),
+                "resolution": MetadataValue.text("Ensure the template exists in data/1_raw/templates/draft/"),
             },
         )
-
-    # Compile template with explicit error reporting
-    try:
-        template = JINJA.from_string(template_content)
-    except TemplateSyntaxError as e:
-        # Reconstruct expected template path for better diagnostics
+    except Exception as e:
         templates_root = Path(os.environ.get("GEN_TEMPLATES_ROOT", "data/1_raw/templates"))
         template_path = templates_root / "draft" / f"{template_name}.txt"
-        preview = template_content[:300]
         raise Failure(
-            description=f"Jinja template syntax error in draft template '{template_name}'",
+            description=f"Error rendering draft template '{template_name}'",
             metadata={
                 "template_name": MetadataValue.text(template_name),
                 "phase": MetadataValue.text("draft"),
                 "template_path": MetadataValue.path(str(template_path)),
                 "jinja_message": MetadataValue.text(str(e)),
-                "error_line": MetadataValue.int(getattr(e, "lineno", 0) or 0),
-                "template_preview": MetadataValue.text(preview),
             },
         ) from e
-
-    prompt = template.render(concepts=content_combination.contents)
 
     context.log.info(f"Generated draft prompt for gen {gen_id} using template {template_name}")
     return prompt
@@ -147,6 +132,7 @@ def _draft_response_impl(context, draft_prompt, **_kwargs) -> str:
         parser_name=None,  # set below if CSV defines it
         max_tokens=context.resources.experiment_config.draft_generation_max_tokens,
         prompt_text=str(draft_prompt) if isinstance(draft_prompt, str) else "",
+        min_lines=int(getattr(context.resources.experiment_config, "min_draft_lines", 3)),
     )
 
     # Parse RAW response according to draft template's parser (identity if unspecified)
@@ -170,58 +156,33 @@ def _draft_response_impl(context, draft_prompt, **_kwargs) -> str:
         parser_name = None
     # Set parser into spec to let runner try parsing
     spec.parser_name = parser_name
+    # Pass contextual extras for metadata
+    run_id = getattr(getattr(context, "run", object()), "run_id", None) or getattr(context, "run_id", None)
+    combo_id = str(row.get("combo_id") or "")
+    spec.metadata_extra = {
+        "function": "draft_response",
+        "cohort_id": str(cohort) if isinstance(cohort, str) and cohort else None,
+        "combo_id": combo_id or None,
+        "run_id": str(run_id) if run_id else None,
+    }
     result = runner.run(spec, llm_client=context.resources.openrouter_client)
     raw_text = result.get("raw") or ""
     parsed_text = result.get("parsed") or raw_text
-    # Validate min lines after writing RAW
     response_lines = [line.strip() for line in raw_text.split("\n") if line.strip()]
-    min_lines = int(getattr(context.resources.experiment_config, "min_draft_lines", 3))
-    if len(response_lines) < min_lines:
-        raise Failure(
-            description=f"Draft response insufficient for gen {gen_id}",
-            metadata={
-                "function": MetadataValue.text("draft_response"),
-                "gen_id": MetadataValue.text(str(gen_id)),
-                "model_id": MetadataValue.text(model_id),
-                "response_line_count": MetadataValue.int(len(response_lines)),
-                "minimum_required": MetadataValue.int(min_lines),
-                "response_content_preview": MetadataValue.text(
-                    raw_text[:200] + "..." if len(raw_text) > 200 else raw_text
-                ),
-            },
-        )
-    # If parser requested but failed to produce output, raise
-    if parser_name and (result.get("parsed") is None):
-        raise Failure(
-            description="Parser returned empty/invalid text",
-            metadata={
-                "function": MetadataValue.text("draft_response"),
-                "gen_id": MetadataValue.text(str(gen_id)),
-                "draft_template": MetadataValue.text(str(draft_template)),
-                "parser": MetadataValue.text(str(parser_name)),
-            },
-        )
-
-    # Final metadata and output
     context.log.info(
         f"Generated draft response for gen {gen_id} ({len(response_lines)} raw lines); parser={parser_name or 'identity'}"
     )
-    meta = {
-        "function": MetadataValue.text("draft_response"),
-        "raw_line_count": MetadataValue.int(len(response_lines)),
-        # Intentionally omit provider model from reports to simplify
-        "max_tokens": MetadataValue.int(int(max_tokens) if isinstance(max_tokens, (int, float)) else 0),
-        "parser": MetadataValue.text(parser_name or "identity"),
-        "parsed_chars": MetadataValue.int(len(parsed_text)),
-    }
-    if raw_path_str:
-        meta.update(
-            {
-                "raw_chars": MetadataValue.int(len(normalized)),
-                "raw_path": MetadataValue.path(raw_path_str),
-            }
-        )
-    context.add_output_metadata(meta)
+    context.add_output_metadata(
+        {
+            "function": MetadataValue.text("draft_response"),
+            "gen_id": MetadataValue.text(str(gen_id)),
+            "raw_line_count": MetadataValue.int(len(response_lines)),
+            "parsed_chars": MetadataValue.int(len(parsed_text)),
+            "parser": MetadataValue.text(parser_name or "identity"),
+            "finish_reason": MetadataValue.text(str((result.get("info") or {}).get("finish_reason"))),
+            "truncated": MetadataValue.bool(bool((result.get("info") or {}).get("truncated"))),
+        }
+    )
     return parsed_text
 
 

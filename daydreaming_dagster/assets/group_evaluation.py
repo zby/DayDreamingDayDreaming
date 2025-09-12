@@ -8,7 +8,6 @@ from dagster import asset, Failure, MetadataValue
 from pathlib import Path
 from .partitions import evaluation_gens_partitions
 from ..utils.generation import Generation
-from jinja2 import Environment
 from ..utils.membership_lookup import find_membership_row_by_gen
 from ..utils.raw_readers import read_evaluation_templates
 from .raw_data import EVALUATION_TEMPLATES_KEY
@@ -66,24 +65,8 @@ def evaluation_prompt(context) -> str:
     doc_text = gen.parsed_text
     used_source = "essay_gens"
 
-    eval_df = read_evaluation_templates(Path(context.resources.data_root))
-    evaluation_templates_dict: dict[str, str] = {}
-    templates_base = Path(context.resources.data_root) / "1_raw" / "templates" / "evaluation"
-    for _, row in eval_df.iterrows():
-        template_id = row.get("template_id")
-        if not isinstance(template_id, str) or not len(template_id):
-            continue
-        fp = templates_base / f"{template_id}.txt"
-        try:
-            evaluation_templates_dict[template_id] = fp.read_text(encoding="utf-8")
-        except FileNotFoundError:
-            context.log.warning(f"Evaluation template file not found: {fp}")
-
-    template_id = str(evaluation_template)
-    template_content = evaluation_templates_dict[template_id]
-    env = Environment()
-    template = env.from_string(template_content)
-    eval_prompt = template.render(response=doc_text)
+    # Render with the same StrictUndefined Jinja as the runner
+    eval_prompt = StageRunner().render_template("evaluation", str(evaluation_template), {"response": doc_text})
     context.add_output_metadata(
         {
             "gen_id": MetadataValue.text(str(gen_id)),
@@ -183,6 +166,12 @@ def evaluation_response(context, evaluation_prompt) -> str:
         model=model_name,
         parser_name=parser_name,
         max_tokens=getattr(context.resources.experiment_config, "evaluation_max_tokens", None),
+        parent_gen_id=parent_gen_id,
+        metadata_extra={
+            "function": "evaluation_response",
+            # cohort_id is not looked up here; add if needed later
+            "run_id": str(getattr(getattr(context, "run", object()), "run_id", None) or getattr(context, "run_id", None) or ""),
+        },
     )
     result = runner.run(spec, llm_client=context.resources.openrouter_client)
 
@@ -192,7 +181,8 @@ def evaluation_response(context, evaluation_prompt) -> str:
             "gen_id": MetadataValue.text(str(gen_id)),
             "parent_gen_id": MetadataValue.text(str(parent_gen_id)),
             "finish_reason": MetadataValue.text(str(result.get("metadata", {}).get("finish_reason"))),
-        }
+            "truncated": MetadataValue.bool(bool((result.get("info") or {}).get("truncated"))),
+    }
     )
     context.log.info(f"Generated evaluation response for gen {gen_id}")
 

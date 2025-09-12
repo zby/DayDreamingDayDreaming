@@ -183,6 +183,28 @@ data/1_raw/templates/
 └── evaluation/  # Evaluator prompt templates
 ```
 
+### Unified Stage Runner
+
+The Unified Stage Runner is a single, stage‑agnostic execution path used by generation and evaluation assets to render templates, call the LLM when needed, parse outputs, and persist artifacts in the gens store.
+
+- Purpose: consolidate prompt rendering, LLM invocation, parsing, and I/O across `draft`, `essay`, and `evaluation` stages.
+- Template resolution: by `template_id` under `data/1_raw/templates/{draft,essay,evaluation}/` (Jinja with StrictUndefined; prompt assets use the same renderer).
+- Modes:
+  - `llm`: render prompt, call model, write `prompt.txt` and `raw.txt`; write `parsed.txt` if a parser is configured.
+  - `copy` (essay only): pass through the parent draft’s `parsed.txt` to the essay `parsed.txt` (no prompt/LLM).
+- Parsers:
+  - evaluation: required via `evaluation_templates.csv` `parser` column (e.g., `in_last_line`, `complex`).
+  - draft: optional; applied when present, otherwise identity.
+  - essay: not used; we keep normalized raw as parsed unless using `copy`.
+- Inputs (conceptual): stage (`draft`|`essay`|`evaluation`), `gen_id`, `template_id`, small `values` dict for template variables, `llm_model_id` (for `llm`), optional `parser_name`, optional pre‑rendered `prompt_text` (skips template render), optional `pass_through_from` for `copy`, and `parent_gen_id` for essay/evaluation.
+- Outputs (per run):
+  - `data/gens/<stage>/<gen_id>/prompt.txt` (when `llm`)
+  - `data/gens/<stage>/<gen_id>/raw.txt` (when `llm`)
+  - `data/gens/<stage>/<gen_id>/parsed.txt` (when parsed or in `copy`)
+  - `data/gens/<stage>/<gen_id>/metadata.json`
+- Contract and failures: validations live in the runner (draft min‑lines, truncation detection). Evaluation requires `parser_name` and `parent_gen_id`; essay requires `parent_gen_id`. On any failure, `raw.txt` remains written to aid debugging.
+- Configuration and authority: template CSVs are strict (generator present in all, parser required for evaluation). Membership is the authoritative source for model/template selection and parent linkage. `llm_model_id` is the canonical model key in metadata.
+
 ### 6. Results Processing (`results_processing.py`)
 
 **Assets**: `parsed_scores`, `final_results`
