@@ -121,7 +121,7 @@ def test_happy_path_draft_essay_eval_chain(tiny_data_root: Path, mock_llm, canon
     dctx = _Ctx(draft_id, tiny_data_root, _TaggedLLM())
     _ = draft_response_impl(dctx, draft_prompt_text)
 
-    # Ensure StageRunner resolves templates from the tiny_data_root
+    # Ensure templates_root resolves templates from tiny_data_root
     os.environ["GEN_TEMPLATES_ROOT"] = str(tiny_data_root / "1_raw" / "templates")
 
     # Essay (LLM mode): implement uses CSV to resolve mode and loads draft parsed text

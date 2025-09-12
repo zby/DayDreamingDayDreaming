@@ -4,10 +4,10 @@ from __future__ import annotations
 Spec builders and prompt helpers to reduce duplication in assets.
 
 These functions encapsulate common membership lookups and spec construction,
-while keeping StageRunner.run() pure and focused on execution.
+using centralized stage_services for execution.
 
 Usage notes:
-- Keep validations/policy in StageRunner where possible.
+- Keep validations/policy in stage_services or assets where appropriate.
 - Assets can call these helpers to avoid repeated membership plumbing.
 """
 
@@ -38,7 +38,7 @@ def build_prompt_from_membership(
     runner: Optional[object] = None,
     values: Optional[dict[str, Any]] = None,
 ) -> str:
-    """Render a prompt using StageRunner's StrictUndefined Jinja, based on membership.
+    """Render a prompt using the shared StrictUndefined Jinja (stage_services), based on membership.
 
     For draft, the caller should pass values including concept blocks.
     For essay/evaluation, this function expects the caller to pass a values dict
@@ -81,7 +81,7 @@ def build_generation_spec_from_membership(
 
     Returns MembershipInfo with common fields only (stage, gen_id, template_id,
     llm_model_id, parent_gen_id, cohort_id when available). Stage-specific policy
-    (generator mode, parser, token caps, validations) is left to assets or StageRunner.
+    (generator mode, parser, token caps, validations) is left to assets or stage_services.
     """
     if not isinstance(gen_id, str) or not gen_id:
         raise Failure(description="Invalid gen_id", metadata={"function": MetadataValue.text("resolve_membership_common")})
