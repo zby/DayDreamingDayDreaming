@@ -11,10 +11,7 @@ from dagster import Failure, MetadataValue
 
 from daydreaming_dagster.utils.generation import Generation
 from daydreaming_dagster.constants import DRAFT
-from daydreaming_dagster.utils.evaluation_parsing_config import (
-    load_parser_map,
-    require_parser_for_template,
-)
+# Evaluation parser config is now read uniformly via read_templates() in resolve_parser_name
 
 # Types
 Stage = Literal["draft", "essay", "evaluation"]
@@ -95,43 +92,28 @@ def resolve_parser_name(
     template_id: str,
     provided: Optional[str] = None,
 ) -> Optional[str]:
-    """Resolve a parser name for a given stage/template.
+    """Resolve parser for any stage by reading its templates CSV.
 
-    Behavior:
-    - If `provided` is a non-empty string, return it.
-    - For stage "draft": best-effort CSV fallback from draft_templates.csv (returns None on any issue).
-    - For stage "evaluation": best-effort lookup via evaluation_templates.csv using evaluation_parsing_config.
-    - For other stages: return None.
+    Always consults data/1_raw/<stage>_templates.csv and returns the 'parser' value
+    for the matching template_id. Returns None on any issue (missing file/column/id).
+    The `provided` argument is ignored for unified behavior and kept for backcompat.
     """
-    if isinstance(provided, str) and provided.strip():
-        return provided.strip()
     try:
-        if stage == "draft":
-            from daydreaming_dagster.utils.raw_readers import read_templates
+        from daydreaming_dagster.utils.raw_readers import read_templates
 
-            df = read_templates(Path(data_root), "draft", filter_active=False)
-            if df.empty or "parser" not in df.columns:
-                return None
-            row = df[df["template_id"].astype(str) == str(template_id)]
-            if row.empty:
-                return None
-            val = row.iloc[0].get("parser")
-            if val is None:
-                return None
-            s = str(val).strip()
-            return s or None
-        if stage == "evaluation":
-            # Best-effort: use evaluation_parsing_config; swallow errors and return None
-            from daydreaming_dagster.utils.evaluation_parsing_config import (
-                load_parser_map,
-                require_parser_for_template,
-            )
-
-            parser_map = load_parser_map(Path(data_root))
-            return require_parser_for_template(str(template_id), parser_map)
+        df = read_templates(Path(data_root), str(stage), filter_active=False)
+        if df.empty or "parser" not in df.columns:
+            return None
+        row = df[df["template_id"].astype(str) == str(template_id)]
+        if row.empty:
+            return None
+        val = row.iloc[0].get("parser")
+        if val is None:
+            return None
+        s = str(val).strip()
+        return s or None
     except Exception:
         return None
-    return None
 
 
 def parse_text(stage: Stage, raw_text: str, parser_name: Optional[str]) -> Optional[str]:

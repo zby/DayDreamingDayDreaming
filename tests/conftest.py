@@ -240,9 +240,9 @@ def tiny_data_root(tmp_path: Path) -> Path:
         encoding="utf-8",
     )
     (raw / "essay_templates.csv").write_text(
-        "template_id,template_name,description,generator,active\n"
-        "test-essay-llm,T Essay,Desc,llm,True\n"
-        "test-essay-copy,T Essay,Desc,copy,True\n",
+        "template_id,template_name,description,parser,generator,active\n"
+        "test-essay-llm,T Essay,Desc,identity,llm,True\n"
+        "test-essay-copy,T Essay,Desc,identity,copy,True\n",
         encoding="utf-8",
     )
     (raw / "evaluation_templates.csv").write_text(
