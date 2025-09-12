@@ -11,6 +11,13 @@ from ..utils.raw_readers import read_essay_templates
 from ..utils.membership_lookup import find_membership_row_by_gen
 from ..utils.generation import Generation
 from ..unified.stage_runner import StageRunner, StageRunSpec
+from ..unified.stage_services import render_template, execute_essay_copy, execute_essay_llm
+from ._helpers import (
+    load_generation_parsed_text,
+    resolve_essay_generator_mode,
+    emit_standard_output_metadata,
+    get_run_id,
+)
 from ..constants import DRAFT, ESSAY
 
 
@@ -136,7 +143,7 @@ def _essay_prompt_impl(context) -> str:
                 "resolution": MetadataValue.text("Ensure essay row exists in cohort membership with a valid parent_gen_id"),
             },
         )
-    draft_text, used_source = _load_phase1_text_by_parent_doc(context, str(parent_gen_id))
+    draft_text, used_source = (load_generation_parsed_text(context, "draft", str(parent_gen_id), failure_fn_name="essay_prompt"), "draft_gens_parent")
     draft_lines = [line.strip() for line in draft_text.split("\n") if line.strip()]
     # Enforce non-empty upstream draft text to avoid empty prompts
     # experiment_config is required via asset definition
@@ -156,9 +163,8 @@ def _essay_prompt_impl(context) -> str:
             },
         )
 
-    runner = StageRunner()
     try:
-        prompt = runner.render_template("essay", template_name, {"draft_block": draft_text, "links_block": draft_text})
+        prompt = render_template("essay", template_name, {"draft_block": draft_text, "links_block": draft_text})
     except FileNotFoundError as e:
         raise Failure(
             description=f"Essay template '{template_name}' not found",
@@ -219,7 +225,7 @@ def _essay_response_impl(context, essay_prompt) -> str:
     if isinstance(essay_prompt, str) and essay_prompt.strip().upper().startswith("COPY_MODE"):
         mode = "copy"
     else:
-        mode = _get_essay_generator_mode(context.resources.data_root, template_name)
+        mode = resolve_essay_generator_mode(Path(context.resources.data_root), template_name)
 
     # Load Phase‑1 draft text; prefer index when available, otherwise fall back to IO/filesystem
     if not (isinstance(parent_gen_id, str) and parent_gen_id.strip()):
@@ -251,38 +257,29 @@ def _essay_response_impl(context, essay_prompt) -> str:
             },
         )
 
-    runner = StageRunner()
     values = {"draft_block": draft_text, "links_block": draft_text}
     data_root = Path(getattr(context.resources, "data_root", "data"))
     if mode == "copy":
-        spec = StageRunSpec(
-            stage="essay",
+        result = execute_essay_copy(
+            out_dir=data_root / "gens",
             gen_id=str(gen_id),
             template_id=template_name,
-            values=values,
-            out_dir=data_root / "gens",
-            mode="copy",
-            pass_through_from=(data_root / "gens" / DRAFT / str(parent_gen_id) / "parsed.txt"),
             parent_gen_id=str(parent_gen_id),
+            pass_through_from=(data_root / "gens" / DRAFT / str(parent_gen_id) / "parsed.txt"),
             metadata_extra={
                 "function": "essay_response",
                 "cohort_id": str(_cohort) if isinstance(_cohort, str) and _cohort else None,
-                "run_id": str(getattr(getattr(context, "run", object()), "run_id", None) or getattr(context, "run_id", None) or ""),
+                "run_id": get_run_id(context),
             },
         )
-        result = runner.run(spec, llm_client=context.resources.openrouter_client)
-        context.add_output_metadata(
-            {
-                "function": MetadataValue.text("essay_response"),
-                "mode": MetadataValue.text("copy"),
-                "gen_id": MetadataValue.text(str(gen_id)),
-                "parent_gen_id": MetadataValue.text(str(parent_gen_id)),
-                "source": MetadataValue.text(used_source),
-                "chars": MetadataValue.int(len(draft_text)),
-                "lines": MetadataValue.int(sum(1 for _ in draft_text.splitlines())),
-            }
+        emit_standard_output_metadata(
+            context,
+            function="essay_response",
+            gen_id=str(gen_id),
+            result=result,
+            extras={"mode": "copy", "parent_gen_id": str(parent_gen_id)},
         )
-        return result.get("parsed") or draft_text
+        return result.parsed_text or draft_text
     # LLM path
     model_id = str(mrow.get("llm_model_id") or "").strip() if mrow is not None else ""
     if not model_id:
@@ -294,33 +291,28 @@ def _essay_response_impl(context, essay_prompt) -> str:
                 "resolution": MetadataValue.text("Ensure cohort membership includes an llm_model_id for this essay"),
             },
         )
-    spec = StageRunSpec(
-        stage="essay",
+    result = execute_essay_llm(
+        llm=context.resources.openrouter_client,
+        out_dir=data_root / "gens",
         gen_id=str(gen_id),
         template_id=template_name,
-        values=values,
-        out_dir=data_root / "gens",
-        mode="llm",
+        prompt_text=str(essay_prompt) if isinstance(essay_prompt, str) else render_template("essay", template_name, values),
         model=model_id,
-        max_tokens=context.resources.experiment_config.essay_generation_max_tokens,
+        max_tokens=getattr(context.resources.experiment_config, "essay_generation_max_tokens", None),
         parent_gen_id=str(parent_gen_id),
         metadata_extra={
             "function": "essay_response",
             "cohort_id": str(_cohort) if isinstance(_cohort, str) and _cohort else None,
-            "run_id": str(getattr(getattr(context, "run", object()), "run_id", None) or getattr(context, "run_id", None) or ""),
+            "run_id": get_run_id(context),
         },
     )
-    result = runner.run(spec, llm_client=context.resources.openrouter_client)
-    context.add_output_metadata(
-        {
-            "function": MetadataValue.text("essay_response"),
-            "gen_id": MetadataValue.text(str(gen_id)),
-            "chars": MetadataValue.int(len(result.get("raw") or "")),
-            "finish_reason": MetadataValue.text(str((result.get("info") or {}).get("finish_reason"))),
-            "truncated": MetadataValue.bool(bool((result.get("info") or {}).get("truncated"))),
-        }
+    emit_standard_output_metadata(
+        context,
+        function="essay_response",
+        gen_id=str(gen_id),
+        result=result,
     )
-    return result.get("raw") or ""
+    return result.raw_text or ""
 
 
 @asset(

@@ -10,6 +10,9 @@ from pathlib import Path
 import os
 from .partitions import draft_gens_partitions
 from ..unified.stage_runner import StageRunner, StageRunSpec
+from ..unified.stage_services import execute_draft_llm
+from ._helpers import require_membership_row, emit_standard_output_metadata, get_run_id
+from ..unified.stage_services import render_template
 from ..utils.membership_lookup import find_membership_row_by_gen
 from ..constants import DRAFT
 
@@ -57,9 +60,8 @@ def draft_prompt(
             },
         )
 
-    runner = StageRunner()
     try:
-        prompt = runner.render_template("draft", template_name, {"concepts": content_combination.contents})
+        prompt = render_template("draft", template_name, {"concepts": content_combination.contents})
     except FileNotFoundError as e:
         raise Failure(
             description=f"Draft template '{template_name}' not found",
@@ -90,77 +92,62 @@ def draft_prompt(
 def _draft_response_impl(context, draft_prompt, **_kwargs) -> str:
     """Generate Phase 1 LLM responses for drafts (core implementation)."""
     gen_id = context.partition_key
-    # Resolve model id from cohort membership
+    # Resolve model/template from cohort membership (required columns enforced)
     data_root = Path(getattr(context.resources, "data_root", "data"))
-    row, cohort = find_membership_row_by_gen(data_root, "draft", str(gen_id))
-    if row is None:
-        raise Failure(
-            description="Cohort membership row not found for draft gen_id",
-            metadata={
-                "function": MetadataValue.text("draft_response"),
-                "gen_id": MetadataValue.text(str(gen_id)),
-                "resolution": MetadataValue.text("Ensure cohort membership includes this draft gen_id"),
-            },
-        )
-    # Use model_id from membership; LLM client maps id -> provider internally
+    row, cohort = require_membership_row(
+        context,
+        "draft",
+        str(gen_id),
+        require_columns=["llm_model_id"],
+    )
     model_id = str(row.get("llm_model_id") or "").strip()
+    template_id = str(row.get("template_id") or row.get("draft_template") or "").strip()
     if not model_id:
         raise Failure(
             description="Missing generation model for draft task",
             metadata={
                 "function": MetadataValue.text("draft_response"),
                 "gen_id": MetadataValue.text(str(gen_id)),
-                "resolution": MetadataValue.text("Ensure cohort membership contains llm_model_id for this draft"),
+                "resolution": MetadataValue.text(
+                    "Ensure cohort membership contains llm_model_id for this draft"
+                ),
             },
         )
 
-    # Run via unified runner using pre-rendered prompt
-    data_root = Path(getattr(context.resources, "data_root", "data"))
-    runner = StageRunner()
-    spec = StageRunSpec(
-        stage="draft",
-        gen_id=str(gen_id),
-        template_id=str(row.get("template_id") or row.get("draft_template") or ""),
-        values={},  # prompt provided below
+    # Execute via stage_services (writes files; parses via CSV fallback when configured)
+    result = execute_draft_llm(
+        llm=context.resources.openrouter_client,
         out_dir=data_root / "gens",
-        mode="llm",
-        model=model_id,
-        parser_name=None,  # allow runner to resolve from CSV when present
-        max_tokens=context.resources.experiment_config.draft_generation_max_tokens,
+        gen_id=str(gen_id),
+        template_id=template_id,
         prompt_text=str(draft_prompt) if isinstance(draft_prompt, str) else "",
+        model=model_id,
+        data_root=data_root,
+        max_tokens=getattr(context.resources.experiment_config, "draft_generation_max_tokens", None),
         min_lines=int(getattr(context.resources.experiment_config, "min_draft_lines", 3)),
+        fail_on_truncation=True,
+        parser_name=None,
+        parent_gen_id=None,
+        metadata_extra={
+            "function": "draft_response",
+            "cohort_id": str(cohort) if isinstance(cohort, str) and cohort else None,
+            "combo_id": str(row.get("combo_id") or "") or None,
+            "run_id": get_run_id(context),
+        },
     )
 
-    # Let the runner resolve parser by template when not explicitly set
-    # Pass contextual extras for metadata
-    run_id = getattr(getattr(context, "run", object()), "run_id", None) or getattr(context, "run_id", None)
-    combo_id = str(row.get("combo_id") or "")
-    spec.metadata_extra = {
-        "function": "draft_response",
-        "cohort_id": str(cohort) if isinstance(cohort, str) and cohort else None,
-        "combo_id": combo_id or None,
-        "run_id": str(run_id) if run_id else None,
-    }
-    result = runner.run(spec, llm_client=context.resources.openrouter_client)
-    raw_text = result.get("raw") or ""
-    parsed_text = result.get("parsed") or raw_text
-    response_lines = [line.strip() for line in raw_text.split("\n") if line.strip()]
-    parser_used = (result.get("metadata", {}) or {}).get("parser_name") or "identity"
-    context.log.info(
-        f"Generated draft response for gen {gen_id} ({len(response_lines)} raw lines); parser={parser_used}"
+    # Emit standard Dagster metadata for UI
+    emit_standard_output_metadata(
+        context,
+        function="draft_response",
+        gen_id=str(gen_id),
+        result=result,
+        extras={
+            "parser_name": (result.metadata or {}).get("parser_name"),
+        },
     )
-    context.add_output_metadata(
-        {
-            "function": MetadataValue.text("draft_response"),
-            "gen_id": MetadataValue.text(str(gen_id)),
-            "raw_line_count": MetadataValue.int(len(response_lines)),
-            "parsed_chars": MetadataValue.int(len(parsed_text)),
-            "parser": MetadataValue.text(parser_used),
-            "finish_reason": MetadataValue.text(str((result.get("info") or {}).get("finish_reason"))),
-            "truncated": MetadataValue.bool(bool((result.get("info") or {}).get("truncated"))),
-        }
-    )
-    return parsed_text
+
+    return str(result.parsed_text or result.raw_text or "")
 
 
 @asset(
