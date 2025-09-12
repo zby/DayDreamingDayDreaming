@@ -7,7 +7,7 @@ Asset definitions for the draft (Phase‑1) generation stage.
 from dagster import asset, Failure, MetadataValue
 import pandas as pd
 from pathlib import Path
-from jinja2 import Environment
+ 
 import os
 from .partitions import draft_gens_partitions
 from ..utils.raw_readers import read_draft_templates
@@ -16,8 +16,7 @@ from ..unified.stage_runner import StageRunner, StageRunSpec
 from ..utils.membership_lookup import find_membership_row_by_gen
 from ..constants import DRAFT, FILE_RAW
 
-# Reuse a single Jinja environment
-JINJA = Environment()
+ 
 
 
 @asset(
