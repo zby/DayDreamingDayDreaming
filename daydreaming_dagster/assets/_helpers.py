@@ -159,7 +159,7 @@ def load_parent_parsed_text(
     return parent_gen_id, parent_text
 
 
-def _resolve_generator_mode(
+def resolve_generator_mode(
     *,
     kind: Literal["draft", "essay", "evaluation"],
     data_root: Path,
@@ -167,24 +167,20 @@ def _resolve_generator_mode(
     override_from_prompt: Optional[str] = None,
     filter_active: Optional[bool] = None,
 ) -> Literal["llm", "copy"]:
-    """
-    Parametrized resolver for generator modes.
+    """Parametrized resolver for generator modes across all stages.
 
-    TEMPORARY: Used by resolve_essay_generator_mode and resolve_evaluation_generator_mode
-    until those thin wrappers are removed. Keeps error metadata consistent with the
-    wrapper function names.
+    - Uses data/1_raw/<kind>_templates.csv and the 'generator' column.
+    - Accepts an override via prompt prefix 'COPY_MODE'.
+    - Always uses filter_active=False by default, per unified behavior.
+    - Failure metadata uses function=f"resolve_{kind}_generator_mode".
     """
-    function_label = (
-        "resolve_essay_generator_mode"
-        if kind == "essay"
-        else ("resolve_evaluation_generator_mode" if kind == "evaluation" else "resolve_draft_generator_mode")
-    )
+    function_label = f"resolve_{kind}_generator_mode"
     if isinstance(override_from_prompt, str) and override_from_prompt.strip().upper().startswith("COPY_MODE"):
         return "copy"
 
-    # Determine filtering behavior per kind to preserve legacy semantics
+    # Unified default: do not filter by active
     if filter_active is None:
-        filter_active = False if kind == "essay" else True
+        filter_active = False
 
     df = read_templates(Path(data_root), kind, filter_active=bool(filter_active))
 
@@ -251,8 +247,8 @@ def resolve_essay_generator_mode(
     *,
     override_from_prompt: Optional[str] = None,
 ) -> Literal["llm", "copy"]:
-    # TEMPORARY: Thin wrapper over _resolve_generator_mode(kind="essay")
-    return _resolve_generator_mode(
+    # TEMPORARY: Thin wrapper over resolve_generator_mode(kind="essay")
+    return resolve_generator_mode(
         kind="essay",
         data_root=data_root,
         template_id=template_id,
@@ -267,13 +263,13 @@ def resolve_draft_generator_mode(
     *,
     override_from_prompt: Optional[str] = None,
 ) -> Literal["llm", "copy"]:
-    # TEMPORARY: Thin wrapper over _resolve_generator_mode(kind="draft")
-    return _resolve_generator_mode(
+    # TEMPORARY: Thin wrapper over resolve_generator_mode(kind="draft")
+    return resolve_generator_mode(
         kind="draft",
         data_root=data_root,
         template_id=template_id,
         override_from_prompt=override_from_prompt,
-        filter_active=True,
+        filter_active=False,
     )
 
 
@@ -283,13 +279,13 @@ def resolve_evaluation_generator_mode(
     *,
     override_from_prompt: Optional[str] = None,
 ) -> Literal["llm", "copy"]:
-    # TEMPORARY: Thin wrapper over _resolve_generator_mode(kind="evaluation")
-    return _resolve_generator_mode(
+    # TEMPORARY: Thin wrapper over resolve_generator_mode(kind="evaluation")
+    return resolve_generator_mode(
         kind="evaluation",
         data_root=data_root,
         template_id=template_id,
         override_from_prompt=override_from_prompt,
-        filter_active=True,
+        filter_active=False,
     )
 
 
@@ -361,6 +357,7 @@ __all__ = [
     "require_membership_row",
     "load_generation_parsed_text",
     "load_parent_parsed_text",
+    "resolve_generator_mode",
     "resolve_essay_generator_mode",
     "resolve_evaluation_generator_mode",
     "emit_standard_output_metadata",

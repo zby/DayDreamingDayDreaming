@@ -386,7 +386,7 @@ def essay_prompt_asset(context) -> str:
     from daydreaming_dagster.assets._helpers import (
         require_membership_row,
         load_generation_parsed_text,
-        resolve_essay_generator_mode,
+        resolve_generator_mode,
     )
 
     row, _cohort = require_membership_row(context, "essay", str(gen_id), require_columns=["template_id", "parent_gen_id"])
@@ -394,7 +394,7 @@ def essay_prompt_asset(context) -> str:
     parent_gen_id = row.get("parent_gen_id")
 
     # Resolve generator mode
-    generator_mode = resolve_essay_generator_mode(Path(context.resources.data_root), template_name)
+    generator_mode = resolve_generator_mode(kind="essay", data_root=Path(context.resources.data_root), template_id=template_name)
     if generator_mode == "copy":
         context.add_output_metadata(
             {
@@ -465,7 +465,7 @@ def response_asset(context, prompt_text, stage: Stage) -> str:
     from daydreaming_dagster.assets._helpers import (
         require_membership_row,
         load_generation_parsed_text,
-        resolve_essay_generator_mode,
+        resolve_generator_mode,
         emit_standard_output_metadata,
         get_run_id,
     )
@@ -485,7 +485,7 @@ def response_asset(context, prompt_text, stage: Stage) -> str:
         if isinstance(prompt_text, str) and prompt_text.strip().upper().startswith("COPY_MODE"):
             mode = "copy"
         else:
-            mode = resolve_essay_generator_mode(data_root, template_name)
+            mode = resolve_generator_mode(kind="essay", data_root=data_root, template_id=template_name)
 
         # Load upstream draft text and enforce minimum lines
         if not parent_gen_id:
@@ -725,7 +725,7 @@ def evaluation_prompt_asset(context) -> str:
     from daydreaming_dagster.assets._helpers import (
         require_membership_row,
         load_generation_parsed_text,
-        resolve_evaluation_generator_mode,
+        resolve_generator_mode,
     )
 
     row, _cohort = require_membership_row(
@@ -748,7 +748,7 @@ def evaluation_prompt_asset(context) -> str:
             },
         )
     # Copy mode: short-circuit with sentinel prompt
-    mode = resolve_evaluation_generator_mode(Path(context.resources.data_root), evaluation_template)
+    mode = resolve_generator_mode(kind="evaluation", data_root=Path(context.resources.data_root), template_id=evaluation_template)
     if mode == "copy":
         context.add_output_metadata(
             {
@@ -827,7 +827,7 @@ def draft_prompt_asset(context, content_combinations) -> str:
     from dagster import Failure as _Failure, MetadataValue as _MV
     from daydreaming_dagster.assets._helpers import (
         require_membership_row,
-        resolve_draft_generator_mode,
+        resolve_generator_mode,
     )
 
     # Read membership to resolve combo/template
@@ -836,7 +836,7 @@ def draft_prompt_asset(context, content_combinations) -> str:
     template_name = str(row.get("template_id") or row.get("draft_template") or "")
 
     # Copy mode: short-circuit prompt generation
-    mode = resolve_draft_generator_mode(Path(getattr(context.resources, "data_root", "data")), template_name)
+    mode = resolve_generator_mode(kind="draft", data_root=Path(getattr(context.resources, "data_root", "data")), template_id=template_name)
     if mode == "copy":
         context.add_output_metadata(
             {
