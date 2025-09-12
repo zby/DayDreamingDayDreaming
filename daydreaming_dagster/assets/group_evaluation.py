@@ -5,6 +5,7 @@ Asset definitions for the evaluation stage.
 """
 
 from dagster import asset, Failure, MetadataValue
+from ._decorators import asset_with_boundary
 from pathlib import Path
 from .partitions import evaluation_gens_partitions
 from ..utils.membership_lookup import find_membership_row_by_gen
@@ -22,7 +23,8 @@ from ..constants import ESSAY, EVALUATION
  
 
 
-@asset(
+@asset_with_boundary(
+    stage="evaluation",
     partitions_def=evaluation_gens_partitions,
     group_name="evaluation",
     io_manager_key="evaluation_prompt_io_manager",
@@ -84,7 +86,8 @@ def evaluation_prompt(context) -> str:
     return eval_prompt
 
 
-@asset(
+@asset_with_boundary(
+    stage="evaluation",
     partitions_def=evaluation_gens_partitions,
     group_name="evaluation",
     io_manager_key="evaluation_response_io_manager",

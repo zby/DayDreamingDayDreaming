@@ -5,6 +5,7 @@ Asset definitions for the draft (Phase‑1) generation stage.
 """
 
 from dagster import asset, Failure, MetadataValue
+from ._decorators import asset_with_boundary
 from pathlib import Path
  
 import os
@@ -18,7 +19,8 @@ from ..constants import DRAFT
  
 
 
-@asset(
+@asset_with_boundary(
+    stage="draft",
     partitions_def=draft_gens_partitions,
     group_name="generation_draft",
     io_manager_key="draft_prompt_io_manager",
@@ -149,7 +151,8 @@ def _draft_response_impl(context, draft_prompt, **_kwargs) -> str:
     return str(result.parsed_text or result.raw_text or "")
 
 
-@asset(
+@asset_with_boundary(
+    stage="draft",
     partitions_def=draft_gens_partitions,
     group_name="generation_draft",
     io_manager_key="draft_response_io_manager",

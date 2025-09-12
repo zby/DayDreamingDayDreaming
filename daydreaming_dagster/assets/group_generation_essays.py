@@ -5,6 +5,7 @@ Asset definitions for the essay (Phase‑2) generation stage.
 """
 
 from dagster import asset, Failure, MetadataValue
+from ._decorators import asset_with_boundary
 from pathlib import Path
 from .partitions import essay_gens_partitions
 from ..unified.stage_services import render_template, execute_essay_copy, execute_essay_llm
@@ -102,7 +103,8 @@ def _essay_prompt_impl(context) -> str:
     return prompt
 
 
-@asset(
+@asset_with_boundary(
+    stage="essay",
     partitions_def=essay_gens_partitions,
     group_name="generation_essays",
     io_manager_key="essay_prompt_io_manager",
@@ -217,7 +219,8 @@ def _essay_response_impl(context, essay_prompt) -> str:
     return result.raw_text or ""
 
 
-@asset(
+@asset_with_boundary(
+    stage="essay",
     partitions_def=essay_gens_partitions,
     group_name="generation_essays",
     io_manager_key="essay_response_io_manager",
