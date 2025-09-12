@@ -359,8 +359,8 @@ def execute_essay_llm(
 ) -> ExecutionResult:
     t0 = time.time()
     raw_text, info = generate_llm(llm, prompt_text, model=model, max_tokens=max_tokens)
-    # Essay identity parse: parsed == normalized raw
-    parsed = str(raw_text)
+    # Essay identity parse via unified parse_text for consistency
+    parsed = parse_text("essay", raw_text, "identity") or str(raw_text)
 
     out_dir = Path(root_dir) / "gens"
     base = out_dir / "essay" / str(gen_id)
