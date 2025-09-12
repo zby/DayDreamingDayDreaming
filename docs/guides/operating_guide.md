@@ -187,7 +187,7 @@ Only `raw_data` and cohort assets use eager auto‑materialization during develo
 - Raw loaders (`group:raw_data`) can be re‑materialized after editing files under `data/1_raw/**/*`.
 - Cohort assets (`cohort_id`, `cohort_membership`) refresh when raw assets update.
 
-Cross‑experiment tracking no longer uses auto‑appenders. Use analysis assets (`filtered_evaluation_results`, `template_version_comparison_pivot`) and scripts for backfills under `data/7_cross_experiment/`.
+Cross‑experiment tracking no longer uses auto‑appenders. Use analysis assets (`filtered_evaluation_results`, `template_version_comparison_pivot`) and scripts for backfills under `data/7_cross_experiment/`. These analyses read scores strictly from `data/gens/evaluation/<gen_id>/parsed.txt` and do not parse `raw.txt` — ensure evaluation assets have produced parsed outputs before running cross‑experiment analysis.
 
 ---
 

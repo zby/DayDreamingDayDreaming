@@ -193,16 +193,16 @@ The Unified Stage Runner is a single, stage‑agnostic execution path used by ge
   - `llm`: render prompt, call model, write `prompt.txt` and `raw.txt`; write `parsed.txt` if a parser is configured.
   - `copy` (essay only): pass through the parent draft’s `parsed.txt` to the essay `parsed.txt` (no prompt/LLM).
 - Parsers:
-  - evaluation: required via `evaluation_templates.csv` `parser` column (e.g., `in_last_line`, `complex`).
+  - evaluation: required via `evaluation_templates.csv` `parser` column (e.g., `in_last_line`, `complex`) and resolved internally by the stage runner; assets do not pass a parser.
   - draft: optional; applied when present, otherwise identity.
   - essay: not used; we keep normalized raw as parsed unless using `copy`.
-- Inputs (conceptual): stage (`draft`|`essay`|`evaluation`), `gen_id`, `template_id`, small `values` dict for template variables, `llm_model_id` (for `llm`), optional `parser_name`, optional pre‑rendered `prompt_text` (skips template render), optional `pass_through_from` for `copy`, and `parent_gen_id` for essay/evaluation.
+- Inputs (conceptual): stage (`draft`|`essay`|`evaluation`), `gen_id`, `template_id`, small `values` dict for template variables, `llm_model_id` (for `llm`), optional `parser_name` (for direct calls only; assets pass `None`), optional pre‑rendered `prompt_text` (skips template render), optional `pass_through_from` for `copy`, and `parent_gen_id` for essay/evaluation.
 - Outputs (per run):
   - `data/gens/<stage>/<gen_id>/prompt.txt` (when `llm`)
   - `data/gens/<stage>/<gen_id>/raw.txt` (when `llm`)
   - `data/gens/<stage>/<gen_id>/parsed.txt` (when parsed or in `copy`)
   - `data/gens/<stage>/<gen_id>/metadata.json`
-- Contract and failures: validations live in the runner (draft min‑lines, truncation detection). Evaluation requires `parser_name` and `parent_gen_id`; essay requires `parent_gen_id`. On any failure, `raw.txt` remains written to aid debugging.
+- Contract and failures: validations live in the runner (draft min‑lines, truncation detection). Evaluation requires `parent_gen_id` and a parser configured in `evaluation_templates.csv` (resolved internally); passing an explicit empty `parser_name` is invalid. Essay requires `parent_gen_id`. On any failure, `raw.txt` remains written to aid debugging.
 - Configuration and authority: template CSVs are strict (generator present in all, parser required for evaluation). Membership is the authoritative source for model/template selection and parent linkage. `llm_model_id` is the canonical model key in metadata.
 
 ### 6. Results Processing (`results_processing.py`)
@@ -240,6 +240,10 @@ The Unified Stage Runner is a single, stage‑agnostic execution path used by ge
 - Scripts: `scripts/aggregate_scores.py` (evaluation)
 - Purpose: One‑off rebuilding from the gens store (no auto-appenders)
 - Output: `data/7_cross_experiment/parsed_scores.csv` (canonical)
+
+Processing contract for cross‑experiment:
+- Reads numeric scores strictly from `parsed.txt` under `data/gens/evaluation/<gen_id>/`.
+- Does not parse `raw.txt` in this layer; if `parsed.txt` is missing, records an error for that row.
 
 ## Resource Architecture
 
