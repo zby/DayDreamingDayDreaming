@@ -686,9 +686,7 @@ def evaluation_prompt_asset(context) -> str:
         {
             "gen_id": _MV.text(str(gen_id)),
             "parent_gen_id": _MV.text(str(parent_gen_id)),
-            "document_content_length": _MV.int(len(doc_text or "")),
             "evaluation_prompt_length": _MV.int(len(eval_prompt)),
-            "source_used": _MV.text(used_source or ""),
             "template_used": _MV.text(str(template_id) if template_id else ""),
         }
     )
