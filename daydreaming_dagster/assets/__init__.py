@@ -1,10 +1,10 @@
-# Assets package initialization
+"""Assets package init.
 
-# Import all assets from their respective modules
-from .raw_data import *
-from .group_generation_draft import *
-from .group_generation_essays import *
-from .group_evaluation import *
-from .group_results_processing import *
-from .results_analysis import *
-from .group_results_summary import *
+This file intentionally avoids re-exporting all asset symbols to reduce
+import side-effects and keep import graphs explicit. Import assets from
+their concrete modules instead, for example:
+
+    from daydreaming_dagster.assets.results_summary import final_results
+
+Public entrypoints remain stable via daydreaming_dagster/definitions.py.
+"""

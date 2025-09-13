@@ -268,9 +268,9 @@ Tip
 - generation_draft: `daydreaming_dagster/assets/group_generation_draft.py`
 - generation_essays: `daydreaming_dagster/assets/group_generation_essays.py`
 - evaluation: `daydreaming_dagster/assets/group_evaluation.py`
-- results_processing: `daydreaming_dagster/assets/group_results_processing.py`
-- results_summary: `daydreaming_dagster/assets/group_results_summary.py`
-- cross_experiment: `daydreaming_dagster/assets/group_cross_experiment.py`
+- results_processing: `daydreaming_dagster/assets/results_processing.py`
+- results_summary: `daydreaming_dagster/assets/results_summary.py`
+- cross_experiment: `daydreaming_dagster/assets/cross_experiment.py`
 
 Quick navigation
 - Asset map: `uv run python scripts/asset_map.py` prints `asset_key | group | file:line`.
