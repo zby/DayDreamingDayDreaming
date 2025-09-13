@@ -402,7 +402,7 @@ def essay_prompt_asset(context) -> str:
             {
                 "function": MetadataValue.text("essay_prompt"),
                 "mode": MetadataValue.text(generator_mode),
-                "essay_template": MetadataValue.text(template_id),
+                "template_id": MetadataValue.text(template_id),
             }
         )
         return "COPY_MODE: no prompt needed"
@@ -428,7 +428,7 @@ def essay_prompt_asset(context) -> str:
             metadata={
                 "function": MetadataValue.text("essay_prompt"),
                 "gen_id": MetadataValue.text(str(gen_id)),
-                "essay_template": MetadataValue.text(template_id),
+                "template_id": MetadataValue.text(template_id),
                 "error": MetadataValue.text(str(e)),
             },
         )
@@ -438,7 +438,7 @@ def essay_prompt_asset(context) -> str:
             metadata={
                 "function": MetadataValue.text("essay_prompt"),
                 "gen_id": MetadataValue.text(str(gen_id)),
-                "essay_template": MetadataValue.text(template_id),
+                "template_id": MetadataValue.text(template_id),
                 "jinja_message": MetadataValue.text(str(e)),
             },
         )
@@ -447,7 +447,7 @@ def essay_prompt_asset(context) -> str:
         {
             "function": MetadataValue.text("essay_prompt"),
             "gen_id": MetadataValue.text(str(gen_id)),
-            "essay_template": MetadataValue.text(template_id),
+            "template_id": MetadataValue.text(template_id),
             "draft_line_count": MetadataValue.int(len(draft_lines)),
         }
     )
@@ -648,7 +648,7 @@ def evaluation_prompt_asset(context) -> str:
                 "gen_id": _MV.text(str(gen_id)),
                 "parent_gen_id": _MV.text(str(parent_gen_id)),
                 "mode": _MV.text(mode),
-                "template_used": _MV.text(str(template_id)),
+                "template_id": _MV.text(str(template_id)),
             }
         )
         return "COPY_MODE: no prompt needed"
@@ -665,7 +665,7 @@ def evaluation_prompt_asset(context) -> str:
             metadata={
                 "function": _MV.text("evaluation_prompt"),
                 "gen_id": _MV.text(str(gen_id)),
-                "template_used": _MV.text(str(template_id)),
+                "template_id": _MV.text(str(template_id)),
                 "error": _MV.text(str(e)),
             },
         )
@@ -675,7 +675,7 @@ def evaluation_prompt_asset(context) -> str:
             metadata={
                 "function": _MV.text("evaluation_prompt"),
                 "gen_id": _MV.text(str(gen_id)),
-                "template_used": _MV.text(str(template_id)),
+                "template_id": _MV.text(str(template_id)),
                 "jinja_message": _MV.text(str(e)),
             },
         )
@@ -684,7 +684,7 @@ def evaluation_prompt_asset(context) -> str:
             "gen_id": _MV.text(str(gen_id)),
             "parent_gen_id": _MV.text(str(parent_gen_id)),
             "evaluation_prompt_length": _MV.int(len(eval_prompt)),
-            "template_used": _MV.text(str(template_id) if template_id else ""),
+            "template_id": _MV.text(str(template_id) if template_id else ""),
         }
     )
     return eval_prompt
@@ -732,7 +732,7 @@ def draft_prompt_asset(context, content_combinations) -> str:
                 "function": _MV.text("draft_prompt"),
                 "gen_id": _MV.text(str(gen_id)),
                 "mode": _MV.text(mode),
-                "template_name": _MV.text(template_id),
+                "template_id": _MV.text(template_id),
                 "combo_id": _MV.text(combo_id),
             }
         )
@@ -757,7 +757,7 @@ def draft_prompt_asset(context, content_combinations) -> str:
         raise _Failure(
             description=f"Draft template '{template_id}' not found",
             metadata={
-                "template_name": _MV.text(template_id),
+                "template_id": _MV.text(template_id),
                 "phase": _MV.text("draft"),
                 "error": _MV.text(str(e)),
                 "resolution": _MV.text("Ensure the template exists in data/1_raw/templates/draft/"),
@@ -769,7 +769,7 @@ def draft_prompt_asset(context, content_combinations) -> str:
         raise _Failure(
             description=f"Error rendering draft template '{template_id}'",
             metadata={
-                "template_name": _MV.text(template_id),
+                "template_id": _MV.text(template_id),
                 "phase": _MV.text("draft"),
                 "template_path": _MV.path(str(template_path)),
                 "jinja_message": _MV.text(str(e)),
