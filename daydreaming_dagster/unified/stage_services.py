@@ -39,6 +39,56 @@ ExecutionResultLike = ExecutionResult | Dict[str, Any]
 # Module-level Jinja env (StrictUndefined) to mimic existing behavior
 _JINJA = Environment(undefined=StrictUndefined)
 
+# Stage requirements for prompts and responses
+PROMPT_REQUIRED_BY_STAGE: Dict[Stage, list[str]] = {
+    "draft": ["template_id", "combo_id"],
+    "essay": ["template_id", "parent_gen_id"],
+    "evaluation": ["template_id", "parent_gen_id"],
+}
+
+RESPONSE_REQUIRED_BY_STAGE: Dict[Stage, list[str]] = {
+    "draft": ["llm_model_id"],
+    "essay": ["template_id", "parent_gen_id"],
+    "evaluation": ["llm_model_id", "template_id", "parent_gen_id"],
+}
+
+
+def parent_stage_of(stage: Stage) -> Optional[Stage]:
+    if stage == "essay":
+        return "draft"
+    if stage == "evaluation":
+        return "essay"
+    return None
+
+
+def exp_config_for(context, stage: Stage) -> tuple[Optional[int], Optional[int]]:
+    cfg = getattr(context.resources, "experiment_config", object())
+    max_key = "evaluation_max_tokens" if stage == "evaluation" else f"{stage}_generation_max_tokens"
+    max_tokens = getattr(cfg, max_key, None)
+    min_lines = int(getattr(cfg, "min_draft_lines", 3)) if stage == "draft" else None
+    return max_tokens, min_lines
+
+
+@dataclass
+class MembershipFields:
+    template_id: str
+    llm_model_id: Optional[str]
+    parent_gen_id: Optional[str]
+    combo_id: Optional[str]
+
+
+def read_membership_fields(row) -> MembershipFields:
+    """Normalize common membership fields from a pandas.Series row."""
+    def _s(v):
+        return str(v).strip() if isinstance(v, str) else (str(v).strip() if v is not None else None)
+
+    return MembershipFields(
+        template_id=_s(row.get("template_id")) or "",
+        llm_model_id=_s(row.get("llm_model_id")) or None,
+        parent_gen_id=_s(row.get("parent_gen_id")) or None,
+        combo_id=_s(row.get("combo_id")) or None,
+    )
+
 
 def _templates_root(default: Optional[Path] = None) -> Path:
     root = default or Path(os.environ.get("GEN_TEMPLATES_ROOT", "data/1_raw/templates"))
@@ -172,9 +222,7 @@ def execute_llm(
             raise ValueError("parser_name is required for evaluation stage")
 
     # Parse via registry
-    print(f"Using parser '{parser_name}' for stage '{stage}'")
     parsed = parse_text(stage, raw_text, parser_name)
-    print(f"Parsed text (first 100 chars): {str(parsed)[:100]!r}")
     if stage == "essay" and not isinstance(parsed, str):
         parsed = str(raw_text)
 
@@ -368,7 +416,11 @@ __all__ = [
     "write_generation",
     "execute_copy",
     "execute_llm",
+    "prompt_asset",
     "response_asset",
+    "essay_response_asset",
+    "evaluation_response_asset",
+    "draft_response_asset",
 ]
 
 
@@ -388,27 +440,24 @@ def prompt_asset(context, stage: Stage, *, content_combinations=None) -> str:
         build_prompt_metadata,
     )
 
-    data_root = Path(getattr(context.resources, "data_root", "data"))
+    from daydreaming_dagster.assets._helpers import get_data_root
+    data_root = get_data_root(context)
 
-    required = {
-        "draft": ["template_id", "combo_id"],
-        "essay": ["template_id", "parent_gen_id"],
-        "evaluation": ["template_id", "parent_gen_id"],
-    }
-    if stage not in required:
+    if stage not in PROMPT_REQUIRED_BY_STAGE:
         raise Failure(description=f"Unsupported stage for prompt: {stage}")
 
-    row, _cohort = require_membership_row(context, stage, str(gen_id), require_columns=required[stage])
-    template_id = str(row.get("template_id") or "").strip()
+    row, _cohort = require_membership_row(context, stage, str(gen_id), require_columns=PROMPT_REQUIRED_BY_STAGE[stage])
+    mf = read_membership_fields(row)
+    template_id = mf.template_id
     mode = resolve_generator_mode(kind=stage, data_root=data_root, template_id=template_id)
 
     # Copy-mode sentinel metadata
     if mode == "copy":
         extras = {}
         if stage in ("essay", "evaluation"):
-            extras["parent_gen_id"] = str(row.get("parent_gen_id") or "")
+            extras["parent_gen_id"] = str(mf.parent_gen_id or "")
         if stage == "draft":
-            extras["combo_id"] = str(row.get("combo_id") or "")
+            extras["combo_id"] = str(mf.combo_id or "")
         context.add_output_metadata(
             build_prompt_metadata(
                 context,
@@ -416,7 +465,7 @@ def prompt_asset(context, stage: Stage, *, content_combinations=None) -> str:
                 gen_id=str(gen_id),
                 template_id=template_id,
                 mode=mode,
-                parent_gen_id=str(row.get("parent_gen_id") or "") if stage != "draft" else None,
+                parent_gen_id=str(mf.parent_gen_id or "") if stage != "draft" else None,
                 prompt_text=None,
                 extras=extras,
             )
@@ -439,7 +488,7 @@ def prompt_asset(context, stage: Stage, *, content_combinations=None) -> str:
                     ),
                 },
             )
-        combo_id = str(row.get("combo_id") or "")
+        combo_id = str(mf.combo_id or "")
         content_combination = next((c for c in content_combinations if getattr(c, "combo_id", None) == combo_id), None)
         if content_combination is None:
             raise Failure(
@@ -464,32 +513,8 @@ def prompt_asset(context, stage: Stage, *, content_combinations=None) -> str:
         )
         values = {"response": parent_text}
 
-    # Render using shared renderer
-    try:
-        prompt = render_template(stage, template_id, values)
-    except FileNotFoundError as e:
-        raise Failure(
-            description=f"{stage.capitalize()} template '{template_id}' not found",
-            metadata={
-                "function": MetadataValue.text(f"{stage}_prompt"),
-                "gen_id": MetadataValue.text(str(gen_id)),
-                "template_id": MetadataValue.text(template_id),
-                "error": MetadataValue.text(str(e)),
-            },
-        )
-    except Exception as e:
-        templates_root = Path(os.environ.get("GEN_TEMPLATES_ROOT", "data/1_raw/templates"))
-        template_path = templates_root / stage / f"{template_id}.txt"
-        raise Failure(
-            description=f"Error rendering {stage} template '{template_id}'",
-            metadata={
-                "function": MetadataValue.text(f"{stage}_prompt"),
-                "gen_id": MetadataValue.text(str(gen_id)),
-                "template_id": MetadataValue.text(template_id),
-                "template_path": MetadataValue.path(str(template_path)),
-                "jinja_message": MetadataValue.text(str(e)),
-            },
-        ) from e
+    # Render using shared renderer; unexpected errors go through error boundary
+    prompt = render_template(stage, template_id, values)
 
     # Emit standardized metadata and return
     context.add_output_metadata(
@@ -535,50 +560,32 @@ def response_asset(context, prompt_text, stage: Stage) -> str:
         get_run_id,
     )
 
-    data_root = Path(getattr(context.resources, "data_root", "data"))
+    from daydreaming_dagster.assets._helpers import get_data_root
+    data_root = get_data_root(context)
 
     # Resolve membership row for all stages upfront with stage-specific requirements
-    required_by_stage = {
-        "essay": ["template_id", "parent_gen_id"],
-        "evaluation": ["llm_model_id", "template_id", "parent_gen_id"],
-        "draft": ["llm_model_id"],
-    }
-    if stage not in required_by_stage:  # pragma: no cover - defensive
-        raise Failure(description=f"Unsupported stage: {stage}")
+    if stage not in RESPONSE_REQUIRED_BY_STAGE:  # pragma: no cover - defensive
+        raise ValueError(f"Unsupported stage: {stage}")
     row, cohort = require_membership_row(
         context,
         stage,
         str(gen_id),
-        require_columns=required_by_stage[stage],
+        require_columns=RESPONSE_REQUIRED_BY_STAGE[stage],
     )
+    mf = read_membership_fields(row)
     # Compute template id used for mode resolution uniformly from template_id
-    template_id = str(row.get("template_id") or "")
+    template_id = mf.template_id
     mode = resolve_generator_mode(kind=stage, data_root=data_root, template_id=template_id)
     # If not copy mode, require an LLM model across all stages
-    model_id = str(row.get("llm_model_id") or "").strip()
-    parent_gen_id = str(row.get("parent_gen_id") or "").strip() if "parent_gen_id" in row.index else None
+    model_id = str(mf.llm_model_id or "")
+    parent_gen_id = mf.parent_gen_id if "parent_gen_id" in row.index else None
     # Early copy path: pass-through from parent stage where applicable
     if mode == "copy":
-        parent_map = {"essay": DRAFT, "evaluation": "essay"}
-        pstage = parent_map.get(stage)
+        pstage = parent_stage_of(stage)
         if not pstage:
-            raise Failure(
-                description=f"Copy mode is unsupported for stage '{stage}'",
-                metadata={
-                    "function": MetadataValue.text(f"{stage}_response"),
-                    "gen_id": MetadataValue.text(str(gen_id)),
-                    "resolution": MetadataValue.text("Use generator=llm for draft or provide a parent_gen_id for pass-through"),
-                },
-            )
+            raise ValueError(f"Copy mode is unsupported for stage '{stage}'")
         if not parent_gen_id:
-            raise Failure(
-                description=f"Copy mode requires parent_gen_id for stage '{stage}'",
-                metadata={
-                    "function": MetadataValue.text(f"{stage}_response"),
-                    "gen_id": MetadataValue.text(str(gen_id)),
-                    "resolution": MetadataValue.text("Ensure cohort membership has a valid parent_gen_id"),
-                },
-            )
+            raise ValueError(f"Copy mode requires parent_gen_id for stage '{stage}'")
         result = execute_copy(
             out_dir=data_root / "gens",
             stage=stage,
@@ -611,10 +618,7 @@ def response_asset(context, prompt_text, stage: Stage) -> str:
             },
         )
     # Tokens/min-lines via constructed keys
-    exp_cfg = getattr(context.resources, "experiment_config", object())
-    max_tokens_key = "evaluation_max_tokens" if stage == "evaluation" else f"{stage}_generation_max_tokens"
-    max_tokens = getattr(exp_cfg, max_tokens_key, None)
-    min_lines = int(getattr(exp_cfg, "min_draft_lines", 3)) if stage == "draft" else None
+    max_tokens, min_lines = exp_config_for(context, stage)
 
     result = execute_llm(
         stage=stage,
@@ -654,27 +658,23 @@ __all__ += ["prompt_asset", "essay_response_asset"]
 # Asset-style entrypoints for Evaluation stage
 # --------------------
 
-def evaluation_prompt_asset(context) -> str:
-    return prompt_asset(context, "evaluation")
 
 
 def evaluation_response_asset(context, evaluation_prompt) -> str:
     return response_asset(context, evaluation_prompt, "evaluation")
 
 
-__all__ += ["evaluation_prompt_asset", "evaluation_response_asset"]
+__all__ += ["evaluation_response_asset"]
 
 
 # --------------------
 # Asset-style entrypoints for Draft stage
 # --------------------
 
-def draft_prompt_asset(context, content_combinations) -> str:
-    return prompt_asset(context, "draft", content_combinations=content_combinations)
 
 
 def draft_response_asset(context, draft_prompt) -> str:
     return response_asset(context, draft_prompt, "draft")
 
 
-__all__ += ["draft_prompt_asset", "draft_response_asset"]
+__all__ += ["draft_response_asset"]

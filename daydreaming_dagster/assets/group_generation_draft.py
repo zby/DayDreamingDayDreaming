@@ -7,7 +7,7 @@ Logic is implemented in unified.stage_services asset‑style entrypoints.
 
 from ._decorators import asset_with_boundary
 from .partitions import draft_gens_partitions
-from ..unified.stage_services import draft_prompt_asset, draft_response_asset
+from ..unified.stage_services import prompt_asset, draft_response_asset
 
 
 @asset_with_boundary(
@@ -17,7 +17,7 @@ from ..unified.stage_services import draft_prompt_asset, draft_response_asset
     io_manager_key="draft_prompt_io_manager",
 )
 def draft_prompt(context, content_combinations) -> str:
-    return draft_prompt_asset(context, content_combinations)
+    return prompt_asset(context, "draft", content_combinations=content_combinations)
 
 
 @asset_with_boundary(

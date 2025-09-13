@@ -8,10 +8,7 @@ unified.stage_services asset‑style entrypoints.
 from ._decorators import asset_with_boundary
 from .partitions import evaluation_gens_partitions
 from .raw_data import EVALUATION_TEMPLATES_KEY
-from ..unified.stage_services import (
-    evaluation_prompt_asset,
-    evaluation_response_asset,
-)
+from ..unified.stage_services import prompt_asset, evaluation_response_asset
 
 
 @asset_with_boundary(
@@ -23,7 +20,7 @@ from ..unified.stage_services import (
     deps={EVALUATION_TEMPLATES_KEY},
 )
 def evaluation_prompt(context) -> str:
-    return evaluation_prompt_asset(context)
+    return prompt_asset(context, "evaluation")
 
 
 @asset_with_boundary(

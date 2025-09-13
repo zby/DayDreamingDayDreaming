@@ -7,7 +7,7 @@ Logic is implemented in unified.stage_services asset‑style entrypoints.
 
 from ._decorators import asset_with_boundary
 from .partitions import essay_gens_partitions
-from ..unified.stage_services import essay_prompt_asset, essay_response_asset
+from ..unified.stage_services import prompt_asset, essay_response_asset
 
 
 @asset_with_boundary(
@@ -18,7 +18,7 @@ from ..unified.stage_services import essay_prompt_asset, essay_response_asset
     required_resource_keys={"data_root", "experiment_config"},
 )
 def essay_prompt(context) -> str:
-    return essay_prompt_asset(context)
+    return prompt_asset(context, "essay")
 
 
 @asset_with_boundary(
