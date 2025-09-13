@@ -418,7 +418,6 @@ def essay_prompt_asset(context) -> str:
             },
         )
     draft_text = load_generation_parsed_text(context, "draft", str(parent_gen_id), failure_fn_name="essay_prompt")
-    used_source = "draft_gens_parent"
     draft_lines = [line.strip() for line in draft_text.split("\n") if line.strip()]
 
     try:
@@ -450,7 +449,6 @@ def essay_prompt_asset(context) -> str:
             "gen_id": MetadataValue.text(str(gen_id)),
             "essay_template": MetadataValue.text(template_id),
             "draft_line_count": MetadataValue.int(len(draft_lines)),
-            "phase1_source": MetadataValue.text(used_source),
         }
     )
     return prompt
@@ -657,7 +655,6 @@ def evaluation_prompt_asset(context) -> str:
 
     # Load target essay parsed text via shared helper (emits helpful Failure metadata)
     doc_text = load_generation_parsed_text(context, "essay", str(parent_gen_id), failure_fn_name="evaluation_prompt")
-    used_source = "essay_gens"
 
     # Render via shared stage_services (StrictUndefined semantics preserved)
     try:
