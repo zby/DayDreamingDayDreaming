@@ -77,12 +77,24 @@ def main() -> int:
     responses_dir = Path(args.responses_dir) if args.responses_dir else (data_root / "4_evaluation" / "evaluation_responses")
     tasks_csv = Path(args.tasks_csv) if args.tasks_csv else (data_root / "2_tasks" / "evaluation_tasks.csv")
 
-    # Load strict parser map
-    from daydreaming_dagster.utils.evaluation_parsing_config import load_parser_map
+    # Load strict parser map from evaluation_templates.csv via raw_readers
+    from daydreaming_dagster.utils.raw_readers import read_templates
 
     # Map evaluation_task_id -> evaluation_template from tasks CSV if present
     task_templates = _load_task_templates(tasks_csv)
-    parser_map = load_parser_map(data_root)
+    try:
+        df = read_templates(data_root, "evaluation", filter_active=True)
+        parser_map = {}
+        if "template_id" in df.columns and "parser" in df.columns:
+            parser_map = (
+                df[["template_id", "parser"]]
+                .dropna()
+                .assign(parser=lambda d: d["parser"].astype(str).str.strip().str.lower())
+                .set_index("template_id")["parser"]
+                .to_dict()
+            )
+    except Exception:
+        parser_map = {}
 
     legacy_rows: list[tuple[str, str, str, str]] = []
     total = 0

@@ -326,7 +326,6 @@ def _apply_restore_new_cohort(data_root: Path, diffs: List[Dict], cohort_id: str
     - Evaluations: ensure parent essay (and its draft) exist in new cohort; create evaluation under cohort_id; copy best legacy content when available.
     """
     from daydreaming_dagster.utils.ids import reserve_gen_id
-    from daydreaming_dagster.utils.metadata import build_generation_metadata
     from daydreaming_dagster.utils.generation import Generation
 
     gens_root = data_root / "gens"
@@ -370,17 +369,17 @@ def _apply_restore_new_cohort(data_root: Path, diffs: List[Dict], cohort_id: str
         text_raw = read_text(best_raw, raw_fallback) or cur.raw_text
         # If no parsed candidate, use existing parsed; if missing, fall back to raw
         text_parsed = read_text(best_parsed, parsed_fallback) or (cur.parsed_text or text_raw)
-        meta = build_generation_metadata(
-            stage="draft",
-            gen_id=new_id,
-            parent_gen_id=None,
-            template_id=str(md.get("template_id") or md.get("draft_template") or ""),
-            model_id=str(md.get("model_id") or ""),
-            task_id=task_id,
-            function="restore_overwritten_from_legacy",
-            cohort_id=cohort_id,
-            extra={"combo_id": str(md.get("combo_id") or "")},
-        )
+        meta = {
+            "stage": "draft",
+            "gen_id": new_id,
+            "parent_gen_id": None,
+            "template_id": str(md.get("template_id") or md.get("draft_template") or ""),
+            "model_id": str(md.get("model_id") or ""),
+            "task_id": task_id,
+            "function": "restore_overwritten_from_legacy",
+            "cohort_id": cohort_id,
+            "combo_id": str(md.get("combo_id") or ""),
+        }
         Generation(
             stage="draft",
             gen_id=new_id,
@@ -422,17 +421,17 @@ def _apply_restore_new_cohort(data_root: Path, diffs: List[Dict], cohort_id: str
         best = _pick_oldest(cands)
         cur = Generation.load(gens_root, "essay", str(md.get("gen_id") or ""))
         text = read_text(best, Path(cur.target_dir(gens_root) / "parsed.txt")) or cur.raw_text
-        meta = build_generation_metadata(
-            stage="essay",
-            gen_id=new_id,
-            parent_gen_id=new_draft_id,
-            template_id=str(md.get("template_id") or md.get("essay_template") or ""),
-            model_id=str(md.get("model_id") or ""),
-            task_id=task_id,
-            function="restore_overwritten_from_legacy",
-            cohort_id=cohort_id,
-            extra={"essay_template": str(md.get("essay_template") or md.get("template_id") or "")},
-        )
+        meta = {
+            "stage": "essay",
+            "gen_id": new_id,
+            "parent_gen_id": new_draft_id,
+            "template_id": str(md.get("template_id") or md.get("essay_template") or ""),
+            "model_id": str(md.get("model_id") or ""),
+            "task_id": task_id,
+            "function": "restore_overwritten_from_legacy",
+            "cohort_id": cohort_id,
+            "essay_template": str(md.get("essay_template") or md.get("template_id") or ""),
+        }
         Generation(
             stage="essay",
             gen_id=new_id,
@@ -476,17 +475,17 @@ def _apply_restore_new_cohort(data_root: Path, diffs: List[Dict], cohort_id: str
         cur = Generation.load(gens_root, "evaluation", str(md.get("gen_id") or ""))
         # For evaluations prefer RAW as canonical content; fall back to current RAW then PARSED
         text = read_text(best, Path(cur.target_dir(gens_root) / "raw.txt")) or cur.raw_text or (cur.parsed_text or "")
-        meta = build_generation_metadata(
-            stage="evaluation",
-            gen_id=new_id,
-            parent_gen_id=new_essay_id,
-            template_id=str(md.get("template_id") or ""),
-            model_id=str(md.get("model_id") or ""),
-            task_id=task_id,
-            function="restore_overwritten_from_legacy",
-            cohort_id=cohort_id,
-            extra={"evaluation_template": str(md.get("template_id") or "")},
-        )
+        meta = {
+            "stage": "evaluation",
+            "gen_id": new_id,
+            "parent_gen_id": new_essay_id,
+            "template_id": str(md.get("template_id") or ""),
+            "model_id": str(md.get("model_id") or ""),
+            "task_id": task_id,
+            "function": "restore_overwritten_from_legacy",
+            "cohort_id": cohort_id,
+            "evaluation_template": str(md.get("template_id") or ""),
+        }
         Generation(
             stage="evaluation",
             gen_id=new_id,

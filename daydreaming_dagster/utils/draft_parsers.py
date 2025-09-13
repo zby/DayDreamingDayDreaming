@@ -55,13 +55,6 @@ DRAFT_PARSERS_REGISTRY: Dict[str, Callable[[str], str]] = {
     "essay_idea_last": parse_essay_idea_last,
 }
 
-
-def get_draft_parser(name: str) -> Optional[Callable[[str], str]]:
-    if not isinstance(name, str):
-        return None
-    return DRAFT_PARSERS_REGISTRY.get(name.strip())
-
-
 # New parser: extract the content of the first <essay>...</essay> block
 ESSAY_BLOCK_RE = re.compile(r"<essay>([\s\S]*?)</essay>", re.MULTILINE)
 
@@ -86,7 +79,6 @@ def parse_essay_block(text: str) -> str:
 DRAFT_PARSERS_REGISTRY["essay_block"] = parse_essay_block
 
 __all__ = [
-    "get_draft_parser",
     "DRAFT_PARSERS_REGISTRY",
     "parse_essay_idea_last",
     "parse_essay_block",

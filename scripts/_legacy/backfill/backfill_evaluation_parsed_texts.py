@@ -25,10 +25,8 @@ import argparse
 from pathlib import Path
 from typing import Optional
 
-from daydreaming_dagster.utils.evaluation_parsing_config import (
-    load_parser_map,
-    require_parser_for_template,
-)
+from daydreaming_dagster.utils.raw_readers import read_templates
+from daydreaming_dagster.utils.parser_registry import list_parsers
 from daydreaming_dagster.utils.eval_response_parser import parse_llm_response
 
 
@@ -45,7 +43,21 @@ def backfill_parsed(
     if not docs_eval.exists():
         raise FileNotFoundError(f"Docs store not found: {docs_eval}")
 
-    parser_map = load_parser_map(data_root)
+    # Build template->parser mapping from evaluation_templates.csv (active only)
+    try:
+        df = read_templates(data_root, "evaluation", filter_active=True)
+        allowed = set(list_parsers("evaluation").keys())
+        parser_map = {}
+        if "template_id" in df.columns and "parser" in df.columns:
+            for _, r in df.iterrows():
+                tid = str(r["template_id"]).strip()
+                pv = str(r.get("parser") or "").strip().lower()
+                if not tid or not pv:
+                    continue
+                if pv in allowed:
+                    parser_map[tid] = pv
+    except Exception:
+        parser_map = {}
 
     visited = 0
     written = 0
@@ -88,9 +100,8 @@ def backfill_parsed(
             continue
 
         # Choose parser
-        try:
-            strategy = require_parser_for_template(str(evaluation_template), parser_map)
-        except Exception:
+        strategy = parser_map.get(str(evaluation_template))
+        if not strategy:
             skipped_no_parser += 1
             continue
 
