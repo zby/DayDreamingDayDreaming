@@ -372,84 +372,137 @@ __all__ = [
 ]
 
 
-# --------------------
-# Asset-style entrypoints for Essay stage
-# --------------------
+def prompt_asset(context, stage: Stage, *, content_combinations=None) -> str:
+    """Unified prompt entrypoint across stages.
 
-def essay_prompt_asset(context) -> str:
-    """
-    Asset-compatible prompt entrypoint for the essay stage.
-    Mirrors behavior of the previous asset implementation without writing files here
-    (IO manager handles persistence for prompts). Emits the same Dagster metadata.
+    - Resolves membership and generator mode
+    - Short-circuits copy mode with sentinel
+    - Loads parent text (essay/evaluation) and renders the template
+    - Emits standardized metadata including template_id, mode, prompt_length
     """
     gen_id = context.partition_key
-    # Validate membership and required fields
-    # Import helpers lazily to avoid circular imports during module initialization
     from daydreaming_dagster.assets._helpers import (
         require_membership_row,
-        load_generation_parsed_text,
         resolve_generator_mode,
+        load_parent_parsed_text,
+        build_prompt_metadata,
     )
 
-    row, _cohort = require_membership_row(context, "essay", str(gen_id), require_columns=["template_id", "parent_gen_id"])
-    template_id = str(row.get("template_id") or "")
-    parent_gen_id = row.get("parent_gen_id")
+    data_root = Path(getattr(context.resources, "data_root", "data"))
 
-    # Resolve generator mode
-    generator_mode = resolve_generator_mode(kind="essay", data_root=Path(context.resources.data_root), template_id=template_id)
-    if generator_mode == "copy":
+    required = {
+        "draft": ["template_id", "combo_id"],
+        "essay": ["template_id", "parent_gen_id"],
+        "evaluation": ["template_id", "parent_gen_id"],
+    }
+    if stage not in required:
+        raise Failure(description=f"Unsupported stage for prompt: {stage}")
+
+    row, _cohort = require_membership_row(context, stage, str(gen_id), require_columns=required[stage])
+    template_id = str(row.get("template_id") or "").strip()
+    mode = resolve_generator_mode(kind=stage, data_root=data_root, template_id=template_id)
+
+    # Copy-mode sentinel metadata
+    if mode == "copy":
+        extras = {}
+        if stage in ("essay", "evaluation"):
+            extras["parent_gen_id"] = str(row.get("parent_gen_id") or "")
+        if stage == "draft":
+            extras["combo_id"] = str(row.get("combo_id") or "")
         context.add_output_metadata(
-            {
-                "function": MetadataValue.text("essay_prompt"),
-                "mode": MetadataValue.text(generator_mode),
-                "template_id": MetadataValue.text(template_id),
-            }
+            build_prompt_metadata(
+                context,
+                stage=stage,
+                gen_id=str(gen_id),
+                template_id=template_id,
+                mode=mode,
+                parent_gen_id=str(row.get("parent_gen_id") or "") if stage != "draft" else None,
+                prompt_text=None,
+                extras=extras,
+            )
         )
         return "COPY_MODE: no prompt needed"
 
-    # Load upstream draft text strictly via parent_gen_id
-    if not (isinstance(parent_gen_id, str) and parent_gen_id.strip()):
-        raise Failure(
-            description="Missing parent_doc_id for essay doc",
-            metadata={
-                "function": MetadataValue.text("essay_prompt"),
-                "gen_id": MetadataValue.text(str(gen_id)),
-                "resolution": MetadataValue.text("Ensure essay row exists in cohort membership with a valid parent_gen_id"),
-            },
+    # Values for template rendering per stage
+    values = {}
+    extras = {}
+    parent_gen_id = None
+    if stage == "draft":
+        if content_combinations is None:
+            raise Failure(
+                description="content_combinations is required for draft prompts",
+                metadata={
+                    "function": MetadataValue.text("draft_prompt"),
+                    "gen_id": MetadataValue.text(str(gen_id)),
+                    "resolution": MetadataValue.text(
+                        "Pass curated content_combinations to draft_prompt asset"
+                    ),
+                },
+            )
+        combo_id = str(row.get("combo_id") or "")
+        content_combination = next((c for c in content_combinations if getattr(c, "combo_id", None) == combo_id), None)
+        if content_combination is None:
+            raise Failure(
+                description=f"Content combination '{combo_id}' not found in combinations database",
+                metadata={
+                    "function": MetadataValue.text("draft_prompt"),
+                    "combo_id": MetadataValue.text(combo_id),
+                    "total_combinations": MetadataValue.int(len(content_combinations) if content_combinations else 0),
+                },
+            )
+        values = {"concepts": content_combination.contents}
+        extras["combo_id"] = combo_id
+    elif stage == "essay":
+        parent_gen_id, parent_text = load_parent_parsed_text(
+            context, stage, str(gen_id), failure_fn_name="essay_prompt"
         )
-    draft_text = load_generation_parsed_text(context, "draft", str(parent_gen_id), failure_fn_name="essay_prompt")
-    draft_lines = [line.strip() for line in draft_text.split("\n") if line.strip()]
+        values = {"draft_block": parent_text, "links_block": parent_text}
+        extras["draft_line_count"] = sum(1 for ln in parent_text.splitlines() if ln.strip())
+    else:  # evaluation
+        parent_gen_id, parent_text = load_parent_parsed_text(
+            context, stage, str(gen_id), failure_fn_name="evaluation_prompt"
+        )
+        values = {"response": parent_text}
 
+    # Render using shared renderer
     try:
-        prompt = render_template("essay", template_id, {"draft_block": draft_text, "links_block": draft_text})
+        prompt = render_template(stage, template_id, values)
     except FileNotFoundError as e:
         raise Failure(
-            description=f"Essay template '{template_id}' not found",
+            description=f"{stage.capitalize()} template '{template_id}' not found",
             metadata={
-                "function": MetadataValue.text("essay_prompt"),
+                "function": MetadataValue.text(f"{stage}_prompt"),
                 "gen_id": MetadataValue.text(str(gen_id)),
                 "template_id": MetadataValue.text(template_id),
                 "error": MetadataValue.text(str(e)),
             },
         )
     except Exception as e:
+        templates_root = Path(os.environ.get("GEN_TEMPLATES_ROOT", "data/1_raw/templates"))
+        template_path = templates_root / stage / f"{template_id}.txt"
         raise Failure(
-            description=f"Error rendering essay template '{template_id}'",
+            description=f"Error rendering {stage} template '{template_id}'",
             metadata={
-                "function": MetadataValue.text("essay_prompt"),
+                "function": MetadataValue.text(f"{stage}_prompt"),
                 "gen_id": MetadataValue.text(str(gen_id)),
                 "template_id": MetadataValue.text(template_id),
+                "template_path": MetadataValue.path(str(template_path)),
                 "jinja_message": MetadataValue.text(str(e)),
             },
-        )
+        ) from e
 
+    # Emit standardized metadata and return
     context.add_output_metadata(
-        {
-            "function": MetadataValue.text("essay_prompt"),
-            "gen_id": MetadataValue.text(str(gen_id)),
-            "template_id": MetadataValue.text(template_id),
-            "draft_line_count": MetadataValue.int(len(draft_lines)),
-        }
+        build_prompt_metadata(
+            context,
+            stage=stage,
+            gen_id=str(gen_id),
+            template_id=template_id,
+            mode="llm",
+            parent_gen_id=str(parent_gen_id) if parent_gen_id else None,
+            prompt_text=prompt,
+            extras=extras,
+        )
     )
     return prompt
 
@@ -594,10 +647,7 @@ def essay_response_asset(context, essay_prompt) -> str:
 
 
 # Export new entrypoints
-__all__ += [
-    "essay_prompt_asset",
-    "essay_response_asset",
-]
+__all__ += ["prompt_asset", "essay_response_asset"]
 
 
 # --------------------
@@ -605,99 +655,14 @@ __all__ += [
 # --------------------
 
 def evaluation_prompt_asset(context) -> str:
-    """Asset-compatible evaluation prompt generation.
-
-    Mirrors existing asset behavior: loads parent essay text, renders template,
-    and emits output metadata. Does not write files here; the IO manager handles
-    persistence for prompts.
-    """
-    gen_id = context.partition_key
-    from dagster import Failure as _Failure, MetadataValue as _MV
-    # Lazy imports to avoid circular imports at module import time
-    from daydreaming_dagster.assets._helpers import (
-        require_membership_row,
-        load_generation_parsed_text,
-        resolve_generator_mode,
-    )
-
-    row, _cohort = require_membership_row(
-        context,
-        "evaluation",
-        str(gen_id),
-        require_columns=["parent_gen_id", "template_id"],
-    )
-    parent_gen_id = str(row.get("parent_gen_id") or "").strip()
-    template_id = str(row.get("template_id") or "").strip()
-    if not parent_gen_id:
-        raise _Failure(
-            description="Missing parent_gen_id for evaluation task",
-            metadata={
-                "function": _MV.text("evaluation_prompt"),
-                "gen_id": _MV.text(str(gen_id)),
-                "resolution": _MV.text(
-                    "Ensure evaluation row exists in cohort membership with a valid parent_gen_id"
-                ),
-            },
-        )
-    # Copy mode: short-circuit with sentinel prompt
-    mode = resolve_generator_mode(kind="evaluation", data_root=Path(context.resources.data_root), template_id=template_id)
-    if mode == "copy":
-        context.add_output_metadata(
-            {
-                "function": _MV.text("evaluation_prompt"),
-                "gen_id": _MV.text(str(gen_id)),
-                "parent_gen_id": _MV.text(str(parent_gen_id)),
-                "mode": _MV.text(mode),
-                "template_id": _MV.text(str(template_id)),
-            }
-        )
-        return "COPY_MODE: no prompt needed"
-
-    # Load target essay parsed text via shared helper (emits helpful Failure metadata)
-    doc_text = load_generation_parsed_text(context, "essay", str(parent_gen_id), failure_fn_name="evaluation_prompt")
-
-    # Render via shared stage_services (StrictUndefined semantics preserved)
-    try:
-        eval_prompt = render_template("evaluation", str(template_id), {"response": doc_text})
-    except FileNotFoundError as e:
-        raise _Failure(
-            description=f"Evaluation template '{template_id}' not found",
-            metadata={
-                "function": _MV.text("evaluation_prompt"),
-                "gen_id": _MV.text(str(gen_id)),
-                "template_id": _MV.text(str(template_id)),
-                "error": _MV.text(str(e)),
-            },
-        )
-    except Exception as e:
-        raise _Failure(
-            description=f"Error rendering evaluation template '{template_id}'",
-            metadata={
-                "function": _MV.text("evaluation_prompt"),
-                "gen_id": _MV.text(str(gen_id)),
-                "template_id": _MV.text(str(template_id)),
-                "jinja_message": _MV.text(str(e)),
-            },
-        )
-    context.add_output_metadata(
-        {
-            "gen_id": _MV.text(str(gen_id)),
-            "parent_gen_id": _MV.text(str(parent_gen_id)),
-            "evaluation_prompt_length": _MV.int(len(eval_prompt)),
-            "template_id": _MV.text(str(template_id) if template_id else ""),
-        }
-    )
-    return eval_prompt
+    return prompt_asset(context, "evaluation")
 
 
 def evaluation_response_asset(context, evaluation_prompt) -> str:
     return response_asset(context, evaluation_prompt, "evaluation")
 
 
-__all__ += [
-    "evaluation_prompt_asset",
-    "evaluation_response_asset",
-]
+__all__ += ["evaluation_prompt_asset", "evaluation_response_asset"]
 
 
 # --------------------
@@ -705,86 +670,11 @@ __all__ += [
 # --------------------
 
 def draft_prompt_asset(context, content_combinations) -> str:
-    """Asset-compatible draft prompt generation.
-
-    Mirrors existing asset behavior: resolves membership row, locates the
-    content combination, renders the draft template, returns prompt text, and
-    logs context info. IO manager persists the prompt, no file writes here.
-    """
-    gen_id = context.partition_key
-    from pathlib import Path as _Path
-    from dagster import Failure as _Failure, MetadataValue as _MV
-    from daydreaming_dagster.assets._helpers import (
-        require_membership_row,
-        resolve_generator_mode,
-    )
-
-    # Read membership to resolve combo/template
-    row, _cohort = require_membership_row(context, "draft", str(gen_id))
-    combo_id = str(row.get("combo_id") or "")
-    template_id = str(row.get("template_id") or "")
-
-    # Copy mode: short-circuit prompt generation
-    mode = resolve_generator_mode(kind="draft", data_root=Path(getattr(context.resources, "data_root", "data")), template_id=template_id)
-    if mode == "copy":
-        context.add_output_metadata(
-            {
-                "function": _MV.text("draft_prompt"),
-                "gen_id": _MV.text(str(gen_id)),
-                "mode": _MV.text(mode),
-                "template_id": _MV.text(template_id),
-                "combo_id": _MV.text(combo_id),
-            }
-        )
-        return "COPY_MODE: no prompt needed"
-
-    # Resolve content combination; curated combos are provided via content_combinations
-    content_combination = next((c for c in content_combinations if c.combo_id == combo_id), None)
-    if content_combination is None:
-        available_combos = [combo.combo_id for combo in content_combinations[:5]]
-        raise _Failure(
-            description=f"Content combination '{combo_id}' not found in combinations database",
-            metadata={
-                "combo_id": _MV.text(combo_id),
-                "available_combinations_sample": _MV.text(str(available_combos)),
-                "total_combinations": _MV.int(len(content_combinations)),
-            },
-        )
-
-    try:
-        prompt = render_template("draft", template_id, {"concepts": content_combination.contents})
-    except FileNotFoundError as e:
-        raise _Failure(
-            description=f"Draft template '{template_id}' not found",
-            metadata={
-                "template_id": _MV.text(template_id),
-                "phase": _MV.text("draft"),
-                "error": _MV.text(str(e)),
-                "resolution": _MV.text("Ensure the template exists in data/1_raw/templates/draft/"),
-            },
-        )
-    except Exception as e:
-        templates_root = Path(os.environ.get("GEN_TEMPLATES_ROOT", "data/1_raw/templates"))
-        template_path = templates_root / "draft" / f"{template_id}.txt"
-        raise _Failure(
-            description=f"Error rendering draft template '{template_id}'",
-            metadata={
-                "template_id": _MV.text(template_id),
-                "phase": _MV.text("draft"),
-                "template_path": _MV.path(str(template_path)),
-                "jinja_message": _MV.text(str(e)),
-            },
-        ) from e
-
-    context.log.info(f"Generated draft prompt for gen {gen_id} using template {template_id}")
-    return prompt
+    return prompt_asset(context, "draft", content_combinations=content_combinations)
 
 
 def draft_response_asset(context, draft_prompt) -> str:
     return response_asset(context, draft_prompt, "draft")
 
 
-__all__ += [
-    "draft_prompt_asset",
-    "draft_response_asset",
-]
+__all__ += ["draft_prompt_asset", "draft_response_asset"]

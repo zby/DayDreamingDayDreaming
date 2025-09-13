@@ -311,6 +311,50 @@ __all__ = [
     "require_membership_row",
     "load_generation_parsed_text",
     "load_parent_parsed_text",
+    "build_prompt_metadata",
     "resolve_generator_mode",
     "emit_standard_output_metadata",
 ]
+
+def build_prompt_metadata(
+    context,
+    *,
+    stage: Stage,
+    gen_id: str,
+    template_id: str,
+    mode: str,
+    parent_gen_id: Optional[str] = None,
+    prompt_text: Optional[str] = None,
+    extras: Optional[Dict[str, Any]] = None,
+) -> Dict[str, MetadataValue]:
+    """Standard prompt metadata for Dagster UI.
+
+    - Always includes function, gen_id, template_id, mode, prompt_length.
+    - Includes parent_gen_id when available.
+    - Accepts extras to add stage‑specific fields (e.g., draft_line_count).
+    """
+    def _mlen(s: Optional[str]) -> int:
+        return len(s) if isinstance(s, str) else 0
+
+    md: Dict[str, MetadataValue] = {
+        "function": MetadataValue.text(f"{stage}_prompt"),
+        "gen_id": MetadataValue.text(str(gen_id)),
+        "template_id": MetadataValue.text(str(template_id)),
+        "mode": MetadataValue.text(str(mode)),
+        "prompt_length": MetadataValue.int(_mlen(prompt_text)),
+    }
+    if isinstance(parent_gen_id, str) and parent_gen_id:
+        md["parent_gen_id"] = MetadataValue.text(str(parent_gen_id))
+    if extras:
+        for k, v in extras.items():
+            if isinstance(v, bool):
+                md[k] = MetadataValue.bool(v)
+            elif isinstance(v, int):
+                md[k] = MetadataValue.int(v)
+            elif isinstance(v, float):
+                md[k] = MetadataValue.float(v)
+            elif isinstance(v, (list, dict)):
+                md[k] = MetadataValue.json(v)
+            elif v is not None:
+                md[k] = MetadataValue.text(str(v))
+    return md
