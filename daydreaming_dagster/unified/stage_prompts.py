@@ -1,9 +1,6 @@
 from __future__ import annotations
 
-from pathlib import Path
 from typing import Optional
-
-from dagster import Failure, MetadataValue
 
 from .stage_core import Stage, render_template
 from .stage_policy import (
@@ -24,7 +21,7 @@ def prompt_asset(context, stage: Stage, *, content_combinations=None) -> str:
 
     data_root = get_data_root(context)
     if stage not in PROMPT_REQUIRED_BY_STAGE:
-        raise Failure(description=f"Unsupported stage for prompt: {stage}")
+        raise ValueError(f"Unsupported stage for prompt: {stage}")
 
     row, _cohort = require_membership_row(context, stage, str(gen_id), require_columns=PROMPT_REQUIRED_BY_STAGE[stage])
     mf = read_membership_fields(row)
@@ -55,24 +52,11 @@ def prompt_asset(context, stage: Stage, *, content_combinations=None) -> str:
     parent_gen_id: Optional[str] = None
     if stage == "draft":
         if content_combinations is None:
-            raise Failure(
-                description="content_combinations is required for draft prompts",
-                metadata={
-                    "function": MetadataValue.text("draft_prompt"),
-                    "gen_id": MetadataValue.text(str(gen_id)),
-                },
-            )
+            raise ValueError("content_combinations is required for draft prompts")
         combo_id = str(mf.combo_id or "")
         content_combination = next((c for c in content_combinations if getattr(c, "combo_id", None) == combo_id), None)
         if content_combination is None:
-            raise Failure(
-                description=f"Content combination '{combo_id}' not found in combinations database",
-                metadata={
-                    "function": MetadataValue.text("draft_prompt"),
-                    "combo_id": MetadataValue.text(combo_id),
-                    "total_combinations": MetadataValue.int(len(content_combinations) if content_combinations else 0),
-                },
-            )
+            raise ValueError(f"Content combination '{combo_id}' not found in combinations database")
         values = {"concepts": content_combination.contents}
         extras["combo_id"] = combo_id
     elif stage == "essay":
@@ -100,4 +84,3 @@ def prompt_asset(context, stage: Stage, *, content_combinations=None) -> str:
 
 
 __all__ = ["prompt_asset"]
-
