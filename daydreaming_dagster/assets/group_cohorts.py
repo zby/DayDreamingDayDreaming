@@ -7,7 +7,6 @@ registering dynamic partitions based on cohort membership.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, Iterable, List, Tuple
 
@@ -49,39 +48,20 @@ def _load_selected_essays_list(data_root: Path) -> List[str]:
 # Model provider name mapping removed from cohort generation to reduce complexity.
 
 
-def _eval_axes(data_root: Path) -> Tuple[List[str], List[str], Dict[str, str], Dict[str, str]]:
+def _eval_axes(data_root: Path) -> Tuple[List[str], List[str]]:
+    """Return active evaluation template IDs and evaluation model IDs."""
     models_df = read_llm_models(data_root)
     evaluation_models = models_df[models_df["for_evaluation"] == True]
     eval_model_ids = (
         evaluation_models["id"].astype(str).tolist() if not evaluation_models.empty else []
     )
-    eval_model_names = (
-        dict(zip(evaluation_models["id"].astype(str), evaluation_models["model"].astype(str)))
-        if not evaluation_models.empty
-        else {}
-    )
     eval_templates_df = read_templates(data_root, "evaluation", filter_active=True)
-    if "active" in eval_templates_df.columns:
-        eval_templates_df = eval_templates_df[eval_templates_df["active"] == True]
     eval_tpl_ids = (
         eval_templates_df["template_id"].astype(str).tolist()
         if not eval_templates_df.empty
         else []
     )
-    parser_map: Dict[str, str] = {}
-    if "parser" in eval_templates_df.columns:
-        try:
-            parser_map = (
-                eval_templates_df[["template_id", "parser"]]
-                .dropna(subset=["template_id"])  # keep valid ids
-                .astype({"template_id": str})
-                .set_index("template_id")["parser"]
-                .astype(str)
-                .to_dict()
-            )
-        except Exception:
-            parser_map = {}
-    return eval_tpl_ids, eval_model_ids, eval_model_names | {}, parser_map
+    return eval_tpl_ids, eval_model_ids
 
 
 @asset(
@@ -262,38 +242,10 @@ def cohort_membership(
                 }
             )
 
-        # Expand evaluations from active axes
-        eval_tpl_ids, eval_model_ids, eval_model_names, parser_map = _eval_axes(data_root)
-        essay_ids = [r["gen_id"] for r in rows if r.get("stage") == "essay"]
-        # Map essay gen_id to its combo_id to avoid stale combo_id leakage
-        essay_combo_map = {
-            str(r["gen_id"]): str(r.get("combo_id") or "")
-            for r in rows
-            if r.get("stage") == "essay"
-        }
-        for essay_gen_id in essay_ids:
-            for tpl in eval_tpl_ids:
-                for mid in eval_model_ids:
-                    eval_task_id = f"{essay_gen_id}__{tpl}__{mid}"
-                    eval_gen_id = reserve_gen_id("evaluation", eval_task_id, run_id=cohort_id)
-                    rows.append(
-                        {
-                            "stage": "evaluation",
-                            "gen_id": eval_gen_id,
-                            "cohort_id": str(cohort_id),
-                            "parent_gen_id": essay_gen_id,
-                            # combo_id is tied to content; reuse from essay row for this parent
-                            "combo_id": essay_combo_map.get(str(essay_gen_id), ""),
-                            "template_id": tpl,
-                            "llm_model_id": mid,
-                        }
-                    )
     else:
         # Cartesian mode — derive from active axes
         # Drafts: content_combinations × active draft templates × generation models
         dtpl_df = read_templates(data_root, "draft", filter_active=True)
-        if "active" in dtpl_df.columns:
-            dtpl_df = dtpl_df[dtpl_df["active"] == True]
         gen_models_df = read_llm_models(data_root)
         gen_models_df = gen_models_df[gen_models_df["for_generation"] == True]
         # Read selected combo ids from data/2_tasks/selected_combo_mappings.csv
@@ -328,8 +280,6 @@ def cohort_membership(
 
         # Essays: drafts × active essay templates
         essay_tpl_df = read_templates(data_root, "essay", filter_active=True)
-        if "active" in essay_tpl_df.columns:
-            essay_tpl_df = essay_tpl_df[essay_tpl_df["active"] == True]
         draft_rows = [r for r in rows if r.get("stage") == "draft"]
         for d in draft_rows:
             draft_cohort_gen = str(d.get("gen_id"))
@@ -356,14 +306,12 @@ def cohort_membership(
                     }
                 )
 
-        # Evaluations: essays × active evaluation templates × evaluation models
-        eval_tpl_ids, eval_model_ids, eval_model_names, parser_map = _eval_axes(data_root)
-        essay_ids = [r["gen_id"] for r in rows if r.get("stage") == "essay"]
-        # Map essay gen_id to combo_id for correct propagation
+    # After drafts and essays are built, expand evaluations once using shared helper
+    eval_tpl_ids, eval_model_ids = _eval_axes(data_root)
+    if eval_tpl_ids and eval_model_ids:
+        essay_ids = [str(r["gen_id"]) for r in rows if r.get("stage") == "essay"]
         essay_combo_map = {
-            str(r["gen_id"]): str(r.get("combo_id") or "")
-            for r in rows
-            if r.get("stage") == "essay"
+            str(r["gen_id"]): str(r.get("combo_id") or "") for r in rows if r.get("stage") == "essay"
         }
         for essay_gen_id in essay_ids:
             for tpl in eval_tpl_ids:
@@ -376,7 +324,7 @@ def cohort_membership(
                             "gen_id": eval_gen_id,
                             "cohort_id": str(cohort_id),
                             "parent_gen_id": essay_gen_id,
-                            "combo_id": essay_combo_map.get(str(essay_gen_id), ""),
+                            "combo_id": essay_combo_map.get(essay_gen_id, ""),
                             "template_id": tpl,
                             "llm_model_id": mid,
                         }
