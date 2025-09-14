@@ -199,6 +199,35 @@ def execute_llm(
             "duration_s": round(time.time() - t0, 3),
         }
     )
+    # Add essential metrics and parameters for downstream observability
+    try:
+        # Max tokens used for this generation
+        meta["max_tokens"] = int(max_tokens) if isinstance(max_tokens, int) else None
+    except Exception:
+        meta["max_tokens"] = None
+    try:
+        # Derive duration_ms from duration_s for convenience
+        ds = meta.get("duration_s")
+        meta["duration_ms"] = int(round(float(ds) * 1000)) if ds is not None else None
+    except Exception:
+        meta["duration_ms"] = None
+    # Character counts for prompt/raw/parsed
+    meta["prompt_chars"] = len(prompt_text) if isinstance(prompt_text, str) else 0
+    meta["raw_chars"] = len(raw_text) if isinstance(raw_text, str) else 0
+    meta["parsed_chars"] = len(parsed) if isinstance(parsed, str) else 0
+    # Total tokens if provided by the provider info
+    try:
+        usage = meta.get("usage") or {}
+        if isinstance(usage, dict):
+            tkn = usage.get("total_tokens")
+            # Some providers might return other casings/keys; best-effort normalization
+            if tkn is None:
+                tkn = usage.get("totalTokens") or usage.get("total")
+            meta["total_tokens"] = int(tkn) if isinstance(tkn, (int, float)) else None
+        else:
+            meta["total_tokens"] = None
+    except Exception:
+        meta["total_tokens"] = None
     _merge_extras(meta, metadata_extra)
 
     # First write raw and metadata for debuggability.

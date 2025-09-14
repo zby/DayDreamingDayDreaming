@@ -274,6 +274,42 @@ def emit_standard_output_metadata(
         "parsed_chars": MetadataValue.int(_chars(parsed)),
         "parsed_lines": MetadataValue.int(_lines(parsed)),
     }
+    # Optional: include duration and token usage if available on result.metadata or info.usage
+    meta = _get(result, "metadata", {}) or {}
+    try:
+        if isinstance(meta, dict) and meta.get("duration_s") is not None:
+            md["duration_s"] = MetadataValue.float(float(meta.get("duration_s")))
+            if meta.get("duration_ms") is not None:
+                md["duration_ms"] = MetadataValue.int(int(meta.get("duration_ms")))
+    except Exception:
+        pass
+    # max_tokens from metadata when present
+    try:
+        if isinstance(meta, dict) and meta.get("max_tokens") is not None:
+            md["max_tokens"] = MetadataValue.int(int(meta.get("max_tokens")))
+    except Exception:
+        pass
+    # total_tokens best-effort from metadata.usage or info.usage
+    def _total_tokens_from(u: Any) -> int | None:
+        if isinstance(u, dict):
+            t = u.get("total_tokens")
+            if t is None:
+                t = u.get("totalTokens") or u.get("total")
+            try:
+                return int(t) if isinstance(t, (int, float)) else None
+            except Exception:
+                return None
+        return None
+
+    if isinstance(meta, dict) and isinstance(meta.get("usage"), dict):
+        tt = _total_tokens_from(meta.get("usage"))
+        if tt is not None:
+            md["total_tokens"] = MetadataValue.int(tt)
+    else:
+        u = info.get("usage") if isinstance(info, dict) else None
+        tt = _total_tokens_from(u)
+        if tt is not None:
+            md["total_tokens"] = MetadataValue.int(tt)
     if extras:
         for k, v in extras.items():
             # Avoid overriding the standard keys
@@ -327,6 +363,8 @@ def build_prompt_metadata(
     """
     def _mlen(s: Optional[str]) -> int:
         return len(s) if isinstance(s, str) else 0
+    def _lines(s: Optional[str]) -> int:
+        return sum(1 for _ in str(s).splitlines()) if isinstance(s, str) and s else 0
 
     md: Dict[str, MetadataValue] = {
         "function": MetadataValue.text(f"{stage}_prompt"),
@@ -334,6 +372,7 @@ def build_prompt_metadata(
         "template_id": MetadataValue.text(str(template_id)),
         "mode": MetadataValue.text(str(mode)),
         "prompt_length": MetadataValue.int(_mlen(prompt_text)),
+        "prompt_lines": MetadataValue.int(_lines(prompt_text)),
     }
     if isinstance(parent_gen_id, str) and parent_gen_id:
         md["parent_gen_id"] = MetadataValue.text(str(parent_gen_id))
