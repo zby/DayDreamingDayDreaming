@@ -1,8 +1,8 @@
 from dagster import asset, MetadataValue
 from pathlib import Path
 import pandas as pd
-from scripts.aggregate_scores import parse_all as parse_all_scores
 from ..utils.membership_lookup import stage_gen_ids
+from ..utils.evaluation_scores import aggregate_evaluation_scores_for_ids as parse_all_scores
 
 
 @asset(
@@ -27,17 +27,14 @@ def aggregated_scores(context) -> pd.DataFrame:
     """
     data_root = Path(getattr(context.resources, "data_root", "data"))
     out_csv = data_root / "5_parsing" / "aggregated_scores.csv"
-    df = parse_all_scores(data_root, out_csv)
-
-    # Filter to evaluation gen_ids found in cohort membership (if any)
+    # Build gen_id list from cohort membership first (avoid scanning all)
     try:
         keep_list = stage_gen_ids(data_root, "evaluation")
-        keep = set(keep_list)
-        if isinstance(df, pd.DataFrame) and not df.empty and "gen_id" in df.columns and keep:
-            df = df[df["gen_id"].astype(str).isin(keep)].reset_index(drop=True)
     except FileNotFoundError:
-        # No cohort membership present; keep full set
-        pass
+        keep_list = []
+
+    # Prefer shared helper with explicit ids; fall back to legacy signature for tests
+    df = parse_all_scores(data_root, keep_list)
 
     context.add_output_metadata(
         {

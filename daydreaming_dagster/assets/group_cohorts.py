@@ -265,6 +265,12 @@ def cohort_membership(
         # Expand evaluations from active axes
         eval_tpl_ids, eval_model_ids, eval_model_names, parser_map = _eval_axes(data_root)
         essay_ids = [r["gen_id"] for r in rows if r.get("stage") == "essay"]
+        # Map essay gen_id to its combo_id to avoid stale combo_id leakage
+        essay_combo_map = {
+            str(r["gen_id"]): str(r.get("combo_id") or "")
+            for r in rows
+            if r.get("stage") == "essay"
+        }
         for essay_gen_id in essay_ids:
             for tpl in eval_tpl_ids:
                 for mid in eval_model_ids:
@@ -276,8 +282,8 @@ def cohort_membership(
                             "gen_id": eval_gen_id,
                             "cohort_id": str(cohort_id),
                             "parent_gen_id": essay_gen_id,
-                            # combo_id is tied to content; reuse from curated draft -> essay chain
-                            "combo_id": combo_id,
+                            # combo_id is tied to content; reuse from essay row for this parent
+                            "combo_id": essay_combo_map.get(str(essay_gen_id), ""),
                             "template_id": tpl,
                             "llm_model_id": mid,
                         }
@@ -353,6 +359,12 @@ def cohort_membership(
         # Evaluations: essays × active evaluation templates × evaluation models
         eval_tpl_ids, eval_model_ids, eval_model_names, parser_map = _eval_axes(data_root)
         essay_ids = [r["gen_id"] for r in rows if r.get("stage") == "essay"]
+        # Map essay gen_id to combo_id for correct propagation
+        essay_combo_map = {
+            str(r["gen_id"]): str(r.get("combo_id") or "")
+            for r in rows
+            if r.get("stage") == "essay"
+        }
         for essay_gen_id in essay_ids:
             for tpl in eval_tpl_ids:
                 for mid in eval_model_ids:
@@ -364,7 +376,7 @@ def cohort_membership(
                             "gen_id": eval_gen_id,
                             "cohort_id": str(cohort_id),
                             "parent_gen_id": essay_gen_id,
-                            "combo_id": combo_id,
+                            "combo_id": essay_combo_map.get(str(essay_gen_id), ""),
                             "template_id": tpl,
                             "llm_model_id": mid,
                         }

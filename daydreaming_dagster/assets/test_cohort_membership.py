@@ -111,3 +111,62 @@ def test_cohort_membership_missing_parent_fails(tmp_path: Path, monkeypatch):
     ctx = build_asset_context(resources={"data_root": str(data_root)})
     with pytest.raises(Exception):
         cohort_membership(ctx, "cohort-parent-fail")
+
+
+def test_evaluation_combo_id_matches_parent_essay(tmp_path: Path):
+    data_root = tmp_path
+    # Minimal eval axes: one eval template, one eval model
+    (data_root / "1_raw").mkdir(parents=True, exist_ok=True)
+    pd.DataFrame([
+        {"template_id": "eval-1", "active": True},
+    ]).to_csv(data_root / "1_raw" / "evaluation_templates.csv", index=False)
+    pd.DataFrame([
+        {"id": "eval-1", "model": "provider/eval-1", "for_generation": False, "for_evaluation": True},
+    ]).to_csv(data_root / "1_raw" / "llm_models.csv", index=False)
+
+    # Seed two independent draft->essay chains with distinct combo_ids
+    chains = [
+        ("D100", "E100", "combo-A", "draft-tpl-A", "essay-tpl-A", "gen-A"),
+        ("D200", "E200", "combo-B", "draft-tpl-B", "essay-tpl-B", "gen-B"),
+    ]
+    for d_id, e_id, combo, d_tpl, e_tpl, g_mid in chains:
+        _write_json(
+            data_root / "gens" / "draft" / d_id / "metadata.json",
+            {
+                "stage": "draft",
+                "gen_id": d_id,
+                "combo_id": combo,
+                "template_id": d_tpl,
+                "model_id": g_mid,
+            },
+        )
+        _write_json(
+            data_root / "gens" / "essay" / e_id / "metadata.json",
+            {
+                "stage": "essay",
+                "gen_id": e_id,
+                "parent_gen_id": d_id,
+                "template_id": e_tpl,
+                "model_id": g_mid,
+            },
+        )
+
+    # Select both essays
+    (data_root / "2_tasks").mkdir(parents=True, exist_ok=True)
+    (data_root / "2_tasks" / "selected_essays.txt").write_text("\n".join([c[1] for c in chains]) + "\n", encoding="utf-8")
+
+    ctx = build_asset_context(resources={"data_root": str(data_root)})
+    cid = "cohort-combo-prop"
+    mdf = cohort_membership(ctx, cid)
+
+    # Build mapping essay gen_id -> combo_id from essay rows
+    essays = mdf[mdf["stage"] == "essay"]["gen_id"].astype(str).tolist()
+    essay_combo = {
+        row["gen_id"]: row["combo_id"]
+        for _, row in mdf[mdf["stage"] == "essay"]["gen_id combo_id".split()].astype(str).iterrows()
+    }
+    # For each evaluation row, ensure its combo_id equals its parent essay's combo_id
+    for _, er in mdf[mdf["stage"] == "evaluation"].iterrows():
+        parent = str(er["parent_gen_id"])
+        assert parent in essays
+        assert str(er["combo_id"]) == essay_combo[parent]

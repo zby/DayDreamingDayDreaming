@@ -14,8 +14,8 @@ from daydreaming_dagster.assets.results_processing import aggregated_scores
 
 def test_aggregated_scores_filters_and_passthrough(tmp_path, monkeypatch):
     # Monkeypatch the aggregator to avoid filesystem I/O; include two rows
-    def fake_parse_all_scores(_data_root, _out_csv):
-        return pd.DataFrame(
+    def fake_parse_all_scores(_data_root, gen_ids):
+        df_all = pd.DataFrame(
             [
                 {
                     "gen_id": "E123",
@@ -47,6 +47,9 @@ def test_aggregated_scores_filters_and_passthrough(tmp_path, monkeypatch):
                 },
             ]
         )
+        if gen_ids:
+            return df_all[df_all["gen_id"].isin(set(map(str, gen_ids)))].reset_index(drop=True)
+        return df_all
 
     # Only keep E123 in cohort filter
     def fake_stage_gen_ids(_data_root, stage):
@@ -65,7 +68,7 @@ def test_aggregated_scores_filters_and_passthrough(tmp_path, monkeypatch):
     ctx = build_asset_context(resources={"data_root": str(tmp_path)})
     df = aggregated_scores(ctx)
 
-    # Filtered to cohort
+    # Filtered to cohort by the helper's gen_id list
     assert set(df["gen_id"]) == {"E123"}
     # Passthrough of enriched fields
     assert set(["evaluation_llm_model", "generation_response_path", "draft_template"]).issubset(df.columns)
