@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, Literal, Optional, Tuple
+from typing import Any, Dict, Optional, Tuple
 import os
 import time
 
@@ -15,8 +15,7 @@ from daydreaming_dagster.utils.generation import (
     write_gen_metadata,
 )
 from daydreaming_dagster.constants import DRAFT
-
-Stage = Literal["draft", "essay", "evaluation"]
+from daydreaming_dagster.types import Stage
 
 
 @dataclass

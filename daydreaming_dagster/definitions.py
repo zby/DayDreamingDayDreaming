@@ -13,7 +13,7 @@ from daydreaming_dagster.assets.group_evaluation import (
     evaluation_response,
 )
 from daydreaming_dagster.assets.results_processing import (
-    parsed_scores,
+    aggregated_scores,
 )
 from daydreaming_dagster.assets.results_analysis import (
     evaluator_agreement_analysis,
@@ -89,7 +89,7 @@ defs = Definitions(
         evaluation_response,
         
         # Results processing assets
-        parsed_scores,
+        aggregated_scores,
         evaluator_agreement_analysis,
         comprehensive_variance_analysis,
         generation_scores_pivot,

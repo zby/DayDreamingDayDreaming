@@ -1,9 +1,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Callable, Dict, Literal, Optional, Tuple
-
-Stage = Literal["draft", "essay", "evaluation"]
+from typing import Any, Callable, Dict, Optional, Tuple
+from daydreaming_dagster.types import Stage
 
 
 PROMPT_REQUIRED_BY_STAGE: Dict[Stage, list[str]] = {

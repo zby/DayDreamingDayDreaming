@@ -19,7 +19,7 @@ def _noop():
     required_resource_keys={"data_root"},
     deps={EVALUATION_TEMPLATES_KEY},
 )
-def generation_scores_pivot(context, parsed_scores: pd.DataFrame) -> pd.DataFrame:
+def generation_scores_pivot(context, aggregated_scores: pd.DataFrame) -> pd.DataFrame:
     """
     Pivot individual evaluation scores per generation.
 
@@ -39,12 +39,12 @@ def generation_scores_pivot(context, parsed_scores: pd.DataFrame) -> pd.DataFram
         return pd.DataFrame()
     
     # Filter to valid scored rows
-    if parsed_scores is None or parsed_scores.empty:
-        context.log.warning("No parsed_scores provided; returning empty pivot")
+    if aggregated_scores is None or aggregated_scores.empty:
+        context.log.warning("No aggregated_scores provided; returning empty pivot")
         return pd.DataFrame()
 
-    valid_scores = parsed_scores[
-        parsed_scores['error'].isna() & parsed_scores['score'].notna()
+    valid_scores = aggregated_scores[
+        aggregated_scores['error'].isna() & aggregated_scores['score'].notna()
     ].copy()
 
     if valid_scores.empty:
@@ -54,7 +54,7 @@ def generation_scores_pivot(context, parsed_scores: pd.DataFrame) -> pd.DataFram
     # Require evaluator id column and compose combined key (strict)
     if 'evaluation_llm_model' not in valid_scores.columns:
         raise Failure(
-            description="Missing required column 'evaluation_llm_model' in parsed_scores",
+            description="Missing required column 'evaluation_llm_model' in aggregated_scores",
             metadata={
                 "expected": MetadataValue.text("evaluation_llm_model"),
                 "present": MetadataValue.text(", ".join(list(valid_scores.columns)))
@@ -86,15 +86,15 @@ def generation_scores_pivot(context, parsed_scores: pd.DataFrame) -> pd.DataFram
     else:
         pivot_df['sum_scores'] = 0.0
 
-    # Require draft_template in parsed_scores (added with two-phase architecture)
+    # Require draft_template in aggregated_scores (added with two-phase architecture)
     if 'draft_template' not in valid_scores.columns:
         # Fail fast with guidance to rematerialize upstream asset
         raise Failure(
-            description="Missing required column 'draft_template' in parsed_scores for two-phase path generation",
+            description="Missing required column 'draft_template' in aggregated_scores for two-phase path generation",
             metadata={
                 "resolution": MetadataValue.text(
-                    "Rematerialize 'parsed_scores' to include new columns (draft_template, essay_task_id). "
-                    "For example: `uv run dagster asset materialize --select parsed_scores -f daydreaming_dagster/definitions.py`"
+                    "Rematerialize 'aggregated_scores' to include new columns (draft_template, essay_task_id). "
+                    "For example: `uv run dagster asset materialize --select aggregated_scores -f daydreaming_dagster/definitions.py`"
                 ),
                 "present_columns": MetadataValue.text(", ".join(list(valid_scores.columns))),
                 "expected_column": MetadataValue.text("draft_template"),
@@ -102,18 +102,18 @@ def generation_scores_pivot(context, parsed_scores: pd.DataFrame) -> pd.DataFram
         )
     # draft_template is now already included in the pivot index, so no need to merge it back
 
-    # Attach generation_response_path from parsed_scores (strict requirement)
-    if 'generation_response_path' not in parsed_scores.columns:
+    # Attach generation_response_path from aggregated_scores (strict requirement)
+    if 'generation_response_path' not in aggregated_scores.columns:
         raise Failure(
-            description="Missing 'generation_response_path' in parsed_scores",
+            description="Missing 'generation_response_path' in aggregated_scores",
             metadata={
                 'resolution': MetadataValue.text(
-                    "Rematerialize parsed_scores so it enriches from gens store (adds generation_response_path)."
+                    "Rematerialize aggregated_scores so it enriches from gens store (adds generation_response_path)."
                 ),
-                'present_columns': MetadataValue.text(", ".join(list(parsed_scores.columns)))
+                'present_columns': MetadataValue.text(", ".join(list(aggregated_scores.columns)))
             }
         )
-    path_map = parsed_scores[
+    path_map = aggregated_scores[
         ['combo_id', 'stage', 'draft_template', 'generation_template', 'generation_model', 'generation_response_path']
     ].drop_duplicates()
     pivot_df = pivot_df.merge(
@@ -141,13 +141,13 @@ def generation_scores_pivot(context, parsed_scores: pd.DataFrame) -> pd.DataFram
     group_name="results_summary", 
     io_manager_key="summary_results_io_manager"
 )
-def final_results(context, parsed_scores: pd.DataFrame) -> pd.DataFrame:
+def final_results(context, aggregated_scores: pd.DataFrame) -> pd.DataFrame:
     """
     Create comprehensive pivot table summaries with statistics.
     Includes average scores, perfect scores count, and standard deviation.
     """
     # Filter out rows with errors (no valid scores)
-    valid_scores = parsed_scores[parsed_scores['error'].isna() & parsed_scores['score'].notna()].copy()
+    valid_scores = aggregated_scores[aggregated_scores['error'].isna() & aggregated_scores['score'].notna()].copy()
     score_col = 'score'
     analysis_df = valid_scores
     
@@ -296,15 +296,15 @@ def final_results(context, parsed_scores: pd.DataFrame) -> pd.DataFrame:
     group_name="results_summary",
     io_manager_key="summary_results_io_manager"
 )
-def perfect_score_paths(context, parsed_scores: pd.DataFrame) -> pd.DataFrame:
+def perfect_score_paths(context, aggregated_scores: pd.DataFrame) -> pd.DataFrame:
     """
     Generate a file with paths to all responses that received perfect scores (10.0).
     Includes both generation and evaluation response paths for analysis.
     """
     # Filter for perfect scores only
-    perfect_scores = parsed_scores[
-        (parsed_scores['score'] == 10.0) & 
-        (parsed_scores['error'].isna())
+    perfect_scores = aggregated_scores[
+        (aggregated_scores['score'] == 10.0) & 
+        (aggregated_scores['error'].isna())
     ].copy()
     
     if perfect_scores.empty:
@@ -330,12 +330,12 @@ def perfect_score_paths(context, parsed_scores: pd.DataFrame) -> pd.DataFrame:
             draft_tpl = row.get('draft_template') if 'draft_template' in row else None
             if not isinstance(draft_tpl, str) or not draft_tpl:
                 raise Failure(
-                    description="Cannot reconstruct essay path: missing draft_template",
+            description="Cannot reconstruct essay path: missing draft_template",
                     metadata={
                         "combo_id": MetadataValue.text(str(row.get('combo_id'))),
                         "generation_template": MetadataValue.text(str(row.get('generation_template'))),
                         "generation_model": MetadataValue.text(str(row.get('generation_model'))),
-                        "resolution": MetadataValue.text("Ensure parsed_scores includes 'draft_template' and essay_task_id, or provide generation_response_path."),
+                        "resolution": MetadataValue.text("Ensure aggregated_scores includes 'draft_template' and essay_task_id, or provide generation_response_path."),
                     },
                 )
             generation_path = get_generation_response_path(
@@ -343,7 +343,7 @@ def perfect_score_paths(context, parsed_scores: pd.DataFrame) -> pd.DataFrame:
             )
 
         # Evaluation path: use parsed column when present
-        # FALLBACK(DATA): Use legacy single-phase evaluation path when parsed_scores lacks an explicit path.
+        # FALLBACK(DATA): Use legacy single-phase evaluation path when aggregated_scores lacks an explicit path.
         evaluation_path = row['evaluation_response_path'] if 'evaluation_response_path' in row else f"data/4_evaluation/evaluation_responses/{row['combo_id']}_{row['generation_template']}_{row['generation_model']}_{row.get('evaluation_template', 'daydreaming-verification-v2')}_{row['evaluation_llm_model']}.txt"
         
         paths_data.append({
@@ -385,7 +385,7 @@ def perfect_score_paths(context, parsed_scores: pd.DataFrame) -> pd.DataFrame:
     group_name="results_summary", 
     io_manager_key="summary_results_io_manager"
 )
-def evaluation_model_template_pivot(context, parsed_scores: pd.DataFrame) -> pd.DataFrame:
+def evaluation_model_template_pivot(context, aggregated_scores: pd.DataFrame) -> pd.DataFrame:
     """
     Create pivot table with (evaluation_llm_model, evaluation_template) combinations as columns.
     
@@ -396,13 +396,13 @@ def evaluation_model_template_pivot(context, parsed_scores: pd.DataFrame) -> pd.
     This table enables easy comparison of how different evaluation approaches
     score the same generation responses.
     """
-    if parsed_scores is None or parsed_scores.empty:
-        context.log.warning("No parsed_scores provided; returning empty pivot")
+    if aggregated_scores is None or aggregated_scores.empty:
+        context.log.warning("No aggregated_scores provided; returning empty pivot")
         return pd.DataFrame()
     
     # Filter to valid scored rows
-    valid_scores = parsed_scores[
-        parsed_scores['error'].isna() & parsed_scores['score'].notna()
+    valid_scores = aggregated_scores[
+        aggregated_scores['error'].isna() & aggregated_scores['score'].notna()
     ].copy()
     
     if valid_scores.empty:
@@ -412,7 +412,7 @@ def evaluation_model_template_pivot(context, parsed_scores: pd.DataFrame) -> pd.
     # Require evaluator id and create combined key
     if 'evaluation_llm_model' not in valid_scores.columns:
         raise Failure(
-            description="Missing required column 'evaluation_llm_model' in parsed_scores",
+            description="Missing required column 'evaluation_llm_model' in aggregated_scores",
             metadata={"present": MetadataValue.text(", ".join(list(valid_scores.columns)))}
         )
     valid_scores['eval_model_template'] = (

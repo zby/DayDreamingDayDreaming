@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Iterable, Literal, Optional, Tuple, Any, Dict
+from typing import Iterable, Optional, Tuple, Any, Dict
 
 import pandas as pd
 from dagster import Failure, MetadataValue
@@ -11,8 +11,7 @@ from ..utils.generation import load_generation
 from ..constants import FILE_PARSED
 from ..utils.raw_readers import read_templates
 from ..unified.stage_policy import parent_stage_of as _parent_stage_of
-
-Stage = Literal["draft", "essay", "evaluation"]
+from ..types import Stage
 
 
 def get_data_root(context) -> Path:

@@ -7,7 +7,7 @@ import numpy as np
     group_name="results_summary",
     io_manager_key="summary_results_io_manager"
 )
-def evaluator_agreement_analysis(context, parsed_scores: pd.DataFrame) -> pd.DataFrame:
+def evaluator_agreement_analysis(context, aggregated_scores: pd.DataFrame) -> pd.DataFrame:
     """
     Calculate evaluator agreement metrics for the same generation responses.
     Groups evaluations by essay_task_id to analyze variance across:
@@ -17,9 +17,9 @@ def evaluator_agreement_analysis(context, parsed_scores: pd.DataFrame) -> pd.Dat
     This provides a comprehensive view of evaluation stability across both dimensions.
     """
     # Filter out rows with errors (no valid scores)
-    valid_scores = parsed_scores[
-        parsed_scores['error'].isna() & 
-        parsed_scores['score'].notna()
+    valid_scores = aggregated_scores[
+        aggregated_scores['error'].isna() & 
+        aggregated_scores['score'].notna()
     ].copy()
     
     if valid_scores.empty:
@@ -113,7 +113,7 @@ def evaluator_agreement_analysis(context, parsed_scores: pd.DataFrame) -> pd.Dat
     group_name="results_summary",
     io_manager_key="summary_results_io_manager"
 )
-def comprehensive_variance_analysis(context, parsed_scores: pd.DataFrame) -> pd.DataFrame:
+def comprehensive_variance_analysis(context, aggregated_scores: pd.DataFrame) -> pd.DataFrame:
     """
     Comprehensive variance analysis across all evaluation dimensions:
     1. Template variance: Same model, different evaluation templates
@@ -123,9 +123,9 @@ def comprehensive_variance_analysis(context, parsed_scores: pd.DataFrame) -> pd.
     This creates a detailed breakdown of where evaluation instability comes from.
     """
     # Filter out rows with errors
-    valid_scores = parsed_scores[
-        parsed_scores['error'].isna() & 
-        parsed_scores['score'].notna()
+    valid_scores = aggregated_scores[
+        aggregated_scores['error'].isna() & 
+        aggregated_scores['score'].notna()
     ].copy()
     
     if valid_scores.empty:
@@ -135,10 +135,10 @@ def comprehensive_variance_analysis(context, parsed_scores: pd.DataFrame) -> pd.
     # Define the columns that identify the same generated response
     generation_group_cols = ['combo_id', 'generation_template', 'generation_model']
     
-    # Map from existing column names (always available in parsed_scores)
+    # Map from existing column names (always available in aggregated_scores)
     valid_scores['eval_template'] = valid_scores['evaluation_template']
     if 'evaluation_llm_model' not in valid_scores.columns:
-        context.log.error("parsed_scores missing 'evaluation_llm_model' column")
+        context.log.error("aggregated_scores missing 'evaluation_llm_model' column")
         return pd.DataFrame()
     valid_scores['eval_model'] = valid_scores['evaluation_llm_model']
     
