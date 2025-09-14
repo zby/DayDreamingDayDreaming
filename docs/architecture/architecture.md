@@ -290,6 +290,13 @@ def llm_client_resource(context) -> LLMClientResource:
 - **CSVIOManager**: Structured data with human-readable format
 - **InMemoryIOManager**: For ephemeral in-process passing in tests/runs
 
+Note on responses: Generation responses (raw/parsed/metadata) are not persisted via an IO
+manager. The response writer (stage_core.execute_llm) performs early writes of raw.txt and
+metadata.json immediately after the LLM call and before validation (e.g., min lines or
+truncation checks). This guarantees artifacts exist even when the asset subsequently raises,
+which is invaluable for debugging and is covered by tests. IO managers write only after an
+asset returns successfully, so they cannot provide this early‑write behavior.
+
 **Benefits**:
 - **Debugging**: Easy inspection of intermediate results
 - **Version Control**: Text-based formats for diff tracking

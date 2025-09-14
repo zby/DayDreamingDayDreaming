@@ -11,7 +11,8 @@ from typing import Dict, Any
 import json
 
 from ..utils.evaluation_processing import calculate_evaluation_metadata
-from ..constants import ESSAY, EVALUATION, FILE_PARSED, FILE_RAW, FILE_METADATA
+from ..constants import FILE_PARSED, FILE_RAW, FILE_METADATA
+from ..utils.generation import load_generation
 
 class FilteredEvaluationResultsConfig(Config):
     """Configuration for filtered evaluation results."""
@@ -35,7 +36,8 @@ def filtered_evaluation_results(context, config: FilteredEvaluationResultsConfig
       - Enrich with essay and draft metadata (generation_template/model, combo_id)
     """
     data_root = Path(getattr(context.resources, "data_root", "data"))
-    eval_root = data_root / "gens" / EVALUATION
+    gens_root = data_root / "gens"
+    eval_root = gens_root / "evaluation"
     if not eval_root.exists():
         context.add_output_metadata({
             "total_responses": MetadataValue.int(0),
@@ -49,10 +51,9 @@ def filtered_evaluation_results(context, config: FilteredEvaluationResultsConfig
     rows: list[dict] = []
     for gen_dir in sorted([p for p in eval_root.iterdir() if p.is_dir()]):
         gen_id = gen_dir.name
-        md = {}
-        mpath = gen_dir / FILE_METADATA
-        if mpath.exists():
-            md = json.loads(mpath.read_text(encoding="utf-8")) or {}
+        # Load evaluation generation via shared helper
+        eval_doc = load_generation(gens_root, "evaluation", gen_id)
+        md = eval_doc.get("metadata") or {}
         evaluation_template = str(md.get("template_id") or md.get("evaluation_template") or "")
         evaluation_model = str(md.get("model_id") or md.get("evaluation_model") or "")
         parent_essay_id = str(md.get("parent_gen_id") or "")
@@ -64,12 +65,10 @@ def filtered_evaluation_results(context, config: FilteredEvaluationResultsConfig
         parent_draft_id = ""
         # Essay metadata
         if parent_essay_id:
-            emeta_path = data_root / "gens" / ESSAY / parent_essay_id / FILE_METADATA
-            if emeta_path.exists():
-                emd = json.loads(emeta_path.read_text(encoding="utf-8")) or {}
-                generation_template = str(emd.get("template_id") or emd.get("essay_template") or "")
-                generation_model = str(emd.get("model_id") or "")
-                parent_draft_id = str(emd.get("parent_gen_id") or "")
+            emd = (load_generation(gens_root, "essay", parent_essay_id).get("metadata") or {})
+            generation_template = str(emd.get("template_id") or emd.get("essay_template") or "")
+            generation_model = str(emd.get("model_id") or "")
+            parent_draft_id = str(emd.get("parent_gen_id") or "")
         # Draft metadata
         if parent_draft_id:
             dmeta_path = data_root / "gens" / "draft" / parent_draft_id / FILE_METADATA
@@ -82,20 +81,11 @@ def filtered_evaluation_results(context, config: FilteredEvaluationResultsConfig
         # Score parsing
         score = None
         error = None
-        parsed_fp = gen_dir / FILE_PARSED
-        raw_fp = gen_dir / FILE_RAW
-        if parsed_fp.exists():
-            try:
-                # Expect numeric-only line
-                txt = parsed_fp.read_text(encoding="utf-8").strip()
-                score = float(txt.splitlines()[-1].strip()) if txt else None
-            except Exception as e:
-                error = f"Invalid parsed.txt: {e}"
-        elif raw_fp.exists():
-            # Do not parse raw here; cross-experiment relies on pre-parsed outputs
-            error = "Missing parsed.txt for evaluation response"
+        parsed_txt = eval_doc.get("parsed_text")
+        if isinstance(parsed_txt, str):
+            score = float(parsed_txt.strip()) if parsed_txt.strip() else None
         else:
-            error = "Missing raw.txt and parsed.txt"
+            error = "Missing parsed.txt"
 
         rows.append({
             "gen_id": gen_id,

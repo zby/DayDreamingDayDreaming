@@ -14,7 +14,6 @@ from daydreaming_dagster.utils.generation import (
     write_gen_prompt,
     write_gen_metadata,
 )
-from daydreaming_dagster.constants import DRAFT
 from daydreaming_dagster.types import Stage
 
 
@@ -183,7 +182,12 @@ def execute_llm(
     )
     _merge_extras(meta, metadata_extra)
 
-    # First write raw and metadata for debuggability
+    # First write raw and metadata for debuggability.
+    # NOTE: We intentionally perform early writes here instead of using an IO manager
+    # for responses. IO managers write only after an asset returns successfully, but
+    # execute_llm may raise after generating (e.g., truncation/min-lines validation).
+    # Early writes ensure raw.txt and metadata.json are available on failures for
+    # postmortem debugging and several tests rely on this behavior.
     write_gen_raw(out_dir, stage, str(gen_id), str(raw_text or ""))
     write_gen_metadata(out_dir, stage, str(gen_id), meta)
 

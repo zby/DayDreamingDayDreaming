@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from dagster import IOManager, OutputContext, InputContext
 from pathlib import Path
-import pandas as pd
-from ..constants import FILE_PROMPT, STAGES
+from ..constants import STAGES
+from ..utils.generation import write_gen_prompt, load_generation
 
 
 class GensPromptIOManager(IOManager):
@@ -14,6 +14,12 @@ class GensPromptIOManager(IOManager):
     Config:
     - gens_root: base generations directory (data/gens)
     - stage: one of {draft, essay, evaluation}
+
+    Note: Responses (raw/parsed/metadata) are not handled via an IO manager.
+    Response writes in stage_core.execute_llm intentionally happen before validation
+    so failures still leave raw.txt and metadata.json for postmortem debugging. An IO
+    manager writes only after a successful return, and thus cannot provide the same
+    early-write behavior that tests and operators rely on.
     """
 
     def __init__(self, gens_root: Path, *, stage: str):
@@ -32,16 +38,15 @@ class GensPromptIOManager(IOManager):
         if not isinstance(obj, str):
             raise ValueError(f"Expected prompt text (str), got {type(obj)}")
         gen_id = self._resolve_gen_id(pk)
-        base = self.gens_root / self.stage / gen_id
-        base.mkdir(parents=True, exist_ok=True)
-        (base / FILE_PROMPT).write_text(obj, encoding="utf-8")
+        write_gen_prompt(self.gens_root, self.stage, gen_id, obj)
 
     def load_input(self, context: InputContext) -> str:
         # Avoid deprecated upstream_output.partition_key; use InputContext.partition_key
         pk = context.partition_key
         gen_id = self._resolve_gen_id(pk)
-        base = self.gens_root / self.stage / gen_id
-        fp = base / FILE_PROMPT
-        if not fp.exists():
-            raise FileNotFoundError(f"Prompt not found: {fp}")
-        return fp.read_text(encoding="utf-8")
+        doc = load_generation(self.gens_root, self.stage, gen_id)
+        prompt = doc.get("prompt_text")
+        if not isinstance(prompt, str) or not prompt:
+            base = self.gens_root / self.stage / gen_id
+            raise FileNotFoundError(f"Prompt not found: {base}/prompt.txt")
+        return prompt

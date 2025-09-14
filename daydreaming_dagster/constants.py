@@ -4,13 +4,11 @@ Defines canonical stage names and per-generation file names used across
 assets and utilities. Update here to change project-wide conventions.
 """
 
-# Canonical stages in execution order
-STAGES = ("draft", "essay", "evaluation")
+from .types import STAGES
 
 # Canonical files persisted under data/gens/<stage>/<gen_id>/
 GEN_FILES = ("prompt.txt", "raw.txt", "parsed.txt", "metadata.json")
 
-# Convenience aliases for readability (derived; keep tuples above as the source of truth)
+# Backcompat aliases for stage names (prefer using values from STAGES directly)
 DRAFT, ESSAY, EVALUATION = STAGES
 FILE_PROMPT, FILE_RAW, FILE_PARSED, FILE_METADATA = GEN_FILES
-
