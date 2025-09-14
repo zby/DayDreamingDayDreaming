@@ -231,5 +231,6 @@ data/combo_mappings.csv
 tests/data_pipeline_test/
 
 tmp/
+scripts/tmp/
 
 .qwen
