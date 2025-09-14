@@ -8,7 +8,12 @@ import time
 
 from jinja2 import Environment, StrictUndefined
 
-from daydreaming_dagster.utils.generation import write_generation_files
+from daydreaming_dagster.utils.generation import (
+    write_raw as write_raw_file,
+    write_parsed as write_parsed_file,
+    write_prompt as write_prompt_file,
+    write_metadata as write_metadata_file,
+)
 from daydreaming_dagster.constants import DRAFT
 
 Stage = Literal["draft", "essay", "evaluation"]
@@ -233,20 +238,18 @@ def write_generation(
     write_prompt: bool,
     write_metadata: bool,
 ) -> Path:
-    return write_generation_files(
-        gens_root=out_dir,
-        stage=stage,
-        gen_id=str(gen_id),
-        parent_gen_id=str(parent_gen_id) if parent_gen_id else None,
-        raw_text=str(raw_text or ""),
-        parsed_text=str(parsed_text) if isinstance(parsed_text, str) else None,
-        prompt_text=str(prompt_text) if isinstance(prompt_text, str) else None,
-        metadata=metadata,
-        write_raw=write_raw,
-        write_parsed=write_parsed,
-        write_prompt=write_prompt,
-        write_metadata=write_metadata,
-    )
+    # Ensure directory and perform requested writes explicitly
+    base = None
+    if write_raw:
+        base = write_raw_file(out_dir, stage, str(gen_id), str(raw_text or ""))
+    if write_parsed and isinstance(parsed_text, str):
+        base = write_parsed_file(out_dir, stage, str(gen_id), str(parsed_text))
+    if write_prompt and isinstance(prompt_text, str):
+        base = write_prompt_file(out_dir, stage, str(gen_id), str(prompt_text))
+    if write_metadata and isinstance(metadata, dict):
+        base = write_metadata_file(out_dir, stage, str(gen_id), metadata)
+    # Fallback: if nothing was written (shouldn't happen), create dir
+    return base or (out_dir / str(stage) / str(gen_id))
 
 
 def _base_meta(

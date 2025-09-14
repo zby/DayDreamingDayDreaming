@@ -326,7 +326,12 @@ def _apply_restore_new_cohort(data_root: Path, diffs: List[Dict], cohort_id: str
     - Evaluations: ensure parent essay (and its draft) exist in new cohort; create evaluation under cohort_id; copy best legacy content when available.
     """
     from daydreaming_dagster.utils.ids import reserve_gen_id
-from daydreaming_dagster.utils.generation import load_generation, write_generation_files
+from daydreaming_dagster.utils.generation import (
+    load_generation,
+    write_raw as write_raw_file,
+    write_parsed as write_parsed_file,
+    write_metadata as write_metadata_file,
+)
 
     gens_root = data_root / "gens"
 
@@ -381,16 +386,9 @@ from daydreaming_dagster.utils.generation import load_generation, write_generati
             "cohort_id": cohort_id,
             "combo_id": str(md.get("combo_id") or ""),
         }
-        write_generation_files(
-            gens_root=gens_root,
-            stage="draft",
-            gen_id=new_id,
-            parent_gen_id=None,
-            raw_text=text_raw,
-            parsed_text=text_parsed,
-            prompt_text=None,
-            metadata=meta,
-        )
+        write_raw_file(gens_root, "draft", new_id, text_raw)
+        write_parsed_file(gens_root, "draft", new_id, text_parsed)
+        write_metadata_file(gens_root, "draft", new_id, meta)
         created[key] = new_id
         return new_id
 
@@ -435,16 +433,9 @@ from daydreaming_dagster.utils.generation import load_generation, write_generati
             "cohort_id": cohort_id,
             "essay_template": str(md.get("essay_template") or md.get("template_id") or ""),
         }
-        write_generation_files(
-            gens_root=gens_root,
-            stage="essay",
-            gen_id=new_id,
-            parent_gen_id=new_draft_id,
-            raw_text=text,
-            parsed_text=text,
-            prompt_text=None,
-            metadata=meta,
-        )
+        write_raw_file(gens_root, "essay", new_id, text)
+        write_parsed_file(gens_root, "essay", new_id, text)
+        write_metadata_file(gens_root, "essay", new_id, meta)
         created[key] = new_id
         return new_id
 
@@ -491,16 +482,9 @@ from daydreaming_dagster.utils.generation import load_generation, write_generati
             "cohort_id": cohort_id,
             "evaluation_template": str(md.get("template_id") or ""),
         }
-        write_generation_files(
-            gens_root=gens_root,
-            stage="evaluation",
-            gen_id=new_id,
-            parent_gen_id=new_essay_id,
-            raw_text=text,
-            parsed_text=text,
-            prompt_text=None,
-            metadata=meta,
-        )
+        write_raw_file(gens_root, "evaluation", new_id, text)
+        write_parsed_file(gens_root, "evaluation", new_id, text)
+        write_metadata_file(gens_root, "evaluation", new_id, meta)
         created[key] = new_id
         return new_id
 

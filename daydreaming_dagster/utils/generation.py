@@ -12,35 +12,33 @@ def _write_atomic(path: Path, data: str) -> None:
     tmp.write_text(data, encoding="utf-8")
     tmp.replace(path)
 
-def write_generation_files(
-    *,
-    gens_root: Path,
-    stage: str,
-    gen_id: str,
-    parent_gen_id: Optional[str],
-    raw_text: str,
-    parsed_text: Optional[str],
-    prompt_text: Optional[str],
-    metadata: Optional[Dict[str, Any]] = None,
-    write_raw: bool = True,
-    write_parsed: bool = True,
-    write_prompt: bool = True,
-    write_metadata: bool = True,
-) -> Path:
-    """Write generation files with atomic replace semantics.
-
-    Returns the target directory path.
-    """
+def _ensure_dir(gens_root: Path, stage: str, gen_id: str) -> Path:
     base = build_gen_dir(Path(gens_root), stage, gen_id)
     base.mkdir(parents=True, exist_ok=True)
-    if write_raw:
-        _write_atomic(base / FILE_RAW, str(raw_text or ""))
-    if write_parsed and isinstance(parsed_text, str):
-        _write_atomic(base / FILE_PARSED, parsed_text)
-    if write_prompt and isinstance(prompt_text, str):
-        _write_atomic(base / FILE_PROMPT, prompt_text)
-    if write_metadata and isinstance(metadata, dict):
-        _write_atomic(base / FILE_METADATA, json.dumps(metadata, ensure_ascii=False, indent=2))
+    return base
+
+
+def write_raw(gens_root: Path, stage: str, gen_id: str, text: str) -> Path:
+    base = _ensure_dir(gens_root, stage, gen_id)
+    _write_atomic(base / FILE_RAW, str(text or ""))
+    return base
+
+
+def write_parsed(gens_root: Path, stage: str, gen_id: str, text: str) -> Path:
+    base = _ensure_dir(gens_root, stage, gen_id)
+    _write_atomic(base / FILE_PARSED, str(text))
+    return base
+
+
+def write_prompt(gens_root: Path, stage: str, gen_id: str, text: str) -> Path:
+    base = _ensure_dir(gens_root, stage, gen_id)
+    _write_atomic(base / FILE_PROMPT, str(text))
+    return base
+
+
+def write_metadata(gens_root: Path, stage: str, gen_id: str, metadata: Dict[str, Any]) -> Path:
+    base = _ensure_dir(gens_root, stage, gen_id)
+    _write_atomic(base / FILE_METADATA, json.dumps(metadata, ensure_ascii=False, indent=2))
     return base
 
 
@@ -52,17 +50,11 @@ def load_generation(gens_root: Path, stage: str, gen_id: str) -> Dict[str, Any]:
     base = build_gen_dir(Path(gens_root), stage, gen_id)
     def _read(name: str) -> Optional[str]:
         p = base / name
-        try:
-            return p.read_text(encoding="utf-8") if p.exists() else None
-        except Exception:
-            return None
+        return p.read_text(encoding="utf-8") if p.exists() else None
     md: Optional[Dict[str, Any]] = None
     mpath = base / FILE_METADATA
     if mpath.exists():
-        try:
-            md = json.loads(mpath.read_text(encoding="utf-8"))
-        except Exception:
-            md = None
+        md = json.loads(mpath.read_text(encoding="utf-8"))
     return {
         "stage": str(stage),
         "gen_id": str(gen_id),
