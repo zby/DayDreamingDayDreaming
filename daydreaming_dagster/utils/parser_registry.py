@@ -14,6 +14,11 @@ to normalize outputs to a single-line numeric string (e.g., "7.0\n").
 
 from typing import Callable, Dict, Optional
 
+
+class ParserError(Exception):
+    """Raised when a required parser is missing or parsing fails decisively."""
+    pass
+
 StageName = str
 ParserFn = Callable[[str], str]
 
@@ -93,5 +98,5 @@ __all__ = [
     "register_parser",
     "get_parser",
     "list_parsers",
+    "ParserError",
 ]
-

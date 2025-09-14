@@ -79,6 +79,26 @@ def _validate_min_lines(stage: Stage, raw_text: str, min_lines: Optional[int]) -
             )
 
 
+def validate_result(
+    stage: Stage,
+    raw_text: str,
+    info: Dict[str, Any] | None,
+    *,
+    min_lines: Optional[int] = None,
+    fail_on_truncation: bool = True,
+) -> None:
+    """Pure validation wrapper for response text and call info.
+
+    - Enforces minimum non-empty line count when provided.
+    - Raises on truncation when fail_on_truncation is True and info['truncated'] is truthy.
+    """
+    _validate_min_lines(stage, raw_text, min_lines)
+    if bool(fail_on_truncation) and isinstance(info, dict) and info.get("truncated"):
+        raise ValueError(
+            "LLM response appears truncated (finish_reason=length or max_tokens hit)"
+        )
+
+
 def resolve_parser_name(
     data_root: Path,
     stage: Stage,
@@ -111,14 +131,21 @@ def resolve_parser_name(
 
 
 def parse_text(stage: Stage, raw_text: str, parser_name: Optional[str]) -> Optional[str]:
+    """Parse raw_text using the named parser.
+
+    Behavior:
+    - If parser_name is falsy/empty, return None (no parsing requested).
+    - If a parser_name is provided but not registered for the stage, raise ParserError.
+    - If the parser is found but raises during parsing, return None (soft-fail to allow early writes + validation to proceed).
+    """
     if not (isinstance(parser_name, str) and parser_name.strip()):
         return None
-    try:
-        from daydreaming_dagster.utils.parser_registry import get_parser
+    from daydreaming_dagster.utils.parser_registry import get_parser, ParserError
 
-        parser = get_parser(stage, parser_name)
-        if parser is None:
-            return None
+    parser = get_parser(stage, parser_name)
+    if parser is None:
+        raise ParserError(f"Missing parser '{parser_name}' for stage '{stage}'")
+    try:
         return parser(str(raw_text))
     except Exception:
         return None
@@ -138,6 +165,10 @@ def execute_llm(
     fail_on_truncation: bool = True,
     parent_gen_id: Optional[str] = None,
     metadata_extra: Optional[Dict[str, Any]] = None,
+    # IO injection points (defaults are canonical helpers)
+    write_raw=write_gen_raw,
+    write_parsed=write_gen_parsed,
+    write_metadata=write_gen_metadata,
 ) -> ExecutionResult:
     if stage in ("essay", "evaluation"):
         if not (isinstance(parent_gen_id, str) and parent_gen_id.strip()):
@@ -188,16 +219,14 @@ def execute_llm(
     # execute_llm may raise after generating (e.g., truncation/min-lines validation).
     # Early writes ensure raw.txt and metadata.json are available on failures for
     # postmortem debugging and several tests rely on this behavior.
-    write_gen_raw(out_dir, stage, str(gen_id), str(raw_text or ""))
-    write_gen_metadata(out_dir, stage, str(gen_id), meta)
+    write_raw(out_dir, stage, str(gen_id), str(raw_text or ""))
+    write_metadata(out_dir, stage, str(gen_id), meta)
 
-    _validate_min_lines(stage, raw_text, min_lines)
-    if bool(fail_on_truncation) and isinstance(info, dict) and info.get("truncated"):
-        raise ValueError("LLM response appears truncated (finish_reason=length or max_tokens hit)")
+    validate_result(stage, raw_text, info, min_lines=min_lines, fail_on_truncation=bool(fail_on_truncation))
 
     if isinstance(parsed, str):
         meta["files"]["parsed"] = str((base / "parsed.txt").resolve())
-        write_gen_parsed(out_dir, stage, str(gen_id), str(parsed))
+        write_parsed(out_dir, stage, str(gen_id), str(parsed))
 
     return ExecutionResult(prompt_text=prompt_text, raw_text=raw_text, parsed_text=parsed, info=info, metadata=meta)
 

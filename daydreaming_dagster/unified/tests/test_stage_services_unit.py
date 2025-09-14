@@ -14,6 +14,7 @@ from daydreaming_dagster.unified.stage_services import (
     execute_copy,
     execute_llm,
 )
+from daydreaming_dagster.utils.parser_registry import ParserError
 
 
 class _StubLLM:
@@ -75,7 +76,8 @@ def test_parse_draft_uses_registry():
     text = "<essay>Body</essay>"
     parsed = parse_text("draft", text, "essay_block")
     assert parsed == "Body"
-    assert parse_text("draft", text, "missing_parser") is None
+    with pytest.raises(ParserError):
+        parse_text("draft", text, "missing_parser")
 
 
 def test_parse_evaluation_in_last_line():
@@ -284,3 +286,108 @@ def test_metadata_extra_does_not_override(tmp_path: Path):
     )
     assert res.metadata.get("stage") == "essay"  # not overridden
     assert res.metadata.get("run_id") == "X"
+
+
+def test_validate_result_min_lines_and_truncation():
+    from daydreaming_dagster.unified.stage_core import validate_result
+
+    # Min-lines failure
+    with pytest.raises(ValueError):
+        validate_result("draft", "only one line", {"truncated": False}, min_lines=3)
+
+    # Truncation failure
+    with pytest.raises(ValueError):
+        validate_result("essay", "line\nline\n", {"truncated": True}, min_lines=None, fail_on_truncation=True)
+
+    # No failure when truncation disabled
+    validate_result("essay", "line\n", {"truncated": True}, min_lines=None, fail_on_truncation=False)
+
+
+def test_execute_llm_io_injection_early_write_order_failure(tmp_path: Path):
+    """Ensure early writes (raw, metadata) happen before validation fails.
+
+    We inject fake writers that record call order. We set min_lines high to force
+    validation failure after early writes.
+    """
+    # Prepare CSV so parser resolution works (though we won't reach parsed write here)
+    csv_dir = tmp_path / "1_raw"
+    csv_dir.mkdir(parents=True, exist_ok=True)
+    (csv_dir / "draft_templates.csv").write_text(
+        "template_id,template_name,description,parser,generator,active\n"
+        "tpl1,Tpl,Desc,essay_block,llm,True\n",
+        encoding="utf-8",
+    )
+
+    calls: list[tuple[str, tuple, dict]] = []
+
+    def _w_raw(*args, **kwargs):
+        calls.append(("raw", args, kwargs))
+
+    def _w_md(*args, **kwargs):
+        calls.append(("metadata", args, kwargs))
+
+    def _w_parsed(*args, **kwargs):
+        calls.append(("parsed", args, kwargs))
+
+    llm = _StubLLM("line1\n")
+    with pytest.raises(ValueError):
+        execute_llm(
+            stage="draft",
+            llm=llm,
+            root_dir=tmp_path,
+            gen_id="D100",
+            template_id="tpl1",
+            prompt_text="p",
+            model="m",
+            max_tokens=8,
+            min_lines=3,  # force failure
+            write_raw=_w_raw,
+            write_metadata=_w_md,
+            write_parsed=_w_parsed,
+        )
+    # Assert raw and metadata called, parsed not called, and order raw -> metadata
+    kinds = [k for (k, _a, _k) in calls]
+    assert kinds[:2] == ["raw", "metadata"]
+    assert "parsed" not in kinds
+
+
+def test_execute_llm_io_injection_success_calls(tmp_path: Path):
+    """Ensure parsed write is invoked on success when parser returns a string."""
+    # CSV declares parser for draft template
+    csv_dir = tmp_path / "1_raw"
+    csv_dir.mkdir(parents=True, exist_ok=True)
+    (csv_dir / "draft_templates.csv").write_text(
+        "template_id,template_name,description,parser,generator,active\n"
+        "tpl1,Tpl,Desc,essay_block,llm,True\n",
+        encoding="utf-8",
+    )
+
+    calls: list[str] = []
+
+    def _w_raw(*_a, **_k):
+        calls.append("raw")
+
+    def _w_md(*_a, **_k):
+        calls.append("metadata")
+
+    def _w_parsed(*_a, **_k):
+        calls.append("parsed")
+
+    llm = _StubLLM("<essay>Body</essay>\n")
+    res = execute_llm(
+        stage="draft",
+        llm=llm,
+        root_dir=tmp_path,
+        gen_id="D200",
+        template_id="tpl1",
+        prompt_text="p",
+        model="m",
+        max_tokens=16,
+        min_lines=1,
+        write_raw=_w_raw,
+        write_metadata=_w_md,
+        write_parsed=_w_parsed,
+    )
+    assert res.parsed_text == "Body\n" or res.parsed_text == "Body"  # normalized in parser
+    # Ensure all three writes were called
+    assert set(calls) >= {"raw", "metadata", "parsed"}
