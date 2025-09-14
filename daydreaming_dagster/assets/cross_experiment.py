@@ -50,12 +50,9 @@ def filtered_evaluation_results(context, config: FilteredEvaluationResultsConfig
     for gen_dir in sorted([p for p in eval_root.iterdir() if p.is_dir()]):
         gen_id = gen_dir.name
         md = {}
-        try:
-            mpath = gen_dir / FILE_METADATA
-            if mpath.exists():
-                md = json.loads(mpath.read_text(encoding="utf-8")) or {}
-        except Exception:
-            md = {}
+        mpath = gen_dir / FILE_METADATA
+        if mpath.exists():
+            md = json.loads(mpath.read_text(encoding="utf-8")) or {}
         evaluation_template = str(md.get("template_id") or md.get("evaluation_template") or "")
         evaluation_model = str(md.get("model_id") or md.get("evaluation_model") or "")
         parent_essay_id = str(md.get("parent_gen_id") or "")
@@ -66,27 +63,21 @@ def filtered_evaluation_results(context, config: FilteredEvaluationResultsConfig
         generation_model = ""
         parent_draft_id = ""
         # Essay metadata
-        try:
-            if parent_essay_id:
-                emeta_path = data_root / "gens" / ESSAY / parent_essay_id / FILE_METADATA
-                if emeta_path.exists():
-                    emd = json.loads(emeta_path.read_text(encoding="utf-8")) or {}
-                    generation_template = str(emd.get("template_id") or emd.get("essay_template") or "")
-                    generation_model = str(emd.get("model_id") or "")
-                    parent_draft_id = str(emd.get("parent_gen_id") or "")
-        except Exception:
-            pass
+        if parent_essay_id:
+            emeta_path = data_root / "gens" / ESSAY / parent_essay_id / FILE_METADATA
+            if emeta_path.exists():
+                emd = json.loads(emeta_path.read_text(encoding="utf-8")) or {}
+                generation_template = str(emd.get("template_id") or emd.get("essay_template") or "")
+                generation_model = str(emd.get("model_id") or "")
+                parent_draft_id = str(emd.get("parent_gen_id") or "")
         # Draft metadata
-        try:
-            if parent_draft_id:
-                dmeta_path = data_root / "gens" / "draft" / parent_draft_id / FILE_METADATA
-                if dmeta_path.exists():
-                    dmd = json.loads(dmeta_path.read_text(encoding="utf-8")) or {}
-                    combo_id = str(dmd.get("combo_id") or "")
-                    if not generation_model:
-                        generation_model = str(dmd.get("model_id") or "")
-        except Exception:
-            pass
+        if parent_draft_id:
+            dmeta_path = data_root / "gens" / "draft" / parent_draft_id / FILE_METADATA
+            if dmeta_path.exists():
+                dmd = json.loads(dmeta_path.read_text(encoding="utf-8")) or {}
+                combo_id = str(dmd.get("combo_id") or "")
+                if not generation_model:
+                    generation_model = str(dmd.get("model_id") or "")
 
         # Score parsing
         score = None

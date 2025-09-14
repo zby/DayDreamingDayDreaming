@@ -26,12 +26,12 @@ def parsed_scores(context) -> pd.DataFrame:
     # Filter to evaluation gen_ids found in cohort membership (if any)
     try:
         from ..utils.membership_lookup import stage_gen_ids
-
         keep_list = stage_gen_ids(data_root, "evaluation")
         keep = set(keep_list)
         if isinstance(df, pd.DataFrame) and not df.empty and "gen_id" in df.columns and keep:
             df = df[df["gen_id"].astype(str).isin(keep)].reset_index(drop=True)
-    except Exception:
+    except FileNotFoundError:
+        # No cohort membership present; keep full set
         pass
     # Enrich with generation metadata by reading gens store metadata for parents
     # Expected fields by downstream: combo_id, draft_template, generation_template, generation_model, stage, generation_response_path
@@ -52,32 +52,24 @@ def parsed_scores(context) -> pd.DataFrame:
         gmid = ""
         ddoc = ""
         # Read essay metadata to get template_id (essay) and model_id and parent draft
-        try:
-            if essay_doc:
-                emeta_path = gens_root / ESSAY / essay_doc / FILE_METADATA
-                if emeta_path.exists():
-                    emeta = json.loads(emeta_path.read_text(encoding="utf-8")) or {}
-                    # FALLBACK(DATA): accept legacy 'essay_template' key until all writers emit 'template_id'.
-                    etpl = str(emeta.get("template_id") or emeta.get("essay_template") or "")
-                    gmid = str(emeta.get("model_id") or "")
-                    ddoc = str(emeta.get("parent_gen_id") or "")
-        except Exception:
-            pass
+        if essay_doc:
+            emeta_path = gens_root / ESSAY / essay_doc / FILE_METADATA
+            if emeta_path.exists():
+                emeta = json.loads(emeta_path.read_text(encoding="utf-8")) or {}
+                etpl = str(emeta.get("template_id") or emeta.get("essay_template") or "")
+                gmid = str(emeta.get("model_id") or "")
+                ddoc = str(emeta.get("parent_gen_id") or "")
         # Read draft metadata to get combo_id and draft_template
         cid = ""
         dtpl = ""
-        try:
-            if ddoc:
-                dmeta_path = gens_root / DRAFT / ddoc / FILE_METADATA
-                if dmeta_path.exists():
-                    dmeta = json.loads(dmeta_path.read_text(encoding="utf-8")) or {}
-                    cid = str(dmeta.get("combo_id") or "")
-                    # FALLBACK(DATA): accept legacy 'draft_template' key until all writers emit 'template_id'.
-                    dtpl = str(dmeta.get("template_id") or dmeta.get("draft_template") or "")
-                    if not gmid:
-                        gmid = str(dmeta.get("model_id") or "")
-        except Exception:
-            pass
+        if ddoc:
+            dmeta_path = gens_root / DRAFT / ddoc / FILE_METADATA
+            if dmeta_path.exists():
+                dmeta = json.loads(dmeta_path.read_text(encoding="utf-8")) or {}
+                cid = str(dmeta.get("combo_id") or "")
+                dtpl = str(dmeta.get("template_id") or dmeta.get("draft_template") or "")
+                if not gmid:
+                    gmid = str(dmeta.get("model_id") or "")
         combo_ids.append(cid)
         draft_templates.append(dtpl)
         gen_templates.append(etpl)

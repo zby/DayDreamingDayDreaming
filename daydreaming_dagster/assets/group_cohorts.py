@@ -297,7 +297,7 @@ def cohort_membership(
             sel_df = _pd.read_csv(data_root / "2_tasks" / "selected_combo_mappings.csv")
             if not sel_df.empty and "combo_id" in sel_df.columns:
                 combo_ids = sel_df["combo_id"].astype(str).dropna().unique().tolist()
-        except Exception:
+        except FileNotFoundError:
             combo_ids = []
 
         for combo_id in combo_ids:

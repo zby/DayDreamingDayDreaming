@@ -10,6 +10,7 @@ from ..utils.membership_lookup import find_membership_row_by_gen
 from ..utils.generation import load_generation
 from ..constants import FILE_PARSED
 from ..utils.raw_readers import read_templates
+from ..unified.stage_policy import parent_stage_of as _parent_stage_of
 
 Stage = Literal["draft", "essay", "evaluation"]
 
@@ -102,18 +103,10 @@ def load_generation_parsed_text(
 
 
 def _parent_stage(stage: Stage) -> Stage:
-    """Return the upstream stage for a given stage.
-
-    - essay -> draft
-    - evaluation -> essay
-    - draft has no parent but is never used here
-    """
-    if stage == "essay":
-        return "draft"
-    if stage == "evaluation":
-        return "essay"
-    # Default fallback; callers should not request parent of draft
-    return "draft"
+    """Wrapper delegating to unified.stage_policy.parent_stage_of for consistency."""
+    ps = _parent_stage_of(stage)
+    # For draft (no parent), keep prior behavior returning "draft" though it shouldn't be requested.
+    return ps or "draft"
 
 
 def load_parent_parsed_text(

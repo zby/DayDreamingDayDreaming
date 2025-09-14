@@ -31,14 +31,11 @@ def documents_latest_report(context) -> pd.DataFrame:
             meta_path = doc_dir / FILE_METADATA
             task_id = None
             created_at = None
-            try:
-                if meta_path.exists():
-                    meta = json.loads(meta_path.read_text(encoding="utf-8"))
-                    if isinstance(meta, dict):
-                        task_id = meta.get("task_id")
-                        created_at = meta.get("created_at")
-            except Exception:
-                pass
+            if meta_path.exists():
+                meta = json.loads(meta_path.read_text(encoding="utf-8"))
+                if isinstance(meta, dict):
+                    task_id = meta.get("task_id")
+                    created_at = meta.get("created_at")
             records.append({
                 "gen_id": doc_dir.name,
                 "stage": stage,
@@ -81,14 +78,11 @@ def documents_consistency_report(context) -> pd.DataFrame:
             parsed = doc_dir / FILE_PARSED
             prompt = doc_dir / FILE_PROMPT
             task_id = None
-            try:
-                meta_path = doc_dir / FILE_METADATA
-                if meta_path.exists():
-                    meta = json.loads(meta_path.read_text(encoding="utf-8"))
-                    if isinstance(meta, dict):
-                        task_id = meta.get("task_id")
-            except Exception:
-                pass
+            meta_path = doc_dir / FILE_METADATA
+            if meta_path.exists():
+                meta = json.loads(meta_path.read_text(encoding="utf-8"))
+                if isinstance(meta, dict):
+                    task_id = meta.get("task_id")
             records.append({
                 "gen_id": doc_dir.name,
                 "stage": stage,
