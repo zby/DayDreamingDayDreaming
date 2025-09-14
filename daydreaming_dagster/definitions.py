@@ -59,7 +59,7 @@ from daydreaming_dagster.resources.io_managers import (
 )
 from daydreaming_dagster.resources.gens_prompt_io_manager import GensPromptIOManager
 from pathlib import Path
-from daydreaming_dagster.constants import DRAFT, ESSAY, EVALUATION
+from daydreaming_dagster.types import Stage
 
 
 # Responses and prompts are versioned; overwrite flags are not used.
@@ -125,15 +125,15 @@ defs = Definitions(
         # Prompts persist to gens store; responses are written to gens store by assets
         "draft_prompt_io_manager": GensPromptIOManager(
             gens_root=Path("data") / "gens",
-            stage=DRAFT,
+            stage="draft",
         ),
         "essay_prompt_io_manager": GensPromptIOManager(
             gens_root=Path("data") / "gens",
-            stage=ESSAY,
+            stage="essay",
         ),
         "evaluation_prompt_io_manager": GensPromptIOManager(
             gens_root=Path("data") / "gens",
-            stage=EVALUATION,
+            stage="evaluation",
         ),
         # Responses: no need to persist via IO manager — assets write to the gens store
         # Use in-memory manager only if downstream assets in-process; tests may override

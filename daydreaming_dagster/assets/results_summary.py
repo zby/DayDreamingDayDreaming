@@ -4,7 +4,7 @@ import numpy as np
 from pathlib import Path
 from .raw_data import EVALUATION_TEMPLATES_KEY
 from ..utils.raw_readers import read_templates
-from ..constants import ESSAY, FILE_PARSED
+from ..constants import FILE_PARSED
 from functools import lru_cache
 
 
