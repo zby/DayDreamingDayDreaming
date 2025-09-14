@@ -108,14 +108,6 @@ def test_execute_copy_writes_only_parsed_and_metadata(tmp_path: Path):
 
 
 def test_execute_draft_llm_happy_path(tmp_path: Path):
-    # CSV declares parser for template
-    csv_dir = tmp_path / "1_raw"
-    csv_dir.mkdir(parents=True, exist_ok=True)
-    (csv_dir / "draft_templates.csv").write_text(
-        "template_id,template_name,description,parser,generator,active\n"
-        "tpl1,Tpl,Desc,essay_block,llm,True\n",
-        encoding="utf-8",
-    )
     llm = _StubLLM("header\n<essay>Foo</essay>\n", info={"finish_reason": "stop", "truncated": False})
     res = execute_llm(
         stage="draft",
@@ -127,6 +119,7 @@ def test_execute_draft_llm_happy_path(tmp_path: Path):
         model="m1",
         max_tokens=128,
         min_lines=1,
+        parser_name="essay_block",
     )
     base = tmp_path / "gens" / "draft" / "D1"
     # execute_draft_llm no longer writes prompt.txt
@@ -140,13 +133,6 @@ def test_execute_draft_llm_happy_path(tmp_path: Path):
 
 def test_execute_draft_llm_min_lines_failure(tmp_path: Path):
     llm = _StubLLM("one line only", info={"finish_reason": "stop", "truncated": False})
-    # Provide minimal draft_templates.csv so resolve_parser_name can load
-    (tmp_path / "1_raw").mkdir(parents=True, exist_ok=True)
-    (tmp_path / "1_raw" / "draft_templates.csv").write_text(
-        "template_id,template_name,description,parser,generator,active\n"
-        "tpl,T,Desc,essay_block,llm,True\n",
-        encoding="utf-8",
-    )
     with pytest.raises(ValueError):
         execute_llm(
             stage="draft",
@@ -158,6 +144,7 @@ def test_execute_draft_llm_min_lines_failure(tmp_path: Path):
             model="m",
             max_tokens=16,
             min_lines=3,
+            parser_name="essay_block",
         )
     base = tmp_path / "gens" / "draft" / "D2"
     assert (base / "raw.txt").exists()
@@ -166,12 +153,6 @@ def test_execute_draft_llm_min_lines_failure(tmp_path: Path):
 
 def test_execute_draft_llm_truncation_failure_after_raw(tmp_path: Path):
     llm = _StubLLM("short text", info={"finish_reason": "length", "truncated": True})
-    (tmp_path / "1_raw").mkdir(parents=True, exist_ok=True)
-    (tmp_path / "1_raw" / "draft_templates.csv").write_text(
-        "template_id,template_name,description,parser,generator,active\n"
-        "tpl,T,Desc,essay_block,llm,True\n",
-        encoding="utf-8",
-    )
     with pytest.raises(ValueError):
         execute_llm(
             stage="draft",
@@ -184,6 +165,7 @@ def test_execute_draft_llm_truncation_failure_after_raw(tmp_path: Path):
             max_tokens=8,
             min_lines=1,
             fail_on_truncation=True,
+            parser_name="essay_block",
         )
     base = tmp_path / "gens" / "draft" / "D3"
     assert (base / "raw.txt").exists()
@@ -247,12 +229,6 @@ def test_execute_evaluation_llm_requires_parser(tmp_path: Path):
 
 def test_metadata_extra_does_not_override(tmp_path: Path):
     llm = _StubLLM("ok")
-    (tmp_path / "1_raw").mkdir(parents=True, exist_ok=True)
-    (tmp_path / "1_raw" / "essay_templates.csv").write_text(
-        "template_id,template_name,description,parser,generator,active\n"
-        "t,T,Desc,identity,llm,True\n",
-        encoding="utf-8",
-    )
     res = execute_llm(
         stage="essay",
         llm=llm,
@@ -264,6 +240,7 @@ def test_metadata_extra_does_not_override(tmp_path: Path):
         max_tokens=8,
         min_lines=None,
         parent_gen_id="D",
+        # identity by default for essay; no CSV required
         metadata_extra={"stage": "hack", "run_id": "X"},
     )
     assert res.metadata.get("stage") == "essay"  # not overridden
