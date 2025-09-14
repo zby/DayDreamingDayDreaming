@@ -27,6 +27,7 @@ from daydreaming_dagster.assets.results_summary import (
 )
 from daydreaming_dagster.assets.group_cohorts import (
     cohort_membership,
+    register_cohort_partitions,
 )
 from daydreaming_dagster.assets.maintenance import (
     prune_dynamic_partitions,
@@ -76,6 +77,7 @@ defs = Definitions(
         # Core processing assets
         cohort_id,
         cohort_membership,
+        register_cohort_partitions,
         selected_combo_mappings,
         content_combinations,
         

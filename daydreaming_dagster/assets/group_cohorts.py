@@ -71,6 +71,7 @@ def _eval_axes(data_root: Path) -> Tuple[List[str], List[str]]:
 def cohort_membership(
     context,
     cohort_id: str,
+    selected_combo_mappings: pd.DataFrame | None = None,
 ) -> pd.DataFrame:
     """Build the authoritative cohort membership CSV with normalized columns per stage.
 
@@ -217,15 +218,20 @@ def cohort_membership(
         dtpl_df = read_templates(data_root, "draft", filter_active=True)
         gen_models_df = read_llm_models(data_root)
         gen_models_df = gen_models_df[gen_models_df["for_generation"] == True]
-        # Read selected combo ids from data/2_tasks/selected_combo_mappings.csv
+        # Read selected combo ids from input asset (preferred) or CSV fallback
         combo_ids: List[str] = []
-        try:
-            import pandas as _pd
-            sel_df = _pd.read_csv(data_root / "2_tasks" / "selected_combo_mappings.csv")
-            if not sel_df.empty and "combo_id" in sel_df.columns:
-                combo_ids = sel_df["combo_id"].astype(str).dropna().unique().tolist()
-        except FileNotFoundError:
-            combo_ids = []
+        if isinstance(selected_combo_mappings, pd.DataFrame) and not selected_combo_mappings.empty:
+            if "combo_id" in selected_combo_mappings.columns:
+                combo_ids = (
+                    selected_combo_mappings["combo_id"].astype(str).dropna().unique().tolist()
+                )
+        else:
+            try:
+                sel_df = pd.read_csv(data_root / "2_tasks" / "selected_combo_mappings.csv")
+                if not sel_df.empty and "combo_id" in sel_df.columns:
+                    combo_ids = sel_df["combo_id"].astype(str).dropna().unique().tolist()
+            except FileNotFoundError:
+                combo_ids = []
 
         for combo_id in combo_ids:
             for _, trow in dtpl_df.iterrows():
@@ -337,7 +343,32 @@ def cohort_membership(
     # Write membership.csv
     df.to_csv(out_path, index=False)
 
-    # Register dynamic partitions (add-only)
+    context.add_output_metadata(
+        {
+            "rows": MetadataValue.int(len(df)),
+            "drafts": MetadataValue.int(int((df["stage"] == "draft").sum() if not df.empty else 0)),
+            "essays": MetadataValue.int(int((df["stage"] == "essay").sum() if not df.empty else 0)),
+            "evaluations": MetadataValue.int(
+                int((df["stage"] == "evaluation").sum() if not df.empty else 0)
+            ),
+            "cohort_id": MetadataValue.text(str(cohort_id)),
+            "membership_path": MetadataValue.path(str(out_path)),
+        }
+    )
+
+    return df
+
+@asset(
+    group_name="cohort",
+    required_resource_keys={"data_root"},
+    io_manager_key="io_manager",
+)
+def register_cohort_partitions(context, cohort_membership: pd.DataFrame) -> Dict[str, int]:
+    """Register dynamic partitions by gen_id for draft/essay/evaluation (add-only).
+
+    Accepts the cohort_membership DataFrame to guarantee ordering and avoid side effects
+    inside the membership builder.
+    """
     instance = context.instance
 
     def _add_only(name: str, keys: Iterable[str]) -> int:
@@ -350,29 +381,24 @@ def cohort_membership(
             instance.add_dynamic_partitions(name, to_add)
         return len(to_add)
 
+    df = cohort_membership if isinstance(cohort_membership, pd.DataFrame) else pd.DataFrame()
     added_draft = _add_only(draft_gens_partitions.name, df[df["stage"] == "draft"]["gen_id"].astype(str))
     added_essay = _add_only(essay_gens_partitions.name, df[df["stage"] == "essay"]["gen_id"].astype(str))
     added_eval = _add_only(
         evaluation_gens_partitions.name, df[df["stage"] == "evaluation"]["gen_id"].astype(str)
     )
-
     context.add_output_metadata(
         {
-            "rows": MetadataValue.int(len(df)),
-            "drafts": MetadataValue.int(int((df["stage"] == "draft").sum() if not df.empty else 0)),
-            "essays": MetadataValue.int(int((df["stage"] == "essay").sum() if not df.empty else 0)),
-            "evaluations": MetadataValue.int(
-                int((df["stage"] == "evaluation").sum() if not df.empty else 0)
-            ),
-            "cohort_id": MetadataValue.text(str(cohort_id)),
-            "membership_path": MetadataValue.path(str(out_path)),
             "partitions_added_draft": MetadataValue.int(added_draft),
             "partitions_added_essay": MetadataValue.int(added_essay),
             "partitions_added_evaluation": MetadataValue.int(added_eval),
         }
     )
-
-    return df
+    return {
+        "draft": added_draft,
+        "essay": added_essay,
+        "evaluation": added_eval,
+    }
 @asset(
     group_name="task_definitions",
     io_manager_key="io_manager",
@@ -384,22 +410,16 @@ def cohort_id(context, content_combinations: list[ContentCombination]) -> str:
     # Build manifest from active axes
     try:
         ddf = read_templates(data_root, "draft", filter_active=True)
-        if "active" in ddf.columns:
-            ddf = ddf[ddf["active"] == True]
         drafts = sorted(ddf["template_id"].astype(str).tolist()) if not ddf.empty else []
     except Exception:
         drafts = []
     try:
         edf = read_templates(data_root, "essay", filter_active=True)
-        if "active" in edf.columns:
-            edf = edf[edf["active"] == True]
         essays = sorted(edf["template_id"].astype(str).tolist()) if not edf.empty else []
     except Exception:
         essays = []
     try:
         vdf = read_templates(data_root, "evaluation", filter_active=True)
-        if "active" in vdf.columns:
-            vdf = vdf[vdf["active"] == True]
         evals = sorted(vdf["template_id"].astype(str).tolist()) if not vdf.empty else []
     except Exception:
         evals = []
