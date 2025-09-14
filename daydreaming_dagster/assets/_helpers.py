@@ -7,7 +7,7 @@ import pandas as pd
 from dagster import Failure, MetadataValue
 
 from ..utils.membership_lookup import find_membership_row_by_gen
-from ..utils.generation import Generation
+from ..utils.generation import load_generation
 from ..constants import FILE_PARSED
 from ..utils.raw_readers import read_templates
 
@@ -85,9 +85,9 @@ def load_generation_parsed_text(
     failure_fn_name: str,
 ) -> str:
     gens_root = get_gens_root(context)
-    gen = Generation.load(gens_root, stage, str(gen_id))
+    gen = load_generation(gens_root, stage, str(gen_id))
     base = Path(gens_root) / stage / str(gen_id)
-    parsed = gen.parsed_text if isinstance(gen.parsed_text, str) else None
+    parsed = gen.get("parsed_text") if isinstance(gen, dict) else None
     if not parsed:
         raise Failure(
             description="Missing or unreadable parsed.txt for upstream generation",

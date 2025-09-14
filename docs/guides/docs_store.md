@@ -35,16 +35,16 @@ Each `metadata.json` should include at least:
 
 ## Programmatic Access
 
-Preferred: use `Generation.load` to read from the gens store.
+Preferred: use `load_generation` to read from the gens store.
 
 Example:
 ```python
 from pathlib import Path
-from daydreaming_dagster.utils.generation import Generation
+from daydreaming_dagster.utils.generation import load_generation
 
 gens_root = Path("data") / "gens"
-gen = Generation.load(gens_root, "essay", "abc123xyz")
-text = gen.parsed_text  # or gen.raw_text / gen.prompt_text / gen.metadata
+gen = load_generation(gens_root, "essay", "abc123xyz")
+text = gen["parsed_text"]  # or gen["raw_text"] / gen["prompt_text"] / gen["metadata"]
 ```
 
 ## Troubleshooting

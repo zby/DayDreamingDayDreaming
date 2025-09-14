@@ -326,7 +326,7 @@ def _apply_restore_new_cohort(data_root: Path, diffs: List[Dict], cohort_id: str
     - Evaluations: ensure parent essay (and its draft) exist in new cohort; create evaluation under cohort_id; copy best legacy content when available.
     """
     from daydreaming_dagster.utils.ids import reserve_gen_id
-    from daydreaming_dagster.utils.generation import Generation
+from daydreaming_dagster.utils.generation import load_generation, write_generation_files
 
     gens_root = data_root / "gens"
 
@@ -363,12 +363,13 @@ def _apply_restore_new_cohort(data_root: Path, diffs: List[Dict], cohort_id: str
         parsed_cands = [p for p in cands if "draft_responses_raw" not in str(p)]
         best_parsed = _pick_oldest(parsed_cands)
         # fallback to current gens store
-        cur = Generation.load(gens_root, "draft", str(md.get("gen_id") or ""))
-        raw_fallback = Path(cur.target_dir(gens_root) / "raw.txt")
-        parsed_fallback = Path(cur.target_dir(gens_root) / "parsed.txt")
-        text_raw = read_text(best_raw, raw_fallback) or cur.raw_text
+        cur = load_generation(gens_root, "draft", str(md.get("gen_id") or ""))
+        draft_dir = gens_root / "draft" / str(md.get("gen_id") or "")
+        raw_fallback = draft_dir / "raw.txt"
+        parsed_fallback = draft_dir / "parsed.txt"
+        text_raw = read_text(best_raw, raw_fallback) or (cur.get("raw_text") or "")
         # If no parsed candidate, use existing parsed; if missing, fall back to raw
-        text_parsed = read_text(best_parsed, parsed_fallback) or (cur.parsed_text or text_raw)
+        text_parsed = read_text(best_parsed, parsed_fallback) or (cur.get("parsed_text") or text_raw)
         meta = {
             "stage": "draft",
             "gen_id": new_id,
@@ -380,7 +381,8 @@ def _apply_restore_new_cohort(data_root: Path, diffs: List[Dict], cohort_id: str
             "cohort_id": cohort_id,
             "combo_id": str(md.get("combo_id") or ""),
         }
-        Generation(
+        write_generation_files(
+            gens_root=gens_root,
             stage="draft",
             gen_id=new_id,
             parent_gen_id=None,
@@ -388,7 +390,7 @@ def _apply_restore_new_cohort(data_root: Path, diffs: List[Dict], cohort_id: str
             parsed_text=text_parsed,
             prompt_text=None,
             metadata=meta,
-        ).write_files(gens_root)
+        )
         created[key] = new_id
         return new_id
 
@@ -419,8 +421,9 @@ def _apply_restore_new_cohort(data_root: Path, diffs: List[Dict], cohort_id: str
         stem = task_id.replace("__", "_")
         cands = _candidate_legacy_paths(data_root, "essay", [stem])
         best = _pick_oldest(cands)
-        cur = Generation.load(gens_root, "essay", str(md.get("gen_id") or ""))
-        text = read_text(best, Path(cur.target_dir(gens_root) / "parsed.txt")) or cur.raw_text
+        cur = load_generation(gens_root, "essay", str(md.get("gen_id") or ""))
+        essay_dir = gens_root / "essay" / str(md.get("gen_id") or "")
+        text = read_text(best, essay_dir / "parsed.txt") or (cur.get("raw_text") or "")
         meta = {
             "stage": "essay",
             "gen_id": new_id,
@@ -432,7 +435,8 @@ def _apply_restore_new_cohort(data_root: Path, diffs: List[Dict], cohort_id: str
             "cohort_id": cohort_id,
             "essay_template": str(md.get("essay_template") or md.get("template_id") or ""),
         }
-        Generation(
+        write_generation_files(
+            gens_root=gens_root,
             stage="essay",
             gen_id=new_id,
             parent_gen_id=new_draft_id,
@@ -440,7 +444,7 @@ def _apply_restore_new_cohort(data_root: Path, diffs: List[Dict], cohort_id: str
             parsed_text=text,
             prompt_text=None,
             metadata=meta,
-        ).write_files(gens_root)
+        )
         created[key] = new_id
         return new_id
 
@@ -472,9 +476,10 @@ def _apply_restore_new_cohort(data_root: Path, diffs: List[Dict], cohort_id: str
             stem = task_id.replace("__", "_")
             cands = _candidate_legacy_paths(data_root, "evaluation", [stem])
             best = _pick_oldest(cands)
-        cur = Generation.load(gens_root, "evaluation", str(md.get("gen_id") or ""))
+        cur = load_generation(gens_root, "evaluation", str(md.get("gen_id") or ""))
         # For evaluations prefer RAW as canonical content; fall back to current RAW then PARSED
-        text = read_text(best, Path(cur.target_dir(gens_root) / "raw.txt")) or cur.raw_text or (cur.parsed_text or "")
+        eval_dir = gens_root / "evaluation" / str(md.get("gen_id") or "")
+        text = read_text(best, eval_dir / "raw.txt") or (cur.get("raw_text") or "") or (cur.get("parsed_text") or "")
         meta = {
             "stage": "evaluation",
             "gen_id": new_id,
@@ -486,7 +491,8 @@ def _apply_restore_new_cohort(data_root: Path, diffs: List[Dict], cohort_id: str
             "cohort_id": cohort_id,
             "evaluation_template": str(md.get("template_id") or ""),
         }
-        Generation(
+        write_generation_files(
+            gens_root=gens_root,
             stage="evaluation",
             gen_id=new_id,
             parent_gen_id=new_essay_id,
@@ -494,7 +500,7 @@ def _apply_restore_new_cohort(data_root: Path, diffs: List[Dict], cohort_id: str
             parsed_text=text,
             prompt_text=None,
             metadata=meta,
-        ).write_files(gens_root)
+        )
         created[key] = new_id
         return new_id
 

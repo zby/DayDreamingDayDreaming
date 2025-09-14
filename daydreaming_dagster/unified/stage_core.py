@@ -8,7 +8,7 @@ import time
 
 from jinja2 import Environment, StrictUndefined
 
-from daydreaming_dagster.utils.generation import Generation
+from daydreaming_dagster.utils.generation import write_generation_files
 from daydreaming_dagster.constants import DRAFT
 
 Stage = Literal["draft", "essay", "evaluation"]
@@ -82,22 +82,29 @@ def resolve_parser_name(
     template_id: str,
     provided: Optional[str] = None,
 ) -> Optional[str]:
-    try:
-        from daydreaming_dagster.utils.raw_readers import read_templates
+    """Resolve parser name with a provided override and CSV fallback.
 
-        df = read_templates(Path(data_root), str(stage), filter_active=False)
-        if df.empty or "parser" not in df.columns:
-            return None
-        row = df[df["template_id"].astype(str) == str(template_id)]
-        if row.empty:
-            return None
-        val = row.iloc[0].get("parser")
-        if val is None:
-            return None
-        s = str(val).strip()
-        return s or None
-    except Exception:
+    Behavior:
+    - If `provided` is a non-empty string, return it.
+    - Otherwise, try to read data/1_raw/<stage>_templates.csv via raw_readers.
+      Return the 'parser' value for the matching template_id, or None if not found.
+      Any read/parse errors are swallowed and result in None.
+    """
+    if isinstance(provided, str) and provided.strip():
+        return provided.strip()
+    from daydreaming_dagster.utils.raw_readers import read_templates
+
+    df = read_templates(Path(data_root), str(stage), filter_active=False)
+    if df.empty or "parser" not in df.columns:
         return None
+    row = df[df["template_id"].astype(str) == str(template_id)]
+    if row.empty:
+        return None
+    val = row.iloc[0].get("parser")
+    if val is None:
+        return None
+    s = str(val).strip()
+    return s or None
 
 
 def parse_text(stage: Stage, raw_text: str, parser_name: Optional[str]) -> Optional[str]:
@@ -137,7 +144,10 @@ def execute_llm(
     raw_text, info = generate_llm(llm, prompt_text, model=model, max_tokens=max_tokens)
 
     default_hint = "identity" if stage == "essay" else None
-    parser_name = resolve_parser_name(Path(root_dir), stage, template_id, default_hint)
+    try:
+        parser_name = resolve_parser_name(Path(root_dir), stage, template_id, default_hint)
+    except Exception:
+        parser_name = default_hint if isinstance(default_hint, str) else None
     if stage == "evaluation":
         if not (isinstance(parser_name, str) and parser_name.strip()):
             raise ValueError("parser_name is required for evaluation stage")
@@ -223,7 +233,8 @@ def write_generation(
     write_prompt: bool,
     write_metadata: bool,
 ) -> Path:
-    gen = Generation(
+    return write_generation_files(
+        gens_root=out_dir,
         stage=stage,
         gen_id=str(gen_id),
         parent_gen_id=str(parent_gen_id) if parent_gen_id else None,
@@ -231,9 +242,6 @@ def write_generation(
         parsed_text=str(parsed_text) if isinstance(parsed_text, str) else None,
         prompt_text=str(prompt_text) if isinstance(prompt_text, str) else None,
         metadata=metadata,
-    )
-    return gen.write_files(
-        out_dir,
         write_raw=write_raw,
         write_parsed=write_parsed,
         write_prompt=write_prompt,
@@ -324,4 +332,3 @@ __all__ = [
     "execute_copy",
     "execute_llm",
 ]
-

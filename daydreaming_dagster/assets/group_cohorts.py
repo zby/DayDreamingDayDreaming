@@ -31,7 +31,7 @@ from .partitions import (
     essay_gens_partitions,
     evaluation_gens_partitions,
 )
-from ..utils.generation import Generation
+from ..utils.generation import load_generation
 
 
 def _load_selected_essays_list(data_root: Path) -> List[str]:
@@ -159,7 +159,7 @@ def cohort_membership(
         for essay_src_id in selected_essays:
             # Load essay metadata
             try:
-                essay_gen = Generation.load(data_root / "gens", "essay", essay_src_id)
+                essay_gen = load_generation(data_root / "gens", "essay", essay_src_id)
             except Exception as e:
                 raise Failure(
                     description="Selected essay document not found",
@@ -169,7 +169,7 @@ def cohort_membership(
                         "error": MetadataValue.text(str(e)),
                     },
                 ) from e
-            essay_meta = essay_gen.metadata or {}
+            essay_meta = essay_gen.get("metadata") or {}
             essay_tpl = str(essay_meta.get("template_id") or essay_meta.get("essay_template") or "").strip()
             draft_parent_src = str(essay_meta.get("parent_gen_id") or "").strip()
             # Model id/name: prefer essay metadata; fall back to draft metadata
@@ -193,7 +193,7 @@ def cohort_membership(
                     },
                 )
             try:
-                draft_gen = Generation.load(data_root / "gens", "draft", draft_parent_src)
+                draft_gen = load_generation(data_root / "gens", "draft", draft_parent_src)
             except Exception as e:
                 raise Failure(
                     description="Parent draft document not found for selected essay",
@@ -204,7 +204,7 @@ def cohort_membership(
                         "error": MetadataValue.text(str(e)),
                     },
                 ) from e
-            draft_meta = draft_gen.metadata or {}
+            draft_meta = draft_gen.get("metadata") or {}
             combo_id = str(draft_meta.get("combo_id") or "").strip()
             draft_tpl = str(draft_meta.get("template_id") or draft_meta.get("draft_template") or "").strip()
             draft_model_id = str(draft_meta.get("model_id") or "").strip()

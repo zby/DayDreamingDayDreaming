@@ -55,4 +55,3 @@ __all__ = [
     "evaluation_response_asset",
     "draft_response_asset",
 ]
-

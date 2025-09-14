@@ -66,8 +66,9 @@ def test_resolve_parser_name_fallback(tmp_path: Path):
     name = resolve_parser_name(tmp_path, "draft", "foo", None)
     assert name == "essay_block"
     # Missing CSV: returns None
-    name2 = resolve_parser_name(tmp_path / "nope", "draft", "foo", None)
-    assert name2 is None
+    import pytest
+    with pytest.raises(Exception):
+        resolve_parser_name(tmp_path / "nope", "draft", "foo", None)
 
 
 def test_parse_draft_uses_registry():
@@ -137,6 +138,13 @@ def test_execute_draft_llm_happy_path(tmp_path: Path):
 
 def test_execute_draft_llm_min_lines_failure(tmp_path: Path):
     llm = _StubLLM("one line only", info={"finish_reason": "stop", "truncated": False})
+    # Provide minimal draft_templates.csv so resolve_parser_name can load
+    (tmp_path / "1_raw").mkdir(parents=True, exist_ok=True)
+    (tmp_path / "1_raw" / "draft_templates.csv").write_text(
+        "template_id,template_name,description,parser,generator,active\n"
+        "tpl,T,Desc,essay_block,llm,True\n",
+        encoding="utf-8",
+    )
     with pytest.raises(ValueError):
         execute_llm(
             stage="draft",
@@ -156,6 +164,12 @@ def test_execute_draft_llm_min_lines_failure(tmp_path: Path):
 
 def test_execute_draft_llm_truncation_failure_after_raw(tmp_path: Path):
     llm = _StubLLM("short text", info={"finish_reason": "length", "truncated": True})
+    (tmp_path / "1_raw").mkdir(parents=True, exist_ok=True)
+    (tmp_path / "1_raw" / "draft_templates.csv").write_text(
+        "template_id,template_name,description,parser,generator,active\n"
+        "tpl,T,Desc,essay_block,llm,True\n",
+        encoding="utf-8",
+    )
     with pytest.raises(ValueError):
         execute_llm(
             stage="draft",
@@ -176,6 +190,12 @@ def test_execute_draft_llm_truncation_failure_after_raw(tmp_path: Path):
 
 def test_execute_essay_llm_identity_parse(tmp_path: Path):
     llm = _StubLLM("Line A\nLine B\n")
+    (tmp_path / "1_raw").mkdir(parents=True, exist_ok=True)
+    (tmp_path / "1_raw" / "essay_templates.csv").write_text(
+        "template_id,template_name,description,parser,generator,active\n"
+        "t,T,Desc,identity,llm,True\n",
+        encoding="utf-8",
+    )
     res = execute_llm(
         stage="essay",
         llm=llm,
@@ -195,6 +215,13 @@ def test_execute_essay_llm_identity_parse(tmp_path: Path):
 
 def test_execute_evaluation_llm_requires_parser(tmp_path: Path):
     llm = _StubLLM("Response\nSCORE: 9\n")
+    (tmp_path / "1_raw").mkdir(parents=True, exist_ok=True)
+    # Intentionally omit 'parser' column to force parser_name to be None
+    (tmp_path / "1_raw" / "evaluation_templates.csv").write_text(
+        "template_id,template_name,description,active\n"
+        "t,T,Desc,True\n",
+        encoding="utf-8",
+    )
     with pytest.raises(ValueError):
         execute_llm(
             stage="evaluation",
@@ -236,6 +263,12 @@ def test_execute_evaluation_llm_requires_parser(tmp_path: Path):
 
 def test_metadata_extra_does_not_override(tmp_path: Path):
     llm = _StubLLM("ok")
+    (tmp_path / "1_raw").mkdir(parents=True, exist_ok=True)
+    (tmp_path / "1_raw" / "essay_templates.csv").write_text(
+        "template_id,template_name,description,parser,generator,active\n"
+        "t,T,Desc,identity,llm,True\n",
+        encoding="utf-8",
+    )
     res = execute_llm(
         stage="essay",
         llm=llm,
