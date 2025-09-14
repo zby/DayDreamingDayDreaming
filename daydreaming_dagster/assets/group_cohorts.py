@@ -20,6 +20,7 @@ from ..utils.raw_readers import (
     read_llm_models,
 )
 from ..models import ContentCombination
+from daydreaming_dagster.models.content_combination import generate_combo_id
 from ..utils.cohorts import (
     get_env_cohort_id,
     compute_cohort_id,
@@ -217,14 +218,12 @@ def cohort_membership(
         dtpl_df = read_templates(data_root, "draft", filter_active=True)
         gen_models_df = read_llm_models(data_root)
         gen_models_df = gen_models_df[gen_models_df["for_generation"] == True]
-        # Read selected combo ids from data/2_tasks/selected_combo_mappings.csv
+        # Read selected combo ids from data/2_tasks/selected_combo_mappings.csv (raise on missing)
+        sel_path = data_root / "2_tasks" / "selected_combo_mappings.csv"
+        sel_df = pd.read_csv(sel_path)
         combo_ids: List[str] = []
-        try:
-            sel_df = pd.read_csv(data_root / "2_tasks" / "selected_combo_mappings.csv")
-            if not sel_df.empty and "combo_id" in sel_df.columns:
-                combo_ids = sel_df["combo_id"].astype(str).dropna().unique().tolist()
-        except FileNotFoundError:
-            combo_ids = []
+        if not sel_df.empty and "combo_id" in sel_df.columns:
+            combo_ids = sel_df["combo_id"].astype(str).dropna().unique().tolist()
 
         for combo_id in combo_ids:
             for _, trow in dtpl_df.iterrows():
@@ -401,33 +400,20 @@ def cohort_id(context, content_combinations: list[ContentCombination]) -> str:
     """Compute a deterministic cohort_id from the current manifest and persist it."""
     data_root = Path(getattr(context.resources, "data_root", "data"))
     # Build manifest from active axes
-    try:
-        ddf = read_templates(data_root, "draft", filter_active=True)
-        if "active" in ddf.columns:
-            ddf = ddf[ddf["active"] == True]
-        drafts = sorted(ddf["template_id"].astype(str).tolist()) if not ddf.empty else []
-    except Exception:
-        drafts = []
-    try:
-        edf = read_templates(data_root, "essay", filter_active=True)
-        if "active" in edf.columns:
-            edf = edf[edf["active"] == True]
-        essays = sorted(edf["template_id"].astype(str).tolist()) if not edf.empty else []
-    except Exception:
-        essays = []
-    try:
-        vdf = read_templates(data_root, "evaluation", filter_active=True)
-        if "active" in vdf.columns:
-            vdf = vdf[vdf["active"] == True]
-        evals = sorted(vdf["template_id"].astype(str).tolist()) if not vdf.empty else []
-    except Exception:
-        evals = []
-    try:
-        mdf = read_llm_models(data_root)
-        gen_models = sorted(mdf[mdf["for_generation"] == True]["id"].astype(str).tolist())
-        eval_models = sorted(mdf[mdf["for_evaluation"] == True]["id"].astype(str).tolist())
-    except Exception:
-        gen_models, eval_models = [], []
+    # Load axes strictly; let underlying errors surface naturally
+    def _tpl_ids(kind: str) -> list[str]:
+        df = read_templates(data_root, kind, filter_active=True)
+        if "active" in df.columns:
+            df = df[df["active"] == True]
+        return sorted(df["template_id"].astype(str).tolist()) if not df.empty else []
+
+    drafts = _tpl_ids("draft")
+    essays = _tpl_ids("essay")
+    evals = _tpl_ids("evaluation")
+
+    mdf = read_llm_models(data_root)
+    gen_models = sorted(mdf[mdf["for_generation"] == True]["id"].astype(str).tolist()) if not mdf.empty else []
+    eval_models = sorted(mdf[mdf["for_evaluation"] == True]["id"].astype(str).tolist()) if not mdf.empty else []
     combos = sorted([str(c.combo_id) for c in (content_combinations or [])])
     manifest = {
         "combos": combos,
@@ -435,13 +421,13 @@ def cohort_id(context, content_combinations: list[ContentCombination]) -> str:
         "llms": {"generation": gen_models, "evaluation": eval_models},
     }
     override = None
-    try:
-        if hasattr(context, "asset_config") and context.asset_config:
-            override = context.asset_config.get("override")
-        elif hasattr(context, "op_execution_context") and getattr(context.op_execution_context, "op_config", None):
-            override = context.op_execution_context.op_config.get("override")
-    except Exception:
-        override = None
+    asset_cfg = getattr(context, "asset_config", None)
+    if asset_cfg:
+        override = asset_cfg.get("override")
+    else:
+        op_ctx = getattr(context, "op_execution_context", None)
+        if op_ctx and getattr(op_ctx, "op_config", None):
+            override = op_ctx.op_config.get("override")
     env_override = get_env_cohort_id()
     cid = compute_cohort_id("cohort", manifest, explicit=(override or env_override))
     write_manifest(str(data_root), cid, manifest)
@@ -493,32 +479,33 @@ def selected_combo_mappings(context) -> pd.DataFrame:
     required_resource_keys={"experiment_config", "data_root"},
 )
 def content_combinations(context) -> list[ContentCombination]:
-    """Build combinations for generation. Preferred source: selected_combo_mappings.csv."""
+    """Build combinations for generation. Preferred source: selected_combo_mappings.csv.
+
+    Raises on missing/unreadable selected_combo_mappings.csv (let pandas exceptions bubble up).
+    If the file is readable but yields no valid combos, fall back to one combo from active concepts.
+    """
     data_root = Path(getattr(context.resources, "data_root", "data"))
-    try:
-        import pandas as _pd
-        selected_path = data_root / "2_tasks" / "selected_combo_mappings.csv"
-        sel = _pd.read_csv(selected_path)
-        if not sel.empty:
-            all_concepts = {c.concept_id: c for c in read_concepts(data_root, filter_active=False)}
-            combos: list[ContentCombination] = []
-            for combo_id, group in sel.groupby("combo_id"):
-                level = str(group.iloc[0]["description_level"]) if "description_level" in group.columns else "paragraph"
-                concept_ids = [str(cid) for cid in group["concept_id"].astype(str).tolist()]
-                concepts = [all_concepts[cid] for cid in concept_ids if cid in all_concepts]
-                if len(concepts) != len(concept_ids):
-                    continue
-                combos.append(ContentCombination(contents=[{"name": all_concepts[cid].name, "content": all_concepts[cid].content} for cid in concept_ids if cid in all_concepts], combo_id=str(combo_id), concept_ids=concept_ids))
-            if combos:
-                return combos
-    except Exception:
-        pass
+    import pandas as _pd
+    selected_path = data_root / "2_tasks" / "selected_combo_mappings.csv"
+    sel = _pd.read_csv(selected_path)
+
+    if not sel.empty:
+        all_concepts = {c.concept_id: c for c in read_concepts(data_root, filter_active=False)}
+        combos: list[ContentCombination] = []
+        for combo_id, group in sel.groupby("combo_id"):
+            level = str(group.iloc[0]["description_level"]) if "description_level" in group.columns else "paragraph"
+            concept_ids = [str(cid) for cid in group["concept_id"].astype(str).tolist()]
+            concepts = [all_concepts[cid] for cid in concept_ids if cid in all_concepts]
+            if len(concepts) != len(concept_ids):
+                continue
+            combos.append(ContentCombination.from_concepts(concepts, level=level, combo_id=str(combo_id)))
+        if combos:
+            return combos
     # Fallback: derive from active concepts using description_level/k_max
     cfg = context.resources.experiment_config
     level = getattr(cfg, "description_level", "paragraph")
     k_max = int(getattr(cfg, "k_max", 2))
     concepts = [c for c in read_concepts(data_root, filter_active=True)]
     concepts = concepts[: max(1, min(k_max, len(concepts)))]
-    from daydreaming_dagster.models.content_combination import ContentCombination, generate_combo_id
     combo_id = generate_combo_id([c.concept_id for c in concepts], level, k_max)
     return [ContentCombination.from_concepts(concepts, level=level, combo_id=combo_id)]

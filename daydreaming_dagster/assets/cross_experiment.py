@@ -38,15 +38,7 @@ def filtered_evaluation_results(context, config: FilteredEvaluationResultsConfig
     data_root = Path(getattr(context.resources, "data_root", "data"))
     gens_root = data_root / "gens"
     eval_root = gens_root / "evaluation"
-    if not eval_root.exists():
-        context.add_output_metadata({
-            "total_responses": MetadataValue.int(0),
-            "base_path": MetadataValue.path(str(eval_root)),
-        })
-        return pd.DataFrame(columns=[
-            "gen_id", "score", "error", "evaluation_template", "evaluation_model",
-            "combo_id", "generation_template", "generation_model",
-        ])
+    # Let filesystem errors surface naturally if eval_root is missing
 
     rows: list[dict] = []
     for gen_dir in sorted([p for p in eval_root.iterdir() if p.is_dir()]):
