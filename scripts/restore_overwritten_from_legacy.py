@@ -328,9 +328,9 @@ def _apply_restore_new_cohort(data_root: Path, diffs: List[Dict], cohort_id: str
     from daydreaming_dagster.utils.ids import reserve_gen_id
 from daydreaming_dagster.utils.generation import (
     load_generation,
-    write_raw as write_raw_file,
-    write_parsed as write_parsed_file,
-    write_metadata as write_metadata_file,
+    write_gen_raw,
+    write_gen_parsed,
+    write_gen_metadata,
 )
 
     gens_root = data_root / "gens"
@@ -386,9 +386,9 @@ from daydreaming_dagster.utils.generation import (
             "cohort_id": cohort_id,
             "combo_id": str(md.get("combo_id") or ""),
         }
-        write_raw_file(gens_root, "draft", new_id, text_raw)
-        write_parsed_file(gens_root, "draft", new_id, text_parsed)
-        write_metadata_file(gens_root, "draft", new_id, meta)
+        write_gen_raw(gens_root, "draft", new_id, text_raw)
+        write_gen_parsed(gens_root, "draft", new_id, text_parsed)
+        write_gen_metadata(gens_root, "draft", new_id, meta)
         created[key] = new_id
         return new_id
 
@@ -433,9 +433,9 @@ from daydreaming_dagster.utils.generation import (
             "cohort_id": cohort_id,
             "essay_template": str(md.get("essay_template") or md.get("template_id") or ""),
         }
-        write_raw_file(gens_root, "essay", new_id, text)
-        write_parsed_file(gens_root, "essay", new_id, text)
-        write_metadata_file(gens_root, "essay", new_id, meta)
+        write_gen_raw(gens_root, "essay", new_id, text)
+        write_gen_parsed(gens_root, "essay", new_id, text)
+        write_gen_metadata(gens_root, "essay", new_id, meta)
         created[key] = new_id
         return new_id
 
@@ -482,9 +482,9 @@ from daydreaming_dagster.utils.generation import (
             "cohort_id": cohort_id,
             "evaluation_template": str(md.get("template_id") or ""),
         }
-        write_raw_file(gens_root, "evaluation", new_id, text)
-        write_parsed_file(gens_root, "evaluation", new_id, text)
-        write_metadata_file(gens_root, "evaluation", new_id, meta)
+        write_gen_raw(gens_root, "evaluation", new_id, text)
+        write_gen_parsed(gens_root, "evaluation", new_id, text)
+        write_gen_metadata(gens_root, "evaluation", new_id, meta)
         created[key] = new_id
         return new_id
 

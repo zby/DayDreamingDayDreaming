@@ -9,10 +9,10 @@ import time
 from jinja2 import Environment, StrictUndefined
 
 from daydreaming_dagster.utils.generation import (
-    write_raw as write_raw_file,
-    write_parsed as write_parsed_file,
-    write_prompt as write_prompt_file,
-    write_metadata as write_metadata_file,
+    write_gen_raw,
+    write_gen_parsed,
+    write_gen_prompt,
+    write_gen_metadata,
 )
 from daydreaming_dagster.constants import DRAFT
 
@@ -185,8 +185,8 @@ def execute_llm(
     _merge_extras(meta, metadata_extra)
 
     # First write raw and metadata for debuggability
-    write_raw_file(out_dir, stage, str(gen_id), str(raw_text or ""))
-    write_metadata_file(out_dir, stage, str(gen_id), meta)
+    write_gen_raw(out_dir, stage, str(gen_id), str(raw_text or ""))
+    write_gen_metadata(out_dir, stage, str(gen_id), meta)
 
     _validate_min_lines(stage, raw_text, min_lines)
     if bool(fail_on_truncation) and isinstance(info, dict) and info.get("truncated"):
@@ -194,7 +194,7 @@ def execute_llm(
 
     if isinstance(parsed, str):
         meta["files"]["parsed"] = str((base / "parsed.txt").resolve())
-        write_parsed_file(out_dir, stage, str(gen_id), str(parsed))
+        write_gen_parsed(out_dir, stage, str(gen_id), str(parsed))
 
     return ExecutionResult(prompt_text=prompt_text, raw_text=raw_text, parsed_text=parsed, info=info, metadata=meta)
 
@@ -255,8 +255,8 @@ def execute_copy(
     meta["files"] = {"parsed": str((base / "parsed.txt").resolve())}
     meta["duration_s"] = round(time.time() - t0, 3)
     _merge_extras(meta, metadata_extra)
-    write_parsed_file(out_dir, stage, str(gen_id), str(parsed))
-    write_metadata_file(out_dir, stage, str(gen_id), meta)
+    write_gen_parsed(out_dir, stage, str(gen_id), str(parsed))
+    write_gen_metadata(out_dir, stage, str(gen_id), meta)
     return ExecutionResult(prompt_text=None, raw_text=None, parsed_text=parsed, info=None, metadata=meta)
 
 

@@ -18,28 +18,28 @@ def _ensure_dir(gens_root: Path, stage: str, gen_id: str) -> Path:
     return base
 
 
-def write_raw(gens_root: Path, stage: str, gen_id: str, text: str) -> Path:
+def write_gen_raw(gens_root: Path, stage: str, gen_id: str, text: str) -> Path:
     """Write raw.txt for a generation, creating the directory if needed."""
     base = _ensure_dir(gens_root, stage, gen_id)
     _write_atomic(base / FILE_RAW, str(text or ""))
     return base
 
 
-def write_parsed(gens_root: Path, stage: str, gen_id: str, text: str) -> Path:
+def write_gen_parsed(gens_root: Path, stage: str, gen_id: str, text: str) -> Path:
     """Write parsed.txt for a generation, creating the directory if needed."""
     base = _ensure_dir(gens_root, stage, gen_id)
     _write_atomic(base / FILE_PARSED, str(text))
     return base
 
 
-def write_prompt(gens_root: Path, stage: str, gen_id: str, text: str) -> Path:
+def write_gen_prompt(gens_root: Path, stage: str, gen_id: str, text: str) -> Path:
     """Write prompt.txt for a generation, creating the directory if needed."""
     base = _ensure_dir(gens_root, stage, gen_id)
     _write_atomic(base / FILE_PROMPT, str(text))
     return base
 
 
-def write_metadata(gens_root: Path, stage: str, gen_id: str, metadata: Dict[str, Any]) -> Path:
+def write_gen_metadata(gens_root: Path, stage: str, gen_id: str, metadata: Dict[str, Any]) -> Path:
     """Write metadata.json for a generation, creating the directory if needed."""
     base = _ensure_dir(gens_root, stage, gen_id)
     _write_atomic(base / FILE_METADATA, json.dumps(metadata, ensure_ascii=False, indent=2))
