@@ -174,7 +174,13 @@ def test_execute_draft_llm_truncation_failure_after_raw(tmp_path: Path):
 
 def test_execute_essay_llm_identity_parse(tmp_path: Path):
     llm = _StubLLM("Line A\nLine B\n")
-    # Essay uses identity parser by default; no CSV setup needed
+    # Essay uses identity parser by default when CSV parser is empty
+    (tmp_path / "1_raw").mkdir(parents=True, exist_ok=True)
+    (tmp_path / "1_raw" / "essay_templates.csv").write_text(
+        "template_id,template_name,description,parser,generator,active\n"
+        "t,T,Desc,,llm,True\n",
+        encoding="utf-8",
+    )
     res = execute_llm(
         stage="essay",
         llm=llm,
@@ -192,23 +198,31 @@ def test_execute_essay_llm_identity_parse(tmp_path: Path):
     assert res.parsed_text == res.raw_text
 
 
-def test_execute_evaluation_llm_requires_parser(tmp_path: Path):
+def test_execute_evaluation_llm_identity_or_override(tmp_path: Path):
     llm = _StubLLM("Response\nSCORE: 9\n")
-    # Without CSV or explicit parser_name override, evaluation should fail early
-    with pytest.raises(ValueError):
-        execute_llm(
-            stage="evaluation",
-            llm=llm,
-            root_dir=tmp_path,
-            gen_id="V1",
-            template_id="t",
-            prompt_text="p",
-            model="m",
-            max_tokens=8,
-            min_lines=None,
-            parent_gen_id="E1",
-        )
-    # Then provide a valid parser directly via override (no CSV required)
+    # Prepare CSV with empty parser: policy defaults to identity
+    (tmp_path / "1_raw").mkdir(parents=True, exist_ok=True)
+    (tmp_path / "1_raw" / "evaluation_templates.csv").write_text(
+        "template_id,template_name,description,parser,generator,active\n"
+        "t,T,Desc,,llm,True\n",
+        encoding="utf-8",
+    )
+    res1 = execute_llm(
+        stage="evaluation",
+        llm=llm,
+        root_dir=tmp_path,
+        gen_id="V1",
+        template_id="t",
+        prompt_text="p",
+        model="m",
+        max_tokens=8,
+        min_lines=None,
+        parent_gen_id="E1",
+    )
+    base1 = tmp_path / "gens" / "evaluation" / "V1"
+    assert (base1 / "parsed.txt").exists()
+    assert res1.parsed_text == res1.raw_text
+    # Then provide a valid parser directly via override
     res = execute_llm(
         stage="evaluation",
         llm=llm,
@@ -229,6 +243,13 @@ def test_execute_evaluation_llm_requires_parser(tmp_path: Path):
 
 def test_metadata_extra_does_not_override(tmp_path: Path):
     llm = _StubLLM("ok")
+    # Provide essay templates with empty parser to use identity per policy
+    (tmp_path / "1_raw").mkdir(parents=True, exist_ok=True)
+    (tmp_path / "1_raw" / "essay_templates.csv").write_text(
+        "template_id,template_name,description,parser,generator,active\n"
+        "t,T,Desc,,llm,True\n",
+        encoding="utf-8",
+    )
     res = execute_llm(
         stage="essay",
         llm=llm,
@@ -240,7 +261,7 @@ def test_metadata_extra_does_not_override(tmp_path: Path):
         max_tokens=8,
         min_lines=None,
         parent_gen_id="D",
-        # identity by default for essay; no CSV required
+        # identity by default for essay; empty parser uses identity
         metadata_extra={"stage": "hack", "run_id": "X"},
     )
     assert res.metadata.get("stage") == "essay"  # not overridden
@@ -280,9 +301,16 @@ def test_execute_llm_io_injection_early_write_order_failure(tmp_path: Path):
         calls.append(("parsed", args, kwargs))
 
     llm = _StubLLM("line1\n")
+    # Ensure essay template exists with empty parser to use identity by policy
+    (tmp_path / "1_raw").mkdir(parents=True, exist_ok=True)
+    (tmp_path / "1_raw" / "essay_templates.csv").write_text(
+        "template_id,template_name,description,parser,generator,active\n"
+        "t,T,Desc,,llm,True\n",
+        encoding="utf-8",
+    )
     with pytest.raises(ValueError):
         execute_llm(
-            stage="essay",  # identity parser by default, avoids CSV setup
+            stage="essay",
             llm=llm,
             root_dir=tmp_path,
             gen_id="E100",
@@ -316,8 +344,15 @@ def test_execute_llm_io_injection_success_calls(tmp_path: Path):
         calls.append("parsed")
 
     llm = _StubLLM("Body\n")
+    # Ensure essay template exists with empty parser to use identity by policy
+    (tmp_path / "1_raw").mkdir(parents=True, exist_ok=True)
+    (tmp_path / "1_raw" / "essay_templates.csv").write_text(
+        "template_id,template_name,description,parser,generator,active\n"
+        "t,T,Desc,,llm,True\n",
+        encoding="utf-8",
+    )
     res = execute_llm(
-        stage="essay",  # identity parser by default
+        stage="essay",
         llm=llm,
         root_dir=tmp_path,
         gen_id="E200",

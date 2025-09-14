@@ -68,12 +68,13 @@ except Exception:  # pragma: no cover - import-time tolerance
     pass
 
 
-# Essay: identity parser
+# Essay/Draft: identity parser
 def _identity(text: str) -> str:
     return str(text)
 
-
 register_parser("essay", "identity", _identity)
+register_parser("draft", "identity", _identity)
+register_parser("evaluation", "identity", _identity)
 
 
 # Evaluation: wrappers around eval_response_parser that normalize output

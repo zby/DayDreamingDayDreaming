@@ -15,6 +15,7 @@ from daydreaming_dagster.utils.generation import (
     write_gen_metadata,
 )
 from daydreaming_dagster.types import Stage
+from .stage_policy import effective_parser_name
 
 
 @dataclass
@@ -105,29 +106,15 @@ def resolve_parser_name(
     template_id: str,
     provided: Optional[str] = None,
 ) -> Optional[str]:
-    """Resolve parser name with a provided override and CSV fallback.
+    """Resolve the effective parser name per centralized policy.
 
-    Behavior:
-    - If `provided` is a non-empty string, return it.
-    - Otherwise, try to read data/1_raw/<stage>_templates.csv via raw_readers.
-      Return the 'parser' value for the matching template_id, or None if not found.
-      Any read/parse errors are swallowed and result in None.
+    See stage_policy.effective_parser_name for full rules. In short:
+    - Override wins when provided.
+    - Draft/Essay default to identity when CSV parser is empty.
+    - Evaluation requires a parser and fails when missing.
+    - Configuration errors raise.
     """
-    if isinstance(provided, str) and provided.strip():
-        return provided.strip()
-    from daydreaming_dagster.utils.raw_readers import read_templates
-
-    df = read_templates(Path(data_root), str(stage), filter_active=False)
-    if df.empty or "parser" not in df.columns:
-        return None
-    row = df[df["template_id"].astype(str) == str(template_id)]
-    if row.empty:
-        return None
-    val = row.iloc[0].get("parser")
-    if val is None:
-        return None
-    s = str(val).strip()
-    return s or None
+    return effective_parser_name(Path(data_root), stage, template_id, provided)
 
 
 def parse_text(stage: Stage, raw_text: str, parser_name: Optional[str]) -> Optional[str]:
@@ -178,19 +165,8 @@ def execute_llm(
     t0 = time.time()
     raw_text, info = generate_llm(llm, prompt_text, model=model, max_tokens=max_tokens)
 
-    # Resolve parser name with optional explicit override
-    eff_parser_name: Optional[str]
-    if isinstance(parser_name, str) and parser_name.strip():
-        eff_parser_name = parser_name.strip()
-    else:
-        default_hint = "identity" if stage == "essay" else None
-        try:
-            eff_parser_name = resolve_parser_name(Path(root_dir), stage, template_id, default_hint)
-        except Exception:
-            eff_parser_name = default_hint if isinstance(default_hint, str) else None
-    if stage == "evaluation":
-        if not (isinstance(eff_parser_name, str) and eff_parser_name.strip()):
-            raise ValueError("parser_name is required for evaluation stage")
+    # Resolve parser name using centralized policy
+    eff_parser_name: Optional[str] = resolve_parser_name(Path(root_dir), stage, template_id, parser_name)
 
     parsed = parse_text(stage, raw_text, eff_parser_name)
     if stage == "essay" and not isinstance(parsed, str):

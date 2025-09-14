@@ -2,7 +2,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Any, Callable, Dict, Optional, Tuple
+from pathlib import Path
+import pandas as pd
 from daydreaming_dagster.types import Stage
+from daydreaming_dagster.utils.raw_readers import read_templates
 
 
 PROMPT_REQUIRED_BY_STAGE: Dict[Stage, list[str]] = {
@@ -127,3 +130,41 @@ def get_stage_spec(stage: Stage) -> StageSpec:
         return _SPECS[stage]
     except KeyError:
         raise ValueError(f"Unsupported stage: {stage}")
+
+
+# ---- Centralized parser policy ----
+def effective_parser_name(
+    data_root: Path,
+    stage: Stage,
+    template_id: str,
+    override: Optional[str] = None,
+) -> Optional[str]:
+    """Determine the effective parser name for a stage/template with uniform rules.
+
+    Policy:
+    - Any configuration error (missing CSV, bad parse, unknown stage, missing template row)
+      raises an exception (no silent fallbacks).
+    - Explicit override wins when provided and non-empty.
+    - All stages: if CSV parser is empty/missing, default to "identity".
+    """
+    if isinstance(override, str) and override.strip():
+        return override.strip()
+
+    kind: str = str(stage)
+    if kind not in {"draft", "essay", "evaluation"}:
+        raise ValueError(f"Unsupported stage for parser resolution: {stage}")
+
+    df = read_templates(Path(data_root), kind, filter_active=False)
+    row = df[df["template_id"].astype(str) == str(template_id)]
+    if row.empty:
+        raise ValueError(f"Template '{template_id}' not found in {kind}_templates.csv")
+
+    raw_val = row.iloc[0].get("parser")
+    # Treat NaN/None as empty
+    if raw_val is None or (isinstance(raw_val, float) and pd.isna(raw_val)):
+        parsed_name = ""
+    else:
+        parsed_name = str(raw_val).strip()
+
+    # Uniform: default to identity when empty
+    return parsed_name or "identity"
