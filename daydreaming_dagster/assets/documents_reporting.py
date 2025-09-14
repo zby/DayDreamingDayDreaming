@@ -1,13 +1,15 @@
 from __future__ import annotations
 
-from dagster import asset, MetadataValue
+from dagster import MetadataValue
+from ._decorators import asset_with_boundary
 import pandas as pd
 from pathlib import Path
 import json
 from ..constants import STAGES, FILE_METADATA, FILE_RAW, FILE_PARSED, FILE_PROMPT
 
 
-@asset(
+@asset_with_boundary(
+    stage="reporting",
     group_name="reporting",
     io_manager_key="error_log_io_manager",
     required_resource_keys={"data_root"},
@@ -50,7 +52,8 @@ def documents_latest_report(context) -> pd.DataFrame:
     })
     return df
 
-@asset(
+@asset_with_boundary(
+    stage="reporting",
     group_name="reporting",
     io_manager_key="error_log_io_manager",
     required_resource_keys={"data_root"},

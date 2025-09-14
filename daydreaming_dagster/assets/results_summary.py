@@ -1,4 +1,5 @@
-from dagster import asset, MetadataValue, Failure
+from dagster import MetadataValue
+from ._decorators import asset_with_boundary
 import pandas as pd
 import numpy as np
 from pathlib import Path
@@ -13,7 +14,8 @@ def _noop():
     return None
 
 
-@asset(
+@asset_with_boundary(
+    stage="results_summary",
     group_name="results_processing",
     io_manager_key="summary_results_io_manager",
     required_resource_keys={"data_root"},
@@ -53,13 +55,7 @@ def generation_scores_pivot(context, aggregated_scores: pd.DataFrame) -> pd.Data
 
     # Require evaluator id column and compose combined key (strict)
     if 'evaluation_llm_model' not in valid_scores.columns:
-        raise Failure(
-            description="Missing required column 'evaluation_llm_model' in aggregated_scores",
-            metadata={
-                "expected": MetadataValue.text("evaluation_llm_model"),
-                "present": MetadataValue.text(", ".join(list(valid_scores.columns)))
-            }
-        )
+        raise ValueError("Missing required column 'evaluation_llm_model' in aggregated_scores")
     valid_scores['eval_template_model'] = (
         valid_scores['evaluation_template'] + '_' + valid_scores['evaluation_llm_model']
     )
@@ -88,31 +84,12 @@ def generation_scores_pivot(context, aggregated_scores: pd.DataFrame) -> pd.Data
 
     # Require draft_template in aggregated_scores (added with two-phase architecture)
     if 'draft_template' not in valid_scores.columns:
-        # Fail fast with guidance to rematerialize upstream asset
-        raise Failure(
-            description="Missing required column 'draft_template' in aggregated_scores for two-phase path generation",
-            metadata={
-                "resolution": MetadataValue.text(
-                    "Rematerialize 'aggregated_scores' to include new columns (draft_template, essay_task_id). "
-                    "For example: `uv run dagster asset materialize --select aggregated_scores -f daydreaming_dagster/definitions.py`"
-                ),
-                "present_columns": MetadataValue.text(", ".join(list(valid_scores.columns))),
-                "expected_column": MetadataValue.text("draft_template"),
-            }
-        )
+        raise ValueError("Missing required column 'draft_template' in aggregated_scores for two-phase path generation")
     # draft_template is now already included in the pivot index, so no need to merge it back
 
     # Attach generation_response_path from aggregated_scores (strict requirement)
     if 'generation_response_path' not in aggregated_scores.columns:
-        raise Failure(
-            description="Missing 'generation_response_path' in aggregated_scores",
-            metadata={
-                'resolution': MetadataValue.text(
-                    "Rematerialize aggregated_scores so it enriches from gens store (adds generation_response_path)."
-                ),
-                'present_columns': MetadataValue.text(", ".join(list(aggregated_scores.columns)))
-            }
-        )
+        raise ValueError("Missing 'generation_response_path' in aggregated_scores")
     path_map = aggregated_scores[
         ['combo_id', 'stage', 'draft_template', 'generation_template', 'generation_model', 'generation_response_path']
     ].drop_duplicates()
@@ -137,7 +114,8 @@ def generation_scores_pivot(context, aggregated_scores: pd.DataFrame) -> pd.Data
 
     return pivot_df
 
-@asset(
+@asset_with_boundary(
+    stage="results_summary",
     group_name="results_summary", 
     io_manager_key="summary_results_io_manager"
 )
@@ -292,8 +270,9 @@ def final_results(context, aggregated_scores: pd.DataFrame) -> pd.DataFrame:
         return pd.DataFrame()
 
 
-@asset(
-    group_name="results_summary",
+@asset_with_boundary(
+    stage="results_summary",
+    group_name="results_summary", 
     io_manager_key="summary_results_io_manager"
 )
 def perfect_score_paths(context, aggregated_scores: pd.DataFrame) -> pd.DataFrame:
@@ -381,7 +360,8 @@ def perfect_score_paths(context, aggregated_scores: pd.DataFrame) -> pd.DataFram
     return result_df
 
 
-@asset(
+@asset_with_boundary(
+    stage="results_summary", 
     group_name="results_summary", 
     io_manager_key="summary_results_io_manager"
 )
@@ -411,10 +391,7 @@ def evaluation_model_template_pivot(context, aggregated_scores: pd.DataFrame) ->
     
     # Require evaluator id and create combined key
     if 'evaluation_llm_model' not in valid_scores.columns:
-        raise Failure(
-            description="Missing required column 'evaluation_llm_model' in aggregated_scores",
-            metadata={"present": MetadataValue.text(", ".join(list(valid_scores.columns)))}
-        )
+        raise ValueError("Missing required column 'evaluation_llm_model' in aggregated_scores")
     valid_scores['eval_model_template'] = (
         valid_scores['evaluation_llm_model'] + '_' + valid_scores['evaluation_template']
     )

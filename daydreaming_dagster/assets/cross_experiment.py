@@ -4,7 +4,8 @@ Reads evaluation results from `data/gens/evaluation/<gen_id>/{parsed.txt,raw.txt
 and enriches with generation metadata from parent essay/draft documents.
 """
 
-from dagster import asset, AssetIn, MetadataValue, Config
+from dagster import AssetIn, MetadataValue, Config
+from ._decorators import asset_with_boundary
 from pathlib import Path
 import pandas as pd
 from typing import Dict, Any
@@ -20,7 +21,8 @@ class FilteredEvaluationResultsConfig(Config):
     # TODO: Add filtering configuration options later
 
 
-@asset(
+@asset_with_boundary(
+    stage="cross_experiment",
     group_name="cross_experiment",
     io_manager_key="cross_experiment_io_manager",
     description="Scan gens-store evaluation outputs across experiments and parse scores",
@@ -106,7 +108,8 @@ class TemplateComparisonConfig(Config):
     template_versions: list = None  # If None, uses all available templates
 
 
-@asset(
+@asset_with_boundary(
+    stage="cross_experiment",
     group_name="cross_experiment",
     io_manager_key="cross_experiment_io_manager",
     ins={"filtered_evaluation_results": AssetIn()},

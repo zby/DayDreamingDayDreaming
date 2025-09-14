@@ -1,11 +1,13 @@
-from dagster import asset, MetadataValue
+from dagster import MetadataValue
+from ._decorators import asset_with_boundary
 from pathlib import Path
 import pandas as pd
 from ..utils.membership_lookup import stage_gen_ids
 from ..utils.evaluation_scores import aggregate_evaluation_scores_for_ids as parse_all_scores
 
 
-@asset(
+@asset_with_boundary(
+    stage="results_processing",
     group_name="results_processing",
     io_manager_key="parsing_results_io_manager",
     required_resource_keys={"data_root"},

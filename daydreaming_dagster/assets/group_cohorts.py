@@ -11,7 +11,8 @@ from pathlib import Path
 from typing import Dict, Iterable, List, Tuple
 
 import pandas as pd
-from dagster import Failure, MetadataValue, asset
+from dagster import Failure, MetadataValue
+from ._decorators import asset_with_boundary
 
 from ..utils.ids import reserve_gen_id
 from ..utils.raw_readers import (
@@ -65,7 +66,8 @@ def _eval_axes(data_root: Path) -> Tuple[List[str], List[str]]:
     return eval_tpl_ids, eval_model_ids
 
 
-@asset(
+@asset_with_boundary(
+    stage="cohort",
     group_name="cohort",
     required_resource_keys={"data_root"},
 )
@@ -108,52 +110,19 @@ def cohort_membership(
         # Curated mode — rebuild tasks from prior gens metadata and compute cohort-scoped ids
         for essay_src_id in selected_essays:
             # Load essay metadata
-            try:
-                essay_gen = load_generation(data_root / "gens", "essay", essay_src_id)
-            except Exception as e:
-                raise Failure(
-                    description="Selected essay document not found",
-                    metadata={
-                        "function": MetadataValue.text("cohort_membership"),
-                        "essay_gen_id": MetadataValue.text(str(essay_src_id)),
-                        "error": MetadataValue.text(str(e)),
-                    },
-                ) from e
+            essay_gen = load_generation(data_root / "gens", "essay", essay_src_id)
             essay_meta = essay_gen.get("metadata") or {}
             essay_tpl = str(essay_meta.get("template_id") or essay_meta.get("essay_template") or "").strip()
             draft_parent_src = str(essay_meta.get("parent_gen_id") or "").strip()
             # Model id/name: prefer essay metadata; fall back to draft metadata
             essay_model_id = str(essay_meta.get("model_id") or "").strip()
             if not essay_tpl:
-                raise Failure(
-                    description="Selected essay is missing required template_id",
-                    metadata={
-                        "function": MetadataValue.text("cohort_membership"),
-                        "essay_gen_id": MetadataValue.text(str(essay_src_id)),
-                    },
-                )
+                raise ValueError("Selected essay is missing required template_id")
 
             # Load draft metadata
             if not draft_parent_src:
-                raise Failure(
-                    description="Selected essay is missing parent draft gen id",
-                    metadata={
-                        "function": MetadataValue.text("cohort_membership"),
-                        "essay_gen_id": MetadataValue.text(str(essay_src_id)),
-                    },
-                )
-            try:
-                draft_gen = load_generation(data_root / "gens", "draft", draft_parent_src)
-            except Exception as e:
-                raise Failure(
-                    description="Parent draft document not found for selected essay",
-                    metadata={
-                        "function": MetadataValue.text("cohort_membership"),
-                        "essay_gen_id": MetadataValue.text(str(essay_src_id)),
-                        "draft_gen_id": MetadataValue.text(str(draft_parent_src)),
-                        "error": MetadataValue.text(str(e)),
-                    },
-                ) from e
+                raise ValueError("Selected essay is missing parent draft gen id")
+            draft_gen = load_generation(data_root / "gens", "draft", draft_parent_src)
             draft_meta = draft_gen.get("metadata") or {}
             combo_id = str(draft_meta.get("combo_id") or "").strip()
             draft_tpl = str(draft_meta.get("template_id") or draft_meta.get("draft_template") or "").strip()
@@ -168,14 +137,8 @@ def cohort_membership(
             if not model_id:
                 missing_fields.append("model_id")
             if missing_fields:
-                raise Failure(
-                    description="Missing required metadata to reconstruct draft/essay tasks for curated cohort",
-                    metadata={
-                        "function": MetadataValue.text("cohort_membership"),
-                        "essay_gen_id": MetadataValue.text(str(essay_src_id)),
-                        "draft_parent_src": MetadataValue.text(str(draft_parent_src)),
-                        "missing_fields": MetadataValue.json(missing_fields),
-                    },
+                raise ValueError(
+                    f"Missing required metadata to reconstruct tasks: {', '.join(missing_fields)}"
                 )
 
             # Compose cohort task ids and gen ids
@@ -321,15 +284,10 @@ def cohort_membership(
             if pid not in essays:
                 eval_parent_missing.append(pid)
     if essay_parent_missing or eval_parent_missing:
-        raise Failure(
-            description="Cohort membership parent integrity check failed",
-            metadata={
-                "function": MetadataValue.text("cohort_membership"),
-                "missing_draft_parents_count": MetadataValue.int(len(essay_parent_missing)),
-                "missing_essay_parents_count": MetadataValue.int(len(eval_parent_missing)),
-                "missing_draft_parents_sample": MetadataValue.json(essay_parent_missing[:5]),
-                "missing_essay_parents_sample": MetadataValue.json(eval_parent_missing[:5]),
-            },
+        raise ValueError(
+            "Cohort membership parent integrity check failed: "
+            f"missing_draft_parents={len(essay_parent_missing)}, "
+            f"missing_essay_parents={len(eval_parent_missing)}"
         )
 
     # Write membership.csv
@@ -350,7 +308,8 @@ def cohort_membership(
 
     return df
 
-@asset(
+@asset_with_boundary(
+    stage="cohort",
     group_name="cohort",
     required_resource_keys={"data_root"},
     io_manager_key="io_manager",
@@ -391,7 +350,8 @@ def register_cohort_partitions(context, cohort_membership: pd.DataFrame) -> Dict
         "essay": added_essay,
         "evaluation": added_eval,
     }
-@asset(
+@asset_with_boundary(
+    stage="task_definitions",
     group_name="task_definitions",
     io_manager_key="io_manager",
     required_resource_keys={"data_root"},
@@ -438,7 +398,8 @@ def cohort_id(context, content_combinations: list[ContentCombination]) -> str:
     return cid
 
 
-@asset(
+@asset_with_boundary(
+    stage="cohort",
     group_name="cohort",
     io_manager_key="csv_io_manager",
     required_resource_keys={"experiment_config", "data_root"},
@@ -473,7 +434,8 @@ def selected_combo_mappings(context) -> pd.DataFrame:
     return df
 
 
-@asset(
+@asset_with_boundary(
+    stage="cohort",
     group_name="cohort",
     io_manager_key="io_manager",
     required_resource_keys={"experiment_config", "data_root"},

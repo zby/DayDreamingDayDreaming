@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from dagster import asset, MetadataValue
+from dagster import MetadataValue
+from ._decorators import asset_with_boundary
 from pathlib import Path
 import pandas as pd
 
@@ -23,7 +24,8 @@ def _desired_gen_ids(csv_path: Path) -> set[str]:
         return set()
 
 
-@asset(
+@asset_with_boundary(
+    stage="maintenance",
     group_name="cohort",
     description="Remove ALL registered dynamic partitions for draft/essay/evaluation (registry only).",
 )
