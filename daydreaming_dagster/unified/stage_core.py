@@ -165,6 +165,7 @@ def execute_llm(
     fail_on_truncation: bool = True,
     parent_gen_id: Optional[str] = None,
     metadata_extra: Optional[Dict[str, Any]] = None,
+    parser_name: Optional[str] = None,
     # IO injection points (defaults are canonical helpers)
     write_raw=write_gen_raw,
     write_parsed=write_gen_parsed,
@@ -177,16 +178,21 @@ def execute_llm(
     t0 = time.time()
     raw_text, info = generate_llm(llm, prompt_text, model=model, max_tokens=max_tokens)
 
-    default_hint = "identity" if stage == "essay" else None
-    try:
-        parser_name = resolve_parser_name(Path(root_dir), stage, template_id, default_hint)
-    except Exception:
-        parser_name = default_hint if isinstance(default_hint, str) else None
+    # Resolve parser name with optional explicit override
+    eff_parser_name: Optional[str]
+    if isinstance(parser_name, str) and parser_name.strip():
+        eff_parser_name = parser_name.strip()
+    else:
+        default_hint = "identity" if stage == "essay" else None
+        try:
+            eff_parser_name = resolve_parser_name(Path(root_dir), stage, template_id, default_hint)
+        except Exception:
+            eff_parser_name = default_hint if isinstance(default_hint, str) else None
     if stage == "evaluation":
-        if not (isinstance(parser_name, str) and parser_name.strip()):
+        if not (isinstance(eff_parser_name, str) and eff_parser_name.strip()):
             raise ValueError("parser_name is required for evaluation stage")
 
-    parsed = parse_text(stage, raw_text, parser_name)
+    parsed = parse_text(stage, raw_text, eff_parser_name)
     if stage == "essay" and not isinstance(parsed, str):
         parsed = str(raw_text)
 
@@ -204,7 +210,7 @@ def execute_llm(
     meta["files"] = {"raw": str((base / "raw.txt").resolve())}
     meta.update(
         {
-            "parser_name": parser_name,
+            "parser_name": eff_parser_name,
             "finish_reason": (info or {}).get("finish_reason") if isinstance(info, dict) else None,
             "truncated": bool((info or {}).get("truncated")) if isinstance(info, dict) else False,
             "usage": (info or {}).get("usage") if isinstance(info, dict) else None,

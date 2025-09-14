@@ -192,12 +192,7 @@ def test_execute_draft_llm_truncation_failure_after_raw(tmp_path: Path):
 
 def test_execute_essay_llm_identity_parse(tmp_path: Path):
     llm = _StubLLM("Line A\nLine B\n")
-    (tmp_path / "1_raw").mkdir(parents=True, exist_ok=True)
-    (tmp_path / "1_raw" / "essay_templates.csv").write_text(
-        "template_id,template_name,description,parser,generator,active\n"
-        "t,T,Desc,identity,llm,True\n",
-        encoding="utf-8",
-    )
+    # Essay uses identity parser by default; no CSV setup needed
     res = execute_llm(
         stage="essay",
         llm=llm,
@@ -217,13 +212,7 @@ def test_execute_essay_llm_identity_parse(tmp_path: Path):
 
 def test_execute_evaluation_llm_requires_parser(tmp_path: Path):
     llm = _StubLLM("Response\nSCORE: 9\n")
-    (tmp_path / "1_raw").mkdir(parents=True, exist_ok=True)
-    # Intentionally omit 'parser' column to force parser_name to be None
-    (tmp_path / "1_raw" / "evaluation_templates.csv").write_text(
-        "template_id,template_name,description,active\n"
-        "t,T,Desc,True\n",
-        encoding="utf-8",
-    )
+    # Without CSV or explicit parser_name override, evaluation should fail early
     with pytest.raises(ValueError):
         execute_llm(
             stage="evaluation",
@@ -237,15 +226,7 @@ def test_execute_evaluation_llm_requires_parser(tmp_path: Path):
             min_lines=None,
             parent_gen_id="E1",
         )
-    # with parser
-    # Declare parser in evaluation_templates.csv for template 't'
-    csv_dir = tmp_path / "1_raw"
-    csv_dir.mkdir(parents=True, exist_ok=True)
-    (csv_dir / "evaluation_templates.csv").write_text(
-        "template_id,template_name,description,parser,active\n"
-        "t,T,Desc,in_last_line,True\n",
-        encoding="utf-8",
-    )
+    # Then provide a valid parser directly via override (no CSV required)
     res = execute_llm(
         stage="evaluation",
         llm=llm,
@@ -257,6 +238,7 @@ def test_execute_evaluation_llm_requires_parser(tmp_path: Path):
         max_tokens=8,
         min_lines=None,
         parent_gen_id="E2",
+        parser_name="in_last_line",
     )
     base = tmp_path / "gens" / "evaluation" / "V2"
     assert (base / "parsed.txt").exists()
@@ -309,15 +291,6 @@ def test_execute_llm_io_injection_early_write_order_failure(tmp_path: Path):
     We inject fake writers that record call order. We set min_lines high to force
     validation failure after early writes.
     """
-    # Prepare CSV so parser resolution works (though we won't reach parsed write here)
-    csv_dir = tmp_path / "1_raw"
-    csv_dir.mkdir(parents=True, exist_ok=True)
-    (csv_dir / "draft_templates.csv").write_text(
-        "template_id,template_name,description,parser,generator,active\n"
-        "tpl1,Tpl,Desc,essay_block,llm,True\n",
-        encoding="utf-8",
-    )
-
     calls: list[tuple[str, tuple, dict]] = []
 
     def _w_raw(*args, **kwargs):
@@ -332,15 +305,16 @@ def test_execute_llm_io_injection_early_write_order_failure(tmp_path: Path):
     llm = _StubLLM("line1\n")
     with pytest.raises(ValueError):
         execute_llm(
-            stage="draft",
+            stage="essay",  # identity parser by default, avoids CSV setup
             llm=llm,
             root_dir=tmp_path,
-            gen_id="D100",
-            template_id="tpl1",
+            gen_id="E100",
+            template_id="t",
             prompt_text="p",
             model="m",
             max_tokens=8,
             min_lines=3,  # force failure
+            parent_gen_id="D1",
             write_raw=_w_raw,
             write_metadata=_w_md,
             write_parsed=_w_parsed,
@@ -353,15 +327,6 @@ def test_execute_llm_io_injection_early_write_order_failure(tmp_path: Path):
 
 def test_execute_llm_io_injection_success_calls(tmp_path: Path):
     """Ensure parsed write is invoked on success when parser returns a string."""
-    # CSV declares parser for draft template
-    csv_dir = tmp_path / "1_raw"
-    csv_dir.mkdir(parents=True, exist_ok=True)
-    (csv_dir / "draft_templates.csv").write_text(
-        "template_id,template_name,description,parser,generator,active\n"
-        "tpl1,Tpl,Desc,essay_block,llm,True\n",
-        encoding="utf-8",
-    )
-
     calls: list[str] = []
 
     def _w_raw(*_a, **_k):
@@ -373,21 +338,22 @@ def test_execute_llm_io_injection_success_calls(tmp_path: Path):
     def _w_parsed(*_a, **_k):
         calls.append("parsed")
 
-    llm = _StubLLM("<essay>Body</essay>\n")
+    llm = _StubLLM("Body\n")
     res = execute_llm(
-        stage="draft",
+        stage="essay",  # identity parser by default
         llm=llm,
         root_dir=tmp_path,
-        gen_id="D200",
-        template_id="tpl1",
+        gen_id="E200",
+        template_id="t",
         prompt_text="p",
         model="m",
         max_tokens=16,
         min_lines=1,
+        parent_gen_id="D1",
         write_raw=_w_raw,
         write_metadata=_w_md,
         write_parsed=_w_parsed,
     )
-    assert res.parsed_text == "Body\n" or res.parsed_text == "Body"  # normalized in parser
+    assert res.parsed_text == res.raw_text
     # Ensure all three writes were called
     assert set(calls) >= {"raw", "metadata", "parsed"}
