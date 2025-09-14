@@ -184,20 +184,9 @@ def execute_llm(
     )
     _merge_extras(meta, metadata_extra)
 
-    write_generation(
-        out_dir=out_dir,
-        stage=stage,
-        gen_id=str(gen_id),
-        parent_gen_id=str(parent_gen_id) if parent_gen_id else None,
-        prompt_text=prompt_text,
-        raw_text=raw_text,
-        parsed_text=parsed,
-        metadata=meta,
-        write_raw=True,
-        write_parsed=False,
-        write_prompt=False,
-        write_metadata=True,
-    )
+    # First write raw and metadata for debuggability
+    write_raw_file(out_dir, stage, str(gen_id), str(raw_text or ""))
+    write_metadata_file(out_dir, stage, str(gen_id), meta)
 
     _validate_min_lines(stage, raw_text, min_lines)
     if bool(fail_on_truncation) and isinstance(info, dict) and info.get("truncated"):
@@ -205,51 +194,12 @@ def execute_llm(
 
     if isinstance(parsed, str):
         meta["files"]["parsed"] = str((base / "parsed.txt").resolve())
-        write_generation(
-            out_dir=out_dir,
-            stage=stage,
-            gen_id=str(gen_id),
-            parent_gen_id=str(parent_gen_id) if parent_gen_id else None,
-            prompt_text=None,
-            raw_text=None,
-            parsed_text=parsed,
-            metadata=meta,
-            write_raw=False,
-            write_parsed=True,
-            write_prompt=False,
-            write_metadata=False,
-        )
+        write_parsed_file(out_dir, stage, str(gen_id), str(parsed))
 
     return ExecutionResult(prompt_text=prompt_text, raw_text=raw_text, parsed_text=parsed, info=info, metadata=meta)
 
 
-def write_generation(
-    *,
-    out_dir: Path,
-    stage: Stage,
-    gen_id: str,
-    parent_gen_id: Optional[str],
-    prompt_text: Optional[str],
-    raw_text: Optional[str],
-    parsed_text: Optional[str],
-    metadata: Dict[str, Any],
-    write_raw: bool,
-    write_parsed: bool,
-    write_prompt: bool,
-    write_metadata: bool,
-) -> Path:
-    # Ensure directory and perform requested writes explicitly
-    base = None
-    if write_raw:
-        base = write_raw_file(out_dir, stage, str(gen_id), str(raw_text or ""))
-    if write_parsed and isinstance(parsed_text, str):
-        base = write_parsed_file(out_dir, stage, str(gen_id), str(parsed_text))
-    if write_prompt and isinstance(prompt_text, str):
-        base = write_prompt_file(out_dir, stage, str(gen_id), str(prompt_text))
-    if write_metadata and isinstance(metadata, dict):
-        base = write_metadata_file(out_dir, stage, str(gen_id), metadata)
-    # Fallback: if nothing was written (shouldn't happen), create dir
-    return base or (out_dir / str(stage) / str(gen_id))
+## write_generation helper removed; explicit write_* calls are used inline
 
 
 def _base_meta(
@@ -305,20 +255,8 @@ def execute_copy(
     meta["files"] = {"parsed": str((base / "parsed.txt").resolve())}
     meta["duration_s"] = round(time.time() - t0, 3)
     _merge_extras(meta, metadata_extra)
-    write_generation(
-        out_dir=out_dir,
-        stage=stage,
-        gen_id=str(gen_id),
-        parent_gen_id=str(parent_gen_id),
-        prompt_text=None,
-        raw_text=None,
-        parsed_text=parsed,
-        metadata=meta,
-        write_raw=False,
-        write_parsed=True,
-        write_prompt=False,
-        write_metadata=True,
-    )
+    write_parsed_file(out_dir, stage, str(gen_id), str(parsed))
+    write_metadata_file(out_dir, stage, str(gen_id), meta)
     return ExecutionResult(prompt_text=None, raw_text=None, parsed_text=parsed, info=None, metadata=meta)
 
 
@@ -331,7 +269,6 @@ __all__ = [
     "generate_llm",
     "resolve_parser_name",
     "parse_text",
-    "write_generation",
     "execute_copy",
     "execute_llm",
 ]

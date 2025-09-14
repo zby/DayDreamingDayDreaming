@@ -85,10 +85,18 @@ class GenerationEnvelope:
 - Copy‑mode branching checks:
   - Replace `if not pstage` and ad‑hoc messages with `spec.supports_copy_response` + `spec.parent_stage` via `envelope.validate`.
 
+- Asset and utility catch‑alls that obscure root causes (trim after envelope/service refactor):
+  - assets/cross_experiment.py: generic `except Exception:` blocks around DataFrame assembly (lines ~57, 77, 88, 101). Prefer clearer validations or let helper Failures surface.
+  - assets/results_processing.py: generic `except Exception:` blocks (lines ~34, 64, 79). Use presence checks and rely on csv_reading.read_csv_with_context for context‑rich Failures.
+  - assets/group_cohorts.py: many broad exception handlers in cohort building (lines ~82, 133, 136, 146, 163, 197, 300, 461, 468, 475, 481, 495, 566). After moving validation/IO to a CohortService, let it raise consistent Failures/ValueErrors and drop catch‑alls.
+  - assets/documents_reporting.py: broad exceptions around reporting IO (lines ~40, 90); prefer existence checks or let FileNotFoundError bubble to the error boundary.
+
 Note: We continue to keep intentional try/except inside StageCore where best‑effort behavior is intended:
 - `resolve_parser_name(...)`: returns None on CSV issues (best effort) rather than raising.
 - `parse_text(...)`: returns None on parser errors for robustness.
 These are part of StageCore’s “tolerant” design and not the orchestration try blocks we are removing.
+
+Update: we will change `resolve_parser_name(...)` to raise on CSV issues and allow the asset error boundary to handle presentation uniformly. It should still return `None` when the CSV is valid but no parser is configured for a given template.
 
 ## Risks and Mitigations
 - Risk: over‑validating in envelope leading to less helpful Dagster metadata.
@@ -100,4 +108,3 @@ These are part of StageCore’s “tolerant” design and not the orchestration 
 - Implement envelope + response refactor behind the current API, keep prompt paths unchanged.
 - Run tests; adjust only if a test asserts on specific Failure messages.
 - Optional: extend envelope usage to prompts later (e.g., a `PromptEnvelope`), but not necessary for responses which are more policy‑heavy.
-
