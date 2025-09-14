@@ -39,6 +39,7 @@ def response_asset(context, prompt_text, stage: Stage) -> str:
             metadata_extra={
                 "function": f"{stage}_response",
                 "run_id": get_run_id(context),
+                **({"cohort_id": str(cohort)} if isinstance(cohort, str) and cohort else {}),
             },
         )
         emit_standard_output_metadata(
@@ -65,6 +66,7 @@ def response_asset(context, prompt_text, stage: Stage) -> str:
         metadata_extra={
             "function": f"{stage}_response",
             "run_id": get_run_id(context),
+            **({"cohort_id": str(cohort)} if isinstance(cohort, str) and cohort else {}),
         },
     )
     emit_standard_output_metadata(context, function=f"{stage}_response", gen_id=str(gen_id), result=result)
