@@ -71,7 +71,6 @@ def _eval_axes(data_root: Path) -> Tuple[List[str], List[str]]:
 def cohort_membership(
     context,
     cohort_id: str,
-    selected_combo_mappings: pd.DataFrame | None = None,
 ) -> pd.DataFrame:
     """Build the authoritative cohort membership CSV with normalized columns per stage.
 
@@ -218,20 +217,14 @@ def cohort_membership(
         dtpl_df = read_templates(data_root, "draft", filter_active=True)
         gen_models_df = read_llm_models(data_root)
         gen_models_df = gen_models_df[gen_models_df["for_generation"] == True]
-        # Read selected combo ids from input asset (preferred) or CSV fallback
+        # Read selected combo ids from data/2_tasks/selected_combo_mappings.csv
         combo_ids: List[str] = []
-        if isinstance(selected_combo_mappings, pd.DataFrame) and not selected_combo_mappings.empty:
-            if "combo_id" in selected_combo_mappings.columns:
-                combo_ids = (
-                    selected_combo_mappings["combo_id"].astype(str).dropna().unique().tolist()
-                )
-        else:
-            try:
-                sel_df = pd.read_csv(data_root / "2_tasks" / "selected_combo_mappings.csv")
-                if not sel_df.empty and "combo_id" in sel_df.columns:
-                    combo_ids = sel_df["combo_id"].astype(str).dropna().unique().tolist()
-            except FileNotFoundError:
-                combo_ids = []
+        try:
+            sel_df = pd.read_csv(data_root / "2_tasks" / "selected_combo_mappings.csv")
+            if not sel_df.empty and "combo_id" in sel_df.columns:
+                combo_ids = sel_df["combo_id"].astype(str).dropna().unique().tolist()
+        except FileNotFoundError:
+            combo_ids = []
 
         for combo_id in combo_ids:
             for _, trow in dtpl_df.iterrows():
@@ -410,16 +403,22 @@ def cohort_id(context, content_combinations: list[ContentCombination]) -> str:
     # Build manifest from active axes
     try:
         ddf = read_templates(data_root, "draft", filter_active=True)
+        if "active" in ddf.columns:
+            ddf = ddf[ddf["active"] == True]
         drafts = sorted(ddf["template_id"].astype(str).tolist()) if not ddf.empty else []
     except Exception:
         drafts = []
     try:
         edf = read_templates(data_root, "essay", filter_active=True)
+        if "active" in edf.columns:
+            edf = edf[edf["active"] == True]
         essays = sorted(edf["template_id"].astype(str).tolist()) if not edf.empty else []
     except Exception:
         essays = []
     try:
         vdf = read_templates(data_root, "evaluation", filter_active=True)
+        if "active" in vdf.columns:
+            vdf = vdf[vdf["active"] == True]
         evals = sorted(vdf["template_id"].astype(str).tolist()) if not vdf.empty else []
     except Exception:
         evals = []
