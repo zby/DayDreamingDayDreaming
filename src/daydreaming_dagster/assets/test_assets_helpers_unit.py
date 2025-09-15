@@ -10,9 +10,9 @@ from dagster import Failure
 from daydreaming_dagster.assets._helpers import (
     require_membership_row,
     load_generation_parsed_text,
-    resolve_generator_mode,
     emit_standard_output_metadata,
 )
+from daydreaming_dagster.unified.stage_policy import resolve_generator_mode
 
 
 class _Resources:
@@ -89,8 +89,8 @@ def test_resolve_essay_generator_mode_csv_and_override(tmp_path: Path):
     )
     assert resolve_generator_mode(kind="essay", data_root=tmp_path, template_id="t1") == "llm"
     assert resolve_generator_mode(kind="essay", data_root=tmp_path, template_id="t2") == "copy"
-    # invalid row -> Failure
-    with pytest.raises(Failure):
+    # invalid row -> ValueError (policy layer)
+    with pytest.raises(ValueError):
         resolve_generator_mode(kind="essay", data_root=tmp_path, template_id="missing")
     # override
     assert (

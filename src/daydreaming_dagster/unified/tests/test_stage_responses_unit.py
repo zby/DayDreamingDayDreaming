@@ -41,7 +41,6 @@ def test_response_asset_includes_cohort_id_in_metadata(monkeypatch, tmp_path, mo
 
     # Force data root to tmp_path to keep paths deterministic (even though we stub IO paths)
     import daydreaming_dagster.assets._helpers as helpers
-
     monkeypatch.setattr(helpers, "get_data_root", lambda _c: tmp_path)
 
     # Membership row + cohort
@@ -53,8 +52,9 @@ def test_response_asset_includes_cohort_id_in_metadata(monkeypatch, tmp_path, mo
     )
 
     # Resolve generator mode
+    # Patch resolver at the call site (stage_responses imports it directly)
     monkeypatch.setattr(
-        helpers,
+        sr,
         "resolve_generator_mode",
         lambda *, kind, data_root, template_id, override_from_prompt=None, filter_active=None: mode,
     )
@@ -102,4 +102,3 @@ def test_response_asset_includes_cohort_id_in_metadata(monkeypatch, tmp_path, mo
         assert out == "RAW_TEXT"
     else:
         assert out == "PARSED_TEXT"
-

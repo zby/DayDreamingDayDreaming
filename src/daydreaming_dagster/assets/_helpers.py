@@ -9,7 +9,6 @@ from dagster import Failure, MetadataValue
 from ..utils.membership_lookup import find_membership_row_by_gen
 from ..utils.generation import load_generation
 from ..config.paths import Paths
-from ..utils.raw_readers import read_templates
 from ..unified.stage_policy import parent_stage_of as _parent_stage_of
 from ..types import Stage
 
@@ -152,86 +151,6 @@ def load_parent_parsed_text(
     return parent_gen_id, parent_text
 
 
-def resolve_generator_mode(
-    *,
-    kind: Literal["draft", "essay", "evaluation"],
-    data_root: Path,
-    template_id: str,
-    override_from_prompt: Optional[str] = None,
-    filter_active: Optional[bool] = None,
-) -> Literal["llm", "copy"]:
-    """Parametrized resolver for generator modes across all stages.
-
-    - Uses data/1_raw/<kind>_templates.csv and the 'generator' column.
-    - Accepts an override via prompt prefix 'COPY_MODE'.
-    - Always uses filter_active=False by default, per unified behavior.
-    - Failure metadata uses function=f"resolve_{kind}_generator_mode".
-    """
-    function_label = f"resolve_{kind}_generator_mode"
-    if isinstance(override_from_prompt, str) and override_from_prompt.strip().upper().startswith("COPY_MODE"):
-        return "copy"
-
-    # Unified default: do not filter by active
-    if filter_active is None:
-        filter_active = False
-
-    df = read_templates(Path(data_root), kind, filter_active=bool(filter_active))
-
-    if df.empty:
-        raise Failure(
-            description=f"{kind.capitalize()} templates table is empty; cannot resolve generator mode",
-            metadata={
-                "function": MetadataValue.text(function_label),
-                "data_root": MetadataValue.path(str(data_root)),
-                "resolution": MetadataValue.text(
-                    f"Ensure data/1_raw/{kind}_templates.csv contains templates with a 'generator' column"
-                ),
-            },
-        )
-    if "generator" not in df.columns:
-        raise Failure(
-            description=f"{kind.capitalize()} templates CSV missing required 'generator' column",
-            metadata={
-                "function": MetadataValue.text(function_label),
-                "data_root": MetadataValue.path(str(data_root)),
-                "resolution": MetadataValue.text("Add a 'generator' column with values 'llm' or 'copy'"),
-            },
-        )
-    row = df[df["template_id"].astype(str) == str(template_id)]
-    if row.empty:
-        raise Failure(
-            description=f"{kind.capitalize()} template not found: {template_id}",
-            metadata={
-                "function": MetadataValue.text(function_label),
-                "template_id": MetadataValue.text(str(template_id)),
-                "resolution": MetadataValue.text(
-                    f"Add the template to {kind}_templates.csv or correct the {kind} template_id in tasks"
-                ),
-            },
-        )
-    val = row.iloc[0].get("generator")
-    if not isinstance(val, str) or not val.strip():
-        raise Failure(
-            description=f"{kind.capitalize()} template has empty/invalid generator value",
-            metadata={
-                "function": MetadataValue.text(function_label),
-                "template_id": MetadataValue.text(str(template_id)),
-                "resolution": MetadataValue.text("Set generator to 'llm' or 'copy'"),
-            },
-        )
-    mode = val.strip().lower()
-    if mode not in ("llm", "copy"):
-        raise Failure(
-            description=f"{kind.capitalize()} template declares unsupported generator '{mode}'",
-            metadata={
-                "function": MetadataValue.text(function_label),
-                "template_id": MetadataValue.text(str(template_id)),
-                "resolution": MetadataValue.text(
-                    f"Set generator to 'llm' or 'copy' in {kind}_templates.csv"
-                ),
-            },
-        )
-    return mode  # type: ignore[return-value]
 
 
 
@@ -343,7 +262,6 @@ __all__ = [
     "load_generation_parsed_text",
     "load_parent_parsed_text",
     "build_prompt_metadata",
-    "resolve_generator_mode",
     "emit_standard_output_metadata",
 ]
 

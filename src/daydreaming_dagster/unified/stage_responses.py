@@ -4,7 +4,7 @@ from pathlib import Path
 
 from .stage_core import Stage, execute_llm, execute_copy
 from daydreaming_dagster.config.paths import Paths
-from .stage_policy import get_stage_spec, read_membership_fields
+from .stage_policy import get_stage_spec, read_membership_fields, resolve_generator_mode
 from .envelopes import GenerationEnvelope
 
 
@@ -15,7 +15,6 @@ def response_asset(context, prompt_text, stage: Stage) -> str:
 
     from daydreaming_dagster.assets._helpers import (
         require_membership_row,
-        resolve_generator_mode,
         emit_standard_output_metadata,
         get_run_id,
         get_data_root,

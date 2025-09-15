@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Callable, Dict, Optional, Tuple
+from typing import Any, Callable, Dict, Optional, Tuple, Literal
 from pathlib import Path
 import pandas as pd
 from daydreaming_dagster.types import Stage
@@ -168,3 +168,51 @@ def effective_parser_name(
 
     # Uniform: default to identity when empty
     return parsed_name or "identity"
+
+
+# ---- Generator mode policy (moved from assets._helpers) ----
+def resolve_generator_mode(
+    *,
+    kind: Literal["draft", "essay", "evaluation"],
+    data_root: Path,
+    template_id: str,
+    override_from_prompt: Optional[str] = None,
+    filter_active: Optional[bool] = None,
+) -> Literal["llm", "copy"]:
+    """Parametrized resolver for generator modes across all stages.
+
+    Uses data/1_raw/<kind>_templates.csv and the 'generator' column. Accepts an
+    override via prompt prefix 'COPY_MODE'. By default does not filter by active,
+    matching unified behavior.
+    """
+    if isinstance(override_from_prompt, str) and override_from_prompt.strip().upper().startswith("COPY_MODE"):
+        return "copy"
+
+    if filter_active is None:
+        filter_active = False
+
+    df = read_templates(Path(data_root), str(kind), filter_active=bool(filter_active))
+
+    if df.empty:
+        raise ValueError(
+            f"{str(kind).capitalize()} templates table is empty; cannot resolve generator mode"
+        )
+    if "generator" not in df.columns:
+        raise ValueError(
+            f"{str(kind).capitalize()} templates CSV missing required 'generator' column"
+        )
+
+    row = df[df["template_id"].astype(str) == str(template_id)]
+    if row.empty:
+        raise ValueError(f"{str(kind).capitalize()} template not found: {template_id}")
+    val = row.iloc[0].get("generator")
+    if not isinstance(val, str) or not val.strip():
+        raise ValueError(
+            f"{str(kind).capitalize()} template has empty/invalid generator value"
+        )
+    mode = val.strip().lower()
+    if mode not in ("llm", "copy"):
+        raise ValueError(
+            f"{str(kind).capitalize()} template declares unsupported generator '{mode}'"
+        )
+    return mode  # type: ignore[return-value]

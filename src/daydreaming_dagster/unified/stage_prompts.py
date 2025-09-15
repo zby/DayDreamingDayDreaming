@@ -6,6 +6,7 @@ from .stage_core import Stage, render_template
 from .stage_policy import (
     get_stage_spec,
     read_membership_fields,
+    resolve_generator_mode,
 )
 
 
@@ -13,7 +14,6 @@ def prompt_asset(context, stage: Stage, *, content_combinations=None) -> str:
     gen_id = context.partition_key
     from daydreaming_dagster.assets._helpers import (
         require_membership_row,
-        resolve_generator_mode,
         load_parent_parsed_text,
         build_prompt_metadata,
         get_data_root,
