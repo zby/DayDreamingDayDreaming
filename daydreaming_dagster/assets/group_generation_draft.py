@@ -17,6 +17,10 @@ from ..unified.stage_services import prompt_asset, draft_response_asset
     io_manager_key="draft_prompt_io_manager",
 )
 def draft_prompt(context, content_combinations) -> str:
+    """Dagster asset wrapper for draft prompt.
+
+    Delegates to unified.stage_services.prompt_asset(stage="draft").
+    """
     return prompt_asset(context, "draft", content_combinations=content_combinations)
 
 
@@ -28,6 +32,10 @@ def draft_prompt(context, content_combinations) -> str:
     required_resource_keys={"openrouter_client", "experiment_config", "data_root"},
 )
 def draft_response(context, draft_prompt) -> str:
+    """Dagster asset wrapper for draft response.
+
+    Delegates to unified.stage_services.draft_response_asset.
+    """
     return draft_response_asset(context, draft_prompt)
 
 

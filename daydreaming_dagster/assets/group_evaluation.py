@@ -20,6 +20,10 @@ from ..unified.stage_services import prompt_asset, evaluation_response_asset
     deps={EVALUATION_TEMPLATES_KEY},
 )
 def evaluation_prompt(context) -> str:
+    """Dagster asset wrapper for evaluation prompt.
+
+    Delegates to unified.stage_services.prompt_asset(stage="evaluation").
+    """
     return prompt_asset(context, "evaluation")
 
 
@@ -32,4 +36,8 @@ def evaluation_prompt(context) -> str:
     deps=["evaluation_prompt"],
 )
 def evaluation_response(context, evaluation_prompt) -> str:
+    """Dagster asset wrapper for evaluation response.
+
+    Delegates to unified.stage_services.evaluation_response_asset.
+    """
     return evaluation_response_asset(context, evaluation_prompt)

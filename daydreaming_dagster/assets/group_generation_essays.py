@@ -18,6 +18,10 @@ from ..unified.stage_services import prompt_asset, essay_response_asset
     required_resource_keys={"data_root", "experiment_config"},
 )
 def essay_prompt(context) -> str:
+    """Dagster asset wrapper for essay prompt.
+
+    Delegates to unified.stage_services.prompt_asset(stage="essay").
+    """
     return prompt_asset(context, "essay")
 
 
@@ -29,6 +33,10 @@ def essay_prompt(context) -> str:
     required_resource_keys={"openrouter_client", "experiment_config", "data_root"},
 )
 def essay_response(context, essay_prompt) -> str:
+    """Dagster asset wrapper for essay response.
+
+    Delegates to unified.stage_services.essay_response_asset.
+    """
     return essay_response_asset(context, essay_prompt)
 
 
