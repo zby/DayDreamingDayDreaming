@@ -27,7 +27,8 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Set
 import json
 from datetime import datetime
-
+from daydreaming_dagster.utils.evaluation_scores import aggregate_evaluation_scores_for_ids
+ 
 import pandas as pd
 
 """parsed.txt-only aggregator: no parser maps or raw fallback"""
@@ -259,12 +260,9 @@ def parse_all(
     docs_eval = data_root / "gens" / "evaluation"
     # Prefer shared helper to aggregate scores; keep legacy logic below for backcompat
     try:
-        from daydreaming_dagster.utils.evaluation_scores import (
-            aggregate_evaluation_scores_for_ids as _agg_scores,
-        )
-        if docs_eval.exists():
+       if docs_eval.exists():
             gen_ids = [p.name for p in docs_eval.iterdir() if p.is_dir()]
-            df = _agg_scores(data_root, gen_ids)
+            df = aggregate_evaluation_scores_for_ids(data_root, gen_ids)
             # Order and normalize columns for readability if present
             column_order = [
                 "parent_gen_id",
