@@ -14,6 +14,7 @@ from daydreaming_dagster.utils.generation import (
     write_gen_metadata,
 )
 from daydreaming_dagster.types import Stage
+from daydreaming_dagster.config.paths import Paths
 from .stage_policy import effective_parser_name
 
 
@@ -39,8 +40,13 @@ _JINJA = Environment(undefined=StrictUndefined)
 
 
 def _templates_root(default: Optional[Path] = None) -> Path:
-    root = default or Path(os.environ.get("GEN_TEMPLATES_ROOT", "data/1_raw/templates"))
-    return Path(root)
+    """Resolve templates root, honoring optional override and GEN_TEMPLATES_ROOT.
+
+    Kept for back-compat; new code should use Paths(...).templates_root().
+    """
+    if default:
+        return Path(default)
+    return Paths.from_str("data").templates_root()
 
 
 def render_template(
@@ -50,7 +56,7 @@ def render_template(
     *,
     templates_root: Optional[Path] = None,
 ) -> str:
-    base = _templates_root(templates_root) / stage
+    base = (_templates_root(templates_root) / stage)
     path = base / f"{template_id}.txt"
     if not path.exists():
         raise FileNotFoundError(f"Template not found: {path}")

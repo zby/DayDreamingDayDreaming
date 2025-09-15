@@ -4,6 +4,7 @@ from ._helpers import get_data_root
 import pandas as pd
 import numpy as np
 from pathlib import Path
+from ..config.paths import Paths
 from .raw_data import EVALUATION_TEMPLATES_KEY
 from ..utils.raw_readers import read_templates
 from ..constants import FILE_PARSED
@@ -291,6 +292,7 @@ def perfect_score_paths(context, aggregated_scores: pd.DataFrame) -> pd.DataFram
     paths_data = []
     
     data_root = get_data_root(context)
+    _paths = Paths.from_str(str(data_root))
     for _, row in perfect_scores.iterrows():
         # Generation path: prefer parsed 'generation_response_path'; else derive from gens store by parent_gen_id
         generation_path = None
@@ -299,7 +301,7 @@ def perfect_score_paths(context, aggregated_scores: pd.DataFrame) -> pd.DataFram
         else:
             parent_essay_id = row.get('parent_gen_id') if 'parent_gen_id' in row else None
             if isinstance(parent_essay_id, str) and parent_essay_id:
-                generation_path = str((Path(data_root) / "gens" / "essay" / parent_essay_id / FILE_PARSED).resolve())
+                generation_path = str(_paths.parsed_path("essay", parent_essay_id).resolve())
             else:
                 # Strict: no legacy path reconstruction
                 raise ValueError("Missing generation_response_path and parent_gen_id for perfect score row")
@@ -311,7 +313,7 @@ def perfect_score_paths(context, aggregated_scores: pd.DataFrame) -> pd.DataFram
         else:
             eval_gid = row.get('gen_id') if 'gen_id' in row else None
             if isinstance(eval_gid, str) and eval_gid:
-                evaluation_path = str((Path(data_root) / "gens" / "evaluation" / eval_gid / FILE_PARSED).resolve())
+                evaluation_path = str(_paths.parsed_path("evaluation", eval_gid).resolve())
             else:
                 # Strict: no legacy path reconstruction
                 raise ValueError("Missing evaluation_response_path and evaluation gen_id for perfect score row")
