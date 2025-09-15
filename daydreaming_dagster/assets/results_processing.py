@@ -2,15 +2,13 @@ from dagster import MetadataValue
 from ._decorators import asset_with_boundary
 from pathlib import Path
 import pandas as pd
-from ..utils.membership_lookup import stage_gen_ids
-from ..utils.evaluation_scores import aggregate_evaluation_scores_for_ids
 
 
 @asset_with_boundary(
     stage="results_processing",
     group_name="results_processing",
     io_manager_key="parsing_results_io_manager",
-    required_resource_keys={"data_root"},
+    required_resource_keys={"data_root", "scores_aggregator", "membership_service"},
     description=(
         "Aggregate evaluation scores from gens store for the CURRENT cohort only. "
         "Requires parsed.txt; rows without it are included with error=missing parsed.txt."
@@ -31,12 +29,12 @@ def aggregated_scores(context) -> pd.DataFrame:
     out_csv = data_root / "5_parsing" / "aggregated_scores.csv"
     # Build gen_id list from cohort membership first (avoid scanning all)
     try:
-        keep_list = stage_gen_ids(data_root, "evaluation")
+        keep_list = context.resources.membership_service.stage_gen_ids(data_root, "evaluation")
     except FileNotFoundError:
         keep_list = []
 
-    # Prefer shared helper with explicit ids; fall back to legacy signature for tests
-    df = aggregate_evaluation_scores_for_ids(data_root, keep_list)
+    # Delegate to injected aggregator resource (testable without monkeypatching)
+    df = context.resources.scores_aggregator.parse_all_scores(data_root, keep_list)
 
     context.add_output_metadata(
         {

@@ -59,6 +59,8 @@ from daydreaming_dagster.resources.io_managers import (
     InMemoryIOManager,
 )
 from daydreaming_dagster.resources.gens_prompt_io_manager import GensPromptIOManager
+from daydreaming_dagster.resources.scores_aggregator import ScoresAggregatorResource
+from daydreaming_dagster.resources.membership_service import MembershipServiceResource
 from pathlib import Path
 from daydreaming_dagster.types import Stage
 
@@ -145,7 +147,10 @@ defs = Definitions(
         "error_log_io_manager": CSVIOManager(base_path=Path("data") / "7_reporting"),
         "parsing_results_io_manager": CSVIOManager(base_path=Path("data") / "5_parsing"),
         "summary_results_io_manager": CSVIOManager(base_path=Path("data") / "6_summary"),
-        "cross_experiment_io_manager": CSVIOManager(base_path=Path("data") / "7_cross_experiment")
+        "cross_experiment_io_manager": CSVIOManager(base_path=Path("data") / "7_cross_experiment"),
+        # Services for results processing (dependency-injected for testability)
+        "scores_aggregator": ScoresAggregatorResource(),
+        "membership_service": MembershipServiceResource(),
     },
     executor=EXECUTOR
     # Note: Pool concurrency is configured via dagster_home/dagster.yaml

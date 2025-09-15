@@ -2,26 +2,13 @@ from __future__ import annotations
 
 from dagster import MetadataValue
 from ._decorators import asset_with_boundary
-from pathlib import Path
-import pandas as pd
+ 
 
 from .partitions import (
     draft_gens_partitions,
     essay_gens_partitions,
     evaluation_gens_partitions,
 )
-
-
-def _desired_gen_ids(csv_path: Path) -> set[str]:
-    try:
-        if not csv_path.exists():
-            return set()
-        df = pd.read_csv(csv_path)
-        if "gen_id" not in df.columns:
-            return set()
-        return set(df["gen_id"].astype(str).dropna().tolist())
-    except Exception:
-        return set()
 
 
 @asset_with_boundary(

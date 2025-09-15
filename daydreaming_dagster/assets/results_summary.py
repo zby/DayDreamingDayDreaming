@@ -7,14 +7,6 @@ from pathlib import Path
 from .raw_data import EVALUATION_TEMPLATES_KEY
 from ..utils.raw_readers import read_templates
 from ..constants import FILE_PARSED
-from functools import lru_cache
-
-
-@lru_cache(maxsize=1)
-def _noop():
-    return None
-
-
 @asset_with_boundary(
     stage="results_summary",
     group_name="results_processing",
