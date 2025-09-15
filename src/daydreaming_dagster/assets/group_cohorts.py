@@ -216,7 +216,8 @@ def cohort_membership(
                     # provider model name omitted
                     draft_task_id = f"{combo_id}__{draft_tpl}__{mid}"
                     for dr in range(1, draft_reps + 1):
-                        salt_d = f"rep{dr}" if draft_reps > 1 else None
+                        # Preserve prior unsalted ids for first replicate
+                        salt_d = None if dr == 1 else f"rep{dr}"
                         draft_cohort_gen = reserve_gen_id("draft", draft_task_id, run_id=cohort_id, salt=salt_d)
                         rows.append(
                             {
@@ -246,9 +247,10 @@ def cohort_membership(
                 essay_tpl = str(et["template_id"])
                 essay_task_id = f"{draft_task_id}__{essay_tpl}"
                 for er in range(1, essay_reps + 1):
-                    # Salt should incorporate draft replicate dimension even when er==1
-                    salt_e = None
-                    if draft_reps > 1 or essay_reps > 1:
+                    # Preserve unsalted id for the primary path (dr==1 and er==1)
+                    if int(d.get("replicate", 1)) == 1 and er == 1:
+                        salt_e = None
+                    else:
                         salt_e = f"rep{int(d.get('replicate', 1))}-{er}"
                     essay_cohort_gen = reserve_gen_id("essay", essay_task_id, run_id=cohort_id, salt=salt_e)
                     rows.append(
@@ -279,7 +281,8 @@ def cohort_membership(
                 for mid in eval_model_ids:
                     eval_task_id = f"{essay_gen_id}__{tpl}__{mid}"
                     for r in range(1, eval_reps + 1):
-                        salt = f"rep{r}" if eval_reps > 1 else None
+                        # Preserve prior unsalted id for first replicate
+                        salt = None if r == 1 else f"rep{r}"
                         eval_gen_id = reserve_gen_id("evaluation", eval_task_id, run_id=cohort_id, salt=salt)
                         rows.append(
                             {
