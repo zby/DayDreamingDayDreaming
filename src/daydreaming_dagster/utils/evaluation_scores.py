@@ -54,7 +54,8 @@ def aggregate_evaluation_scores_for_ids(data_root: Path, gen_ids: Iterable[str])
         md = eval_doc.get("metadata") or {}
         parent_essay_id = str(md.get("parent_gen_id") or "")
         eval_template = md.get("template_id")
-        eval_model = md.get("model_id")
+        # Prefer canonical field name used by new pipeline; fall back to legacy key
+        eval_model = md.get("llm_model_id") or md.get("model_id")
         cohort_id = md.get("cohort_id")
         eval_parsed = eval_doc.get("parsed_text")
         eval_parsed_path = paths.parsed_path("evaluation", gid).resolve()

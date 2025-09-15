@@ -40,3 +40,16 @@ def calculate_evaluation_metadata(df: pd.DataFrame, score_column: str = 'score',
             })
     
     return metadata
+
+
+def filter_valid_scores(df: pd.DataFrame, *, score_column: str = 'score', error_column: str = 'error') -> pd.DataFrame:
+    """Return rows with a present score and no error.
+
+    Centralizes the common filtering pattern used by pivot/analysis assets.
+    """
+    if df is None or df.empty:
+        return df if df is not None else pd.DataFrame()
+    if score_column not in df.columns or error_column not in df.columns:
+        # Be conservative: if required columns are missing, return empty
+        return df[df.index == -1]
+    return df[df[error_column].isna() & df[score_column].notna()].copy()

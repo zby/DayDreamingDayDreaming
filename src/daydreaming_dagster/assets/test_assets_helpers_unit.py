@@ -112,12 +112,9 @@ def test_emit_standard_output_metadata(tmp_path: Path):
     }
     emit_standard_output_metadata(ctx, function="fn", gen_id="G1", result=result, extras={"note": "ok"})
     md = ctx._last_metadata
-    # Minimal checks for presence and types
+    # Minimal checks for presence and types (no re-derived counts in UI metadata)
     assert md["function"].value == "fn"
     assert md["gen_id"].value == "G1"
     assert md["finish_reason"].value == "stop"
     assert md["truncated"].value is False
-    assert md["raw_lines"].value == 3
-    assert md["parsed_chars"].value == 4
     assert md["note"].value == "ok"
-

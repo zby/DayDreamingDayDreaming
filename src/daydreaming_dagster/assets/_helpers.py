@@ -252,31 +252,25 @@ def emit_standard_output_metadata(
             return obj.get(key, default)
         return default
 
-    prompt = _get(result, "prompt_text") or _get(result, "prompt")
-    raw = _get(result, "raw_text") or _get(result, "raw")
-    parsed = _get(result, "parsed_text") or _get(result, "parsed")
     info: Dict[str, Any] = _get(result, "info", {}) or {}
-
-    def _chars(x: Optional[str]) -> int:
-        return len(str(x)) if isinstance(x, str) else 0
-
-    def _lines(x: Optional[str]) -> int:
-        return sum(1 for _ in str(x).splitlines()) if isinstance(x, str) and x else 0
 
     md: Dict[str, MetadataValue] = {
         "function": MetadataValue.text(str(function)),
         "gen_id": MetadataValue.text(str(gen_id)),
         "finish_reason": MetadataValue.text(str(info.get("finish_reason")) if isinstance(info.get("finish_reason"), (str, int, float)) else ""),
         "truncated": MetadataValue.bool(bool(info.get("truncated"))),
-        "prompt_chars": MetadataValue.int(_chars(prompt)),
-        "prompt_lines": MetadataValue.int(_lines(prompt)),
-        "raw_chars": MetadataValue.int(_chars(raw)),
-        "raw_lines": MetadataValue.int(_lines(raw)),
-        "parsed_chars": MetadataValue.int(_chars(parsed)),
-        "parsed_lines": MetadataValue.int(_lines(parsed)),
     }
     # Optional: include duration and token usage if available on result.metadata or info.usage
     meta = _get(result, "metadata", {}) or {}
+    # If stage_core provided precomputed counts and metrics, include them directly without re-deriving.
+    def _try_add_numeric(key: str, value, *, as_float: bool = False):
+        try:
+            if value is None:
+                return
+            md[key] = MetadataValue.float(float(value)) if as_float else MetadataValue.int(int(value))
+        except Exception:
+            pass
+
     try:
         if isinstance(meta, dict) and meta.get("duration_s") is not None:
             md["duration_s"] = MetadataValue.float(float(meta.get("duration_s")))
@@ -290,6 +284,14 @@ def emit_standard_output_metadata(
             md["max_tokens"] = MetadataValue.int(int(meta.get("max_tokens")))
     except Exception:
         pass
+    # Precomputed char/line counts from metadata (if provided by execution layer)
+    if isinstance(meta, dict):
+        _try_add_numeric("prompt_chars", meta.get("prompt_chars"))
+        _try_add_numeric("raw_chars", meta.get("raw_chars"))
+        _try_add_numeric("parsed_chars", meta.get("parsed_chars"))
+        _try_add_numeric("prompt_lines", meta.get("prompt_lines"))
+        _try_add_numeric("raw_lines", meta.get("raw_lines"))
+        _try_add_numeric("parsed_lines", meta.get("parsed_lines"))
     # total_tokens best-effort from metadata.usage or info.usage
     def _total_tokens_from(u: Any) -> int | None:
         if isinstance(u, dict):

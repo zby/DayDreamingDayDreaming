@@ -19,10 +19,8 @@ def evaluator_agreement_analysis(context, aggregated_scores: pd.DataFrame) -> pd
     This provides a comprehensive view of evaluation stability across both dimensions.
     """
     # Filter out rows with errors (no valid scores)
-    valid_scores = aggregated_scores[
-        aggregated_scores['error'].isna() & 
-        aggregated_scores['score'].notna()
-    ].copy()
+    from ..utils.evaluation_processing import filter_valid_scores
+    valid_scores = filter_valid_scores(aggregated_scores)
     
     if valid_scores.empty:
         context.log.warning("No valid scores found for evaluator agreement analysis")
@@ -126,10 +124,8 @@ def comprehensive_variance_analysis(context, aggregated_scores: pd.DataFrame) ->
     This creates a detailed breakdown of where evaluation instability comes from.
     """
     # Filter out rows with errors
-    valid_scores = aggregated_scores[
-        aggregated_scores['error'].isna() & 
-        aggregated_scores['score'].notna()
-    ].copy()
+    from ..utils.evaluation_processing import filter_valid_scores
+    valid_scores = filter_valid_scores(aggregated_scores)
     
     if valid_scores.empty:
         context.log.warning("No valid scores found for comprehensive variance analysis")

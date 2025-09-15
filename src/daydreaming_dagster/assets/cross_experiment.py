@@ -49,7 +49,10 @@ def filtered_evaluation_results(context, config: FilteredEvaluationResultsConfig
         eval_doc = load_generation(gens_root, "evaluation", gen_id)
         md = eval_doc.get("metadata") or {}
         evaluation_template = str(md.get("template_id") or md.get("evaluation_template") or "")
-        evaluation_model = str(md.get("model_id") or md.get("evaluation_model") or "")
+        # Prefer canonical llm_model_id; fall back to legacy keys for backward compatibility
+        evaluation_model = str(
+            md.get("llm_model_id") or md.get("model_id") or md.get("evaluation_model") or ""
+        )
         parent_essay_id = str(md.get("parent_gen_id") or "")
 
         # Default enrichment

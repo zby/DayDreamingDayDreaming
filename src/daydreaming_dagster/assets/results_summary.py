@@ -7,6 +7,7 @@ from pathlib import Path
 from ..config.paths import Paths
 from .raw_data import EVALUATION_TEMPLATES_KEY
 from ..utils.raw_readers import read_templates
+from ..utils.evaluation_processing import filter_valid_scores
 @asset_with_boundary(
     stage="results_summary",
     group_name="results_processing",
@@ -38,9 +39,7 @@ def generation_scores_pivot(context, aggregated_scores: pd.DataFrame) -> pd.Data
         context.log.warning("No aggregated_scores provided; returning empty pivot")
         return pd.DataFrame()
 
-    valid_scores = aggregated_scores[
-        aggregated_scores['error'].isna() & aggregated_scores['score'].notna()
-    ].copy()
+    valid_scores = filter_valid_scores(aggregated_scores)
 
     if valid_scores.empty:
         context.log.warning("No valid scores found; returning empty pivot")
@@ -157,7 +156,7 @@ def final_results(context, aggregated_scores: pd.DataFrame) -> pd.DataFrame:
     Includes average scores, perfect scores count, and standard deviation.
     """
     # Filter out rows with errors (no valid scores)
-    valid_scores = aggregated_scores[aggregated_scores['error'].isna() & aggregated_scores['score'].notna()].copy()
+    valid_scores = filter_valid_scores(aggregated_scores)
     score_col = 'score'
     analysis_df = valid_scores
     
@@ -412,9 +411,7 @@ def evaluation_model_template_pivot(context, aggregated_scores: pd.DataFrame) ->
         return pd.DataFrame()
     
     # Filter to valid scored rows
-    valid_scores = aggregated_scores[
-        aggregated_scores['error'].isna() & aggregated_scores['score'].notna()
-    ].copy()
+    valid_scores = filter_valid_scores(aggregated_scores)
     
     if valid_scores.empty:
         context.log.warning("No valid scores found; returning empty pivot")
