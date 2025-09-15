@@ -72,20 +72,18 @@ def is_excluded(path: Path, root: Path, exclude_names: Set[str]) -> bool:
 
 
 def find_package_root(file_path: Path, stop_dir: Path) -> Optional[Path]:
-    """Return the top-most ancestor directory (<= stop_dir) that is a Python package.
+    """Return the nearest package ancestor up to stop_dir (inclusive).
 
-    Walks up from file_path.parent while __init__.py exists. Returns None if not in a package.
+    Walk up from file_path.parent to stop_dir and remember the highest directory
+    that contains an __init__.py. Returns None if no ancestor is a package.
+    Works with namespace-like subfolders (no __init__.py) under a package.
     """
     cur = file_path.parent
     last_pkg: Optional[Path] = None
     while True:
         if (cur / "__init__.py").exists():
             last_pkg = cur
-        else:
-            break
-        if cur == stop_dir:
-            break
-        if cur.parent == cur:
+        if cur == stop_dir or cur.parent == cur:
             break
         cur = cur.parent
     return last_pkg
