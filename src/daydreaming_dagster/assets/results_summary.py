@@ -54,7 +54,7 @@ def generation_scores_pivot(context, aggregated_scores: pd.DataFrame) -> pd.Data
     )
 
     # Build pivots: mean (baseline, keeps original column names), plus min/max/count for stability
-    index_cols = ['combo_id', 'stage', 'draft_template', 'generation_template', 'generation_model']
+    index_cols = ['combo_id', 'draft_template', 'generation_template', 'generation_model']
     pivot_mean = valid_scores.pivot_table(
         index=index_cols,
         columns='eval_model_template',
@@ -121,11 +121,11 @@ def generation_scores_pivot(context, aggregated_scores: pd.DataFrame) -> pd.Data
     if 'generation_response_path' not in aggregated_scores.columns:
         raise ValueError("Missing 'generation_response_path' in aggregated_scores")
     path_map = aggregated_scores[
-        ['combo_id', 'stage', 'draft_template', 'generation_template', 'generation_model', 'generation_response_path']
+        ['combo_id', 'draft_template', 'generation_template', 'generation_model', 'generation_response_path']
     ].drop_duplicates()
     pivot_df = pivot_df.merge(
         path_map,
-        on=['combo_id', 'stage', 'draft_template', 'generation_template', 'generation_model'],
+        on=['combo_id', 'draft_template', 'generation_template', 'generation_model'],
         how='left'
     )
     
@@ -138,7 +138,7 @@ def generation_scores_pivot(context, aggregated_scores: pd.DataFrame) -> pd.Data
     # Metadata
     context.add_output_metadata({
         "rows": MetadataValue.int(len(pivot_df)),
-        "unique_generations": MetadataValue.int(pivot_df[['combo_id', 'stage', 'draft_template', 'generation_template', 'generation_model']].drop_duplicates().shape[0]),
+        "unique_generations": MetadataValue.int(pivot_df[['combo_id', 'draft_template', 'generation_template', 'generation_model']].drop_duplicates().shape[0]),
         "evaluation_combinations": MetadataValue.int(len(eval_columns)),
         "total_active_templates": MetadataValue.int(len(active_templates)),
         "evaluation_columns": MetadataValue.text(", ".join(eval_columns))

@@ -67,7 +67,6 @@ def test_generation_scores_pivot_smoke(monkeypatch, tmp_path):
     # Should include evaluation columns combining model+template
     expected_cols = {
         "combo_id",
-        "stage",
         "draft_template",
         "generation_template",
         "generation_model",
