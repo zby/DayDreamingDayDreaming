@@ -6,5 +6,5 @@ their concrete modules instead, for example:
 
     from daydreaming_dagster.assets.results_summary import final_results
 
-Public entrypoints remain stable via daydreaming_dagster/definitions.py.
+    Public entrypoints remain stable via the daydreaming_dagster.definitions module.
 """

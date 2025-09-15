@@ -17,15 +17,15 @@ Setup
    - Optional: deactivate `llm` essay templates to avoid mixing modes in Cartesian cohorts.
 2) Build cohort
    - Cartesian: select combos (via `selected_combo_mappings.csv`) and ensure desired draft templates/models are active; then:
-     - `uv run dagster asset materialize --select "cohort_id,cohort_membership" -f daydreaming_dagster/definitions.py`
+     - `uv run dagster asset materialize --select "cohort_id,cohort_membership" -f src/daydreaming_dagster/definitions.py`
    - Curated: create `data/2_tasks/selected_essays.txt` with essay `gen_id`s from prior runs; then materialize the two assets as above.
 3) Materialize partitions
-   - Drafts: `uv run dagster asset materialize --select "group:generation_draft" -f daydreaming_dagster/definitions.py`
-   - Essays (copy mode): `uv run dagster asset materialize --select "group:generation_essays" -f daydreaming_dagster/definitions.py`
+   - Drafts: `uv run dagster asset materialize --select "group:generation_draft" -f src/daydreaming_dagster/definitions.py`
+   - Essays (copy mode): `uv run dagster asset materialize --select "group:generation_essays" -f src/daydreaming_dagster/definitions.py`
      - The `essay_prompt` will return `COPY_MODE: ...` and `essay_response` will copy the parsed draft content.
-   - Evaluations: `uv run dagster asset materialize --select "group:evaluation" -f daydreaming_dagster/definitions.py`
+   - Evaluations: `uv run dagster asset materialize --select "group:evaluation" -f src/daydreaming_dagster/definitions.py`
 4) Results
-   - Parse and summarize: `uv run dagster asset materialize --select "parsed_scores,final_results" -f daydreaming_dagster/definitions.py`
+   - Parse and summarize: `uv run dagster asset materialize --select "parsed_scores,final_results" -f src/daydreaming_dagster/definitions.py`
 
 Notes and gotchas
 - Parent link is mandatory: essays read the draft via `parent_gen_id`. The cohort membership ensures this link exists.

@@ -1,4 +1,4 @@
-"""Focused unit tests for aggregated_scores asset using dependency injection.
+"""Focused unit tests for aggregated_scores using pure-function core.
 
 Ensures:
 - passthrough of enriched columns from aggregator
@@ -6,9 +6,7 @@ Ensures:
 """
 
 import pandas as pd
-from dagster import build_asset_context
-
-from daydreaming_dagster.assets.results_processing import aggregated_scores
+from daydreaming_dagster.assets.results_processing import aggregated_scores_impl
 
 
 def test_aggregated_scores_filters_and_passthrough(tmp_path):
@@ -56,12 +54,11 @@ def test_aggregated_scores_filters_and_passthrough(tmp_path):
             assert stage == "evaluation"
             return ["E123"]
 
-    ctx = build_asset_context(resources={
-        "data_root": str(tmp_path),
-        "scores_aggregator": _Agg(),
-        "membership_service": _Membership(),
-    })
-    df = aggregated_scores(ctx)
+    df = aggregated_scores_impl(
+        tmp_path,
+        scores_aggregator=_Agg(),
+        membership_service=_Membership(),
+    )
 
     # Filtered to cohort by the helper's gen_id list
     assert set(df["gen_id"]) == {"E123"}

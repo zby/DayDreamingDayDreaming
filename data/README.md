@@ -180,5 +180,5 @@ rm -rf data/7_reporting/*
 Recreate cohort membership and downstream data by materializing (seed once; daemon handles updates):
 
 ```bash
-uv run dagster asset materialize --select "cohort_id,cohort_membership,content_combinations" -f daydreaming_dagster/definitions.py
+uv run dagster asset materialize --select "cohort_id,cohort_membership,content_combinations" -f src/daydreaming_dagster/definitions.py
 ```

@@ -53,10 +53,10 @@ CLI examples
 ```bash
 # Curated: write selected essays then build cohort
 uv run python scripts/select_top_prior_art.py --top-n 25 --parsed-scores data/7_cross_experiment/parsed_scores.csv
-uv run dagster asset materialize --select "cohort_id,cohort_membership" -f daydreaming_dagster/definitions.py
+uv run dagster asset materialize --select "cohort_id,cohort_membership" -f src/daydreaming_dagster/definitions.py
 
 # Cartesian: no selection file; cohort_membership derives from active axes
-uv run dagster asset materialize --select "cohort_id,cohort_membership" -f daydreaming_dagster/definitions.py
+uv run dagster asset materialize --select "cohort_id,cohort_membership" -f src/daydreaming_dagster/definitions.py
 ```
 
 Implementation notes
@@ -89,7 +89,7 @@ Prerequisites
 - Set `DAGSTER_HOME` to a writable directory, e.g. `export DAGSTER_HOME=$(pwd)/dagster_home`.
 - Optional: build cross‑experiment scores if you plan to select by prior‑art top‑N:
   `uv run python scripts/aggregate_scores.py --output data/7_cross_experiment/parsed_scores.csv`.
-- Start Dagster for a richer experience: `uv run dagster dev -f daydreaming_dagster/definitions.py`.
+- Start Dagster for a richer experience: `uv run dagster dev -f src/daydreaming_dagster/definitions.py`.
 
 Step 1 — Select essay gen_ids
 - Use `scripts/select_top_prior_art.py` to pick top‑N by prior‑art scores. The script writes `data/2_tasks/selected_essays.txt` with one essay `gen_id` per line.
@@ -108,7 +108,7 @@ Notes
 
 Step 2 — Build cohort and register partitions
 ```bash
-uv run dagster asset materialize --select "cohort_id,cohort_membership" -f daydreaming_dagster/definitions.py
+uv run dagster asset materialize --select "cohort_id,cohort_membership" -f src/daydreaming_dagster/definitions.py
 ```
 
 What happens
@@ -121,22 +121,22 @@ Running the curated set
 
 Drafts and essays (by `gen_id`)
 ```bash
-uv run dagster asset materialize -f daydreaming_dagster/definitions.py \
+uv run dagster asset materialize -f src/daydreaming_dagster/definitions.py \
   --select "draft_prompt,draft_response" --partition "<draft_gen_id>"
 
-uv run dagster asset materialize -f daydreaming_dagster/definitions.py \
+uv run dagster asset materialize -f src/daydreaming_dagster/definitions.py \
   --select "essay_prompt,essay_response" --partition "<essay_gen_id>"
 ```
 
 Evaluations (by `gen_id`)
 ```bash
-uv run dagster asset materialize -f daydreaming_dagster/definitions.py \
+uv run dagster asset materialize -f src/daydreaming_dagster/definitions.py \
   --select "evaluation_prompt,evaluation_response" --partition "<evaluation_gen_id>"
 ```
 
 Parsing and summaries
 ```bash
-uv run dagster asset materialize -f daydreaming_dagster/definitions.py \
+uv run dagster asset materialize -f src/daydreaming_dagster/definitions.py \
   --select parsed_scores,final_results
 ```
 

@@ -40,14 +40,14 @@ dev = [
 ]
 
 [tool.setuptools.packages.find]
-where = ["."]
+where = ["src"]
 include = ["daydreaming_dagster*"]
 namespaces = false
 
 [tool.pytest.ini_options]
 # Unified pytest configuration (consolidated from pytest.ini)
 addopts = "-v"
-testpaths = ["daydreaming_dagster", "tests"]
+testpaths = ["src/daydreaming_dagster", "tests"]
 python_files = ["test_*.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]

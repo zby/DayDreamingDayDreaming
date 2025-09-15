@@ -19,7 +19,7 @@ Prereqs: Python 3.9+, uv, LLM API key in `.env`.
 UI flow (recommended):
 ```bash
 export DAGSTER_HOME=$(pwd)/dagster_home
-uv run dagster dev -f daydreaming_dagster/definitions.py
+uv run dagster dev -f src/daydreaming_dagster/definitions.py
 # Open http://localhost:3000 and materialize assets
 ```
 
@@ -28,11 +28,11 @@ CLI flow (minimal):
 # Seed tasks and register partitions
 uv sync
 export DAGSTER_HOME=$(pwd)/dagster_home
-uv run dagster asset materialize --select "group:cohort" -f daydreaming_dagster/definitions.py
+uv run dagster asset materialize --select "group:cohort" -f src/daydreaming_dagster/definitions.py
 
 # Run a single draft or essay partition by gen_id (from data/2_tasks/*.csv)
-uv run dagster asset materialize --select "group:generation_draft"   --partition <gen_id> -f daydreaming_dagster/definitions.py
-uv run dagster asset materialize --select "group:generation_essays"  --partition <gen_id> -f daydreaming_dagster/definitions.py
+uv run dagster asset materialize --select "group:generation_draft"   --partition <gen_id> -f src/daydreaming_dagster/definitions.py
+uv run dagster asset materialize --select "group:generation_essays"  --partition <gen_id> -f src/daydreaming_dagster/definitions.py
 
 # Parse and pivot evaluation scores (cross‑experiment)
 uv run python scripts/aggregate_scores.py --output data/7_cross_experiment/parsed_scores.csv
@@ -58,10 +58,10 @@ For curated selection, cohorts, and advanced workflows, see:
 - docs/cohorts.md
 - docs/guides/selection_and_cube.md
 export DAGSTER_HOME="$(pwd)/dagster_home"
-uv run dagster asset materialize --select "cohort_id,cohort_membership" -f daydreaming_dagster/definitions.py
+uv run dagster asset materialize --select "cohort_id,cohort_membership" -f src/daydreaming_dagster/definitions.py
 
 # 3) Materialize drafts → essays → evaluations using the registered partitions
-uv run dagster asset materialize --select "group:cohort" -f daydreaming_dagster/definitions.py
+uv run dagster asset materialize --select "group:cohort" -f src/daydreaming_dagster/definitions.py
 ```
 
 The membership asset writes `data/cohorts/<cohort_id>/membership.csv` (wide rows by stage) and registers dynamic partitions add‑only. Task assets project their tables from membership; generation/evaluation assets run as before.
@@ -129,9 +129,9 @@ uv run pytest --cov=daydreaming_dagster
 
 Usage:
 - Default deterministic cohort (recommended baseline):
-  - `uv run dagster asset materialize --select cohort_id -f daydreaming_dagster/definitions.py`
+  - `uv run dagster asset materialize --select cohort_id -f src/daydreaming_dagster/definitions.py`
   - Then materialize tasks (inherits the same cohort):
-    `uv run dagster asset materialize --select "group:cohort" -f daydreaming_dagster/definitions.py`
+    `uv run dagster asset materialize --select "group:cohort" -f src/daydreaming_dagster/definitions.py`
 - Override explicitly for curated re-runs:
   - Env var: `export DD_COHORT=my-curated-2025-09-09` (tasks will use this value)
   - Asset config (Dagster UI or YAML):
@@ -255,10 +255,10 @@ Active draft templates are controlled in `data/1_raw/draft_templates.csv` via th
    **Solution**: Template assets need their metadata dependencies. Use one of these approaches:
    ```bash
    # Recommended: Use asset groups
-   uv run dagster asset materialize --select "group:raw_data,group:cohort" -f daydreaming_dagster/definitions.py
+  uv run dagster asset materialize --select "group:raw_data,group:cohort" -f src/daydreaming_dagster/definitions.py
    
    # Alternative: Use dependency resolution
-   uv run dagster asset materialize --select "+generation_tasks,+evaluation_tasks" -f daydreaming_dagster/definitions.py
+  uv run dagster asset materialize --select "+generation_tasks,+evaluation_tasks" -f src/daydreaming_dagster/definitions.py
    ```
 
 2. **Missing DAGSTER_HOME**:

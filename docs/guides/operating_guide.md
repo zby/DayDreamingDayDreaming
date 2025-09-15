@@ -39,7 +39,7 @@ See also
 
 3. **Verify configuration:**
    ```bash
-   uv run dagster dev -f daydreaming_dagster/definitions.py
+   uv run dagster dev -f src/daydreaming_dagster/definitions.py
    ```
 
 ### Controlling Overwrites of Generated Files
@@ -48,7 +48,7 @@ By default, generated responses (links/essays/evaluations) are write‑once for 
 
 ```bash
 # Artifacts are versioned automatically as {id}_vN.txt; no overwrite flag needed
-uv run dagster dev -f daydreaming_dagster/definitions.py
+uv run dagster dev -f src/daydreaming_dagster/definitions.py
 ```
 
 Notes:
@@ -81,12 +81,12 @@ data/1_raw/templates/
 **Recommended** — Use the two‑phase assets:
 ```bash
 # Generate a single partition (replace TASK_ID)
-uv run dagster asset materialize -f daydreaming_dagster/definitions.py \
+uv run dagster asset materialize -f src/daydreaming_dagster/definitions.py \
   --select "draft_prompt,draft_response,essay_prompt,essay_response" \
   --partition "TASK_ID"
 
 # Or run by asset group
-uv run dagster asset materialize -f daydreaming_dagster/definitions.py \
+uv run dagster asset materialize -f src/daydreaming_dagster/definitions.py \
   --select "group:generation_draft,group:generation_essays" \
   --partition "TASK_ID"
 ```
@@ -152,31 +152,31 @@ Optionally stash selection files for traceability:
    Ensure the daemon is running so raw data loaders and cohort assets auto-update when `data/1_raw/**/*` changes.
    ```bash
    export DAGSTER_HOME=$(pwd)/dagster_home
-   uv run dagster dev -f daydreaming_dagster/definitions.py
+   uv run dagster dev -f src/daydreaming_dagster/definitions.py
    ```
 
    Raw loaders are standalone (no observable sources). When files under `data/1_raw/**/*` change, re‑materialize `group:raw_data` to refresh downstream tasks.
 
    Optional one-time seed (registers cohort partitions):
    ```bash
-   uv run dagster asset materialize -f daydreaming_dagster/definitions.py --select "cohort_id,cohort_membership"
+   uv run dagster asset materialize -f src/daydreaming_dagster/definitions.py --select "cohort_id,cohort_membership"
    ```
 
 2. **Run generation assets:**
    ```bash
-   uv run dagster asset materialize -f daydreaming_dagster/definitions.py \
+   uv run dagster asset materialize -f src/daydreaming_dagster/definitions.py \
     --select "group:generation_draft,group:generation_essays"
    ```
 
 3. **Run evaluation assets:**
    ```bash
-   uv run dagster asset materialize -f daydreaming_dagster/definitions.py \
+   uv run dagster asset materialize -f src/daydreaming_dagster/definitions.py \
     --select "group:evaluation"
    ```
 
 4. **Process results and run analysis:**
    ```bash
-   uv run dagster asset materialize -f daydreaming_dagster/definitions.py \
+   uv run dagster asset materialize -f src/daydreaming_dagster/definitions.py \
      --select "group:results_processing,group:results_summary"
    ```
 
@@ -218,12 +218,12 @@ To run a specific evaluation (e.g., `novelty`) only on chosen documents (e.g., p
 1. Ensure the evaluation template exists and is active in `data/1_raw/evaluation_templates.csv` and the evaluation models are flagged `for_evaluation` in `llm_models.csv`.
 2. Build cohort membership (either Cartesian from actives or curated via `selected_essays.txt`):
    ```bash
-   uv run dagster asset materialize --select "cohort_id,cohort_membership" -f daydreaming_dagster/definitions.py
+   uv run dagster asset materialize --select "cohort_id,cohort_membership" -f src/daydreaming_dagster/definitions.py
    ```
 3. Materialize the evaluation assets for the registered partitions (by `gen_id`). To target a subset, select specific partition keys from `data/cohorts/<cohort_id>/membership.csv` where `stage == 'evaluation'`:
    ```bash
    uv run dagster asset materialize --select "evaluation_prompt,evaluation_response" \
-     --partition "<evaluation_gen_id>" -f daydreaming_dagster/definitions.py
+     --partition "<evaluation_gen_id>" -f src/daydreaming_dagster/definitions.py
    ```
 4. Re-run `parsed_scores` to ingest the new results.
 
@@ -244,7 +244,7 @@ uv run python scripts/select_top_prior_art.py --top-n 30 --parsed-scores data/7_
 2) Build cohort membership and register partitions (inside Dagster)
 ```bash
 export DAGSTER_HOME="$(pwd)/dagster_home"
-uv run dagster asset materialize --select "cohort_id,cohort_membership" -f daydreaming_dagster/definitions.py
+uv run dagster asset materialize --select "cohort_id,cohort_membership" -f src/daydreaming_dagster/definitions.py
 ```
 
 What it does
@@ -279,7 +279,7 @@ Quick navigation
 **Note**: Auto-materialization requires the Dagster daemon to be running. In development, you can manually trigger assets if needed:
 ```bash
 # Manually materialize a specific asset
-uv run dagster asset materialize --select "cohort_id,cohort_membership,content_combinations" -f daydreaming_dagster/definitions.py
+uv run dagster asset materialize --select "cohort_id,cohort_membership,content_combinations" -f src/daydreaming_dagster/definitions.py
 ```
 
 ### Free vs Paid LLM Runs (Separate Pools)
@@ -299,19 +299,19 @@ Then materialize generation in two steps:
 
 ```bash
 # Free-tier generation (serialized globally)
-uv run dagster asset materialize -f daydreaming_dagster/definitions.py \
+uv run dagster asset materialize -f src/daydreaming_dagster/definitions.py \
   --select "content_combinations,draft_prompt,draft_response" \
   --tag experiment_id=exp_free_vs_paid
 
 # Paid generation (parallel per pool)
-uv run dagster asset materialize -f daydreaming_dagster/definitions.py \
+uv run dagster asset materialize -f src/daydreaming_dagster/definitions.py \
   --select "content_combinations,draft_prompt,draft_response" \
   --tag experiment_id=exp_free_vs_paid
 ```
 
 For evaluation with a paid model:
 ```bash
-uv run dagster asset materialize -f daydreaming_dagster/definitions.py \
+uv run dagster asset materialize -f src/daydreaming_dagster/definitions.py \
   --select "evaluation_prompt,evaluation_response" \
   --tag experiment_id=exp_free_vs_paid
 ```
@@ -387,15 +387,15 @@ Missing parent essay parsed.txt for evaluation gen_id '<EVAL_GEN_ID>' (parent_ge
 **Solutions:**
 ```bash
 # Option 1: Materialize the parent essay partition by gen_id
-uv run dagster asset materialize -f daydreaming_dagster/definitions.py \
+uv run dagster asset materialize -f src/daydreaming_dagster/definitions.py \
   --select "essay_prompt,essay_response" --partition "<ESSAY_GEN_ID>"
 
 # Option 2: If the essay depends on a missing draft, materialize the draft first
-uv run dagster asset materialize -f daydreaming_dagster/definitions.py \
+uv run dagster asset materialize -f src/daydreaming_dagster/definitions.py \
   --select "draft_prompt,draft_response" --partition "<DRAFT_GEN_ID>"
 
 # Option 3: Rebuild cohort membership (registers partitions); then materialize essays
-uv run dagster asset materialize --select "cohort_id,cohort_membership" -f daydreaming_dagster/definitions.py
+uv run dagster asset materialize --select "cohort_id,cohort_membership" -f src/daydreaming_dagster/definitions.py
 ```
 
 **Prevention:**
@@ -434,7 +434,7 @@ Invalid essay_task_id referenced by evaluation task 'eval_001': ''
 **Solutions:**
 ```bash
 # Rebuild cohort membership after fixing raw actives or curated selection
-uv run dagster asset materialize --select "cohort_id,cohort_membership" -f daydreaming_dagster/definitions.py
+uv run dagster asset materialize --select "cohort_id,cohort_membership" -f src/daydreaming_dagster/definitions.py
 
 # Inspect raw inputs for issues
 head data/1_raw/essay_templates.csv
@@ -472,7 +472,7 @@ Evaluation task 'eval_123_creativity_claude' not found in task database
 **Solutions:**
 ```bash
 # Refresh cohort partitions (prunes cohort-scoped stale keys, re-registers)
-uv run dagster asset materialize --select "cohort_id,cohort_membership" -f daydreaming_dagster/definitions.py
+uv run dagster asset materialize --select "cohort_id,cohort_membership" -f src/daydreaming_dagster/definitions.py
 
 # Restart Dagster to clear in-memory partition caches if needed
 ```
@@ -505,7 +505,7 @@ Expected path: /path/to/data/gens/essay/<ESSAY_GEN_ID>/parsed.txt
 2. Verify IO manager configuration:
    ```bash
    # Check the definitions.py for correct paths
-   grep "generation_response_io_manager" daydreaming_dagster/definitions.py
+   grep "generation_response_io_manager" src/daydreaming_dagster/definitions.py
    ```
 
 3. Check permissions and disk space:
@@ -517,8 +517,8 @@ Expected path: /path/to/data/gens/essay/<ESSAY_GEN_ID>/parsed.txt
 **Solutions:**
 ```bash
 # Rebuild cohort membership (registers partitions) and materialize required assets
-uv run dagster asset materialize --select "cohort_id,cohort_membership" -f daydreaming_dagster/definitions.py
-uv run dagster asset materialize --select "essay_prompt,essay_response" --partition "<ESSAY_GEN_ID>" -f daydreaming_dagster/definitions.py
+uv run dagster asset materialize --select "cohort_id,cohort_membership" -f src/daydreaming_dagster/definitions.py
+uv run dagster asset materialize --select "essay_prompt,essay_response" --partition "<ESSAY_GEN_ID>" -f src/daydreaming_dagster/definitions.py
 ```
 
 ---
@@ -541,7 +541,7 @@ context.log.info(f"IO manager path: {gen_response_io_manager.base_path}")
 Verify the dependency chain is correct:
 ```bash
 # Check materialization order
-uv run dagster asset materialize --select "+evaluation_prompt" -f daydreaming_dagster/definitions.py --dry-run
+uv run dagster asset materialize --select "+evaluation_prompt" -f src/daydreaming_dagster/definitions.py --dry-run
 ```
 
 #### Validate Data Integrity
@@ -596,11 +596,11 @@ rm -rf data/cohorts/*
 rm -rf data/gens/*
 
 # 2. Rebuild cohort and verify
-uv run dagster asset materialize --select "cohort_id,cohort_membership" -f daydreaming_dagster/definitions.py
+uv run dagster asset materialize --select "cohort_id,cohort_membership" -f src/daydreaming_dagster/definitions.py
 head data/cohorts/*/membership.csv
 
 # 3. Run a small subset of LLM assets to test (by gen_id)
-uv run dagster asset materialize --select draft_prompt,draft_response --partition <DRAFT_GEN_ID> -f daydreaming_dagster/definitions.py
+uv run dagster asset materialize --select draft_prompt,draft_response --partition <DRAFT_GEN_ID> -f src/daydreaming_dagster/definitions.py
 ```
 
 #### Selective Partition Recovery
@@ -611,10 +611,10 @@ For specific broken partitions:
 ESSAY_GEN_ID=<id>
 
 # 2. Rematerialize the essay assets for that gen_id
-uv run dagster asset materialize --select essay_prompt,essay_response --partition ${ESSAY_GEN_ID} -f daydreaming_dagster/definitions.py
+uv run dagster asset materialize --select essay_prompt,essay_response --partition ${ESSAY_GEN_ID} -f src/daydreaming_dagster/definitions.py
 
 # 3. If the parent draft is missing, materialize it first
-uv run dagster asset materialize --select draft_prompt,draft_response --partition <DRAFT_GEN_ID> -f daydreaming_dagster/definitions.py
+uv run dagster asset materialize --select draft_prompt,draft_response --partition <DRAFT_GEN_ID> -f src/daydreaming_dagster/definitions.py
 ```
 
 ### When to Escalate

@@ -4,6 +4,20 @@ from pathlib import Path
 import pandas as pd
 
 
+def aggregated_scores_impl(data_root: Path, *, scores_aggregator, membership_service) -> pd.DataFrame:
+    """Pure implementation for aggregated_scores.
+
+    - Reads the evaluation gen_id list from membership_service
+    - Delegates aggregation to scores_aggregator.parse_all_scores
+    - Returns the resulting DataFrame (no Dagster context required)
+    """
+    try:
+        keep_list = membership_service.stage_gen_ids(data_root, "evaluation")
+    except FileNotFoundError:
+        keep_list = []
+    return scores_aggregator.parse_all_scores(data_root, keep_list)
+
+
 @asset_with_boundary(
     stage="results_processing",
     group_name="results_processing",
@@ -27,14 +41,11 @@ def aggregated_scores(context) -> pd.DataFrame:
     """
     data_root = Path(getattr(context.resources, "data_root", "data"))
     out_csv = data_root / "5_parsing" / "aggregated_scores.csv"
-    # Build gen_id list from cohort membership first (avoid scanning all)
-    try:
-        keep_list = context.resources.membership_service.stage_gen_ids(data_root, "evaluation")
-    except FileNotFoundError:
-        keep_list = []
-
-    # Delegate to injected aggregator resource (testable without monkeypatching)
-    df = context.resources.scores_aggregator.parse_all_scores(data_root, keep_list)
+    df = aggregated_scores_impl(
+        data_root,
+        scores_aggregator=context.resources.scores_aggregator,
+        membership_service=context.resources.membership_service,
+    )
 
     context.add_output_metadata(
         {
