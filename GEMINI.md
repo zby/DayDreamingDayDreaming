@@ -64,6 +64,9 @@ Concise, high-signal rules for working in this repo. Keep changes focused, valid
 - Dependency injection for testability; avoid creating external services internally.
 - Fail early; validate inputs/invariants with clear errors over silent tolerance.
 
+Storage conventions
+- Single source of truth for storage and path rules: `src/daydreaming_dagster/config/paths.py`. Prefer using `Paths` helpers over string concatenation in code and tests.
+
 ## Project Goals (Summary)
 - Purpose: show DayDreaming‑style workflows enable pre‑Jun‑2025 offline LLMs to produce genuinely novel ideas; serves as a falsifiable benchmark while staying target‑neutral.
 - Strategy: existence goal over finite concept‑combination space; fixed inputs remain neutral; derived inputs may include benchmark terms if model‑produced.

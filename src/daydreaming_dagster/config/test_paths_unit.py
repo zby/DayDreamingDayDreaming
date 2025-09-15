@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 import os
 
-from .paths import Paths
+from daydreaming_dagster.config.paths import Paths
 
 
 def test_generation_dir_and_files_basic():
@@ -27,4 +27,3 @@ def test_templates_root_and_file_env_override(monkeypatch):
         assert p.template_file("draft", "tpl") == Path("/tmp/custom_templates/draft/tpl.txt")
     finally:
         monkeypatch.delenv("GEN_TEMPLATES_ROOT", raising=False)
-

@@ -53,20 +53,57 @@ def generation_scores_pivot(context, aggregated_scores: pd.DataFrame) -> pd.Data
         valid_scores['evaluation_template'] + '_' + valid_scores['evaluation_llm_model']
     )
 
-    # Build pivot: average replicates across identical task keys and evaluator axes
-    # Include draft_template and stage in index to distinguish modes
-    pivot_df = valid_scores.pivot_table(
-        index=['combo_id', 'stage', 'draft_template', 'generation_template', 'generation_model'],
+    # Build pivots: mean (baseline, keeps original column names), plus min/max/count for stability
+    index_cols = ['combo_id', 'stage', 'draft_template', 'generation_template', 'generation_model']
+    pivot_mean = valid_scores.pivot_table(
+        index=index_cols,
         columns='eval_template_model',
         values='score',
-        aggfunc='mean'  # Average across replicates for the same task/evaluator
+        aggfunc='mean'
     ).round(2)
+    pivot_min = valid_scores.pivot_table(
+        index=index_cols,
+        columns='eval_template_model',
+        values='score',
+        aggfunc='min'
+    ).round(2)
+    pivot_max = valid_scores.pivot_table(
+        index=index_cols,
+        columns='eval_template_model',
+        values='score',
+        aggfunc='max'
+    ).round(2)
+    pivot_cnt = valid_scores.pivot_table(
+        index=index_cols,
+        columns='eval_template_model',
+        values='score',
+        aggfunc='count'
+    ).astype(int)
+
+    # Flatten and suffix stability columns, keep mean columns unchanged
+    def _suffix_cols(df, suffix):
+        df = df.copy()
+        df.columns = [f"{c}{suffix}" for c in df.columns]
+        return df
+
+    pivot_df = pivot_mean.reset_index()
+    # Track mean columns for sum_scores later
+    mean_eval_cols = [c for c in pivot_df.columns if c not in index_cols]
+
+    # Join min/max/count
+    pv_min = _suffix_cols(pivot_min, "_min").reset_index()
+    pv_max = _suffix_cols(pivot_max, "_max").reset_index()
+    pv_cnt = _suffix_cols(pivot_cnt, "_n").reset_index()
+
+    # Merge on index columns in order
+    for extra in (pv_min, pv_max, pv_cnt):
+        pivot_df = pivot_df.merge(extra, on=index_cols, how='left')
 
     # Flatten and reset index
     pivot_df = pivot_df.reset_index()
 
-    # Get all evaluation columns (excluding the index columns)
-    eval_columns = [col for col in pivot_df.columns if col not in ['combo_id', 'stage', 'draft_template', 'generation_template', 'generation_model']]
+    # Get mean evaluation columns (exclude index and suffixed stability columns)
+    eval_columns = [col for col in mean_eval_cols if col in pivot_df.columns]
     
     # Add aggregate column with all scores summed across evaluators
     # NaNs are ignored in the sum; round for readability
@@ -93,7 +130,9 @@ def generation_scores_pivot(context, aggregated_scores: pd.DataFrame) -> pd.Data
     )
     
     # Order columns: index columns first, then evaluation columns
-    ordered_cols = ['combo_id', 'stage', 'draft_template', 'generation_template', 'generation_model'] + eval_columns + ['sum_scores', 'generation_response_path']
+    # Place stability columns after the corresponding mean columns
+    stability_cols = [c for c in pivot_df.columns if c.endswith('_min') or c.endswith('_max') or c.endswith('_n')]
+    ordered_cols = index_cols + eval_columns + stability_cols + ['sum_scores', 'generation_response_path']
     pivot_df = pivot_df[ordered_cols]
 
     # Metadata
