@@ -14,11 +14,12 @@ from ..types import Stage
 
 
 def get_data_root(context) -> Path:
-    return Path(getattr(getattr(context, "resources", object()), "data_root", "data"))
+    """Backcompat: prefer Paths.from_context(context).data_root."""
+    return Paths.from_context(context).data_root
 
 
 def get_gens_root(context) -> Path:
-    return get_data_root(context) / "gens"
+    return Paths.from_context(context).gens_root
 
 
 def get_run_id(context) -> Optional[str]:
@@ -37,7 +38,16 @@ def require_membership_row(
     *,
     require_columns: Iterable[str] = (),
 ) -> Tuple[pd.Series, Optional[str]]:
+    """Backcompat wrapper: prefer MembershipServiceResource.require_row when available.
+
+    Falls back to scanning membership.csv files directly when the resource is not provided
+    (e.g., unit tests or minimal contexts).
+    """
     data_root = get_data_root(context)
+    svc = getattr(getattr(context, "resources", object()), "membership_service", None)
+    if svc and hasattr(svc, "require_row"):
+        return svc.require_row(data_root, stage, str(gen_id), require_columns=list(require_columns or ()))
+
     row, cohort_id = find_membership_row_by_gen(data_root, stage, str(gen_id))
     if row is None:
         raise Failure(

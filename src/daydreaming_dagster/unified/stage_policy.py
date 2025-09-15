@@ -6,6 +6,9 @@ from pathlib import Path
 import pandas as pd
 from daydreaming_dagster.types import Stage
 from daydreaming_dagster.utils.raw_readers import read_templates
+from daydreaming_dagster.config.paths import Paths
+from daydreaming_dagster.utils.generation import load_generation
+from dagster import Failure, MetadataValue
 
 
 PROMPT_REQUIRED_BY_STAGE: Dict[Stage, list[str]] = {
@@ -80,18 +83,67 @@ def _build_prompt_values_draft(context, gen_id: str, mf: MembershipFields, conte
 
 
 def _build_prompt_values_essay(context, gen_id: str, mf: MembershipFields, _content_combinations) -> Tuple[dict, dict, Optional[str]]:
-    from daydreaming_dagster.assets._helpers import load_parent_parsed_text
-
-    parent_gen, parent_text = load_parent_parsed_text(context, "essay", gen_id, failure_fn_name="essay_prompt")
+    # Parent must be draft for essay stage
+    parent_gen = (mf.parent_gen_id or "").strip() if mf.parent_gen_id else ""
+    if not parent_gen:
+        raise Failure(
+            description="Missing parent_gen_id for upstream document",
+            metadata={
+                "function": MetadataValue.text("essay_prompt"),
+                "stage": MetadataValue.text("essay"),
+                "gen_id": MetadataValue.text(str(gen_id)),
+                "resolution": MetadataValue.text(
+                    "Ensure cohort membership row has a valid parent_gen_id"
+                ),
+            },
+        )
+    paths = Paths.from_context(context)
+    # Use gens store to read parsed upstream
+    doc = load_generation(paths.gens_root, "draft", parent_gen)
+    parent_text = doc.get("parsed_text") or ""
+    if not parent_text:
+        raise Failure(
+            description="Missing or unreadable parsed.txt for upstream generation",
+            metadata={
+                "function": MetadataValue.text("essay_prompt"),
+                "stage": MetadataValue.text("draft"),
+                "gen_id": MetadataValue.text(str(parent_gen)),
+                "parsed_path": MetadataValue.path(str(paths.parsed_path("draft", parent_gen).resolve())),
+            },
+        )
     values = {"draft_block": parent_text, "links_block": parent_text}
     extras = {"draft_line_count": sum(1 for ln in parent_text.splitlines() if ln.strip())}
     return values, extras, parent_gen
 
 
 def _build_prompt_values_evaluation(context, gen_id: str, mf: MembershipFields, _content_combinations) -> Tuple[dict, dict, Optional[str]]:
-    from daydreaming_dagster.assets._helpers import load_parent_parsed_text
-
-    parent_gen, parent_text = load_parent_parsed_text(context, "evaluation", gen_id, failure_fn_name="evaluation_prompt")
+    # Parent must be essay for evaluation stage
+    parent_gen = (mf.parent_gen_id or "").strip() if mf.parent_gen_id else ""
+    if not parent_gen:
+        raise Failure(
+            description="Missing parent_gen_id for upstream document",
+            metadata={
+                "function": MetadataValue.text("evaluation_prompt"),
+                "stage": MetadataValue.text("evaluation"),
+                "gen_id": MetadataValue.text(str(gen_id)),
+                "resolution": MetadataValue.text(
+                    "Ensure cohort membership row has a valid parent_gen_id"
+                ),
+            },
+        )
+    paths = Paths.from_context(context)
+    doc = load_generation(paths.gens_root, "essay", parent_gen)
+    parent_text = doc.get("parsed_text") or ""
+    if not parent_text:
+        raise Failure(
+            description="Missing or unreadable parsed.txt for upstream generation",
+            metadata={
+                "function": MetadataValue.text("evaluation_prompt"),
+                "stage": MetadataValue.text("essay"),
+                "gen_id": MetadataValue.text(str(parent_gen)),
+                "parsed_path": MetadataValue.path(str(paths.parsed_path("essay", parent_gen).resolve())),
+            },
+        )
     values = {"response": parent_text}
     extras: dict = {}
     return values, extras, parent_gen
