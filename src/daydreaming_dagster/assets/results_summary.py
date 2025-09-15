@@ -375,7 +375,7 @@ def evaluation_model_template_pivot(context, aggregated_scores: pd.DataFrame) ->
     Create pivot table with (evaluation_llm_model, evaluation_template) combinations as columns.
     
     Rows: Each generation response (combo_id, generation_template, generation_model)
-    Columns: Each (evaluation_model, evaluation_template) combination  
+    Columns: Each (evaluation_llm_model, evaluation_template) combination
     Values: Score for that generation evaluated by that (model, template) combination
     
     This table enables easy comparison of how different evaluation approaches

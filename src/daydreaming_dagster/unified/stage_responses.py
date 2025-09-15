@@ -63,6 +63,7 @@ def response_asset(context, prompt_text, stage: Stage) -> str:
                 "run_id": get_run_id(context),
                 **({"cohort_id": str(cohort)} if isinstance(cohort, str) and cohort else {}),
                 **({"replicate": int(replicate_val)} if isinstance(replicate_val, int) else {}),
+                **({"combo_id": str(mf.combo_id or "")} if stage == "draft" else {}),
             },
         )
         emit_standard_output_metadata(
@@ -91,6 +92,7 @@ def response_asset(context, prompt_text, stage: Stage) -> str:
             "run_id": get_run_id(context),
             **({"cohort_id": str(cohort)} if isinstance(cohort, str) and cohort else {}),
             **({"replicate": int(replicate_val)} if isinstance(replicate_val, int) else {}),
+            **({"combo_id": str(mf.combo_id or "")} if stage == "draft" else {}),
         },
     )
     emit_standard_output_metadata(context, function=f"{stage}_response", gen_id=str(gen_id), result=result)

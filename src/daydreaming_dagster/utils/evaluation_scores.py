@@ -15,11 +15,10 @@ def aggregate_evaluation_scores_for_ids(data_root: Path, gen_ids: Iterable[str])
     enriches with generation-side metadata (essay/draft). Returns a DataFrame with columns:
 
     - gen_id, parent_gen_id
-    - evaluation_template, evaluation_model, evaluation_llm_model
+    - evaluation_template, evaluation_llm_model
     - score (float or None), error (str or None)
     - evaluation_response_path, generation_response_path
     - combo_id, draft_template, generation_template, generation_model
-    - stage (fixed: 'essay2p')
     """
     paths = Paths.from_str(str(data_root))
     gens_root = paths.gens_root
@@ -35,7 +34,6 @@ def aggregate_evaluation_scores_for_ids(data_root: Path, gen_ids: Iterable[str])
                     "gen_id": gid,
                     "parent_gen_id": "",
                     "evaluation_template": None,
-                    "evaluation_model": None,
                     "evaluation_llm_model": None,
                     "score": None,
                     "error": "unreadable evaluation generation",
@@ -44,7 +42,6 @@ def aggregate_evaluation_scores_for_ids(data_root: Path, gen_ids: Iterable[str])
                     "draft_template": None,
                     "generation_template": None,
                     "generation_model": None,
-                    "stage": "essay2p",
                     "cohort_id": None,
                     "generation_response_path": "",
                 }
@@ -71,6 +68,7 @@ def aggregate_evaluation_scores_for_ids(data_root: Path, gen_ids: Iterable[str])
         else:
             error = "missing parsed.txt"
 
+        combo_id = ""
         generation_template = ""
         generation_model = ""
         parent_draft_id = ""
@@ -78,12 +76,13 @@ def aggregate_evaluation_scores_for_ids(data_root: Path, gen_ids: Iterable[str])
             try:
                 emd = load_generation(gens_root, "essay", parent_essay_id).get("metadata") or {}
                 generation_template = str(emd.get("template_id") or emd.get("essay_template") or "")
-                generation_model = str(emd.get("model_id") or "")
+                generation_model = str(
+                    emd.get("llm_model_id") or emd.get("model_id") or ""
+                )
                 parent_draft_id = str(emd.get("parent_gen_id") or "")
             except Exception:
                 pass
 
-        combo_id = ""
         draft_template = ""
         if parent_draft_id:
             try:
@@ -91,16 +90,21 @@ def aggregate_evaluation_scores_for_ids(data_root: Path, gen_ids: Iterable[str])
                 combo_id = str(dmd.get("combo_id") or "")
                 draft_template = str(dmd.get("template_id") or dmd.get("draft_template") or "")
                 if not generation_model:
-                    generation_model = str(dmd.get("model_id") or "")
+                    generation_model = str(
+                        dmd.get("llm_model_id") or dmd.get("model_id") or ""
+                    )
             except Exception:
                 pass
+
+        cohort_value = None
+        if cohort_id is not None and pd.notna(cohort_id):
+            cohort_value = str(cohort_id)
 
         rows.append(
             {
                 "gen_id": gid,
                 "parent_gen_id": parent_essay_id,
                 "evaluation_template": eval_template,
-                "evaluation_model": eval_model,
                 "evaluation_llm_model": eval_model,
                 "score": score,
                 "error": error,
@@ -110,8 +114,7 @@ def aggregate_evaluation_scores_for_ids(data_root: Path, gen_ids: Iterable[str])
                 "draft_template": draft_template,
                 "generation_template": generation_template,
                 "generation_model": generation_model,
-                "stage": "essay2p",
-                "cohort_id": str(cohort_id) if cohort_id else None,
+                "cohort_id": cohort_value,
                 "generation_response_path": str(paths.parsed_path("essay", parent_essay_id).resolve())
                 if parent_essay_id
                 else "",
@@ -124,7 +127,6 @@ def aggregate_evaluation_scores_for_ids(data_root: Path, gen_ids: Iterable[str])
         "gen_id",
         "parent_gen_id",
         "evaluation_template",
-        "evaluation_model",
         "evaluation_llm_model",
         "score",
         "error",
@@ -134,8 +136,8 @@ def aggregate_evaluation_scores_for_ids(data_root: Path, gen_ids: Iterable[str])
         "draft_template",
         "generation_template",
         "generation_model",
-        "stage",
         "generation_response_path",
+        "cohort_id",
     ]
     for col in expected_columns:
         if col not in df.columns:

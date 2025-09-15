@@ -26,7 +26,6 @@ def test_aggregated_scores_filters_and_passthrough(tmp_path):
                         "draft_template": "links-v1",
                         "generation_template": "essay-tpl",
                         "generation_model": "deepseek_r1_f",
-                        "stage": "essay2p",
                         "generation_response_path": str(tmp_path / "gens" / "essay" / "D999" / "parsed.txt"),
                     },
                     {
@@ -40,7 +39,6 @@ def test_aggregated_scores_filters_and_passthrough(tmp_path):
                         "draft_template": "links-v2",
                         "generation_template": "essay-tpl",
                         "generation_model": "qwen_q4",
-                        "stage": "essay2p",
                         "generation_response_path": str(tmp_path / "gens" / "essay" / "D111" / "parsed.txt"),
                     },
                 ]
@@ -62,5 +60,7 @@ def test_aggregated_scores_filters_and_passthrough(tmp_path):
 
     # Filtered to cohort by the helper's gen_id list
     assert set(df["gen_id"]) == {"E123"}
-    # Passthrough of enriched fields
-    assert set(["evaluation_llm_model", "generation_response_path", "draft_template"]).issubset(df.columns)
+    # Passthrough of enriched fields (stage should not be emitted)
+    assert "stage" not in df.columns
+    assert "evaluation_model" not in df.columns
+    assert {"evaluation_llm_model", "generation_response_path", "draft_template", "combo_id"}.issubset(df.columns)

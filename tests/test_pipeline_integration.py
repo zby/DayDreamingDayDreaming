@@ -3,14 +3,16 @@
 Tests complete materialization of raw_data and llm_tasks groups with real data.
 """
 
-import pytest
-import pandas as pd
-from pathlib import Path
-import tempfile
+import json
+import os
 import re
 import shutil
-import os
+import tempfile
+from pathlib import Path
 from unittest.mock import patch, Mock
+
+import pandas as pd
+import pytest
 from dagster import materialize, DagsterInstance
 from tests.helpers.llm_stubs import CannedLLMResource
 
@@ -171,10 +173,17 @@ class TestPipelineIntegration:
             draft_dir = gens_root / "draft" / str(partition)
             prompt_fp = draft_dir / "prompt.txt"
             parsed_fp = draft_dir / "parsed.txt"
+            metadata_fp = draft_dir / "metadata.json"
             assert prompt_fp.exists(), f"Draft prompt not created: {prompt_fp}"
             assert parsed_fp.exists(), f"Draft parsed.txt not created: {parsed_fp}"
+            assert metadata_fp.exists(), f"Draft metadata.json missing: {metadata_fp}"
             assert prompt_fp.stat().st_size > 0, f"Draft prompt is empty: {prompt_fp}"
             assert parsed_fp.stat().st_size > 0, f"Draft parsed.txt is empty: {parsed_fp}"
+            metadata = json.loads(metadata_fp.read_text(encoding="utf-8"))
+            combo_in_meta = metadata.get("combo_id")
+            assert isinstance(combo_in_meta, str) and combo_in_meta.startswith("combo_"), (
+                f"Draft metadata combo_id malformed for {metadata_fp}: {combo_in_meta!r}"
+            )
 
         # Evaluation files (gens/evaluation/) - Check if they exist but don't require them
         eval_root = gens_root / "evaluation"
