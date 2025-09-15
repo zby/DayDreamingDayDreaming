@@ -3,7 +3,7 @@ from ._decorators import asset_with_boundary
 from pathlib import Path
 import pandas as pd
 from ..utils.membership_lookup import stage_gen_ids
-from ..utils.evaluation_scores import aggregate_evaluation_scores_for_ids as parse_all_scores
+from ..utils.evaluation_scores import aggregate_evaluation_scores_for_ids
 
 
 @asset_with_boundary(
@@ -36,7 +36,7 @@ def aggregated_scores(context) -> pd.DataFrame:
         keep_list = []
 
     # Prefer shared helper with explicit ids; fall back to legacy signature for tests
-    df = parse_all_scores(data_root, keep_list)
+    df = aggregate_evaluation_scores_for_ids(data_root, keep_list)
 
     context.add_output_metadata(
         {
