@@ -234,6 +234,9 @@ def execute_llm(
     except Exception:
         meta["total_tokens"] = None
     _merge_extras(meta, metadata_extra)
+    # Add default replicate=1 if not provided
+    if "replicate" not in meta:
+        meta["replicate"] = 1
 
     # First write raw and metadata for debuggability.
     # NOTE: We intentionally perform early writes here instead of using an IO manager
@@ -309,6 +312,8 @@ def execute_copy(
     meta["files"] = {"parsed": str((base / PARSED_FILENAME).resolve())}
     meta["duration_s"] = round(time.time() - t0, 3)
     _merge_extras(meta, metadata_extra)
+    if "replicate" not in meta:
+        meta["replicate"] = 1
     write_gen_parsed(out_dir, stage, str(gen_id), str(parsed))
     write_gen_metadata(out_dir, stage, str(gen_id), meta)
     return ExecutionResult(prompt_text=None, raw_text=None, parsed_text=parsed, info=None, metadata=meta)

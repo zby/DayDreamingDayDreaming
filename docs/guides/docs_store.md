@@ -64,4 +64,12 @@ print(paths.parsed_path("essay", "abc123xyz"))
 
 - Optional RAW side-writes under `data/3_generation/*_raw/` can be enabled in `ExperimentConfig` for debugging.
 - Single source of truth for the filesystem layout: `src/daydreaming_dagster/config/paths.py`.
+
+### Replicates
+
+- The pipeline can generate multiple replicates per stage by varying a deterministic salt inside the gen_id (e.g., `rep1..repN`).
+- Aggregations (e.g., generation_scores_pivot) average replicates across identical task keys and evaluator axes using mean.
+- Grouping keys used for averaging exclude `gen_id` and replicate; they include:
+  - `combo_id`, `stage`, `draft_template`, `generation_template`, `generation_model` in the index, and the evaluator axis (`evaluation_template` × `evaluation_llm_model`) as columns.
+- Averaging is currently done across cohorts when multiple cohorts are present in the underlying data; typical runs operate within the current cohort.
 - The pipeline no longer depends on a SQLite index; the filesystem layout is the source of truth.

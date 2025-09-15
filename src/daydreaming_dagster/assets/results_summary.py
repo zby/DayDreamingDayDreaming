@@ -53,13 +53,13 @@ def generation_scores_pivot(context, aggregated_scores: pd.DataFrame) -> pd.Data
         valid_scores['evaluation_template'] + '_' + valid_scores['evaluation_llm_model']
     )
 
-    # Build pivot: individual score for each generation across each (template, model) combination
+    # Build pivot: average replicates across identical task keys and evaluator axes
     # Include draft_template and stage in index to distinguish modes
     pivot_df = valid_scores.pivot_table(
         index=['combo_id', 'stage', 'draft_template', 'generation_template', 'generation_model'],
         columns='eval_template_model',
         values='score',
-        aggfunc='first'  # Take first score if duplicates exist (shouldn't happen with proper data)
+        aggfunc='mean'  # Average across replicates for the same task/evaluator
     ).round(2)
 
     # Flatten and reset index

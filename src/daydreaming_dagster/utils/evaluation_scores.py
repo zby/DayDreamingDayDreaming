@@ -45,6 +45,7 @@ def aggregate_evaluation_scores_for_ids(data_root: Path, gen_ids: Iterable[str])
                     "generation_template": None,
                     "generation_model": None,
                     "stage": "essay2p",
+                    "cohort_id": None,
                     "generation_response_path": "",
                 }
             )
@@ -54,6 +55,7 @@ def aggregate_evaluation_scores_for_ids(data_root: Path, gen_ids: Iterable[str])
         parent_essay_id = str(md.get("parent_gen_id") or "")
         eval_template = md.get("template_id")
         eval_model = md.get("model_id")
+        cohort_id = md.get("cohort_id")
         eval_parsed = eval_doc.get("parsed_text")
         eval_parsed_path = paths.parsed_path("evaluation", gid).resolve()
 
@@ -108,6 +110,7 @@ def aggregate_evaluation_scores_for_ids(data_root: Path, gen_ids: Iterable[str])
                 "generation_template": generation_template,
                 "generation_model": generation_model,
                 "stage": "essay2p",
+                "cohort_id": str(cohort_id) if cohort_id else None,
                 "generation_response_path": str(paths.parsed_path("essay", parent_essay_id).resolve())
                 if parent_essay_id
                 else "",
@@ -140,4 +143,3 @@ def aggregate_evaluation_scores_for_ids(data_root: Path, gen_ids: Iterable[str])
     if "score" in df.columns:
         df["score"] = pd.to_numeric(df["score"], errors="coerce")
     return df[expected_columns + [c for c in df.columns if c not in expected_columns]]
-
