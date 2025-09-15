@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from .stage_core import Stage, execute_llm, execute_copy
+from dagster import Failure, MetadataValue
 from daydreaming_dagster.config.paths import Paths
 from .stage_policy import get_stage_spec, read_membership_fields, resolve_generator_mode
 from .envelopes import GenerationEnvelope
@@ -20,11 +21,26 @@ def response_asset(context, prompt_text, stage: Stage) -> str:
     paths = Paths.from_context(context)
     data_root = paths.data_root
     spec = get_stage_spec(stage)
-    row, cohort = context.resources.membership_service.require_row(
-        data_root, stage, str(gen_id), require_columns=spec.response_fields
-    )
+    # DI-first: use injected membership service when available; fall back to helper
+    svc = getattr(getattr(context, "resources", object()), "membership_service", None)
+    if svc and hasattr(svc, "require_row"):
+        row, cohort = svc.require_row(data_root, stage, str(gen_id), require_columns=spec.response_fields)
+    else:
+        from daydreaming_dagster.assets._helpers import require_membership_row
+        row, cohort = require_membership_row(context, stage, str(gen_id), require_columns=spec.response_fields)
     mf = read_membership_fields(row)
-    mode = resolve_generator_mode(kind=stage, data_root=data_root, template_id=mf.template_id)
+    try:
+        mode = resolve_generator_mode(kind=stage, data_root=data_root, template_id=mf.template_id)
+    except ValueError as e:
+        # Surface as Dagster Failure for consistency with prior behavior and tests
+        raise Failure(
+            description=str(e),
+            metadata={
+                "function": MetadataValue.text(f"resolve_{stage}_generator_mode"),
+                "data_root": MetadataValue.path(str(data_root)),
+                "template_id": MetadataValue.text(str(mf.template_id)),
+            },
+        ) from e
     envelope = GenerationEnvelope(stage=stage, gen_id=str(gen_id), template_id=mf.template_id, parent_gen_id=mf.parent_gen_id, llm_model_id=mf.llm_model_id, mode=mode)
     envelope.validate(spec)
 

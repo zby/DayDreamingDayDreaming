@@ -16,7 +16,7 @@ from ..unified.stage_services import prompt_asset, evaluation_response_asset
     partitions_def=evaluation_gens_partitions,
     group_name="evaluation",
     io_manager_key="evaluation_prompt_io_manager",
-    required_resource_keys={"data_root", "membership_service"},
+    required_resource_keys={"data_root"},
     deps={EVALUATION_TEMPLATES_KEY},
 )
 def evaluation_prompt(context) -> str:
@@ -32,7 +32,7 @@ def evaluation_prompt(context) -> str:
     partitions_def=evaluation_gens_partitions,
     group_name="evaluation",
     io_manager_key="evaluation_response_io_manager",
-    required_resource_keys={"openrouter_client", "data_root", "experiment_config", "membership_service"},
+    required_resource_keys={"openrouter_client", "data_root", "experiment_config"},
     deps=["evaluation_prompt"],
 )
 def evaluation_response(context, evaluation_prompt) -> str:

@@ -15,7 +15,7 @@ from ..unified.stage_services import prompt_asset, essay_response_asset
     partitions_def=essay_gens_partitions,
     group_name="generation_essays",
     io_manager_key="essay_prompt_io_manager",
-    required_resource_keys={"data_root", "experiment_config", "membership_service"},
+    required_resource_keys={"data_root", "experiment_config"},
 )
 def essay_prompt(context) -> str:
     """Dagster asset wrapper for essay prompt.
@@ -30,7 +30,7 @@ def essay_prompt(context) -> str:
     partitions_def=essay_gens_partitions,
     group_name="generation_essays",
     io_manager_key="essay_response_io_manager",
-    required_resource_keys={"openrouter_client", "experiment_config", "data_root", "membership_service"},
+    required_resource_keys={"openrouter_client", "experiment_config", "data_root"},
 )
 def essay_response(context, essay_prompt) -> str:
     """Dagster asset wrapper for essay response.
