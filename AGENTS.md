@@ -49,6 +49,9 @@ Concise, high-signal rules for working in this repo. Keep changes focused, valid
 - Fallbacks: avoid automatic data fixes at runtime. If required to stay unblocked, keep minimal and tagged:
   - `FALLBACK(DATA|PARSER|OPS):` why it exists + removal plan.
 
+Plans directory policy
+- Do not commit files under `plans/`. These are working notes and should not be included in functional commits.
+
 ## Security & Data
 - Never commit secrets/real outputs. Use `.env` and env vars (e.g., `OPENROUTER_API_KEY`, `DAGSTER_HOME`).
 - Set `DAGSTER_HOME` to an absolute path, e.g., `export DAGSTER_HOME=$(pwd)/dagster_home`.
