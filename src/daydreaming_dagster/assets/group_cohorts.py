@@ -33,6 +33,7 @@ from .partitions import (
     evaluation_gens_partitions,
 )
 from ..utils.generation import load_generation
+from ..config.paths import Paths
 
 
 def _load_selected_essays_list(data_root: Path) -> List[str]:
@@ -93,7 +94,7 @@ def cohort_membership(
     before rebuilding a cohort, or add a cohort-scoped pruner as a separate asset.
     """
 
-    data_root = Path(getattr(context.resources, "data_root", "data"))
+    data_root = Paths.from_context(context).data_root
     cohort_dir = data_root / "cohorts" / str(cohort_id)
     cohort_dir.mkdir(parents=True, exist_ok=True)
     out_path = cohort_dir / "membership.csv"
@@ -358,7 +359,7 @@ def register_cohort_partitions(context, cohort_membership: pd.DataFrame) -> Dict
 )
 def cohort_id(context, content_combinations: list[ContentCombination]) -> str:
     """Compute a deterministic cohort_id from the current manifest and persist it."""
-    data_root = Path(getattr(context.resources, "data_root", "data"))
+    data_root = Paths.from_context(context).data_root
     # Build manifest from active axes
     # Load axes strictly; let underlying errors surface naturally
     def _tpl_ids(kind: str) -> list[str]:
@@ -407,7 +408,7 @@ def cohort_id(context, content_combinations: list[ContentCombination]) -> str:
 def selected_combo_mappings(context) -> pd.DataFrame:
     """Regenerate selected combo mappings from active concepts (deterministic ID)."""
     from ..utils.combo_ids import ComboIDManager
-    data_root = Path(getattr(context.resources, "data_root", "data"))
+    data_root = Paths.from_context(context).data_root
     cfg = context.resources.experiment_config
     level = getattr(cfg, "description_level", "paragraph")
     k_max = int(getattr(cfg, "k_max", 2))
@@ -446,7 +447,7 @@ def content_combinations(context) -> list[ContentCombination]:
     Raises on missing/unreadable selected_combo_mappings.csv (let pandas exceptions bubble up).
     If the file is readable but yields no valid combos, fall back to one combo from active concepts.
     """
-    data_root = Path(getattr(context.resources, "data_root", "data"))
+    data_root = Paths.from_context(context).data_root
     import pandas as _pd
     selected_path = data_root / "2_tasks" / "selected_combo_mappings.csv"
     sel = _pd.read_csv(selected_path)

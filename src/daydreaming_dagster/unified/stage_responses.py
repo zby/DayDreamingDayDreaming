@@ -17,10 +17,9 @@ def response_asset(context, prompt_text, stage: Stage) -> str:
         require_membership_row,
         emit_standard_output_metadata,
         get_run_id,
-        get_data_root,
     )
-
-    data_root = get_data_root(context)
+    paths = Paths.from_context(context)
+    data_root = paths.data_root
     spec = get_stage_spec(stage)
     row, cohort = require_membership_row(context, stage, str(gen_id), require_columns=spec.response_fields)
     mf = read_membership_fields(row)

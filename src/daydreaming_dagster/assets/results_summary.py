@@ -1,6 +1,6 @@
 from dagster import MetadataValue
 from ._decorators import asset_with_boundary
-from ._helpers import get_data_root
+from ._decorators import asset_with_boundary
 import pandas as pd
 import numpy as np
 from pathlib import Path
@@ -24,7 +24,7 @@ def generation_scores_pivot(context, aggregated_scores: pd.DataFrame) -> pd.Data
     Values: Individual score for that specific evaluator combination (no averaging)
     """
     # Load evaluation templates CSV and extract active templates
-    eval_df = read_templates(Path(context.resources.data_root), "evaluation", filter_active=True)
+    eval_df = read_templates(Paths.from_context(context).data_root, "evaluation", filter_active=True)
     if eval_df is None or eval_df.empty:
         context.log.warning("No evaluation templates CSV found or empty; returning empty pivot")
         return pd.DataFrame()
@@ -329,8 +329,7 @@ def perfect_score_paths(context, aggregated_scores: pd.DataFrame) -> pd.DataFram
     # Reconstruct file paths for each perfect score
     paths_data = []
     
-    data_root = get_data_root(context)
-    _paths = Paths.from_str(str(data_root))
+    paths = Paths.from_context(context)
     for _, row in perfect_scores.iterrows():
         # Generation path: prefer parsed 'generation_response_path'; else derive from gens store by parent_gen_id
         generation_path = None
@@ -339,7 +338,7 @@ def perfect_score_paths(context, aggregated_scores: pd.DataFrame) -> pd.DataFram
         else:
             parent_essay_id = row.get('parent_gen_id') if 'parent_gen_id' in row else None
             if isinstance(parent_essay_id, str) and parent_essay_id:
-                generation_path = str(_paths.parsed_path("essay", parent_essay_id).resolve())
+                generation_path = str(paths.parsed_path("essay", parent_essay_id).resolve())
             else:
                 # Strict: no legacy path reconstruction
                 raise ValueError("Missing generation_response_path and parent_gen_id for perfect score row")
@@ -351,7 +350,7 @@ def perfect_score_paths(context, aggregated_scores: pd.DataFrame) -> pd.DataFram
         else:
             eval_gid = row.get('gen_id') if 'gen_id' in row else None
             if isinstance(eval_gid, str) and eval_gid:
-                evaluation_path = str(_paths.parsed_path("evaluation", eval_gid).resolve())
+                evaluation_path = str(paths.parsed_path("evaluation", eval_gid).resolve())
             else:
                 # Strict: no legacy path reconstruction
                 raise ValueError("Missing evaluation_response_path and evaluation gen_id for perfect score row")

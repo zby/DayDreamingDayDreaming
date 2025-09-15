@@ -1,6 +1,7 @@
 from dagster import MetadataValue
 from ._decorators import asset_with_boundary
 from pathlib import Path
+from ..config.paths import Paths
 import pandas as pd
 
 
@@ -39,7 +40,7 @@ def aggregated_scores(context) -> pd.DataFrame:
       generation_model, stage, generation_response_path, evaluation_llm_model).
     This asset simply filters that cross-experiment aggregation down to the current cohort.
     """
-    data_root = Path(getattr(context.resources, "data_root", "data"))
+    data_root = Paths.from_context(context).data_root
     out_csv = data_root / "5_parsing" / "aggregated_scores.csv"
     df = aggregated_scores_impl(
         data_root,

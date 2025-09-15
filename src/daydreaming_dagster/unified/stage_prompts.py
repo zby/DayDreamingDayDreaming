@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Optional
 
 from .stage_core import Stage, render_template
+from daydreaming_dagster.config.paths import Paths
 from .stage_policy import (
     get_stage_spec,
     read_membership_fields,
@@ -16,10 +17,9 @@ def prompt_asset(context, stage: Stage, *, content_combinations=None) -> str:
         require_membership_row,
         load_parent_parsed_text,
         build_prompt_metadata,
-        get_data_root,
     )
-
-    data_root = get_data_root(context)
+    paths = Paths.from_context(context)
+    data_root = paths.data_root
     spec = get_stage_spec(stage)
     row, _cohort = require_membership_row(context, stage, str(gen_id), require_columns=spec.prompt_fields)
     mf = read_membership_fields(row)
