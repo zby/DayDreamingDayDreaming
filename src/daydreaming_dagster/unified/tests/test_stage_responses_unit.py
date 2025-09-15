@@ -39,9 +39,8 @@ def test_response_asset_includes_cohort_id_in_metadata(monkeypatch, tmp_path, mo
 
     ctx = _dummy_context("E1")
 
-    # Force data root to tmp_path to keep paths deterministic (even though we stub IO paths)
-    import daydreaming_dagster.assets._helpers as helpers
-    monkeypatch.setattr(helpers, "get_data_root", lambda _c: tmp_path)
+    # Provide data_root on context resources for path resolution
+    setattr(ctx.resources, "data_root", str(tmp_path))
 
     # Membership row + cohort via injected service on context
     row = {"template_id": "tpl1", "parent_gen_id": "D1", "llm_model_id": "m1"}

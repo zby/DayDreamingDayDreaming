@@ -13,13 +13,10 @@ from ..unified.stage_policy import parent_stage_of as _parent_stage_of
 from ..types import Stage
 
 
-def get_data_root(context) -> Path:
-    """Backcompat: prefer Paths.from_context(context).data_root."""
-    return Paths.from_context(context).data_root
+"""Helper utilities shared across asset implementations.
 
-
-def get_gens_root(context) -> Path:
-    return Paths.from_context(context).gens_root
+Note: prefer using Paths.from_context(context) directly in new code.
+"""
 
 
 def get_run_id(context) -> Optional[str]:
@@ -43,7 +40,7 @@ def require_membership_row(
     Falls back to scanning membership.csv files directly when the resource is not provided
     (e.g., unit tests or minimal contexts).
     """
-    data_root = get_data_root(context)
+    data_root = Paths.from_context(context).data_root
     svc = getattr(getattr(context, "resources", object()), "membership_service", None)
     if svc and hasattr(svc, "require_row"):
         return svc.require_row(data_root, stage, str(gen_id), require_columns=list(require_columns or ()))
@@ -93,9 +90,8 @@ def load_generation_parsed_text(
     *,
     failure_fn_name: str,
 ) -> str:
-    gens_root = get_gens_root(context)
-    gen = load_generation(gens_root, stage, str(gen_id))
-    base = Path(gens_root) / stage / str(gen_id)
+    paths = Paths.from_context(context)
+    gen = load_generation(paths.gens_root, stage, str(gen_id))
     parsed = gen.get("parsed_text") if isinstance(gen, dict) else None
     if not parsed:
         paths = Paths.from_context(context)
@@ -265,8 +261,6 @@ ExecutionResultLike = Any
 
 __all__ = [
     "Stage",
-    "get_data_root",
-    "get_gens_root",
     "get_run_id",
     "require_membership_row",
     "load_generation_parsed_text",
