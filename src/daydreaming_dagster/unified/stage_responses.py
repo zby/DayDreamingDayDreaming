@@ -28,6 +28,11 @@ def response_asset(context, prompt_text, stage: Stage) -> str:
         svc = MembershipServiceResource()
     row, cohort = svc.require_row(data_root, stage, str(gen_id), require_columns=spec.response_fields)
     mf = read_membership_fields(row)
+    # Optional replicate index from membership (default handled in stage_core)
+    try:
+        replicate_val = int(row.get("replicate")) if hasattr(row, "index") and ("replicate" in row.index) else None
+    except Exception:
+        replicate_val = None
     try:
         mode = resolve_generator_mode(kind=stage, data_root=data_root, template_id=mf.template_id)
     except ValueError as e:
@@ -57,6 +62,7 @@ def response_asset(context, prompt_text, stage: Stage) -> str:
                 "function": f"{stage}_response",
                 "run_id": get_run_id(context),
                 **({"cohort_id": str(cohort)} if isinstance(cohort, str) and cohort else {}),
+                **({"replicate": int(replicate_val)} if isinstance(replicate_val, int) else {}),
             },
         )
         emit_standard_output_metadata(
@@ -84,6 +90,7 @@ def response_asset(context, prompt_text, stage: Stage) -> str:
             "function": f"{stage}_response",
             "run_id": get_run_id(context),
             **({"cohort_id": str(cohort)} if isinstance(cohort, str) and cohort else {}),
+            **({"replicate": int(replicate_val)} if isinstance(replicate_val, int) else {}),
         },
     )
     emit_standard_output_metadata(context, function=f"{stage}_response", gen_id=str(gen_id), result=result)

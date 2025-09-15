@@ -104,7 +104,7 @@ def cohort_membership(
     # Cohort membership depends on model_id only (provider names omitted).
 
     # Normalized row schema across all stages:
-    #   stage, gen_id, cohort_id, parent_gen_id, combo_id, template_id, llm_model_id
+    #   stage, gen_id, cohort_id, parent_gen_id, combo_id, template_id, llm_model_id, replicate (int, optional; default 1)
     rows: List[Dict] = []
 
     if selected_essays:
@@ -149,7 +149,7 @@ def cohort_membership(
             essay_task_id = f"{draft_task_id}__{essay_tpl}"
             essay_cohort_gen = reserve_gen_id("essay", essay_task_id, run_id=cohort_id)
 
-            # Draft row
+            # Draft row (no replicates in curated mode)
             rows.append(
                 {
                     "stage": "draft",
@@ -159,22 +159,30 @@ def cohort_membership(
                     "combo_id": combo_id,
                     "template_id": draft_tpl,
                     "llm_model_id": model_id,
+                    "replicate": 1,
                 }
             )
 
-            # Essay row
-            rows.append(
-                {
-                    "stage": "essay",
-                    "gen_id": essay_cohort_gen,
-                    "cohort_id": str(cohort_id),
-                    "parent_gen_id": draft_cohort_gen,
-                    "combo_id": combo_id,
-                    "template_id": essay_tpl,
-                    # Prefer essay model if present; else inherit draft model
-                    "llm_model_id": essay_model_id or model_id,
-                }
-            )
+            # Essay rows (replicates allowed in curated mode)
+            essay_reps = int(getattr(getattr(context.resources, "experiment_config", object()), "essay_replicates", 1) or 1)
+            for er in range(1, essay_reps + 1):
+                # Salt only when needed
+                salt = f"rep{er}" if essay_reps > 1 else None
+                essay_task_id = f"{draft_task_id}__{essay_tpl}"
+                essay_cohort_gen = reserve_gen_id("essay", essay_task_id, run_id=cohort_id, salt=salt)
+                rows.append(
+                    {
+                        "stage": "essay",
+                        "gen_id": essay_cohort_gen,
+                        "cohort_id": str(cohort_id),
+                        "parent_gen_id": draft_cohort_gen,
+                        "combo_id": combo_id,
+                        "template_id": essay_tpl,
+                        # Prefer essay model if present; else inherit draft model
+                        "llm_model_id": essay_model_id or model_id,
+                        "replicate": int(er),
+                    }
+                )
 
     else:
         # Cartesian mode — derive from active axes
@@ -189,6 +197,8 @@ def cohort_membership(
         if not sel_df.empty and "combo_id" in sel_df.columns:
             combo_ids = sel_df["combo_id"].astype(str).dropna().unique().tolist()
 
+        draft_reps = int(getattr(getattr(context.resources, "experiment_config", object()), "draft_replicates", 1) or 1)
+        essay_reps = int(getattr(getattr(context.resources, "experiment_config", object()), "essay_replicates", 1) or 1)
         for combo_id in combo_ids:
             for _, trow in dtpl_df.iterrows():
                 draft_tpl = str(trow["template_id"])
@@ -196,18 +206,21 @@ def cohort_membership(
                     mid = str(mrow["id"])
                     # provider model name omitted
                     draft_task_id = f"{combo_id}__{draft_tpl}__{mid}"
-                    draft_cohort_gen = reserve_gen_id("draft", draft_task_id, run_id=cohort_id)
-                    rows.append(
-                        {
-                            "stage": "draft",
-                            "gen_id": draft_cohort_gen,
-                            "cohort_id": str(cohort_id),
-                            "parent_gen_id": "",
-                            "combo_id": combo_id,
-                            "template_id": draft_tpl,
-                            "llm_model_id": mid,
-                        }
-                    )
+                    for dr in range(1, draft_reps + 1):
+                        salt_d = f"rep{dr}" if draft_reps > 1 else None
+                        draft_cohort_gen = reserve_gen_id("draft", draft_task_id, run_id=cohort_id, salt=salt_d)
+                        rows.append(
+                            {
+                                "stage": "draft",
+                                "gen_id": draft_cohort_gen,
+                                "cohort_id": str(cohort_id),
+                                "parent_gen_id": "",
+                                "combo_id": combo_id,
+                                "template_id": draft_tpl,
+                                "llm_model_id": mid,
+                                "replicate": int(dr),
+                            }
+                        )
 
         # Essays: drafts × active essay templates
         essay_tpl_df = read_templates(data_root, "essay", filter_active=True)
@@ -223,19 +236,25 @@ def cohort_membership(
             for _, et in essay_tpl_df.iterrows():
                 essay_tpl = str(et["template_id"])
                 essay_task_id = f"{draft_task_id}__{essay_tpl}"
-                essay_cohort_gen = reserve_gen_id("essay", essay_task_id, run_id=cohort_id)
-                rows.append(
-                    {
-                        "stage": "essay",
-                        "gen_id": essay_cohort_gen,
-                        "cohort_id": str(cohort_id),
-                        "parent_gen_id": draft_cohort_gen,
-                        "combo_id": combo_id,
-                        "template_id": essay_tpl,
-                        # default: essay inherits generation model id
-                        "llm_model_id": mid,
-                    }
-                )
+                for er in range(1, essay_reps + 1):
+                    # Salt should incorporate draft replicate dimension even when er==1
+                    salt_e = None
+                    if draft_reps > 1 or essay_reps > 1:
+                        salt_e = f"rep{int(d.get('replicate', 1))}-{er}"
+                    essay_cohort_gen = reserve_gen_id("essay", essay_task_id, run_id=cohort_id, salt=salt_e)
+                    rows.append(
+                        {
+                            "stage": "essay",
+                            "gen_id": essay_cohort_gen,
+                            "cohort_id": str(cohort_id),
+                            "parent_gen_id": draft_cohort_gen,
+                            "combo_id": combo_id,
+                            "template_id": essay_tpl,
+                            # default: essay inherits generation model id
+                            "llm_model_id": mid,
+                            "replicate": int(er),
+                        }
+                    )
 
     # After drafts and essays are built, expand evaluations once using shared helper
     eval_tpl_ids, eval_model_ids = _eval_axes(data_root)
@@ -244,22 +263,27 @@ def cohort_membership(
         essay_combo_map = {
             str(r["gen_id"]): str(r.get("combo_id") or "") for r in rows if r.get("stage") == "essay"
         }
+        # Replication factor for evaluations
+        eval_reps = int(getattr(getattr(context.resources, "experiment_config", object()), "evaluation_replicates", 1) or 1)
         for essay_gen_id in essay_ids:
             for tpl in eval_tpl_ids:
                 for mid in eval_model_ids:
                     eval_task_id = f"{essay_gen_id}__{tpl}__{mid}"
-                    eval_gen_id = reserve_gen_id("evaluation", eval_task_id, run_id=cohort_id)
-                    rows.append(
-                        {
-                            "stage": "evaluation",
-                            "gen_id": eval_gen_id,
-                            "cohort_id": str(cohort_id),
-                            "parent_gen_id": essay_gen_id,
-                            "combo_id": essay_combo_map.get(essay_gen_id, ""),
-                            "template_id": tpl,
-                            "llm_model_id": mid,
-                        }
-                    )
+                    for r in range(1, eval_reps + 1):
+                        salt = f"rep{r}" if eval_reps > 1 else None
+                        eval_gen_id = reserve_gen_id("evaluation", eval_task_id, run_id=cohort_id, salt=salt)
+                        rows.append(
+                            {
+                                "stage": "evaluation",
+                                "gen_id": eval_gen_id,
+                                "cohort_id": str(cohort_id),
+                                "parent_gen_id": essay_gen_id,
+                                "combo_id": essay_combo_map.get(essay_gen_id, ""),
+                                "template_id": tpl,
+                                "llm_model_id": mid,
+                                "replicate": int(r),
+                            }
+                        )
 
     # Deduplicate by (stage, gen_id)
     df = pd.DataFrame(rows)
