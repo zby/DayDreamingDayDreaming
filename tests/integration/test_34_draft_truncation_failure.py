@@ -4,7 +4,7 @@ import json
 import pytest
 
 from daydreaming_dagster.unified.stage_services import render_template
-from daydreaming_dagster.assets.group_generation_draft import _draft_response_impl as draft_response_impl
+from daydreaming_dagster.unified.stage_services import draft_response_asset as draft_response_impl
 from daydreaming_dagster.resources.experiment_config import ExperimentConfig
 
 

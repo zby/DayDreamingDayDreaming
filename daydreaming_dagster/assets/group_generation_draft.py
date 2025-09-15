@@ -38,7 +38,3 @@ def draft_response(context, draft_prompt) -> str:
     """
     return draft_response_asset(context, draft_prompt)
 
-
-# Backcompat for tests that import the internal implementation
-def _draft_response_impl(context, draft_prompt, **_kwargs) -> str:  # pragma: no cover - test shim
-    return draft_response_asset(context, draft_prompt)
