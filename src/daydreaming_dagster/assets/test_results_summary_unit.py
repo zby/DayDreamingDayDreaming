@@ -64,15 +64,15 @@ def test_generation_scores_pivot_smoke(monkeypatch, tmp_path):
     parsed = _make_parsed_scores()
     pivot = rs.generation_scores_pivot(ctx, parsed)
 
-    # Should include evaluation columns combining template+model
+    # Should include evaluation columns combining model+template
     expected_cols = {
         "combo_id",
         "stage",
         "draft_template",
         "generation_template",
         "generation_model",
-        "daydreaming-verification-v2_deepseek",
-        "creativity-metrics_qwen",
+        "deepseek_daydreaming-verification-v2",
+        "qwen_creativity-metrics",
         "sum_scores",
         "generation_response_path",
     }

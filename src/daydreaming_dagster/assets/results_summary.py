@@ -48,33 +48,34 @@ def generation_scores_pivot(context, aggregated_scores: pd.DataFrame) -> pd.Data
     # Require evaluator id column and compose combined key (strict)
     if 'evaluation_llm_model' not in valid_scores.columns:
         raise ValueError("Missing required column 'evaluation_llm_model' in aggregated_scores")
-    valid_scores['eval_template_model'] = (
-        valid_scores['evaluation_template'] + '_' + valid_scores['evaluation_llm_model']
+    # Unified convention: model_template
+    valid_scores['eval_model_template'] = (
+        valid_scores['evaluation_llm_model'] + '_' + valid_scores['evaluation_template']
     )
 
     # Build pivots: mean (baseline, keeps original column names), plus min/max/count for stability
     index_cols = ['combo_id', 'stage', 'draft_template', 'generation_template', 'generation_model']
     pivot_mean = valid_scores.pivot_table(
         index=index_cols,
-        columns='eval_template_model',
+        columns='eval_model_template',
         values='score',
         aggfunc='mean'
     ).round(2)
     pivot_min = valid_scores.pivot_table(
         index=index_cols,
-        columns='eval_template_model',
+        columns='eval_model_template',
         values='score',
         aggfunc='min'
     ).round(2)
     pivot_max = valid_scores.pivot_table(
         index=index_cols,
-        columns='eval_template_model',
+        columns='eval_model_template',
         values='score',
         aggfunc='max'
     ).round(2)
     pivot_cnt = valid_scores.pivot_table(
         index=index_cols,
-        columns='eval_template_model',
+        columns='eval_model_template',
         values='score',
         aggfunc='count'
     ).astype(int)
