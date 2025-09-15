@@ -14,7 +14,7 @@ from daydreaming_dagster.utils.generation import (
     write_gen_metadata,
 )
 from daydreaming_dagster.types import Stage
-from daydreaming_dagster.config.paths import Paths
+from daydreaming_dagster.config.paths import Paths, RAW_FILENAME, PARSED_FILENAME
 from .stage_policy import effective_parser_name
 
 
@@ -194,7 +194,7 @@ def execute_llm(
         parent_gen_id=str(parent_gen_id) if parent_gen_id else None,
         mode="llm",
     )
-    meta["files"] = {"raw": str((base / "raw.txt").resolve())}
+    meta["files"] = {"raw": str((base / RAW_FILENAME).resolve())}
     meta.update(
         {
             "parser_name": eff_parser_name,
@@ -247,7 +247,7 @@ def execute_llm(
     validate_result(stage, raw_text, info, min_lines=min_lines, fail_on_truncation=bool(fail_on_truncation))
 
     if isinstance(parsed, str):
-        meta["files"]["parsed"] = str((base / "parsed.txt").resolve())
+        meta["files"]["parsed"] = str((base / PARSED_FILENAME).resolve())
         write_parsed(out_dir, stage, str(gen_id), str(parsed))
 
     return ExecutionResult(prompt_text=prompt_text, raw_text=raw_text, parsed_text=parsed, info=info, metadata=meta)
@@ -306,7 +306,7 @@ def execute_copy(
         stage=stage, gen_id=str(gen_id), template_id=template_id, model=None, parent_gen_id=str(parent_gen_id), mode="copy"
     )
     base = Path(out_dir) / str(stage) / str(gen_id)
-    meta["files"] = {"parsed": str((base / "parsed.txt").resolve())}
+    meta["files"] = {"parsed": str((base / PARSED_FILENAME).resolve())}
     meta["duration_s"] = round(time.time() - t0, 3)
     _merge_extras(meta, metadata_extra)
     write_gen_parsed(out_dir, stage, str(gen_id), str(parsed))

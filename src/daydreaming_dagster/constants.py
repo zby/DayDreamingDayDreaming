@@ -18,6 +18,4 @@ GEN_FILES = (PROMPT_FILENAME, RAW_FILENAME, PARSED_FILENAME, METADATA_FILENAME)
 # Backcompat aliases for stage names (prefer using values from STAGES directly)
 DRAFT, ESSAY, EVALUATION = STAGES
 
-# DEPRECATED: Prefer using Paths methods (config.paths.Paths).
-# These are kept for backcompat while code is migrated.
-FILE_PROMPT, FILE_RAW, FILE_PARSED, FILE_METADATA = GEN_FILES
+# Note: Use Paths methods (config.paths.Paths) instead of these filenames directly.

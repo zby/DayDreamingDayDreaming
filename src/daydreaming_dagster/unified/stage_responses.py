@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from .stage_core import Stage, execute_llm, execute_copy
+from daydreaming_dagster.config.paths import Paths
 from .stage_policy import get_stage_spec, read_membership_fields
 from .envelopes import GenerationEnvelope
 
@@ -35,7 +36,9 @@ def response_asset(context, prompt_text, stage: Stage) -> str:
             gen_id=str(gen_id),
             template_id=envelope.template_id,
             parent_gen_id=str(envelope.parent_gen_id or ""),
-            pass_through_from=(data_root / "gens" / (spec.parent_stage or "") / str(envelope.parent_gen_id or "") / "parsed.txt"),
+            pass_through_from=Paths.from_str(str(data_root)).parsed_path(
+                (spec.parent_stage or ""), str(envelope.parent_gen_id or "")
+            ),
             metadata_extra={
                 "function": f"{stage}_response",
                 "run_id": get_run_id(context),

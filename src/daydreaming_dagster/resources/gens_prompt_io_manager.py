@@ -4,6 +4,7 @@ from dagster import IOManager, OutputContext, InputContext
 from pathlib import Path
 from ..constants import STAGES
 from ..utils.generation import write_gen_prompt, load_generation
+from ..config.paths import Paths
 
 
 class GensPromptIOManager(IOManager):
@@ -47,6 +48,6 @@ class GensPromptIOManager(IOManager):
         doc = load_generation(self.gens_root, self.stage, gen_id)
         prompt = doc.get("prompt_text")
         if not isinstance(prompt, str) or not prompt:
-            base = self.gens_root / self.stage / gen_id
-            raise FileNotFoundError(f"Prompt not found: {base}/prompt.txt")
+            p = Paths.from_str(str(self.gens_root.parent)).prompt_path(self.stage, gen_id)
+            raise FileNotFoundError(f"Prompt not found: {p}")
         return prompt
