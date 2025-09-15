@@ -3,6 +3,7 @@ from ._decorators import asset_with_boundary
 from pathlib import Path
 from ..config.paths import Paths
 import pandas as pd
+from ..utils.evaluation_processing import calculate_evaluation_metadata
 
 
 def aggregated_scores_impl(data_root: Path, *, scores_aggregator, membership_service) -> pd.DataFrame:
@@ -48,11 +49,10 @@ def aggregated_scores(context) -> pd.DataFrame:
         membership_service=context.resources.membership_service,
     )
 
-    context.add_output_metadata(
-        {
-            "rows": MetadataValue.int(int(df.shape[0]) if hasattr(df, "shape") else 0),
-            "output": MetadataValue.path(str(out_csv)),
-            "enriched": MetadataValue.bool(False),  # passthrough of aggregator enrichments
-        }
-    )
+    md = calculate_evaluation_metadata(df)
+    md.update({
+        "output": MetadataValue.path(str(out_csv)),
+        "enriched": MetadataValue.bool(False),
+    })
+    context.add_output_metadata(md)
     return df
