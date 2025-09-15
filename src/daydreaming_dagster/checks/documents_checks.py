@@ -8,7 +8,7 @@ from daydreaming_dagster.assets.group_generation_draft import draft_response as 
 from daydreaming_dagster.assets.group_generation_essays import essay_response as essay_response_asset
 from daydreaming_dagster.assets.group_evaluation import evaluation_response as evaluation_response_asset
 import pandas as pd
-from ..constants import FILE_PARSED
+from ..config.paths import Paths
 from ..types import Stage
 
 
@@ -43,9 +43,9 @@ def _files_exist_check_impl(context, stage: Stage) -> AssetCheckResult:
     pk = _get_pk(context)
     if not pk:
         return AssetCheckResult(passed=True, metadata={"skipped": MetadataValue.text("no partition context")})
-    data_root = Path(getattr(context.resources, "data_root", "data"))
-    base = data_root / "gens" / stage / str(pk)
-    ok = (base / FILE_PARSED).exists()
+    paths = Paths.from_context(context)
+    base = paths.generation_dir(stage, str(pk))
+    ok = paths.parsed_path(stage, str(pk)).exists()
     return AssetCheckResult(passed=bool(ok), metadata={"gen_dir": MetadataValue.path(str(base))})
 
 

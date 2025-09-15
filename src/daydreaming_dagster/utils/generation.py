@@ -4,7 +4,7 @@ from pathlib import Path
 import json
 from typing import Optional, Dict, Any
 from .ids import gen_dir as build_gen_dir
-from ..constants import FILE_RAW, FILE_PARSED, FILE_PROMPT, FILE_METADATA
+from ..config.paths import RAW_FILENAME, PARSED_FILENAME, PROMPT_FILENAME, METADATA_FILENAME
 
 
 def _write_atomic(path: Path, data: str) -> None:
@@ -21,28 +21,28 @@ def _ensure_dir(gens_root: Path, stage: str, gen_id: str) -> Path:
 def write_gen_raw(gens_root: Path, stage: str, gen_id: str, text: str) -> Path:
     """Write raw.txt for a generation, creating the directory if needed."""
     base = _ensure_dir(gens_root, stage, gen_id)
-    _write_atomic(base / FILE_RAW, str(text or ""))
+    _write_atomic(base / RAW_FILENAME, str(text or ""))
     return base
 
 
 def write_gen_parsed(gens_root: Path, stage: str, gen_id: str, text: str) -> Path:
     """Write parsed.txt for a generation, creating the directory if needed."""
     base = _ensure_dir(gens_root, stage, gen_id)
-    _write_atomic(base / FILE_PARSED, str(text))
+    _write_atomic(base / PARSED_FILENAME, str(text))
     return base
 
 
 def write_gen_prompt(gens_root: Path, stage: str, gen_id: str, text: str) -> Path:
     """Write prompt.txt for a generation, creating the directory if needed."""
     base = _ensure_dir(gens_root, stage, gen_id)
-    _write_atomic(base / FILE_PROMPT, str(text))
+    _write_atomic(base / PROMPT_FILENAME, str(text))
     return base
 
 
 def write_gen_metadata(gens_root: Path, stage: str, gen_id: str, metadata: Dict[str, Any]) -> Path:
     """Write metadata.json for a generation, creating the directory if needed."""
     base = _ensure_dir(gens_root, stage, gen_id)
-    _write_atomic(base / FILE_METADATA, json.dumps(metadata, ensure_ascii=False, indent=2))
+    _write_atomic(base / METADATA_FILENAME, json.dumps(metadata, ensure_ascii=False, indent=2))
     return base
 
 
@@ -56,15 +56,15 @@ def load_generation(gens_root: Path, stage: str, gen_id: str) -> Dict[str, Any]:
         p = base / name
         return p.read_text(encoding="utf-8") if p.exists() else None
     md: Optional[Dict[str, Any]] = None
-    mpath = base / FILE_METADATA
+    mpath = base / METADATA_FILENAME
     if mpath.exists():
         md = json.loads(mpath.read_text(encoding="utf-8"))
     return {
         "stage": str(stage),
         "gen_id": str(gen_id),
         "parent_gen_id": (md or {}).get("parent_gen_id"),
-        "raw_text": _read(FILE_RAW) or "",
-        "parsed_text": _read(FILE_PARSED),
-        "prompt_text": _read(FILE_PROMPT),
+        "raw_text": _read(RAW_FILENAME) or "",
+        "parsed_text": _read(PARSED_FILENAME),
+        "prompt_text": _read(PROMPT_FILENAME),
         "metadata": md,
     }

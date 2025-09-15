@@ -3,6 +3,7 @@ from pathlib import Path
 import pytest
 
 from daydreaming_dagster.unified.stage_services import render_template, execute_llm
+from tests.helpers.membership import write_membership_csv
 
 pytestmark = pytest.mark.integration
 
@@ -26,28 +27,7 @@ class _Ctx:
         pass
 
 def _write_membership(data_root: Path, rows: list[dict]):
-    import pandas as pd
-
-    cohort = "T-INTEG"
-    cdir = data_root / "cohorts" / cohort
-    cdir.mkdir(parents=True, exist_ok=True)
-    cols = [
-        "stage",
-        "gen_id",
-        "cohort_id",
-        "parent_gen_id",
-        "combo_id",
-        "template_id",
-        "llm_model_id",
-    ]
-    norm = []
-    for r in rows:
-        d = {k: r.get(k, "") for k in cols}
-        if not d["cohort_id"]:
-            d["cohort_id"] = cohort
-        norm.append(d)
-    df = pd.DataFrame(norm, columns=cols)
-    (cdir / "membership.csv").write_text(df.to_csv(index=False), encoding="utf-8")
+    write_membership_csv(data_root, rows)
 
 @pytest.mark.llm_cfg(tail_score="8.5")
 def test_evaluation_parser_in_last_line_emits_single_float_line(tiny_data_root: Path, mock_llm):

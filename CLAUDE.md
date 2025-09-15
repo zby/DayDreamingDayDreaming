@@ -16,7 +16,7 @@ uv sync --dev             # Install with development dependencies
 
 ### Running the Pipeline
 ```bash
-uv run dagster dev -f daydreaming_dagster/definitions.py    # Start Dagster UI
+uv run dagster dev -f src/daydreaming_dagster/definitions.py    # Start Dagster UI
 uv run dagster asset materialize --select "asset_name"     # Materialize specific assets
 ```
 

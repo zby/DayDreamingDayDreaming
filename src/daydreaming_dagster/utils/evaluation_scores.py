@@ -5,7 +5,7 @@ from typing import Iterable, Dict, Any, List
 import pandas as pd
 
 from .generation import load_generation
-from ..constants import FILE_PARSED
+from ..config.paths import Paths
 
 
 def aggregate_evaluation_scores_for_ids(data_root: Path, gen_ids: Iterable[str]) -> pd.DataFrame:
@@ -21,7 +21,8 @@ def aggregate_evaluation_scores_for_ids(data_root: Path, gen_ids: Iterable[str])
     - combo_id, draft_template, generation_template, generation_model
     - stage (fixed: 'essay2p')
     """
-    gens_root = Path(data_root) / "gens"
+    paths = Paths.from_str(str(data_root))
+    gens_root = paths.gens_root
     rows: List[Dict[str, Any]] = []
     for gid in gen_ids:
         gid = str(gid)
@@ -38,7 +39,7 @@ def aggregate_evaluation_scores_for_ids(data_root: Path, gen_ids: Iterable[str])
                     "evaluation_llm_model": None,
                     "score": None,
                     "error": "unreadable evaluation generation",
-                    "evaluation_response_path": str((gens_root / "evaluation" / gid / FILE_PARSED).resolve()),
+                    "evaluation_response_path": str(paths.parsed_path("evaluation", gid).resolve()),
                     "combo_id": None,
                     "draft_template": None,
                     "generation_template": None,
@@ -54,7 +55,7 @@ def aggregate_evaluation_scores_for_ids(data_root: Path, gen_ids: Iterable[str])
         eval_template = md.get("template_id")
         eval_model = md.get("model_id")
         eval_parsed = eval_doc.get("parsed_text")
-        eval_parsed_path = (gens_root / "evaluation" / gid / FILE_PARSED).resolve()
+        eval_parsed_path = paths.parsed_path("evaluation", gid).resolve()
 
         score = None
         error = None
@@ -107,7 +108,7 @@ def aggregate_evaluation_scores_for_ids(data_root: Path, gen_ids: Iterable[str])
                 "generation_template": generation_template,
                 "generation_model": generation_model,
                 "stage": "essay2p",
-                "generation_response_path": str((gens_root / "essay" / parent_essay_id / FILE_PARSED).resolve())
+                "generation_response_path": str(paths.parsed_path("essay", parent_essay_id).resolve())
                 if parent_essay_id
                 else "",
             }
@@ -139,5 +140,4 @@ def aggregate_evaluation_scores_for_ids(data_root: Path, gen_ids: Iterable[str])
     if "score" in df.columns:
         df["score"] = pd.to_numeric(df["score"], errors="coerce")
     return df[expected_columns + [c for c in df.columns if c not in expected_columns]]
-
 

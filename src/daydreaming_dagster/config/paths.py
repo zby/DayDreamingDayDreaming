@@ -18,12 +18,11 @@ from pathlib import Path
 from typing import Optional
 import os
 
-from ..constants import (
-    FILE_PROMPT,
-    FILE_RAW,
-    FILE_PARSED,
-    FILE_METADATA,
-)
+# Canonical gens-store filenames (single source of truth)
+PROMPT_FILENAME = "prompt.txt"
+RAW_FILENAME = "raw.txt"
+PARSED_FILENAME = "parsed.txt"
+METADATA_FILENAME = "metadata.json"
 
 
 @dataclass(frozen=True)
@@ -78,16 +77,16 @@ class Paths:
         return self.gens_root / str(stage) / str(gen_id)
 
     def prompt_path(self, stage: str, gen_id: str) -> Path:
-        return self.generation_dir(stage, gen_id) / FILE_PROMPT
+        return self.generation_dir(stage, gen_id) / PROMPT_FILENAME
 
     def raw_path(self, stage: str, gen_id: str) -> Path:
-        return self.generation_dir(stage, gen_id) / FILE_RAW
+        return self.generation_dir(stage, gen_id) / RAW_FILENAME
 
     def parsed_path(self, stage: str, gen_id: str) -> Path:
-        return self.generation_dir(stage, gen_id) / FILE_PARSED
+        return self.generation_dir(stage, gen_id) / PARSED_FILENAME
 
     def metadata_path(self, stage: str, gen_id: str) -> Path:
-        return self.generation_dir(stage, gen_id) / FILE_METADATA
+        return self.generation_dir(stage, gen_id) / METADATA_FILENAME
 
     # --- Templates ---
     def templates_root(self) -> Path:
@@ -146,5 +145,11 @@ class Paths:
         return cls(Path(data_root))
 
 
-__all__ = ["Paths"]
-
+__all__ = [
+    "Paths",
+    # Filename constants (for rare direct filename needs; prefer Paths methods)
+    "PROMPT_FILENAME",
+    "RAW_FILENAME",
+    "PARSED_FILENAME",
+    "METADATA_FILENAME",
+]

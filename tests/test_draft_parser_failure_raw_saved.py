@@ -4,6 +4,7 @@ import pytest
 
 from daydreaming_dagster.unified.stage_services import draft_response_asset as draft_response_impl
 from dagster import Failure
+from tests.helpers.membership import write_membership_csv
 
 
 class _FakeLogger:
@@ -67,24 +68,21 @@ def _write_draft_templates_csv(dir_path: Path, template_id: str, parser: str):
 
 
 def _write_membership(dir_path: Path, *, gen_id: str, template_id: str, model_id: str):
-    import pandas as pd
-    cohort = "TEST"
-    cdir = dir_path / "cohorts" / cohort
-    cdir.mkdir(parents=True, exist_ok=True)
-    df = pd.DataFrame(
+    write_membership_csv(
+        dir_path,
         [
             {
                 "stage": "draft",
                 "gen_id": gen_id,
-                "cohort_id": cohort,
+                "cohort_id": "TEST",
                 "parent_gen_id": "",
                 "combo_id": "comboX",
                 "template_id": template_id,
                 "llm_model_id": model_id,
             }
-        ]
+        ],
+        cohort="TEST",
     )
-    (cdir / "membership.csv").write_text(df.to_csv(index=False), encoding="utf-8")
 
 
 def test_draft_parser_failure_saves_raw_then_fails(tmp_path: Path):

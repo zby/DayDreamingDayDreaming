@@ -7,7 +7,6 @@ from pathlib import Path
 from ..config.paths import Paths
 from .raw_data import EVALUATION_TEMPLATES_KEY
 from ..utils.raw_readers import read_templates
-from ..constants import FILE_PARSED
 @asset_with_boundary(
     stage="results_summary",
     group_name="results_processing",

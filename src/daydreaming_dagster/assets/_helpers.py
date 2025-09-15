@@ -8,7 +8,7 @@ from dagster import Failure, MetadataValue
 
 from ..utils.membership_lookup import find_membership_row_by_gen
 from ..utils.generation import load_generation
-from ..constants import FILE_PARSED
+from ..config.paths import Paths
 from ..utils.raw_readers import read_templates
 from ..unified.stage_policy import parent_stage_of as _parent_stage_of
 from ..types import Stage
@@ -89,13 +89,14 @@ def load_generation_parsed_text(
     base = Path(gens_root) / stage / str(gen_id)
     parsed = gen.get("parsed_text") if isinstance(gen, dict) else None
     if not parsed:
+        paths = Paths.from_context(context)
         raise Failure(
             description="Missing or unreadable parsed.txt for upstream generation",
             metadata={
                 "function": MetadataValue.text(failure_fn_name),
                 "stage": MetadataValue.text(str(stage)),
                 "gen_id": MetadataValue.text(str(gen_id)),
-                "parsed_path": MetadataValue.path(str((base / FILE_PARSED).resolve())),
+                "parsed_path": MetadataValue.path(str(paths.parsed_path(stage, str(gen_id)).resolve())),
             },
         )
     return str(parsed).replace("\r\n", "\n")

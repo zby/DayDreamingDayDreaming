@@ -12,7 +12,7 @@ from typing import Dict, Any
 import json
 
 from ..utils.evaluation_processing import calculate_evaluation_metadata
-from ..constants import FILE_PARSED, FILE_RAW, FILE_METADATA
+from ..config.paths import Paths
 from ..utils.generation import load_generation
 
 class FilteredEvaluationResultsConfig(Config):
@@ -37,8 +37,8 @@ def filtered_evaluation_results(context, config: FilteredEvaluationResultsConfig
       - Read evaluation metadata (template_id/model_id/parent_gen_id)
       - Enrich with essay and draft metadata (generation_template/model, combo_id)
     """
-    data_root = Path(getattr(context.resources, "data_root", "data"))
-    gens_root = data_root / "gens"
+    paths = Paths.from_context(context)
+    gens_root = paths.gens_root
     eval_root = gens_root / "evaluation"
     # Let filesystem errors surface naturally if eval_root is missing
 
@@ -65,7 +65,7 @@ def filtered_evaluation_results(context, config: FilteredEvaluationResultsConfig
             parent_draft_id = str(emd.get("parent_gen_id") or "")
         # Draft metadata
         if parent_draft_id:
-            dmeta_path = data_root / "gens" / "draft" / parent_draft_id / FILE_METADATA
+            dmeta_path = paths.metadata_path("draft", parent_draft_id)
             if dmeta_path.exists():
                 dmd = json.loads(dmeta_path.read_text(encoding="utf-8")) or {}
                 combo_id = str(dmd.get("combo_id") or "")

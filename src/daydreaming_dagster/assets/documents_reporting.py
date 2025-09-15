@@ -5,7 +5,8 @@ from ._decorators import asset_with_boundary
 import pandas as pd
 from pathlib import Path
 import json
-from ..constants import STAGES, FILE_METADATA, FILE_RAW, FILE_PARSED, FILE_PROMPT
+from ..constants import STAGES
+from ..config.paths import Paths
 
 
 @asset_with_boundary(
@@ -20,8 +21,8 @@ def documents_latest_report(context) -> pd.DataFrame:
 
     Output path: data/7_reporting/documents_latest_report.csv via CSVIOManager.
     """
-    data_root = Path(getattr(context.resources, "data_root", "data"))
-    docs_root = data_root / "gens"
+    paths = Paths.from_context(context)
+    docs_root = paths.gens_root
     records: list[dict] = []
     for stage in STAGES:
         base = docs_root / stage
@@ -30,7 +31,7 @@ def documents_latest_report(context) -> pd.DataFrame:
         for doc_dir in base.iterdir():
             if not doc_dir.is_dir():
                 continue
-            meta_path = doc_dir / FILE_METADATA
+            meta_path = paths.metadata_path(stage, doc_dir.name)
             task_id = None
             created_at = None
             if meta_path.exists():
@@ -67,8 +68,8 @@ def documents_consistency_report(context) -> pd.DataFrame:
     - missing_raw, missing_parsed, missing_prompt
     - dir_exists
     """
-    data_root = Path(getattr(context.resources, "data_root", "data"))
-    docs_root = data_root / "gens"
+    paths = Paths.from_context(context)
+    docs_root = paths.gens_root
     records: list[dict] = []
     for stage in STAGES:
         base = docs_root / stage
@@ -77,11 +78,11 @@ def documents_consistency_report(context) -> pd.DataFrame:
         for doc_dir in base.iterdir():
             if not doc_dir.is_dir():
                 continue
-            raw = doc_dir / FILE_RAW
-            parsed = doc_dir / FILE_PARSED
-            prompt = doc_dir / FILE_PROMPT
+            raw = paths.raw_path(stage, doc_dir.name)
+            parsed = paths.parsed_path(stage, doc_dir.name)
+            prompt = paths.prompt_path(stage, doc_dir.name)
             task_id = None
-            meta_path = doc_dir / FILE_METADATA
+            meta_path = paths.metadata_path(stage, doc_dir.name)
             if meta_path.exists():
                 meta = json.loads(meta_path.read_text(encoding="utf-8"))
                 if isinstance(meta, dict):

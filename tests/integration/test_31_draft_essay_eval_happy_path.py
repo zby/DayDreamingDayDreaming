@@ -9,6 +9,7 @@ from daydreaming_dagster.unified.stage_services import essay_response_asset as e
 from daydreaming_dagster.assets.group_evaluation import evaluation_response
 from daydreaming_dagster.resources.experiment_config import ExperimentConfig
 from dagster import build_op_context
+from tests.helpers.membership import write_membership_csv
 
 
 pytestmark = pytest.mark.integration
@@ -39,33 +40,8 @@ class _Ctx:
         self._output_md = md
 
 
-def _write_membership(
-    data_root: Path,
-    rows: list[dict],
-):
-    cohort = "T-INTEG"
-    cdir = data_root / "cohorts" / cohort
-    cdir.mkdir(parents=True, exist_ok=True)
-    import pandas as pd
-
-    # Normalize to canonical columns
-    cols = [
-        "stage",
-        "gen_id",
-        "cohort_id",
-        "parent_gen_id",
-        "combo_id",
-        "template_id",
-        "llm_model_id",
-    ]
-    nr = []
-    for r in rows:
-        d = {k: r.get(k, "") for k in cols}
-        if not d["cohort_id"]:
-            d["cohort_id"] = cohort
-        nr.append(d)
-    df = pd.DataFrame(nr, columns=cols)
-    (cdir / "membership.csv").write_text(df.to_csv(index=False), encoding="utf-8")
+def _write_membership(data_root: Path, rows: list[dict]):
+    write_membership_csv(data_root, rows)
 
 
 def _read_json(p: Path) -> dict:

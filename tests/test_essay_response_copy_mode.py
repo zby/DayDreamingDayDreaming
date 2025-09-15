@@ -10,16 +10,8 @@ class _FakeLogger:
         pass
 
 
-class _FakeDraftIO:
-    def __init__(self, content: str):
-        self._content = content
-
-    def load_input(self, _ctx):
-        return self._content
-
-
 class _FakeContext:
-    def __init__(self, partition_key: str, data_root: Path, draft_io):
+    def __init__(self, partition_key: str, data_root: Path):
         class _Res:
             pass
 
@@ -28,7 +20,6 @@ class _FakeContext:
         self._meta = {}
         self.resources = _Res()
         self.resources.data_root = str(data_root)
-        self.resources.draft_response_io_manager = draft_io
         # Provide experiment configuration expected by assets
         self.resources.experiment_config = ExperimentConfig()
         # LLM present but unused in copy mode
@@ -82,11 +73,7 @@ def test_essay_response_copy_mode_returns_draft_content(tmp_path: Path):
     ])
     (tmp_path / "cohorts" / cohort / "membership.csv").write_text(membership.to_csv(index=False), encoding="utf-8")
 
-    ctx = _FakeContext(
-        partition_key=essay_gen_id,
-        data_root=tmp_path,
-        draft_io=_FakeDraftIO(draft_content),
-    )
+    ctx = _FakeContext(partition_key=essay_gen_id, data_root=tmp_path)
 
     result = essay_response_impl(ctx, essay_prompt="COPY_MODE")
 

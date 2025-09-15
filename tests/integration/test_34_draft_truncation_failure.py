@@ -6,6 +6,7 @@ import pytest
 from daydreaming_dagster.unified.stage_services import render_template
 from daydreaming_dagster.unified.stage_services import draft_response_asset as draft_response_impl
 from daydreaming_dagster.resources.experiment_config import ExperimentConfig
+from tests.helpers.membership import write_membership_csv
 
 
 pytestmark = pytest.mark.integration
@@ -33,28 +34,7 @@ class _Ctx:
 
 
 def _write_membership(data_root: Path, rows: list[dict]):
-    import pandas as pd
-
-    cohort = "T-INTEG"
-    cdir = data_root / "cohorts" / cohort
-    cdir.mkdir(parents=True, exist_ok=True)
-    cols = [
-        "stage",
-        "gen_id",
-        "cohort_id",
-        "parent_gen_id",
-        "combo_id",
-        "template_id",
-        "llm_model_id",
-    ]
-    norm = []
-    for r in rows:
-        d = {k: r.get(k, "") for k in cols}
-        if not d["cohort_id"]:
-            d["cohort_id"] = cohort
-        norm.append(d)
-    df = pd.DataFrame(norm, columns=cols)
-    (cdir / "membership.csv").write_text(df.to_csv(index=False), encoding="utf-8")
+    write_membership_csv(data_root, rows)
 
 
 @pytest.mark.llm_cfg(lines=3, truncated=True)
