@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Dict, Iterable, List, Tuple
 
 import pandas as pd
-from dagster import Failure, MetadataValue
+from dagster import MetadataValue
 from ._decorators import asset_with_boundary
 
 from ..utils.ids import reserve_gen_id

@@ -1,9 +1,11 @@
-from dagster import asset, MetadataValue
+from dagster import MetadataValue
+from ._decorators import asset_with_boundary
 import pandas as pd
 import numpy as np
 
 
-@asset(
+@asset_with_boundary(
+    stage="results_summary",
     group_name="results_summary",
     io_manager_key="summary_results_io_manager"
 )
@@ -109,7 +111,8 @@ def evaluator_agreement_analysis(context, aggregated_scores: pd.DataFrame) -> pd
     return multi_evaluator
 
 
-@asset(
+@asset_with_boundary(
+    stage="results_summary",
     group_name="results_summary",
     io_manager_key="summary_results_io_manager"
 )

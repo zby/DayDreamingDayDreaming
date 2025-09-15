@@ -1,5 +1,6 @@
 from dagster import MetadataValue
 from ._decorators import asset_with_boundary
+from ._helpers import get_data_root
 import pandas as pd
 import numpy as np
 from pathlib import Path
@@ -297,33 +298,31 @@ def perfect_score_paths(context, aggregated_scores: pd.DataFrame) -> pd.DataFram
     # Reconstruct file paths for each perfect score
     paths_data = []
     
+    data_root = get_data_root(context)
     for _, row in perfect_scores.iterrows():
-        # Generation path: prefer parsed 'generation_response_path' or explicit essay_task_id
+        # Generation path: prefer parsed 'generation_response_path'; else derive from gens store by parent_gen_id
         generation_path = None
-        if 'generation_response_path' in row and isinstance(row['generation_response_path'], str) and row['generation_response_path']:
+        if isinstance(row.get('generation_response_path'), str) and row['generation_response_path']:
             generation_path = row['generation_response_path']
-        elif 'essay_task_id' in row and isinstance(row['essay_task_id'], str) and row['essay_task_id']:
-            generation_path = f"data/3_generation/essay_responses/{row['essay_task_id']}.txt"
         else:
-            # Build from components; require draft_template in doc-id-first architecture
-            draft_tpl = row.get('draft_template') if 'draft_template' in row else None
-            if not isinstance(draft_tpl, str) or not draft_tpl:
-                raise Failure(
-            description="Cannot reconstruct essay path: missing draft_template",
-                    metadata={
-                        "combo_id": MetadataValue.text(str(row.get('combo_id'))),
-                        "generation_template": MetadataValue.text(str(row.get('generation_template'))),
-                        "generation_model": MetadataValue.text(str(row.get('generation_model'))),
-                        "resolution": MetadataValue.text("Ensure aggregated_scores includes 'draft_template' and essay_task_id, or provide generation_response_path."),
-                    },
-                )
-            generation_path = get_generation_response_path(
-                str(row['combo_id']), str(draft_tpl), str(row['generation_template']), str(row['generation_model'])
-            )
+            parent_essay_id = row.get('parent_gen_id') if 'parent_gen_id' in row else None
+            if isinstance(parent_essay_id, str) and parent_essay_id:
+                generation_path = str((Path(data_root) / "gens" / "essay" / parent_essay_id / FILE_PARSED).resolve())
+            else:
+                # Strict: no legacy path reconstruction
+                raise ValueError("Missing generation_response_path and parent_gen_id for perfect score row")
 
-        # Evaluation path: use parsed column when present
-        # FALLBACK(DATA): Use legacy single-phase evaluation path when aggregated_scores lacks an explicit path.
-        evaluation_path = row['evaluation_response_path'] if 'evaluation_response_path' in row else f"data/4_evaluation/evaluation_responses/{row['combo_id']}_{row['generation_template']}_{row['generation_model']}_{row.get('evaluation_template', 'daydreaming-verification-v2')}_{row['evaluation_llm_model']}.txt"
+        # Evaluation path: prefer parsed column; else derive from gens store by evaluation gen_id
+        eval_path_val = row.get('evaluation_response_path') if 'evaluation_response_path' in row else None
+        if isinstance(eval_path_val, str) and eval_path_val:
+            evaluation_path = eval_path_val
+        else:
+            eval_gid = row.get('gen_id') if 'gen_id' in row else None
+            if isinstance(eval_gid, str) and eval_gid:
+                evaluation_path = str((Path(data_root) / "gens" / "evaluation" / eval_gid / FILE_PARSED).resolve())
+            else:
+                # Strict: no legacy path reconstruction
+                raise ValueError("Missing evaluation_response_path and evaluation gen_id for perfect score row")
         
         paths_data.append({
             'combo_id': row['combo_id'],

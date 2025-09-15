@@ -11,7 +11,6 @@ from jinja2 import Environment, StrictUndefined
 from daydreaming_dagster.utils.generation import (
     write_gen_raw,
     write_gen_parsed,
-    write_gen_prompt,
     write_gen_metadata,
 )
 from daydreaming_dagster.types import Stage
