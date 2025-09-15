@@ -199,6 +199,9 @@ marimo/_static/
 marimo/_lsp/
 __marimo__/
 
+# Generated reports
+reports/functions.md
+
 # Project data outputs (generated; not for version control)
 data/cohorts/
 data/2_tasks/selected_essays.txt
