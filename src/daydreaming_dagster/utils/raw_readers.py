@@ -41,6 +41,43 @@ def read_llm_models(data_root: Path) -> pd.DataFrame:
     fp = Path(data_root) / "1_raw" / "llm_models.csv"
     return read_csv_with_context(fp)
 
+
+def read_replication_config(data_root: Path) -> dict[str, int] | None:
+    """Read per-stage replication factors from data/1_raw/replication_config.csv.
+
+    Expected columns: stage, replicates
+    - stage: one of {draft, essay, evaluation}
+    - replicates: int >= 1
+
+    Returns a mapping {stage: replicates} or None if the file is missing/empty.
+    Invalid rows are ignored; at least one valid row is required to return a dict.
+    """
+    path = Path(data_root) / "1_raw" / "replication_config.csv"
+    if not path.exists():
+        return None
+    try:
+        df = read_csv_with_context(path)
+    except Exception:
+        return None
+    if df is None or df.empty:
+        return None
+    required = {"stage", "replicates"}
+    if not required.issubset(set(df.columns)):
+        return None
+    out: dict[str, int] = {}
+    from ..types import STAGES
+    valid_stages = set(STAGES)
+    for _, row in df.iterrows():
+        stg = str(row.get("stage") or "").strip()
+        reps = row.get("replicates")
+        try:
+            reps_i = int(reps)
+        except Exception:
+            continue
+        if stg in valid_stages and reps_i >= 1:
+            out[stg] = reps_i
+    return out or None
+
 def _read_templates(data_root: Path, filename: str, *, filter_active: bool = True) -> pd.DataFrame:
     base = Path(data_root) / "1_raw"
     csv_path = base / filename

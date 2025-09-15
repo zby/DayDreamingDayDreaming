@@ -18,6 +18,12 @@ def test_cohort_membership_curated_and_projection(tmp_path: Path, monkeypatch):
 
     # Minimal eval axes
     (data_root / "1_raw").mkdir(parents=True, exist_ok=True)
+    # Replication config required: set all stages to 1
+    pd.DataFrame([
+        {"stage": "draft", "replicates": 1},
+        {"stage": "essay", "replicates": 1},
+        {"stage": "evaluation", "replicates": 1},
+    ]).to_csv(data_root / "1_raw" / "replication_config.csv", index=False)
     pd.DataFrame([
         {"template_id": "eval-1", "active": True, "parser": "numeric_line"},
     ]).to_csv(data_root / "1_raw" / "evaluation_templates.csv", index=False)
@@ -87,6 +93,11 @@ def test_cohort_membership_missing_parent_fails(tmp_path: Path, monkeypatch):
     # Minimal eval axes
     (data_root / "1_raw").mkdir(parents=True, exist_ok=True)
     pd.DataFrame([
+        {"stage": "draft", "replicates": 1},
+        {"stage": "essay", "replicates": 1},
+        {"stage": "evaluation", "replicates": 1},
+    ]).to_csv(data_root / "1_raw" / "replication_config.csv", index=False)
+    pd.DataFrame([
         {"template_id": "eval-1", "active": True},
     ]).to_csv(data_root / "1_raw" / "evaluation_templates.csv", index=False)
     pd.DataFrame([
@@ -117,6 +128,11 @@ def test_evaluation_combo_id_matches_parent_essay(tmp_path: Path):
     data_root = tmp_path
     # Minimal eval axes: one eval template, one eval model
     (data_root / "1_raw").mkdir(parents=True, exist_ok=True)
+    pd.DataFrame([
+        {"stage": "draft", "replicates": 1},
+        {"stage": "essay", "replicates": 1},
+        {"stage": "evaluation", "replicates": 1},
+    ]).to_csv(data_root / "1_raw" / "replication_config.csv", index=False)
     pd.DataFrame([
         {"template_id": "eval-1", "active": True},
     ]).to_csv(data_root / "1_raw" / "evaluation_templates.csv", index=False)

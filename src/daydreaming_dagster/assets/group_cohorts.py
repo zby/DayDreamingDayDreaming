@@ -19,6 +19,7 @@ from ..utils.raw_readers import (
     read_concepts,
     read_templates,
     read_llm_models,
+    read_replication_config,
 )
 from ..models import ContentCombination
 from daydreaming_dagster.models.content_combination import generate_combo_id
@@ -107,6 +108,14 @@ def cohort_membership(
     #   stage, gen_id, cohort_id, parent_gen_id, combo_id, template_id, llm_model_id, replicate (int, optional; default 1)
     rows: List[Dict] = []
 
+    # Replication config: required and authoritative
+    rep_cfg = read_replication_config(data_root)
+    if not isinstance(rep_cfg, dict):
+        raise ValueError("replication_config.csv missing or unreadable; expected per-stage 'replicates' values")
+    for _st in ("draft", "essay", "evaluation"):
+        if _st not in rep_cfg or not isinstance(rep_cfg.get(_st), int) or rep_cfg.get(_st, 0) < 1:
+            raise ValueError("replication_config.csv must define integer replicates>=1 for stages: draft, essay, evaluation")
+
     if selected_essays:
         # Curated mode — rebuild tasks from prior gens metadata and compute cohort-scoped ids
         for essay_src_id in selected_essays:
@@ -164,7 +173,7 @@ def cohort_membership(
             )
 
             # Essay rows (replicates allowed in curated mode)
-            essay_reps = int(getattr(getattr(context.resources, "experiment_config", object()), "essay_replicates", 1) or 1)
+            essay_reps = int(rep_cfg.get("essay"))
             for er in range(1, essay_reps + 1):
                 # Salt only when needed
                 salt = f"rep{er}" if essay_reps > 1 else None
@@ -197,8 +206,8 @@ def cohort_membership(
         if not sel_df.empty and "combo_id" in sel_df.columns:
             combo_ids = sel_df["combo_id"].astype(str).dropna().unique().tolist()
 
-        draft_reps = int(getattr(getattr(context.resources, "experiment_config", object()), "draft_replicates", 1) or 1)
-        essay_reps = int(getattr(getattr(context.resources, "experiment_config", object()), "essay_replicates", 1) or 1)
+        draft_reps = int(rep_cfg.get("draft"))
+        essay_reps = int(rep_cfg.get("essay"))
         for combo_id in combo_ids:
             for _, trow in dtpl_df.iterrows():
                 draft_tpl = str(trow["template_id"])
@@ -264,7 +273,7 @@ def cohort_membership(
             str(r["gen_id"]): str(r.get("combo_id") or "") for r in rows if r.get("stage") == "essay"
         }
         # Replication factor for evaluations
-        eval_reps = int(getattr(getattr(context.resources, "experiment_config", object()), "evaluation_replicates", 1) or 1)
+        eval_reps = int(rep_cfg.get("evaluation"))
         for essay_gen_id in essay_ids:
             for tpl in eval_tpl_ids:
                 for mid in eval_model_ids:
