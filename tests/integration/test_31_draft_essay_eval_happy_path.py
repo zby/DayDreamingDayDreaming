@@ -5,7 +5,7 @@ import pytest
 
 from daydreaming_dagster.unified.stage_services import render_template, execute_llm
 from daydreaming_dagster.unified.stage_services import draft_response_asset as draft_response_impl
-from daydreaming_dagster.assets.group_generation_essays import _essay_response_impl as essay_response_impl
+from daydreaming_dagster.unified.stage_services import essay_response_asset as essay_response_impl
 from daydreaming_dagster.assets.group_evaluation import evaluation_response
 from daydreaming_dagster.resources.experiment_config import ExperimentConfig
 from dagster import build_op_context

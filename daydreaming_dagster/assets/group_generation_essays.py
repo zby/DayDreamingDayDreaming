@@ -39,7 +39,3 @@ def essay_response(context, essay_prompt) -> str:
     """
     return essay_response_asset(context, essay_prompt)
 
-
-# Backcompat for tests that import the internal implementation
-def _essay_response_impl(context, essay_prompt) -> str:  # pragma: no cover - test shim
-    return essay_response_asset(context, essay_prompt)

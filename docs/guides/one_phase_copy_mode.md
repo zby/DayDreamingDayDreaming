@@ -34,7 +34,7 @@ Notes and gotchas
 
 Where it’s enforced in code
 - Essay generator mode resolution: `daydreaming_dagster/assets/_helpers.py::resolve_essay_generator_mode`
-- Essay copy path: `daydreaming_dagster/assets/group_generation_essays.py::_essay_response_impl` (mode == `copy`)
+- Essay copy path: `daydreaming_dagster/unified/stage_responses.py::essay_response_asset` (mode == `copy`)
 - Cohort Cartesian expansion: `daydreaming_dagster/assets/group_cohorts.py::cohort_membership`
 
 Design discussion: mixing one‑phase and two‑phase
@@ -43,4 +43,3 @@ Design discussion: mixing one‑phase and two‑phase
   - Separate cohorts per mode (e.g., `cohort-2025-09-11-copy` vs `cohort-2025-09-11-llm`).
   - Or use curated mode to pick only the essays you want to evaluate together.
   - If you need strict pairing, consider tagging templates into families and adding a lightweight join rule in `cohort_membership` (not implemented by default) to pair only within a family.
-

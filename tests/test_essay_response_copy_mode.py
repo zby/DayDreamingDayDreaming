@@ -1,7 +1,7 @@
 import pandas as pd
 from pathlib import Path
 
-from daydreaming_dagster.assets.group_generation_essays import _essay_response_impl as essay_response_impl
+from daydreaming_dagster.unified.stage_services import essay_response_asset as essay_response_impl
 from daydreaming_dagster.resources.experiment_config import ExperimentConfig
 
 
