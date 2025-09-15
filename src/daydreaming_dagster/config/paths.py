@@ -35,6 +35,14 @@ class Paths:
 
     data_root: Path
 
+    def __post_init__(self):
+        if self.data_root is None or str(self.data_root).strip() == "":
+            raise ValueError("Paths requires a non-empty data_root")
+        root_path = Path(self.data_root)
+        if not root_path.is_absolute():
+            root_path = root_path.resolve()
+        object.__setattr__(self, "data_root", root_path)
+
     # --- Core directories ---
     @property
     def gens_root(self) -> Path:
@@ -137,8 +145,10 @@ class Paths:
     # --- Constructors ---
     @classmethod
     def from_context(cls, context) -> "Paths":
-        dr = Path(getattr(getattr(context, "resources", object()), "data_root", "data"))
-        return cls(dr)
+        resources = getattr(context, "resources", None)
+        if resources is None or not hasattr(resources, "data_root"):
+            raise ValueError("Paths.from_context requires context.resources.data_root")
+        return cls(Path(getattr(resources, "data_root")))
 
     @classmethod
     def from_str(cls, data_root: str | os.PathLike[str]) -> "Paths":
