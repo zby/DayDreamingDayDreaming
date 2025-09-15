@@ -7,6 +7,7 @@ from daydreaming_dagster.resources.llm_client import LLMClientResource
 from dagster import ConfigurableResource
 import tempfile
 from pathlib import Path
+import types
 
 import os
 
@@ -158,6 +159,60 @@ def small_test_data():
 
 
 # ------------------------------
+
+@pytest.fixture
+def make_ctx():
+    """Factory for a minimal Dagster-like context object.
+
+    Usage: ctx = make_ctx(partition_key, data_root, llm=..., min_draft_lines=3, membership_service=...)
+    Provides:
+      - context.partition_key
+      - context.run.run_id (for metadata)
+      - context.log.info (no-op)
+      - context.resources with data_root, experiment_config, openrouter_client, optional membership_service
+      - context.add_output_metadata(md) (no-op by default)
+    """
+
+    def _make(
+        partition_key: str,
+        data_root: Path,
+        *,
+        llm=None,
+        exp_config=None,
+        min_draft_lines: int | None = None,
+        membership_service=None,
+        run_id: str = "RUNTEST",
+    ):
+        class _Log:
+            def info(self, *_args, **_kwargs):
+                return None
+
+        class _Ctx:
+            def __init__(self):
+                self.partition_key = partition_key
+                self.log = _Log()
+                self.run = types.SimpleNamespace(run_id=run_id)
+                self.resources = types.SimpleNamespace()
+                self.resources.data_root = str(data_root)
+                # Lazy import to avoid heavy imports during collection
+                if exp_config is not None:
+                    self.resources.experiment_config = exp_config
+                else:
+                    from daydreaming_dagster.resources.experiment_config import ExperimentConfig
+
+                    md = 3 if min_draft_lines is None else int(min_draft_lines)
+                    self.resources.experiment_config = ExperimentConfig(min_draft_lines=md)
+                if llm is not None:
+                    self.resources.openrouter_client = llm
+                if membership_service is not None:
+                    self.resources.membership_service = membership_service
+
+            def add_output_metadata(self, _md: dict):
+                return None
+
+        return _Ctx()
+
+    return _make
 # Helper-style integration support
 # ------------------------------
 

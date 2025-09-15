@@ -15,29 +15,7 @@ from tests.helpers.membership import write_membership_csv
 pytestmark = pytest.mark.integration
 
 
-class _Log:
-    def info(self, *_args, **_kwargs):
-        pass
-
-
-class _Ctx:
-    """Minimal Dagster-like context for calling asset impls directly."""
-
-    def __init__(self, partition_key: str, data_root: Path, llm):
-        class _Res:
-            pass
-
-        self.partition_key = partition_key
-        self.log = _Log()
-        self._output_md = {}
-        self.resources = _Res()
-        self.resources.data_root = str(data_root)
-        self.resources.openrouter_client = llm
-        self.resources.experiment_config = ExperimentConfig(min_draft_lines=3)
-
-    def add_output_metadata(self, md: dict):
-        # Store last write for inspection if needed
-        self._output_md = md
+"""Integration happy-path test for draft → essay → evaluation chain."""
 
 
 def _write_membership(data_root: Path, rows: list[dict]):
@@ -48,7 +26,7 @@ def _read_json(p: Path) -> dict:
     return json.loads(p.read_text(encoding="utf-8"))
 
 
-def test_happy_path_draft_essay_eval_chain(tiny_data_root: Path, mock_llm, canon_meta):
+def test_happy_path_draft_essay_eval_chain(tiny_data_root: Path, mock_llm, canon_meta, make_ctx):
     import os
     # Arrange membership rows (one draft -> one essay(llm) -> one evaluation)
     draft_id = "d1"
@@ -94,14 +72,14 @@ def test_happy_path_draft_essay_eval_chain(tiny_data_root: Path, mock_llm, canon
             body = "<essay>LineA\nLineB\nLineC</essay>\nSCORE: 7.0"
             return body, {"finish_reason": "stop", "truncated": False, "usage": {}}
 
-    dctx = _Ctx(draft_id, tiny_data_root, _TaggedLLM())
+    dctx = make_ctx(draft_id, tiny_data_root, llm=_TaggedLLM(), min_draft_lines=3)
     _ = draft_response_impl(dctx, draft_prompt_text)
 
     # Ensure templates_root resolves templates from tiny_data_root
     os.environ["GEN_TEMPLATES_ROOT"] = str(tiny_data_root / "1_raw" / "templates")
 
     # Essay (LLM mode): implement uses CSV to resolve mode and loads draft parsed text
-    ectx = _Ctx(essay_id, tiny_data_root, mock_llm)
+    ectx = make_ctx(essay_id, tiny_data_root, llm=mock_llm, min_draft_lines=3)
     _ = essay_response_impl(ectx, essay_prompt="ok")
 
     # Evaluation: run via stage_services directly

@@ -12,25 +12,7 @@ from tests.helpers.membership import write_membership_csv
 pytestmark = pytest.mark.integration
 
 
-class _Log:
-    def info(self, *_args, **_kwargs):
-        pass
-
-
-class _Ctx:
-    def __init__(self, partition_key: str, data_root: Path, llm):
-        class _Res:
-            pass
-
-        self.partition_key = partition_key
-        self.log = _Log()
-        self.resources = _Res()
-        self.resources.data_root = str(data_root)
-        self.resources.openrouter_client = llm
-        self.resources.experiment_config = ExperimentConfig(min_draft_lines=3)
-
-    def add_output_metadata(self, _md: dict):
-        pass
+"""Integration test: draft truncation failure records truncated flag + raw/metadata."""
 
 
 def _write_membership(data_root: Path, rows: list[dict]):
@@ -38,7 +20,7 @@ def _write_membership(data_root: Path, rows: list[dict]):
 
 
 @pytest.mark.llm_cfg(lines=3, truncated=True)
-def test_draft_truncation_failure_writes_debug_then_raises(tiny_data_root: Path, mock_llm, canon_meta):
+def test_draft_truncation_failure_writes_debug_then_raises(tiny_data_root: Path, mock_llm, canon_meta, make_ctx):
     draft_id = "d-trunc"
     _write_membership(
         tiny_data_root,
@@ -57,7 +39,7 @@ def test_draft_truncation_failure_writes_debug_then_raises(tiny_data_root: Path,
         templates_root=tiny_data_root / "1_raw" / "templates",
     )
 
-    ctx = _Ctx(draft_id, tiny_data_root, mock_llm)
+    ctx = make_ctx(draft_id, tiny_data_root, llm=mock_llm, min_draft_lines=3)
     with pytest.raises(Exception):
         _ = draft_response_impl(ctx, prompt)
 

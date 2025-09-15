@@ -11,32 +11,14 @@ from tests.helpers.membership import write_membership_csv
 pytestmark = pytest.mark.integration
 
 
-class _Log:
-    def info(self, *_args, **_kwargs):
-        pass
-
-
-class _Ctx:
-    def __init__(self, partition_key: str, data_root: Path, llm=None):
-        class _Res:
-            pass
-
-        self.partition_key = partition_key
-        self.log = _Log()
-        self.resources = _Res()
-        self.resources.data_root = str(data_root)
-        self.resources.openrouter_client = llm  # unused in copy mode
-        self.resources.experiment_config = ExperimentConfig(min_draft_lines=1)
-
-    def add_output_metadata(self, _md: dict):
-        pass
+"""Integration test: essay copy-mode writes only parsed + metadata."""
 
 
 def _write_membership(data_root: Path, rows: list[dict]):
     write_membership_csv(data_root, rows)
 
 
-def test_essay_copy_mode_writes_only_parsed_and_metadata(tiny_data_root: Path):
+def test_essay_copy_mode_writes_only_parsed_and_metadata(tiny_data_root: Path, make_ctx):
     # Prepare parent draft parsed text
     parent_draft_id = "d-copy"
     draft_dir = tiny_data_root / "gens" / "draft" / parent_draft_id
@@ -65,7 +47,7 @@ def test_essay_copy_mode_writes_only_parsed_and_metadata(tiny_data_root: Path):
     )
 
     # Call impl directly in copy mode (resolved via CSV, not override)
-    ctx = _Ctx(essay_id, tiny_data_root)
+    ctx = make_ctx(essay_id, tiny_data_root, min_draft_lines=1)
     _ = essay_response_impl(ctx, essay_prompt="irrelevant")
 
     # Assert only parsed.txt and metadata.json exist
