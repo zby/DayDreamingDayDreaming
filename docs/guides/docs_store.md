@@ -35,16 +35,19 @@ Each `metadata.json` should include at least:
 
 ## Programmatic Access
 
-Preferred: use `load_generation` to read from the gens store.
+Prefer the centralized `Paths` helpers for building paths and use `load_generation` to read documents:
 
-Example:
 ```python
-from pathlib import Path
+from daydreaming_dagster.config.paths import Paths
 from daydreaming_dagster.utils.generation import load_generation
 
-gens_root = Path("data") / "gens"
+paths = Paths.from_str("data")
+gens_root = paths.gens_root
 gen = load_generation(gens_root, "essay", "abc123xyz")
-text = gen["parsed_text"]  # or gen["raw_text"] / gen["prompt_text"] / gen["metadata"]
+parsed = gen["parsed_text"]  # or gen["raw_text"] / gen["prompt_text"] / gen["metadata"]
+
+# Or address files directly via Paths (single source of truth):
+print(paths.parsed_path("essay", "abc123xyz"))
 ```
 
 ## Troubleshooting
@@ -60,4 +63,5 @@ text = gen["parsed_text"]  # or gen["raw_text"] / gen["prompt_text"] / gen["meta
 ## Notes
 
 - Optional RAW side-writes under `data/3_generation/*_raw/` can be enabled in `ExperimentConfig` for debugging.
+- Single source of truth for the filesystem layout: `src/daydreaming_dagster/config/paths.py`.
 - The pipeline no longer depends on a SQLite index; the filesystem layout is the source of truth.
