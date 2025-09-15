@@ -28,59 +28,7 @@ def get_run_id(context) -> Optional[str]:
     return str(rid) if rid else None
 
 
-def require_membership_row(
-    context,
-    stage: Stage,
-    gen_id: str,
-    *,
-    require_columns: Iterable[str] = (),
-) -> Tuple[pd.Series, Optional[str]]:
-    """Backcompat wrapper: prefer MembershipServiceResource.require_row when available.
-
-    Falls back to scanning membership.csv files directly when the resource is not provided
-    (e.g., unit tests or minimal contexts).
-    """
-    data_root = Paths.from_context(context).data_root
-    svc = getattr(getattr(context, "resources", object()), "membership_service", None)
-    if svc and hasattr(svc, "require_row"):
-        return svc.require_row(data_root, stage, str(gen_id), require_columns=list(require_columns or ()))
-
-    row, cohort_id = find_membership_row_by_gen(data_root, stage, str(gen_id))
-    if row is None:
-        raise Failure(
-            description="Membership row not found for generation",
-            metadata={
-                "function": MetadataValue.text("require_membership_row"),
-                "stage": MetadataValue.text(str(stage)),
-                "gen_id": MetadataValue.text(str(gen_id)),
-                "resolution": MetadataValue.text(
-                    "Ensure data/cohorts/*/membership.csv contains this stage/gen_id"
-                ),
-            },
-        )
-    missing: list[str] = []
-    for c in list(require_columns or ()):  # normalize Iterable -> list
-        if c not in row.index:
-            missing.append(str(c))
-        else:
-            val = row.get(c)
-            # Treat None, empty string, and NaN as missing
-            if val is None or (isinstance(val, str) and not val.strip()) or (pd.isna(val)):
-                missing.append(str(c))
-    if missing:
-        raise Failure(
-            description="Membership row missing required columns (missing_columns)",
-            metadata={
-                "function": MetadataValue.text("require_membership_row"),
-                "stage": MetadataValue.text(str(stage)),
-                "gen_id": MetadataValue.text(str(gen_id)),
-                "missing_columns": MetadataValue.json(missing),
-                "resolution": MetadataValue.text(
-                    "Populate required fields in cohort membership (e.g., llm_model_id, template_id)"
-                ),
-            },
-        )
-    return row, cohort_id
+## require_membership_row removed — use MembershipServiceResource.require_row instead
 
 
 def load_generation_parsed_text(
@@ -128,12 +76,10 @@ def load_parent_parsed_text(
     (parent_gen_id, parent_parsed_text). Raises Failure with helpful metadata
     if the membership row or files are missing.
     """
-    row, _cohort = require_membership_row(
-        context,
-        stage,
-        str(gen_id),
-        require_columns=["parent_gen_id"],
-    )
+    from daydreaming_dagster.resources.membership_service import MembershipServiceResource
+    paths = Paths.from_context(context)
+    svc = getattr(getattr(context, "resources", object()), "membership_service", None) or MembershipServiceResource()
+    row, _cohort = svc.require_row(paths.data_root, stage, str(gen_id), require_columns=["parent_gen_id"])
     parent_gen_id = str(row.get("parent_gen_id") or "").strip()
     if not parent_gen_id:
         raise Failure(
@@ -262,7 +208,6 @@ ExecutionResultLike = Any
 __all__ = [
     "Stage",
     "get_run_id",
-    "require_membership_row",
     "load_generation_parsed_text",
     "load_parent_parsed_text",
     "build_prompt_metadata",

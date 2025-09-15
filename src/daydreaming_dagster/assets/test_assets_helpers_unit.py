@@ -8,10 +8,10 @@ import pytest
 from dagster import Failure
 
 from daydreaming_dagster.assets._helpers import (
-    require_membership_row,
     load_generation_parsed_text,
     emit_standard_output_metadata,
 )
+from daydreaming_dagster.resources.membership_service import MembershipServiceResource
 from daydreaming_dagster.unified.stage_policy import resolve_generator_mode
 
 
@@ -43,12 +43,12 @@ def test_require_membership_row_success_and_missing(tmp_path: Path):
             "draft,D1,t,m,",
         ],
     )
-    ctx = _Ctx(tmp_path)
-    row, cohort = require_membership_row(ctx, "draft", "D1")
+    svc = MembershipServiceResource()
+    row, cohort = svc.require_row(tmp_path, "draft", "D1")
     assert row.get("template_id") == "t"
     assert cohort == "C1"
     with pytest.raises(Failure):
-        require_membership_row(ctx, "essay", "E404")
+        svc.require_row(tmp_path, "essay", "E404")
 
 
 def test_require_membership_row_missing_required_columns(tmp_path: Path):
@@ -59,9 +59,9 @@ def test_require_membership_row_missing_required_columns(tmp_path: Path):
             "essay,E1,t,,D1",
         ],
     )
-    ctx = _Ctx(tmp_path)
+    svc = MembershipServiceResource()
     with pytest.raises(Failure) as ei:
-        require_membership_row(ctx, "essay", "E1", require_columns=["llm_model_id"])  # empty
+        svc.require_row(tmp_path, "essay", "E1", require_columns=["llm_model_id"])  # empty
     assert "missing_columns" in str(ei.value)
 
 

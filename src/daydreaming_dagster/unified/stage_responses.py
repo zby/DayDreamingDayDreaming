@@ -21,13 +21,12 @@ def response_asset(context, prompt_text, stage: Stage) -> str:
     paths = Paths.from_context(context)
     data_root = paths.data_root
     spec = get_stage_spec(stage)
-    # DI-first: use injected membership service when available; fall back to helper
+    # DI-first: use injected membership service when available; otherwise create one on the fly
     svc = getattr(getattr(context, "resources", object()), "membership_service", None)
-    if svc and hasattr(svc, "require_row"):
-        row, cohort = svc.require_row(data_root, stage, str(gen_id), require_columns=spec.response_fields)
-    else:
-        from daydreaming_dagster.assets._helpers import require_membership_row
-        row, cohort = require_membership_row(context, stage, str(gen_id), require_columns=spec.response_fields)
+    if not (svc and hasattr(svc, "require_row")):
+        from daydreaming_dagster.resources.membership_service import MembershipServiceResource
+        svc = MembershipServiceResource()
+    row, cohort = svc.require_row(data_root, stage, str(gen_id), require_columns=spec.response_fields)
     mf = read_membership_fields(row)
     try:
         mode = resolve_generator_mode(kind=stage, data_root=data_root, template_id=mf.template_id)
