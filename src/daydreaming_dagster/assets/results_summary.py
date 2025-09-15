@@ -312,61 +312,36 @@ def perfect_score_paths(context, aggregated_scores: pd.DataFrame) -> pd.DataFram
     Generate a file with paths to all responses that received perfect scores (10.0).
     Includes both generation and evaluation response paths for analysis.
     """
-    # Filter for perfect scores only
-    perfect_scores = aggregated_scores[
-        (aggregated_scores['score'] == 10.0) & 
-        (aggregated_scores['error'].isna())
-    ].copy()
+    # Filter for perfect scores only (use centralized filter first)
+    valid = filter_valid_scores(aggregated_scores)
+    perfect_scores = valid[valid['score'] == 10.0].copy()
     
     if perfect_scores.empty:
         context.log.warning("No perfect scores found")
         return pd.DataFrame(columns=[
             'combo_id', 'generation_template', 'generation_model', 
-            'evaluation_model', 'score',
+            'evaluation_llm_model', 'score',
             'generation_response_path', 'evaluation_response_path'
         ])
     
-    # Reconstruct file paths for each perfect score
-    paths_data = []
-    
-    paths = Paths.from_context(context)
-    for _, row in perfect_scores.iterrows():
-        # Generation path: prefer parsed 'generation_response_path'; else derive from gens store by parent_gen_id
-        generation_path = None
-        if isinstance(row.get('generation_response_path'), str) and row['generation_response_path']:
-            generation_path = row['generation_response_path']
-        else:
-            parent_essay_id = row.get('parent_gen_id') if 'parent_gen_id' in row else None
-            if isinstance(parent_essay_id, str) and parent_essay_id:
-                generation_path = str(paths.parsed_path("essay", parent_essay_id).resolve())
-            else:
-                # Strict: no legacy path reconstruction
-                raise ValueError("Missing generation_response_path and parent_gen_id for perfect score row")
+    # Require expected columns from the aggregator output
+    required_cols = {
+        'combo_id', 'generation_template', 'generation_model', 'evaluation_llm_model',
+        'score', 'generation_response_path', 'evaluation_response_path'
+    }
+    missing = [c for c in required_cols if c not in perfect_scores.columns]
+    if missing:
+        raise ValueError(f"aggregated_scores missing required columns: {missing}")
 
-        # Evaluation path: prefer parsed column; else derive from gens store by evaluation gen_id
-        eval_path_val = row.get('evaluation_response_path') if 'evaluation_response_path' in row else None
-        if isinstance(eval_path_val, str) and eval_path_val:
-            evaluation_path = eval_path_val
-        else:
-            eval_gid = row.get('gen_id') if 'gen_id' in row else None
-            if isinstance(eval_gid, str) and eval_gid:
-                evaluation_path = str(paths.parsed_path("evaluation", eval_gid).resolve())
-            else:
-                # Strict: no legacy path reconstruction
-                raise ValueError("Missing evaluation_response_path and evaluation gen_id for perfect score row")
-        
-        paths_data.append({
-            'combo_id': row['combo_id'],
-            'generation_template': row['generation_template'],
-            'generation_model': row['generation_model'],
-            'evaluation_llm_model': row['evaluation_llm_model'],
-            'score': row['score'],
-            'generation_response_path': generation_path,
-            'evaluation_response_path': evaluation_path,
-            'notes': f"Perfect score from {row['generation_model']} generation + {row['evaluation_llm_model']} evaluation"
-        })
-    
-    result_df = pd.DataFrame(paths_data)
+    result_df = perfect_scores[[
+        'combo_id', 'generation_template', 'generation_model',
+        'evaluation_llm_model', 'score',
+        'generation_response_path', 'evaluation_response_path'
+    ]].copy()
+    # Optional notes for human readers
+    result_df['notes'] = (
+        "Perfect score from " + result_df['generation_model'] + " generation + " + result_df['evaluation_llm_model'] + " evaluation"
+    )
     
     context.log.info(f"Found {len(result_df)} perfect score responses")
     context.log.info(f"Perfect scores by evaluator: {perfect_scores['evaluation_llm_model'].value_counts().to_dict()}")
