@@ -43,13 +43,12 @@ def test_response_asset_includes_cohort_id_in_metadata(monkeypatch, tmp_path, mo
     import daydreaming_dagster.assets._helpers as helpers
     monkeypatch.setattr(helpers, "get_data_root", lambda _c: tmp_path)
 
-    # Membership row + cohort
+    # Membership row + cohort via injected service on context
     row = {"template_id": "tpl1", "parent_gen_id": "D1", "llm_model_id": "m1"}
-    monkeypatch.setattr(
-        helpers,
-        "require_membership_row",
-        lambda _c, _stage, _gid, require_columns=None: (row, "C1"),
+    svc = types.SimpleNamespace(
+        require_row=lambda data_root, stage, gid, require_columns=None: (row, "C1")
     )
+    setattr(ctx.resources, "membership_service", svc)
 
     # Resolve generator mode
     # Patch resolver at the call site (stage_responses imports it directly)

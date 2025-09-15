@@ -15,6 +15,7 @@ from ..unified.stage_services import prompt_asset, draft_response_asset
     partitions_def=draft_gens_partitions,
     group_name="generation_draft",
     io_manager_key="draft_prompt_io_manager",
+    required_resource_keys={"membership_service"},
 )
 def draft_prompt(context, content_combinations) -> str:
     """Dagster asset wrapper for draft prompt.
@@ -29,7 +30,7 @@ def draft_prompt(context, content_combinations) -> str:
     partitions_def=draft_gens_partitions,
     group_name="generation_draft",
     io_manager_key="draft_response_io_manager",
-    required_resource_keys={"openrouter_client", "experiment_config", "data_root"},
+    required_resource_keys={"openrouter_client", "experiment_config", "data_root", "membership_service"},
 )
 def draft_response(context, draft_prompt) -> str:
     """Dagster asset wrapper for draft response.
@@ -37,4 +38,3 @@ def draft_response(context, draft_prompt) -> str:
     Delegates to unified.stage_services.draft_response_asset.
     """
     return draft_response_asset(context, draft_prompt)
-

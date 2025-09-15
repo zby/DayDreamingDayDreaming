@@ -14,14 +14,15 @@ from .stage_policy import (
 def prompt_asset(context, stage: Stage, *, content_combinations=None) -> str:
     gen_id = context.partition_key
     from daydreaming_dagster.assets._helpers import (
-        require_membership_row,
         load_parent_parsed_text,
         build_prompt_metadata,
     )
     paths = Paths.from_context(context)
     data_root = paths.data_root
     spec = get_stage_spec(stage)
-    row, _cohort = require_membership_row(context, stage, str(gen_id), require_columns=spec.prompt_fields)
+    row, _cohort = context.resources.membership_service.require_row(
+        data_root, stage, str(gen_id), require_columns=spec.prompt_fields
+    )
     mf = read_membership_fields(row)
     mode = resolve_generator_mode(kind=stage, data_root=data_root, template_id=mf.template_id)
 

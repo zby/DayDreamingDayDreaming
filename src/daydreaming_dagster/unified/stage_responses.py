@@ -14,14 +14,15 @@ def response_asset(context, prompt_text, stage: Stage) -> str:
         raise ValueError(f"Upstream {stage}_prompt is missing or empty")
 
     from daydreaming_dagster.assets._helpers import (
-        require_membership_row,
         emit_standard_output_metadata,
         get_run_id,
     )
     paths = Paths.from_context(context)
     data_root = paths.data_root
     spec = get_stage_spec(stage)
-    row, cohort = require_membership_row(context, stage, str(gen_id), require_columns=spec.response_fields)
+    row, cohort = context.resources.membership_service.require_row(
+        data_root, stage, str(gen_id), require_columns=spec.response_fields
+    )
     mf = read_membership_fields(row)
     mode = resolve_generator_mode(kind=stage, data_root=data_root, template_id=mf.template_id)
     envelope = GenerationEnvelope(stage=stage, gen_id=str(gen_id), template_id=mf.template_id, parent_gen_id=mf.parent_gen_id, llm_model_id=mf.llm_model_id, mode=mode)
