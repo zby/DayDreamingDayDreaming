@@ -15,8 +15,10 @@ from .stage_core import generate_llm
 class RawGenerationResult:
     """Structured output for raw generation assets."""
 
+    stage: str
+    gen_id: str
+    data_root: Path
     raw_text: str
-    raw_path: Path
     main_metadata_path: Path
     raw_metadata: Dict[str, Any]
 
@@ -75,7 +77,6 @@ def perform_llm_raw_generation(
     """Invoke an LLM and persist raw artifacts for a generation stage."""
 
     paths = Paths.from_str(data_root)
-    raw_path = paths.raw_path(stage, gen_id)
     main_metadata_path = paths.metadata_path(stage, gen_id)
     raw_metadata_path = paths.raw_metadata_path(stage, gen_id)
 
@@ -103,8 +104,10 @@ def perform_llm_raw_generation(
     _write_raw_metadata(raw_metadata_path, raw_metadata)
 
     return RawGenerationResult(
+        stage=stage,
+        gen_id=gen_id,
+        data_root=paths.data_root,
         raw_text=raw_text,
-        raw_path=raw_path,
         main_metadata_path=main_metadata_path,
         raw_metadata=raw_metadata,
     )
@@ -115,21 +118,16 @@ def perform_copy_raw_generation(
     stage: str,
     data_root: Path,
     gen_id: str,
-    source_stage: str,
-    source_gen_id: str,
+    copy_text: str,
     metadata_extras: Optional[Dict[str, Any]] = None,
 ) -> RawGenerationResult:
-    """Copy upstream parsed text into the raw slot for copy-mode stages."""
+    """Persist provided copy-mode text as the raw artifact."""
 
     paths = Paths.from_str(data_root)
-    raw_path = paths.raw_path(stage, gen_id)
     main_metadata_path = paths.metadata_path(stage, gen_id)
     raw_metadata_path = paths.raw_metadata_path(stage, gen_id)
 
-    source_path = paths.parsed_path(source_stage, source_gen_id)
-    raw_text = source_path.read_text(encoding="utf-8") if source_path.exists() else ""
-
-    write_gen_raw(paths.gens_root, stage, gen_id, raw_text)
+    write_gen_raw(paths.gens_root, stage, gen_id, copy_text)
 
     raw_metadata = _build_raw_metadata(
         stage=stage,
@@ -140,13 +138,15 @@ def perform_copy_raw_generation(
         finish_reason="copy",
         truncated=False,
         usage=None,
-        extras={"copied_from": str(source_path), **(metadata_extras or {})},
+        extras=metadata_extras,
     )
     _write_raw_metadata(raw_metadata_path, raw_metadata)
 
     return RawGenerationResult(
-        raw_text=raw_text,
-        raw_path=raw_path,
+        stage=stage,
+        gen_id=gen_id,
+        data_root=paths.data_root,
+        raw_text=copy_text,
         main_metadata_path=main_metadata_path,
         raw_metadata=raw_metadata,
     )

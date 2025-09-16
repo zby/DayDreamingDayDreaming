@@ -40,9 +40,12 @@ def test_perform_llm_raw_generation(tmp_path: Path):
     )
 
     assert isinstance(result, RawGenerationResult)
-    assert result.raw_path.read_text(encoding="utf-8") == "hello world"
+    assert result.stage == "draft"
+    assert result.gen_id == "G1"
+    raw_path = Path(tmp_path, "gens", "draft", "G1", "raw.txt")
+    assert raw_path.read_text(encoding="utf-8") == "hello world"
 
-    raw_meta_path = (tmp_path / "gens" / "draft" / "G1" / "raw_metadata.json")
+    raw_meta_path = tmp_path / "gens" / "draft" / "G1" / "raw_metadata.json"
     assert raw_meta_path.exists()
     raw_meta = json.loads(raw_meta_path.read_text(encoding="utf-8"))
     assert raw_meta["mode"] == "llm"
@@ -61,12 +64,14 @@ def test_perform_copy_raw_generation(tmp_path: Path):
         stage="evaluation",
         data_root=data_root,
         gen_id="EV1",
-        source_stage="essay",
-        source_gen_id="E1",
-        metadata_extras={"cohort_id": "C1"},
+        copy_text="Essay text",
+        metadata_extras={"cohort_id": "C1", "copied_from": str(source_file.resolve())},
     )
 
-    assert result.raw_path.read_text(encoding="utf-8") == "Essay text"
+    assert result.stage == "evaluation"
+    assert result.gen_id == "EV1"
+    raw_path = tmp_path / "gens" / "evaluation" / "EV1" / "raw.txt"
+    assert raw_path.read_text(encoding="utf-8") == "Essay text"
     raw_meta_path = tmp_path / "gens" / "evaluation" / "EV1" / "raw_metadata.json"
     raw_meta = json.loads(raw_meta_path.read_text(encoding="utf-8"))
     assert raw_meta["mode"] == "copy"

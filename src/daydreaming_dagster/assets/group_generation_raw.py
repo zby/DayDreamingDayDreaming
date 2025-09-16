@@ -73,8 +73,8 @@ def draft_raw(context, draft_prompt) -> RawGenerationResult:
     envelope = GenerationEnvelope(stage="draft", gen_id=str(context.partition_key), template_id=mf.template_id, parent_gen_id=mf.parent_gen_id, llm_model_id=mf.llm_model_id, mode=mode)
     envelope.validate(spec)
 
-    extras = {"function": "draft_raw", "run_id": get_run_id(context)}
-    extras.update(_raw_metadata_extras(cohort=cohort, replicate=replicate_val, combo_id=mf.combo_id))
+    base_extras = {"function": "draft_raw", "run_id": get_run_id(context)}
+    base_extras.update(_raw_metadata_extras(cohort=cohort, replicate=replicate_val, combo_id=mf.combo_id))
 
     max_tokens, _ = spec.tokens_and_min_lines(context)
 
@@ -82,15 +82,19 @@ def draft_raw(context, draft_prompt) -> RawGenerationResult:
         parent_stage = spec.parent_stage
         if not parent_stage or not envelope.parent_gen_id:
             raise Failure(description="draft copy-mode requires a valid parent_gen_id", metadata={"gen_id": MetadataValue.text(str(context.partition_key))})
+        copy_extras = dict(base_extras)
+        copy_extras["input_mode"] = "copy"
+        copy_extras["copied_from"] = str(paths.parsed_path(parent_stage, envelope.parent_gen_id).resolve())
         result = perform_copy_raw_generation(
             stage="draft",
             data_root=data_root,
             gen_id=str(context.partition_key),
-            source_stage=parent_stage,
-            source_gen_id=str(envelope.parent_gen_id),
-            metadata_extras=extras,
+            copy_text=str(draft_prompt or ""),
+            metadata_extras=copy_extras,
         )
     else:
+        llm_extras = dict(base_extras)
+        llm_extras["input_mode"] = "prompt"
         result = perform_llm_raw_generation(
             stage="draft",
             llm_client=context.resources.openrouter_client,
@@ -100,14 +104,15 @@ def draft_raw(context, draft_prompt) -> RawGenerationResult:
             prompt_text=str(draft_prompt),
             llm_model_id=envelope.llm_model_id,
             max_tokens=max_tokens,
-            metadata_extras=extras,
+            metadata_extras=llm_extras,
         )
 
+    raw_path = paths.raw_path("draft", str(context.partition_key))
     context.add_output_metadata(
         {
             "function": MetadataValue.text("draft_raw"),
             "gen_id": MetadataValue.text(str(context.partition_key)),
-            "raw_path": MetadataValue.path(str(result.raw_path)),
+            "raw_path": MetadataValue.path(str(raw_path)),
             "raw_metadata": MetadataValue.json(result.raw_metadata),
         }
     )
@@ -139,8 +144,8 @@ def essay_raw(context, essay_prompt) -> RawGenerationResult:
     envelope = GenerationEnvelope(stage="essay", gen_id=str(context.partition_key), template_id=mf.template_id, parent_gen_id=mf.parent_gen_id, llm_model_id=mf.llm_model_id, mode=mode)
     envelope.validate(spec)
 
-    extras = {"function": "essay_raw", "run_id": get_run_id(context)}
-    extras.update(_raw_metadata_extras(cohort=cohort, replicate=replicate_val, combo_id=mf.combo_id))
+    base_extras = {"function": "essay_raw", "run_id": get_run_id(context)}
+    base_extras.update(_raw_metadata_extras(cohort=cohort, replicate=replicate_val, combo_id=mf.combo_id))
 
     max_tokens, _ = spec.tokens_and_min_lines(context)
 
@@ -148,15 +153,19 @@ def essay_raw(context, essay_prompt) -> RawGenerationResult:
         parent_stage = spec.parent_stage
         if not parent_stage or not envelope.parent_gen_id:
             raise Failure(description="essay copy-mode requires a valid parent_gen_id", metadata={"gen_id": MetadataValue.text(str(context.partition_key))})
+        copy_extras = dict(base_extras)
+        copy_extras["input_mode"] = "copy"
+        copy_extras["copied_from"] = str(paths.parsed_path(parent_stage, envelope.parent_gen_id).resolve())
         result = perform_copy_raw_generation(
             stage="essay",
             data_root=data_root,
             gen_id=str(context.partition_key),
-            source_stage=parent_stage,
-            source_gen_id=str(envelope.parent_gen_id),
-            metadata_extras=extras,
+            copy_text=str(essay_prompt or ""),
+            metadata_extras=copy_extras,
         )
     else:
+        llm_extras = dict(base_extras)
+        llm_extras["input_mode"] = "prompt"
         result = perform_llm_raw_generation(
             stage="essay",
             llm_client=context.resources.openrouter_client,
@@ -166,14 +175,15 @@ def essay_raw(context, essay_prompt) -> RawGenerationResult:
             prompt_text=str(essay_prompt),
             llm_model_id=envelope.llm_model_id,
             max_tokens=max_tokens,
-            metadata_extras=extras,
+            metadata_extras=llm_extras,
         )
 
+    raw_path = paths.raw_path("essay", str(context.partition_key))
     context.add_output_metadata(
         {
             "function": MetadataValue.text("essay_raw"),
             "gen_id": MetadataValue.text(str(context.partition_key)),
-            "raw_path": MetadataValue.path(str(result.raw_path)),
+            "raw_path": MetadataValue.path(str(raw_path)),
             "raw_metadata": MetadataValue.json(result.raw_metadata),
         }
     )
@@ -205,8 +215,8 @@ def evaluation_raw(context, evaluation_prompt) -> RawGenerationResult:
     envelope = GenerationEnvelope(stage="evaluation", gen_id=str(context.partition_key), template_id=mf.template_id, parent_gen_id=mf.parent_gen_id, llm_model_id=mf.llm_model_id, mode=mode)
     envelope.validate(spec)
 
-    extras = {"function": "evaluation_raw", "run_id": get_run_id(context)}
-    extras.update(_raw_metadata_extras(cohort=cohort, replicate=replicate_val, combo_id=mf.combo_id))
+    base_extras = {"function": "evaluation_raw", "run_id": get_run_id(context)}
+    base_extras.update(_raw_metadata_extras(cohort=cohort, replicate=replicate_val, combo_id=mf.combo_id))
 
     max_tokens, _ = spec.tokens_and_min_lines(context)
 
@@ -214,15 +224,19 @@ def evaluation_raw(context, evaluation_prompt) -> RawGenerationResult:
         parent_stage = spec.parent_stage
         if not parent_stage or not envelope.parent_gen_id:
             raise Failure(description="evaluation copy-mode requires a valid parent_gen_id", metadata={"gen_id": MetadataValue.text(str(context.partition_key))})
+        copy_extras = dict(base_extras)
+        copy_extras["input_mode"] = "copy"
+        copy_extras["copied_from"] = str(paths.parsed_path(parent_stage, envelope.parent_gen_id).resolve())
         result = perform_copy_raw_generation(
             stage="evaluation",
             data_root=data_root,
             gen_id=str(context.partition_key),
-            source_stage=parent_stage,
-            source_gen_id=str(envelope.parent_gen_id),
-            metadata_extras=extras,
+            copy_text=str(evaluation_prompt or ""),
+            metadata_extras=copy_extras,
         )
     else:
+        llm_extras = dict(base_extras)
+        llm_extras["input_mode"] = "prompt"
         result = perform_llm_raw_generation(
             stage="evaluation",
             llm_client=context.resources.openrouter_client,
@@ -232,14 +246,15 @@ def evaluation_raw(context, evaluation_prompt) -> RawGenerationResult:
             prompt_text=str(evaluation_prompt),
             llm_model_id=envelope.llm_model_id,
             max_tokens=max_tokens,
-            metadata_extras=extras,
+            metadata_extras=llm_extras,
         )
 
+    raw_path = paths.raw_path("evaluation", str(context.partition_key))
     context.add_output_metadata(
         {
             "function": MetadataValue.text("evaluation_raw"),
             "gen_id": MetadataValue.text(str(context.partition_key)),
-            "raw_path": MetadataValue.path(str(result.raw_path)),
+            "raw_path": MetadataValue.path(str(raw_path)),
             "raw_metadata": MetadataValue.json(result.raw_metadata),
         }
     )

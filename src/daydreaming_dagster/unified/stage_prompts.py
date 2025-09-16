@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from typing import Optional
 
+from dagster import Failure, MetadataValue
+
 from .stage_core import Stage, render_template
 from daydreaming_dagster.config.paths import Paths
 from .stage_policy import (
@@ -30,9 +32,22 @@ def prompt_asset(context, stage: Stage, *, content_combinations=None) -> str:
     mode = resolve_generator_mode(kind=stage, data_root=data_root, template_id=mf.template_id)
 
     if mode == "copy":
-        extras = {}
-        if spec.parent_stage is not None:
-            extras["parent_gen_id"] = str(mf.parent_gen_id or "")
+        parent_stage = spec.parent_stage
+        parent_gen = str(mf.parent_gen_id or "").strip()
+        if not parent_stage or not parent_gen:
+            raise Failure(
+                description="COPY mode requires a valid parent_gen_id",
+                metadata={
+                    "stage": MetadataValue.text(str(stage)),
+                    "gen_id": MetadataValue.text(str(gen_id)),
+                },
+            )
+        parent_text = load_parent_parsed_text(context, parent_stage, parent_gen)
+        extras = {
+            "parent_gen_id": parent_gen,
+            "input_mode": "copy",
+            "copied_from": str(Paths.from_context(context).parsed_path(parent_stage, parent_gen).resolve()),
+        }
         if stage == "draft":
             extras["combo_id"] = str(mf.combo_id or "")
         context.add_output_metadata(
@@ -42,12 +57,12 @@ def prompt_asset(context, stage: Stage, *, content_combinations=None) -> str:
                 gen_id=str(gen_id),
                 template_id=mf.template_id,
                 mode=mode,
-                parent_gen_id=str(mf.parent_gen_id or "") if stage != "draft" else None,
-                prompt_text=None,
+                parent_gen_id=parent_gen if stage != "draft" else None,
+                prompt_text=parent_text,
                 extras=extras,
             )
         )
-        return "COPY_MODE: no prompt needed"
+        return parent_text
 
     values, extras, parent_gen_id = spec.build_prompt_values(context, str(gen_id), mf, content_combinations)
 
@@ -61,7 +76,7 @@ def prompt_asset(context, stage: Stage, *, content_combinations=None) -> str:
             mode="llm",
             parent_gen_id=str(parent_gen_id) if parent_gen_id else None,
             prompt_text=prompt,
-            extras=extras,
+            extras={"input_mode": "prompt", **extras},
         )
     )
     return prompt
