@@ -48,10 +48,10 @@ More examples and troubleshooting: docs/guides/operating_guide.md
 - Dynamic partitions: one `gen_id` per stage (draft, essay, evaluation).
 - Details: docs/architecture/architecture.md#storage-architecture
 
-Source of truth for storage conventions: `src/daydreaming_dagster/config/paths.py`.
+Source of truth for storage conventions: `src/daydreaming_dagster/data_layer/paths.py`.
 Example:
 ```
-from daydreaming_dagster.config.paths import Paths
+from daydreaming_dagster.data_layer.paths import Paths
 paths = Paths.from_str("data")
 base = paths.generation_dir("essay", "<gen_id>")
 print(paths.parsed_path("essay", "<gen_id>"))  # data/gens/essay/<gen_id>/parsed.txt
@@ -61,7 +61,7 @@ print(paths.parsed_path("essay", "<gen_id>"))  # data/gens/essay/<gen_id>/parsed
 - Tests: `.venv/bin/pytest` (unit in `daydreaming_dagster/`, integration in `tests/`).
 - Formatting: `uv run black .`; Lint: `uv run ruff check`.
 - Conventions and agent guidelines: AGENTS.md
-- Storage conventions (single source of truth): `src/daydreaming_dagster/config/paths.py`
+- Storage conventions (single source of truth): `src/daydreaming_dagster/data_layer/paths.py`
 
 ---
 For curated selection, cohorts, and advanced workflows, see:

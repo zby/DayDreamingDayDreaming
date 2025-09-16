@@ -38,7 +38,7 @@ Each `metadata.json` should include at least:
 Prefer the centralized `Paths` helpers for building paths and use `load_generation` to read documents:
 
 ```python
-from daydreaming_dagster.config.paths import Paths
+from daydreaming_dagster.data_layer.paths import Paths
 from daydreaming_dagster.utils.generation import load_generation
 
 paths = Paths.from_str("data")
@@ -63,7 +63,7 @@ print(paths.parsed_path("essay", "abc123xyz"))
 ## Notes
 
 - Optional RAW side-writes under `data/3_generation/*_raw/` can be enabled in `ExperimentConfig` for debugging.
-- Single source of truth for the filesystem layout: `src/daydreaming_dagster/config/paths.py`.
+- Single source of truth for the filesystem layout: `src/daydreaming_dagster/data_layer/paths.py`.
 
 ### Replicates
 

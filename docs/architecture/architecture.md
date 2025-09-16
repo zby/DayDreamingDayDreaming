@@ -188,7 +188,7 @@ data/1_raw/templates/
 The Unified Stage Runner is a single, stage‑agnostic execution path used by generation and evaluation assets to render templates, call the LLM when needed, parse outputs, and persist artifacts in the gens store.
 
 - Purpose: consolidate prompt rendering, LLM invocation, parsing, and I/O across `draft`, `essay`, and `evaluation` stages.
-- Template resolution: by `template_id` under `data/1_raw/templates/{draft,essay,evaluation}/` (Jinja with StrictUndefined; prompt assets use the same renderer). The exact on-disk layout is centralized in `src/daydreaming_dagster/config/paths.py`.
+- Template resolution: by `template_id` under `data/1_raw/templates/{draft,essay,evaluation}/` (Jinja with StrictUndefined; prompt assets use the same renderer). The exact on-disk layout is centralized in `src/daydreaming_dagster/data_layer/paths.py`.
 - Modes:
   - `llm`: render prompt, call model, write `prompt.txt` and `raw.txt`; write `parsed.txt` if a parser is configured.
   - `copy` (essay only): pass through the parent draft’s `parsed.txt` to the essay `parsed.txt` (no prompt/LLM).
