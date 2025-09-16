@@ -41,11 +41,15 @@ def test_perform_parsed_generation_truncation_failure(tmp_path: Path):
             data_root=tmp_path,
             raw_text="Line",
             raw_metadata=raw_metadata,
-            parser_name=None,
+            parser_name="identity",
             min_lines=1,
             fail_on_truncation=True,
         )
     except ValueError as exc:
         assert "truncated" in str(exc)
+        parsed_path = tmp_path / "gens" / "draft" / "D1" / "parsed.txt"
+        parsed_meta_path = tmp_path / "gens" / "draft" / "D1" / "parsed_metadata.json"
+        assert not parsed_path.exists()
+        assert not parsed_meta_path.exists()
     else:
         raise AssertionError("Expected truncation ValueError")

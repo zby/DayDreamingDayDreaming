@@ -174,9 +174,13 @@ class TestPipelineIntegration:
             prompt_fp = draft_dir / "prompt.txt"
             parsed_fp = draft_dir / "parsed.txt"
             metadata_fp = draft_dir / "metadata.json"
+            raw_meta_fp = draft_dir / "raw_metadata.json"
+            parsed_meta_fp = draft_dir / "parsed_metadata.json"
             assert prompt_fp.exists(), f"Draft prompt not created: {prompt_fp}"
             assert parsed_fp.exists(), f"Draft parsed.txt not created: {parsed_fp}"
             assert metadata_fp.exists(), f"Draft metadata.json missing: {metadata_fp}"
+            assert raw_meta_fp.exists(), f"Draft raw_metadata.json missing: {raw_meta_fp}"
+            assert parsed_meta_fp.exists(), f"Draft parsed_metadata.json missing: {parsed_meta_fp}"
             assert prompt_fp.stat().st_size > 0, f"Draft prompt is empty: {prompt_fp}"
             assert parsed_fp.stat().st_size > 0, f"Draft parsed.txt is empty: {parsed_fp}"
             metadata = json.loads(metadata_fp.read_text(encoding="utf-8"))
@@ -184,6 +188,12 @@ class TestPipelineIntegration:
             assert isinstance(combo_in_meta, str) and combo_in_meta.startswith("combo_"), (
                 f"Draft metadata combo_id malformed for {metadata_fp}: {combo_in_meta!r}"
             )
+            raw_meta = json.loads(raw_meta_fp.read_text(encoding="utf-8"))
+            assert raw_meta.get("function") == "draft_raw"
+            assert raw_meta.get("input_mode") in {"prompt", "copy"}
+            parsed_meta = json.loads(parsed_meta_fp.read_text(encoding="utf-8"))
+            assert parsed_meta.get("function") == "draft_parsed"
+            assert parsed_meta.get("parser_name")
 
         # Evaluation files (gens/evaluation/) - Check if they exist but don't require them
         eval_root = gens_root / "evaluation"
@@ -191,6 +201,15 @@ class TestPipelineIntegration:
         if eval_files_exist:
             count = sum(1 for _ in eval_root.rglob("prompt.txt")) + sum(1 for _ in eval_root.rglob("raw.txt")) + sum(1 for _ in eval_root.rglob("parsed.txt"))
             print(f"✓ Found {count} evaluation gens-store files")
+            for eval_dir in filter(lambda p: p.is_dir(), (eval_root).iterdir()):
+                raw_meta_fp = eval_dir / "raw_metadata.json"
+                parsed_meta_fp = eval_dir / "parsed_metadata.json"
+                if raw_meta_fp.exists():
+                    raw_meta = json.loads(raw_meta_fp.read_text(encoding="utf-8"))
+                    assert raw_meta.get("function") == "evaluation_raw"
+                if parsed_meta_fp.exists():
+                    parsed_meta = json.loads(parsed_meta_fp.read_text(encoding="utf-8"))
+                    assert parsed_meta.get("function") == "evaluation_parsed"
         else:
             print("⚠ Evaluation files not generated (expected - cross-partition complexity)")
         
