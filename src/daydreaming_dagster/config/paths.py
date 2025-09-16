@@ -23,6 +23,7 @@ PROMPT_FILENAME = "prompt.txt"
 RAW_FILENAME = "raw.txt"
 PARSED_FILENAME = "parsed.txt"
 METADATA_FILENAME = "metadata.json"
+RAW_METADATA_FILENAME = "raw_metadata.json"
 
 
 @dataclass(frozen=True)
@@ -96,6 +97,9 @@ class Paths:
     def metadata_path(self, stage: str, gen_id: str) -> Path:
         return self.generation_dir(stage, gen_id) / METADATA_FILENAME
 
+    def raw_metadata_path(self, stage: str, gen_id: str) -> Path:
+        return self.generation_dir(stage, gen_id) / RAW_METADATA_FILENAME
+
     # --- Templates ---
     def templates_root(self) -> Path:
         """Root of Jinja templates. Honors GEN_TEMPLATES_ROOT override.
@@ -162,4 +166,5 @@ __all__ = [
     "RAW_FILENAME",
     "PARSED_FILENAME",
     "METADATA_FILENAME",
+    "RAW_METADATA_FILENAME",
 ]
