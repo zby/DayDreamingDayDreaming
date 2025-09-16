@@ -101,41 +101,40 @@ def perform_raw_generation(
     paths = Paths.from_str(data_root)
 
     extras = metadata_extras or {}
+    duration_s = None
+    finish_reason = None
+    truncated = None
+    usage = None
+
     if mode == "llm":
         if llm_client is None:
             raise ValueError("llm_client must be provided when mode is 'llm'")
         start = time.time()
         raw_text, info = generate_llm(llm_client, input_text, model=str(llm_model_id or ""), max_tokens=max_tokens)
-        duration = round(time.time() - start, 3)
+        duration_s = round(time.time() - start, 3)
         finish_reason = info.get("finish_reason") or info.get("finishReason")
         truncated = info.get("truncated")
         usage = info.get("usage")
-        raw_metadata = _build_raw_metadata(
-            stage=stage,
-            gen_id=gen_id,
-            llm_model_id=llm_model_id,
-            mode="llm",
-            duration_s=duration,
-            finish_reason=finish_reason,
-            truncated=truncated,
-            usage=usage,
-            extras=extras,
-        )
     elif mode == "copy":
         raw_text = input_text
-        raw_metadata = _build_raw_metadata(
-            stage=stage,
-            gen_id=gen_id,
-            llm_model_id=None,
-            mode="copy",
-            duration_s=None,
-            finish_reason="copy",
-            truncated=False,
-            usage=None,
-            extras=extras,
-        )
+        finish_reason = "copy"
+        truncated = False
+        usage = None
+        llm_model_id = None
     else:
         raise ValueError(f"Unsupported mode '{mode}' for raw generation")
+
+    raw_metadata = _build_raw_metadata(
+        stage=stage,
+        gen_id=gen_id,
+        llm_model_id=llm_model_id,
+        mode=mode,
+        duration_s=duration_s,
+        finish_reason=finish_reason,
+        truncated=truncated,
+        usage=usage,
+        extras=extras,
+    )
 
     return _persist_raw_generation(
         paths=paths,
