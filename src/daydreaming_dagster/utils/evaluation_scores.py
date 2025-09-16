@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 from typing import Iterable, Dict, Any, List
+import json
 import pandas as pd
 
 from .generation import load_generation
@@ -100,6 +101,17 @@ def aggregate_evaluation_scores_for_ids(data_root: Path, gen_ids: Iterable[str])
         if cohort_id is not None and pd.notna(cohort_id):
             cohort_value = str(cohort_id)
 
+        input_mode = None
+        copied_from = None
+        try:
+            raw_meta_path = paths.raw_metadata_path("evaluation", gid)
+            if raw_meta_path.exists():
+                raw_meta = json.loads(raw_meta_path.read_text(encoding="utf-8")) or {}
+                input_mode = raw_meta.get("input_mode")
+                copied_from = raw_meta.get("copied_from")
+        except Exception:
+            pass
+
         rows.append(
             {
                 "gen_id": gid,
@@ -118,6 +130,8 @@ def aggregate_evaluation_scores_for_ids(data_root: Path, gen_ids: Iterable[str])
                 "generation_response_path": str(paths.parsed_path("essay", parent_essay_id).resolve())
                 if parent_essay_id
                 else "",
+                "input_mode": input_mode,
+                "copied_from": copied_from,
             }
         )
 
@@ -138,6 +152,8 @@ def aggregate_evaluation_scores_for_ids(data_root: Path, gen_ids: Iterable[str])
         "generation_model",
         "generation_response_path",
         "cohort_id",
+        "input_mode",
+        "copied_from",
     ]
     for col in expected_columns:
         if col not in df.columns:

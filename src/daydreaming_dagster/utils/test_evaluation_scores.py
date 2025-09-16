@@ -22,6 +22,11 @@ def test_aggregate_scores_prefers_llm_ids_and_omits_stage(tmp_path):
     (eval_dir / "parsed.txt").write_text("Score\n8.5\n", encoding="utf-8")
     (essay_dir / "parsed.txt").write_text("essay body", encoding="utf-8")
 
+    (eval_dir / "raw_metadata.json").write_text(
+        json.dumps({"input_mode": "copy", "copied_from": str((essay_dir / "parsed.txt").resolve())}),
+        encoding="utf-8",
+    )
+
     (eval_dir / "metadata.json").write_text(
         json.dumps(
             {
@@ -68,5 +73,7 @@ def test_aggregate_scores_prefers_llm_ids_and_omits_stage(tmp_path):
     assert row["evaluation_llm_model"] == "eval-llm"
     assert row["cohort_id"] == "cohort-42"
     assert row["generation_response_path"] == str((essay_dir / "parsed.txt").resolve())
+    assert row["input_mode"] == "copy"
+    assert row["copied_from"].endswith("essay/essay-123/parsed.txt")
     assert "stage" not in df.columns
     assert "evaluation_model" not in df.columns
