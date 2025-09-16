@@ -43,7 +43,7 @@ def _parsed_metadata_extras(raw_metadata):
     stage="draft_parsed",
     partitions_def=draft_gens_partitions,
     group_name="generation_draft",
-    io_manager_key="draft_parsed_io_manager",
+    io_manager_key="in_memory_io_manager",
     required_resource_keys={"data_root"},
 )
 def draft_parsed(context, draft_raw: RawGenerationResult) -> ParsedGenerationResult:
@@ -85,7 +85,7 @@ def draft_parsed(context, draft_raw: RawGenerationResult) -> ParsedGenerationRes
     stage="essay_parsed",
     partitions_def=essay_gens_partitions,
     group_name="generation_essays",
-    io_manager_key="essay_parsed_io_manager",
+    io_manager_key="in_memory_io_manager",
     required_resource_keys={"data_root"},
 )
 def essay_parsed(context, essay_raw: RawGenerationResult) -> ParsedGenerationResult:
@@ -127,7 +127,7 @@ def essay_parsed(context, essay_raw: RawGenerationResult) -> ParsedGenerationRes
     stage="evaluation_parsed",
     partitions_def=evaluation_gens_partitions,
     group_name="evaluation",
-    io_manager_key="evaluation_parsed_io_manager",
+    io_manager_key="in_memory_io_manager",
     required_resource_keys={"data_root"},
 )
 def evaluation_parsed(context, evaluation_raw: RawGenerationResult) -> ParsedGenerationResult:

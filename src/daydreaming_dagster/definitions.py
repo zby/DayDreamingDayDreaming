@@ -12,6 +12,19 @@ from daydreaming_dagster.assets.group_evaluation import (
     evaluation_prompt,
     evaluation_response,
 )
+from daydreaming_dagster.assets.group_generation_raw import (
+    draft_main_metadata,
+    draft_raw,
+    essay_main_metadata,
+    essay_raw,
+    evaluation_main_metadata,
+    evaluation_raw,
+)
+from daydreaming_dagster.assets.group_generation_parsed import (
+    draft_parsed,
+    essay_parsed,
+    evaluation_parsed,
+)
 from daydreaming_dagster.assets.results_processing import (
     aggregated_scores,
 )
@@ -84,13 +97,23 @@ defs = Definitions(
         content_combinations,
         
         # Two-phase generation assets
+        draft_main_metadata,
+        draft_raw,
         draft_prompt,
         draft_response,
+        draft_parsed,
+
+        essay_main_metadata,
+        essay_raw,
         essay_prompt,
         essay_response,
-        
+        essay_parsed,
+
+        evaluation_main_metadata,
+        evaluation_raw,
         evaluation_prompt,
         evaluation_response,
+        evaluation_parsed,
         
         # Results processing assets
         aggregated_scores,
