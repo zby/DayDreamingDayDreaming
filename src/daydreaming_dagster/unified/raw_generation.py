@@ -84,77 +84,62 @@ def _persist_raw_generation(
     )
 
 
-def perform_llm_raw_generation(
+def perform_raw_generation(
     *,
     stage: str,
-    llm_client,
+    mode: str,
     data_root: Path,
     gen_id: str,
-    template_id: str,
-    prompt_text: str,
-    llm_model_id: Optional[str],
-    max_tokens: Optional[int],
+    input_text: str,
     metadata_extras: Optional[Dict[str, Any]] = None,
+    llm_client=None,
+    llm_model_id: Optional[str] = None,
+    max_tokens: Optional[int] = None,
 ) -> RawGenerationResult:
-    """Invoke an LLM and persist raw artifacts for a generation stage."""
+    """Generate or copy raw content based on mode, persisting artifacts."""
 
     paths = Paths.from_str(data_root)
 
-    start = time.time()
-    raw_text, info = generate_llm(llm_client, prompt_text, model=str(llm_model_id or ""), max_tokens=max_tokens)
-    duration = round(time.time() - start, 3)
+    if mode == "llm":
+        if llm_client is None:
+            raise ValueError("llm_client must be provided when mode is 'llm'")
+        start = time.time()
+        raw_text, info = generate_llm(llm_client, input_text, model=str(llm_model_id or ""), max_tokens=max_tokens)
+        duration = round(time.time() - start, 3)
+        finish_reason = info.get("finish_reason") or info.get("finishReason")
+        truncated = info.get("truncated")
+        usage = info.get("usage")
+        raw_metadata = _build_raw_metadata(
+            stage=stage,
+            gen_id=gen_id,
+            llm_model_id=llm_model_id,
+            mode="llm",
+            duration_s=duration,
+            finish_reason=finish_reason,
+            truncated=truncated,
+            usage=usage,
+            extras=metadata_extras,
+        )
+    elif mode == "copy":
+        raw_text = input_text
+        raw_metadata = _build_raw_metadata(
+            stage=stage,
+            gen_id=gen_id,
+            llm_model_id=None,
+            mode="copy",
+            duration_s=None,
+            finish_reason="copy",
+            truncated=False,
+            usage=None,
+            extras=metadata_extras,
+        )
+    else:
+        raise ValueError(f"Unsupported mode '{mode}' for raw generation")
 
-    finish_reason = info.get("finish_reason") or info.get("finishReason")
-    truncated = info.get("truncated")
-    usage = info.get("usage")
-
-    raw_metadata = _build_raw_metadata(
-        stage=stage,
-        gen_id=gen_id,
-        llm_model_id=llm_model_id,
-        mode="llm",
-        duration_s=duration,
-        finish_reason=finish_reason,
-        truncated=truncated,
-        usage=usage,
-        extras=metadata_extras,
-    )
     return _persist_raw_generation(
         paths=paths,
         stage=stage,
         gen_id=gen_id,
         raw_text=raw_text,
-        raw_metadata=raw_metadata,
-    )
-
-
-def perform_copy_raw_generation(
-    *,
-    stage: str,
-    data_root: Path,
-    gen_id: str,
-    copy_text: str,
-    metadata_extras: Optional[Dict[str, Any]] = None,
-) -> RawGenerationResult:
-    """Persist provided copy-mode text as the raw artifact."""
-
-    paths = Paths.from_str(data_root)
-
-    raw_metadata = _build_raw_metadata(
-        stage=stage,
-        gen_id=gen_id,
-        llm_model_id=None,
-        mode="copy",
-        duration_s=None,
-        finish_reason="copy",
-        truncated=False,
-        usage=None,
-        extras=metadata_extras,
-    )
-    return _persist_raw_generation(
-        paths=paths,
-        stage=stage,
-        gen_id=gen_id,
-        raw_text=copy_text,
         raw_metadata=raw_metadata,
     )

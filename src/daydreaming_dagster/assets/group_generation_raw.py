@@ -23,8 +23,7 @@ from ..unified.stage_policy import (
 )
 from ..unified.raw_generation import (
     RawGenerationResult,
-    perform_llm_raw_generation,
-    perform_copy_raw_generation,
+    perform_raw_generation,
 )
 from ..assets._helpers import get_run_id
 
@@ -78,34 +77,31 @@ def draft_raw(context, draft_prompt) -> RawGenerationResult:
 
     max_tokens, _ = spec.tokens_and_min_lines(context)
 
+    copy_source_path = None
     if envelope.mode == "copy":
         parent_stage = spec.parent_stage
         if not parent_stage or not envelope.parent_gen_id:
             raise Failure(description="draft copy-mode requires a valid parent_gen_id", metadata={"gen_id": MetadataValue.text(str(context.partition_key))})
-        copy_extras = dict(base_extras)
-        copy_extras["input_mode"] = "copy"
-        copy_extras["copied_from"] = str(paths.parsed_path(parent_stage, envelope.parent_gen_id).resolve())
-        result = perform_copy_raw_generation(
-            stage="draft",
-            data_root=data_root,
-            gen_id=str(context.partition_key),
-            copy_text=str(draft_prompt or ""),
-            metadata_extras=copy_extras,
-        )
+        copy_source_path = paths.parsed_path(parent_stage, envelope.parent_gen_id).resolve()
+
+    metadata_extras = dict(base_extras)
+    if envelope.mode == "copy" and copy_source_path is not None:
+        metadata_extras["input_mode"] = "copy"
+        metadata_extras["copied_from"] = str(copy_source_path)
     else:
-        llm_extras = dict(base_extras)
-        llm_extras["input_mode"] = "prompt"
-        result = perform_llm_raw_generation(
-            stage="draft",
-            llm_client=context.resources.openrouter_client,
-            data_root=data_root,
-            gen_id=str(context.partition_key),
-            template_id=envelope.template_id,
-            prompt_text=str(draft_prompt),
-            llm_model_id=envelope.llm_model_id,
-            max_tokens=max_tokens,
-            metadata_extras=llm_extras,
-        )
+        metadata_extras["input_mode"] = "prompt"
+
+    result = perform_raw_generation(
+        stage="draft",
+        mode=envelope.mode,
+        data_root=data_root,
+        gen_id=str(context.partition_key),
+        input_text=str(draft_prompt or ""),
+        llm_client=context.resources.openrouter_client if envelope.mode == "llm" else None,
+        llm_model_id=envelope.llm_model_id,
+        max_tokens=max_tokens,
+        metadata_extras=metadata_extras,
+    )
 
     raw_path = paths.raw_path("draft", str(context.partition_key))
     context.add_output_metadata(
@@ -149,34 +145,31 @@ def essay_raw(context, essay_prompt) -> RawGenerationResult:
 
     max_tokens, _ = spec.tokens_and_min_lines(context)
 
+    copy_source_path = None
     if envelope.mode == "copy":
         parent_stage = spec.parent_stage
         if not parent_stage or not envelope.parent_gen_id:
             raise Failure(description="essay copy-mode requires a valid parent_gen_id", metadata={"gen_id": MetadataValue.text(str(context.partition_key))})
-        copy_extras = dict(base_extras)
-        copy_extras["input_mode"] = "copy"
-        copy_extras["copied_from"] = str(paths.parsed_path(parent_stage, envelope.parent_gen_id).resolve())
-        result = perform_copy_raw_generation(
-            stage="essay",
-            data_root=data_root,
-            gen_id=str(context.partition_key),
-            copy_text=str(essay_prompt or ""),
-            metadata_extras=copy_extras,
-        )
+        copy_source_path = paths.parsed_path(parent_stage, envelope.parent_gen_id).resolve()
+
+    metadata_extras = dict(base_extras)
+    if envelope.mode == "copy" and copy_source_path is not None:
+        metadata_extras["input_mode"] = "copy"
+        metadata_extras["copied_from"] = str(copy_source_path)
     else:
-        llm_extras = dict(base_extras)
-        llm_extras["input_mode"] = "prompt"
-        result = perform_llm_raw_generation(
-            stage="essay",
-            llm_client=context.resources.openrouter_client,
-            data_root=data_root,
-            gen_id=str(context.partition_key),
-            template_id=envelope.template_id,
-            prompt_text=str(essay_prompt),
-            llm_model_id=envelope.llm_model_id,
-            max_tokens=max_tokens,
-            metadata_extras=llm_extras,
-        )
+        metadata_extras["input_mode"] = "prompt"
+
+    result = perform_raw_generation(
+        stage="essay",
+        mode=envelope.mode,
+        data_root=data_root,
+        gen_id=str(context.partition_key),
+        input_text=str(essay_prompt or ""),
+        llm_client=context.resources.openrouter_client if envelope.mode == "llm" else None,
+        llm_model_id=envelope.llm_model_id,
+        max_tokens=max_tokens,
+        metadata_extras=metadata_extras,
+    )
 
     raw_path = paths.raw_path("essay", str(context.partition_key))
     context.add_output_metadata(
@@ -220,34 +213,31 @@ def evaluation_raw(context, evaluation_prompt) -> RawGenerationResult:
 
     max_tokens, _ = spec.tokens_and_min_lines(context)
 
+    copy_source_path = None
     if envelope.mode == "copy":
         parent_stage = spec.parent_stage
         if not parent_stage or not envelope.parent_gen_id:
             raise Failure(description="evaluation copy-mode requires a valid parent_gen_id", metadata={"gen_id": MetadataValue.text(str(context.partition_key))})
-        copy_extras = dict(base_extras)
-        copy_extras["input_mode"] = "copy"
-        copy_extras["copied_from"] = str(paths.parsed_path(parent_stage, envelope.parent_gen_id).resolve())
-        result = perform_copy_raw_generation(
-            stage="evaluation",
-            data_root=data_root,
-            gen_id=str(context.partition_key),
-            copy_text=str(evaluation_prompt or ""),
-            metadata_extras=copy_extras,
-        )
+        copy_source_path = paths.parsed_path(parent_stage, envelope.parent_gen_id).resolve()
+
+    metadata_extras = dict(base_extras)
+    if envelope.mode == "copy" and copy_source_path is not None:
+        metadata_extras["input_mode"] = "copy"
+        metadata_extras["copied_from"] = str(copy_source_path)
     else:
-        llm_extras = dict(base_extras)
-        llm_extras["input_mode"] = "prompt"
-        result = perform_llm_raw_generation(
-            stage="evaluation",
-            llm_client=context.resources.openrouter_client,
-            data_root=data_root,
-            gen_id=str(context.partition_key),
-            template_id=envelope.template_id,
-            prompt_text=str(evaluation_prompt),
-            llm_model_id=envelope.llm_model_id,
-            max_tokens=max_tokens,
-            metadata_extras=llm_extras,
-        )
+        metadata_extras["input_mode"] = "prompt"
+
+    result = perform_raw_generation(
+        stage="evaluation",
+        mode=envelope.mode,
+        data_root=data_root,
+        gen_id=str(context.partition_key),
+        input_text=str(evaluation_prompt or ""),
+        llm_client=context.resources.openrouter_client if envelope.mode == "llm" else None,
+        llm_model_id=envelope.llm_model_id,
+        max_tokens=max_tokens,
+        metadata_extras=metadata_extras,
+    )
 
     raw_path = paths.raw_path("evaluation", str(context.partition_key))
     context.add_output_metadata(

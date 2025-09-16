@@ -42,7 +42,13 @@ def prompt_asset(context, stage: Stage, *, content_combinations=None) -> str:
                     "gen_id": MetadataValue.text(str(gen_id)),
                 },
             )
-        parent_text = load_parent_parsed_text(context, parent_stage, parent_gen)
+        resolved_parent_gen, parent_text = load_parent_parsed_text(
+            context,
+            stage,
+            str(gen_id),
+            failure_fn_name="prompt_asset.copy_mode",
+        )
+        parent_gen = resolved_parent_gen or parent_gen
         extras = {
             "parent_gen_id": parent_gen,
             "input_mode": "copy",

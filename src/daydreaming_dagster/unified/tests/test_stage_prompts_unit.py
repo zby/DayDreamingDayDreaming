@@ -31,7 +31,7 @@ def test_prompt_asset_copy_mode(monkeypatch, tmp_path):
     monkeypatch.setattr(
         helpers,
         "load_parent_parsed_text",
-        lambda context, stage, gen_id: parent_text,
+        lambda context, stage, gen_id, **kwargs: (parent_gen, parent_text),
     )
 
     monkeypatch.setattr(

@@ -5,8 +5,7 @@ import json
 
 from daydreaming_dagster.unified.raw_generation import (
     RawGenerationResult,
-    perform_llm_raw_generation,
-    perform_copy_raw_generation,
+    perform_raw_generation,
 )
 
 
@@ -27,13 +26,13 @@ def test_perform_llm_raw_generation(tmp_path: Path):
     llm = _StubLLM("hello world")
     data_root = tmp_path
 
-    result = perform_llm_raw_generation(
+    result = perform_raw_generation(
         stage="draft",
-        llm_client=llm,
+        mode="llm",
         data_root=data_root,
         gen_id="G1",
-        template_id="tpl",
-        prompt_text="Prompt",
+        input_text="Prompt",
+        llm_client=llm,
         llm_model_id="model-x",
         max_tokens=128,
         metadata_extras={"run_id": "RUN123"},
@@ -60,11 +59,12 @@ def test_perform_copy_raw_generation(tmp_path: Path):
     source_file = source_dir / "parsed.txt"
     source_file.write_text("Essay text", encoding="utf-8")
 
-    result = perform_copy_raw_generation(
+    result = perform_raw_generation(
         stage="evaluation",
+        mode="copy",
         data_root=data_root,
         gen_id="EV1",
-        copy_text="Essay text",
+        input_text="Essay text",
         metadata_extras={"cohort_id": "C1", "copied_from": str(source_file.resolve())},
     )
 
