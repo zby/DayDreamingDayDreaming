@@ -17,7 +17,7 @@ def test_perform_parsed_generation_success(tmp_path: Path):
         data_root=tmp_path,
         raw_text="Line 1\nLine 2",
         raw_metadata=raw_metadata,
-        parser_name=None,
+        parser_name="identity",
         min_lines=1,
         fail_on_truncation=True,
         metadata_extras={"function": "draft_parsed", "run_id": "RUN123"},

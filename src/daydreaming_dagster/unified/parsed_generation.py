@@ -49,18 +49,21 @@ def perform_parsed_generation(
         if non_empty < min_lines:
             raise ValueError(f"Raw generation has only {non_empty} non-empty lines (required {min_lines})")
 
-    parsed = parse_text(stage, raw_text, parser_name) if parser_name else raw_text
+    if not parser_name or not str(parser_name).strip():
+        raise ValueError(f"Parser name required for parsed generation (stage={stage}, gen_id={gen_id})")
+
+    parsed = parse_text(stage, raw_text, parser_name)
     if stage == "essay" and not isinstance(parsed, str):
         parsed = raw_text
     if not isinstance(parsed, str):
-        parsed = ""
+        raise ValueError(f"Parser '{parser_name}' returned non-string output for stage {stage}")
 
     parsed_metadata: Dict[str, Any] = {
         "stage": stage,
         "gen_id": gen_id,
         "parser_name": parser_name,
-        "success": bool(parsed.strip()),
-        "error": None if parsed.strip() else "empty parsed output",
+        "success": True,
+        "error": None,
     }
     if metadata_extras:
         for key, value in metadata_extras.items():
