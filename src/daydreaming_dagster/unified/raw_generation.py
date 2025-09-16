@@ -62,6 +62,28 @@ def _build_raw_metadata(
     return payload
 
 
+def _persist_raw_generation(
+    *,
+    paths: Paths,
+    stage: str,
+    gen_id: str,
+    raw_text: str,
+    raw_metadata: Dict[str, Any],
+) -> RawGenerationResult:
+    write_gen_raw(paths.gens_root, stage, gen_id, raw_text)
+    raw_metadata_path = paths.raw_metadata_path(stage, gen_id)
+    _write_raw_metadata(raw_metadata_path, raw_metadata)
+    main_metadata_path = paths.metadata_path(stage, gen_id)
+    return RawGenerationResult(
+        stage=stage,
+        gen_id=gen_id,
+        data_root=paths.data_root,
+        raw_text=raw_text,
+        main_metadata_path=main_metadata_path,
+        raw_metadata=raw_metadata,
+    )
+
+
 def perform_llm_raw_generation(
     *,
     stage: str,
@@ -77,14 +99,10 @@ def perform_llm_raw_generation(
     """Invoke an LLM and persist raw artifacts for a generation stage."""
 
     paths = Paths.from_str(data_root)
-    main_metadata_path = paths.metadata_path(stage, gen_id)
-    raw_metadata_path = paths.raw_metadata_path(stage, gen_id)
 
     start = time.time()
     raw_text, info = generate_llm(llm_client, prompt_text, model=str(llm_model_id or ""), max_tokens=max_tokens)
     duration = round(time.time() - start, 3)
-
-    write_gen_raw(paths.gens_root, stage, gen_id, raw_text)
 
     finish_reason = info.get("finish_reason") or info.get("finishReason")
     truncated = info.get("truncated")
@@ -101,14 +119,11 @@ def perform_llm_raw_generation(
         usage=usage,
         extras=metadata_extras,
     )
-    _write_raw_metadata(raw_metadata_path, raw_metadata)
-
-    return RawGenerationResult(
+    return _persist_raw_generation(
+        paths=paths,
         stage=stage,
         gen_id=gen_id,
-        data_root=paths.data_root,
         raw_text=raw_text,
-        main_metadata_path=main_metadata_path,
         raw_metadata=raw_metadata,
     )
 
@@ -124,10 +139,6 @@ def perform_copy_raw_generation(
     """Persist provided copy-mode text as the raw artifact."""
 
     paths = Paths.from_str(data_root)
-    main_metadata_path = paths.metadata_path(stage, gen_id)
-    raw_metadata_path = paths.raw_metadata_path(stage, gen_id)
-
-    write_gen_raw(paths.gens_root, stage, gen_id, copy_text)
 
     raw_metadata = _build_raw_metadata(
         stage=stage,
@@ -140,13 +151,10 @@ def perform_copy_raw_generation(
         usage=None,
         extras=metadata_extras,
     )
-    _write_raw_metadata(raw_metadata_path, raw_metadata)
-
-    return RawGenerationResult(
+    return _persist_raw_generation(
+        paths=paths,
         stage=stage,
         gen_id=gen_id,
-        data_root=paths.data_root,
         raw_text=copy_text,
-        main_metadata_path=main_metadata_path,
         raw_metadata=raw_metadata,
     )
