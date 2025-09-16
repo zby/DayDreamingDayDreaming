@@ -388,8 +388,8 @@ def register_cohort_partitions(context, cohort_membership: pd.DataFrame) -> Dict
         "evaluation": added_eval,
     }
 @asset_with_boundary(
-    stage="task_definitions",
-    group_name="task_definitions",
+    stage="cohort",
+    group_name="cohort",
     io_manager_key="io_manager",
     required_resource_keys={"data_root"},
 )
