@@ -50,7 +50,7 @@ Concise, high-signal rules for working in this repo. Keep changes focused, valid
   - `FALLBACK(DATA|PARSER|OPS):` why it exists + removal plan.
 
 Plans directory policy
-- Do not commit files under `plans/`. These are working notes and should not be included in functional commits.
+- Do not commit files under `temporary_plans/`. These are working notes and should not be included in functional commits.
 
 ## Security & Data
 - Never commit secrets/real outputs. Use `.env` and env vars (e.g., `OPENROUTER_API_KEY`, `DAGSTER_HOME`).

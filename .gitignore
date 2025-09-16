@@ -207,7 +207,7 @@ data/cohorts/
 data/2_tasks/selected_essays.txt
 
 # Working notes (do not commit plans by default)
-plans/
+temporary_plans/
 
 # Streamlit
 .streamlit/secrets.toml
