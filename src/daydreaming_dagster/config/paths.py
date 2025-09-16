@@ -39,10 +39,7 @@ class Paths:
     def __post_init__(self):
         if self.data_root is None or str(self.data_root).strip() == "":
             raise ValueError("Paths requires a non-empty data_root")
-        root_path = Path(self.data_root)
-        if not root_path.is_absolute():
-            root_path = root_path.resolve()
-        object.__setattr__(self, "data_root", root_path)
+        object.__setattr__(self, "data_root", Path(self.data_root))
 
     # --- Core directories ---
     @property
