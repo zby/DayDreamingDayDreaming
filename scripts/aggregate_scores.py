@@ -28,6 +28,7 @@ from typing import Any, Dict, List, Optional, Set
 import json
 from datetime import datetime
 from daydreaming_dagster.utils.evaluation_scores import aggregate_evaluation_scores_for_ids
+from daydreaming_dagster.config.paths import Paths
  
 import pandas as pd
 
@@ -258,6 +259,7 @@ def parse_all(
     """
 
     docs_eval = data_root / "gens" / "evaluation"
+    paths_helper = Paths.from_str(str(data_root))
     # Prefer shared helper to aggregate scores; keep legacy logic below for backcompat
     try:
        if docs_eval.exists():
@@ -278,8 +280,10 @@ def parse_all(
                 "draft_template",
                 "generation_template",
                 "generation_model",
-                "stage",
                 "generation_response_path",
+                "cohort_id",
+                "input_mode",
+                "copied_from",
             ]
             existing = [c for c in column_order if c in df.columns]
             df = df[existing + [c for c in df.columns if c not in existing]]
@@ -302,6 +306,15 @@ def parse_all(
             gen_id = doc_dir.name
             parsed_fp = doc_dir / "parsed.txt"
             meta_fp = doc_dir / "metadata.json"
+            raw_meta_fp = doc_dir / "raw_metadata.json"
+
+            raw_meta: Dict[str, Any] = {}
+            if raw_meta_fp.exists():
+                try:
+                    raw_meta = json.loads(raw_meta_fp.read_text(encoding="utf-8")) or {}
+                except Exception:
+                    raw_meta = {}
+            meta: Dict[str, Any] = {}
             if not parsed_fp.exists():
                 # Record missing parsed and continue
                 parent_gen_id = ""
@@ -347,6 +360,8 @@ def parse_all(
                                         gen_model = str(dmeta.get("model_id") or "")
                 except Exception:
                     pass
+                input_mode = raw_meta.get("input_mode")
+                copied_from = raw_meta.get("copied_from")
                 rows.append({
                     "gen_id": gen_id,
                     "parent_gen_id": parent_gen_id,
@@ -363,6 +378,9 @@ def parse_all(
                     "generation_model": gen_model,
                     "stage": stage,
                     "generation_response_path": gen_path,
+                    "cohort_id": meta.get("cohort_id") if isinstance(meta, dict) else None,
+                    "input_mode": input_mode,
+                    "copied_from": copied_from,
                 })
                 continue
             try:
@@ -456,6 +474,9 @@ def parse_all(
                 "generation_model": gen_model,
                 "stage": stage,
                 "generation_response_path": gen_path,
+                "cohort_id": meta.get("cohort_id") if isinstance(meta, dict) else None,
+                "input_mode": raw_meta.get("input_mode"),
+                "copied_from": raw_meta.get("copied_from"),
             })
     else:
         raise FileNotFoundError(f"Docs store not found: {docs_eval}")
@@ -480,6 +501,9 @@ def parse_all(
         "generation_model",
         "stage",
         "generation_response_path",
+        "cohort_id",
+        "input_mode",
+        "copied_from",
     ]
     # No document_id column — doc_id is canonical
 
@@ -508,6 +532,9 @@ def parse_all(
         "generation_model",
         "stage",
         "generation_response_path",
+        "cohort_id",
+        "input_mode",
+        "copied_from",
     ]
     existing = [c for c in column_order if c in df.columns]
     df = df[existing + [c for c in df.columns if c not in existing]]
