@@ -100,6 +100,7 @@ def perform_raw_generation(
 
     paths = Paths.from_str(data_root)
 
+    extras = metadata_extras or {}
     if mode == "llm":
         if llm_client is None:
             raise ValueError("llm_client must be provided when mode is 'llm'")
@@ -118,7 +119,7 @@ def perform_raw_generation(
             finish_reason=finish_reason,
             truncated=truncated,
             usage=usage,
-            extras=metadata_extras,
+            extras=extras,
         )
     elif mode == "copy":
         raw_text = input_text
@@ -131,7 +132,7 @@ def perform_raw_generation(
             finish_reason="copy",
             truncated=False,
             usage=None,
-            extras=metadata_extras,
+            extras=extras,
         )
     else:
         raise ValueError(f"Unsupported mode '{mode}' for raw generation")
