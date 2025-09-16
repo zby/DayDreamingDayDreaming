@@ -1,17 +1,8 @@
 from dagster import Definitions, multiprocess_executor, in_process_executor
 import os
-from daydreaming_dagster.assets.group_generation_draft import (
-    draft_prompt,
-    draft_response,
-)
-from daydreaming_dagster.assets.group_generation_essays import (
-    essay_prompt,
-    essay_response,
-)
-from daydreaming_dagster.assets.group_evaluation import (
-    evaluation_prompt,
-    evaluation_response,
-)
+from daydreaming_dagster.assets.group_generation_draft import draft_prompt
+from daydreaming_dagster.assets.group_generation_essays import essay_prompt
+from daydreaming_dagster.assets.group_evaluation import evaluation_prompt
 from daydreaming_dagster.assets.group_generation_raw import (
     draft_main_metadata,
     draft_raw,
@@ -100,19 +91,16 @@ defs = Definitions(
         draft_main_metadata,
         draft_raw,
         draft_prompt,
-        draft_response,
         draft_parsed,
 
         essay_main_metadata,
         essay_raw,
         essay_prompt,
-        essay_response,
         essay_parsed,
 
         evaluation_main_metadata,
         evaluation_raw,
         evaluation_prompt,
-        evaluation_response,
         evaluation_parsed,
         
         # Results processing assets
