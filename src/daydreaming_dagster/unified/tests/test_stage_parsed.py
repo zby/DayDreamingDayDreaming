@@ -12,12 +12,12 @@ from daydreaming_dagster.resources.experiment_config import ExperimentConfig, St
 
 def _write_main_and_raw(tmp_path: Path, stage: str, gen_id: str, main: dict, raw: dict | None = None, raw_text: str = "raw") -> Paths:
     paths = Paths.from_str(tmp_path)
-    layer = GensDataLayer.from_root(tmp_path)
-    layer.reserve_generation(stage, gen_id)
-    layer.write_main_metadata(stage, gen_id, main)
-    layer.write_raw(stage, gen_id, raw_text)
+    data_layer = GensDataLayer.from_root(tmp_path)
+    data_layer.reserve_generation(stage, gen_id)
+    data_layer.write_main_metadata(stage, gen_id, main)
+    data_layer.write_raw(stage, gen_id, raw_text)
     if raw is not None:
-        layer.write_raw_metadata(stage, gen_id, raw)
+        data_layer.write_raw_metadata(stage, gen_id, raw)
     return paths
 
 
@@ -30,10 +30,10 @@ def test_stage_parsed_helper_identity(tmp_path: Path) -> None:
         raw={"input_mode": "prompt", "truncated": False},
         raw_text="Line1\nLine2",
     )
-    layer = GensDataLayer.from_root(tmp_path)
+    data_layer = GensDataLayer.from_root(tmp_path)
 
     parsed_text, parsed_metadata = stage_parsed._stage_parsed_asset(
-        layer=layer,
+        data_layer=data_layer,
         stage="draft",
         gen_id="D1",
         raw_text="Line1\nLine2",
@@ -54,11 +54,11 @@ def test_stage_parsed_helper_identity(tmp_path: Path) -> None:
 
 
 def test_stage_parsed_helper_truncation_guard(tmp_path: Path) -> None:
-    layer = GensDataLayer.from_root(tmp_path)
-    layer.write_main_metadata("essay", "E1", {"template_id": "tpl", "mode": "copy", "parent_gen_id": "D1"})
+    data_layer = GensDataLayer.from_root(tmp_path)
+    data_layer.write_main_metadata("essay", "E1", {"template_id": "tpl", "mode": "copy", "parent_gen_id": "D1"})
     try:
         stage_parsed._stage_parsed_asset(
-            layer=layer,
+            data_layer=data_layer,
             stage="essay",
             gen_id="E1",
             raw_text="text",

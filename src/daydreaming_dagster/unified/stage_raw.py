@@ -26,7 +26,7 @@ def _coerce_optional_str(value: Any) -> Optional[str]:
 
 def _stage_raw_asset(
     *,
-    layer: GensDataLayer,
+    data_layer: GensDataLayer,
     stage: Stage,
     gen_id: str,
     prompt_text: str,
@@ -34,10 +34,10 @@ def _stage_raw_asset(
     stage_settings,
     run_id: Optional[str] = None,
 ) -> Tuple[str, Dict[str, Any]]:
-    layer.reserve_generation(stage, gen_id, create=True)
+    data_layer.reserve_generation(stage, gen_id, create=True)
 
-    metadata = resolve_generation_metadata(layer, stage, gen_id)
-    main_metadata = layer.read_main_metadata(stage, gen_id)
+    metadata = resolve_generation_metadata(data_layer, stage, gen_id)
+    main_metadata = data_layer.read_main_metadata(stage, gen_id)
     mode = (metadata.mode or "").strip().lower() or "llm"
 
     max_tokens = stage_settings.generation_max_tokens if stage_settings else None
@@ -59,7 +59,6 @@ def _stage_raw_asset(
         raw_metadata["combo_id"] = metadata.combo_id
     if run_id:
         raw_metadata["run_id"] = run_id
-
     replicate_val = main_metadata.get("replicate")
     if replicate_val is not None:
         try:
@@ -109,17 +108,17 @@ def _stage_raw_asset(
     raw_metadata["raw_length"] = len(raw_text)
     raw_metadata["raw_lines"] = sum(1 for _ in str(raw_text).splitlines())
 
-    raw_path = layer.write_raw(stage, gen_id, raw_text)
-    raw_metadata_path = layer.paths.raw_metadata_path(stage, gen_id)
+    raw_path = data_layer.write_raw(stage, gen_id, raw_text)
+    raw_metadata_path = data_layer.paths.raw_metadata_path(stage, gen_id)
     raw_metadata["raw_path"] = str(raw_path)
     raw_metadata["raw_metadata_path"] = str(raw_metadata_path)
-    layer.write_raw_metadata(stage, gen_id, raw_metadata)
+    data_layer.write_raw_metadata(stage, gen_id, raw_metadata)
 
     return raw_text, raw_metadata
 
 
 def stage_raw_asset(context, stage: Stage, *, prompt_text: str) -> str:
-    layer = GensDataLayer.from_root(context.resources.data_root)
+    data_layer = GensDataLayer.from_root(context.resources.data_root)
     gen_id = str(context.partition_key)
 
     llm_client = getattr(context.resources, "openrouter_client", None)
@@ -129,7 +128,7 @@ def stage_raw_asset(context, stage: Stage, *, prompt_text: str) -> str:
     stage_settings = experiment_config.stage_config.get(stage) if experiment_config else None
 
     raw_text, raw_metadata = _stage_raw_asset(
-        layer=layer,
+        data_layer=data_layer,
         stage=stage,
         gen_id=gen_id,
         prompt_text=prompt_text,

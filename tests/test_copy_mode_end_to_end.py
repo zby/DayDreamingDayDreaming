@@ -46,8 +46,8 @@ def test_copy_mode_essay_is_verbatim_draft(tmp_path: Path):
     )
 
     # Seed main metadata for essay
-    layer = GensDataLayer.from_root(data_root)
-    layer.write_main_metadata(
+    data_layer = GensDataLayer.from_root(data_root)
+    data_layer.write_main_metadata(
         "essay",
         essay_id,
         {

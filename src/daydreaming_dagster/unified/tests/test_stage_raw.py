@@ -58,9 +58,9 @@ class _StubLLM:
 
 def _prepare_generation(tmp_path: Path, stage: str, gen_id: str, metadata: Dict[str, Any]) -> Paths:
     paths = Paths.from_str(tmp_path)
-    layer = GensDataLayer.from_root(tmp_path)
-    layer.reserve_generation(stage, gen_id)
-    layer.write_main_metadata(stage, gen_id, metadata)
+    data_layer = GensDataLayer.from_root(tmp_path)
+    data_layer.reserve_generation(stage, gen_id)
+    data_layer.write_main_metadata(stage, gen_id, metadata)
     return paths
 
 

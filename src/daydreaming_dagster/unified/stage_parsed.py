@@ -15,7 +15,7 @@ def _count_non_empty_lines(text: str) -> int:
 
 def _stage_parsed_asset(
     *,
-    layer: GensDataLayer,
+    data_layer: GensDataLayer,
     stage: Stage,
     gen_id: str,
     raw_text: str,
@@ -25,9 +25,9 @@ def _stage_parsed_asset(
     min_lines_override: Optional[int],
     fail_on_truncation: bool,
 ) -> tuple[str, Dict[str, Any]]:
-    layer.reserve_generation(stage, gen_id, create=True)
+    data_layer.reserve_generation(stage, gen_id, create=True)
 
-    metadata = resolve_generation_metadata(layer, stage, gen_id)
+    metadata = resolve_generation_metadata(data_layer, stage, gen_id)
     raw_metadata = raw_metadata or {}
 
     if fail_on_truncation and bool(raw_metadata.get("truncated")):
@@ -68,11 +68,11 @@ def _stage_parsed_asset(
     if metadata.parent_gen_id:
         parsed_metadata["parent_gen_id"] = metadata.parent_gen_id
 
-    parsed_path = layer.write_parsed(stage, gen_id, parsed_text)
-    parsed_metadata_path = layer.paths.parsed_metadata_path(stage, gen_id)
+    parsed_path = data_layer.write_parsed(stage, gen_id, parsed_text)
+    parsed_metadata_path = data_layer.paths.parsed_metadata_path(stage, gen_id)
     parsed_metadata["parsed_path"] = str(parsed_path)
     parsed_metadata["parsed_metadata_path"] = str(parsed_metadata_path)
-    layer.write_parsed_metadata(stage, gen_id, parsed_metadata)
+    data_layer.write_parsed_metadata(stage, gen_id, parsed_metadata)
 
     return parsed_text, parsed_metadata
 
@@ -87,19 +87,19 @@ def stage_parsed_asset(
     fail_on_truncation: bool = True,
     min_lines: Optional[int] = None,
 ) -> str:
-    layer = GensDataLayer.from_root(context.resources.data_root)
+    data_layer = GensDataLayer.from_root(context.resources.data_root)
     gen_id = str(context.partition_key)
 
-    metadata = resolve_generation_metadata(layer, stage, gen_id)
+    metadata = resolve_generation_metadata(data_layer, stage, gen_id)
 
     if raw_metadata is None:
         try:
-            raw_metadata = layer.read_raw_metadata(stage, gen_id)
+            raw_metadata = data_layer.read_raw_metadata(stage, gen_id)
         except FileNotFoundError:
             raw_metadata = {}
 
     if parser_name is None:
-        parser_name = resolve_parser_name(layer.data_root, stage, metadata.template_id, None)
+        parser_name = resolve_parser_name(data_layer.data_root, stage, metadata.template_id, None)
 
     experiment_config = getattr(context.resources, "experiment_config", None)
     if experiment_config is not None:
@@ -112,7 +112,7 @@ def stage_parsed_asset(
     stage_settings = experiment_config.stage_config.get(stage) if experiment_config else None
 
     parsed_text, parsed_metadata = _stage_parsed_asset(
-        layer=layer,
+        data_layer=data_layer,
         stage=stage,
         gen_id=gen_id,
         raw_text=raw_text,
@@ -125,7 +125,7 @@ def stage_parsed_asset(
 
     if run_id:
         parsed_metadata["run_id"] = run_id
-        layer.write_parsed_metadata(stage, gen_id, parsed_metadata)
+        data_layer.write_parsed_metadata(stage, gen_id, parsed_metadata)
 
     context.add_output_metadata(
         build_stage_artifact_metadata(

@@ -36,14 +36,14 @@ def _effective_parent_stage(stage: Stage) -> Stage:
 
 def _stage_input_asset(
     *,
-    layer: GensDataLayer,
+    data_layer: GensDataLayer,
     stage: Stage,
     gen_id: str,
     content_combinations=None,
 ) -> tuple[str, dict[str, Any]]:
-    layer.reserve_generation(stage, gen_id, create=True)
+    data_layer.reserve_generation(stage, gen_id, create=True)
 
-    metadata = resolve_generation_metadata(layer, stage, gen_id)
+    metadata = resolve_generation_metadata(data_layer, stage, gen_id)
 
     info: dict[str, Any] = {
         "stage": stage,
@@ -64,13 +64,15 @@ def _stage_input_asset(
         parent_stage = _effective_parent_stage(stage)
         if not metadata.parent_gen_id:
             raise ValueError("copy mode requires parent_gen_id")
-        input_text = layer.read_parsed(parent_stage, metadata.parent_gen_id)
-        input_path = layer.write_input(stage, gen_id, input_text)
+        input_text = data_layer.read_parsed(parent_stage, metadata.parent_gen_id)
+        input_path = data_layer.write_input(stage, gen_id, input_text)
 
         extras.update(
             {
                 "input_mode": "copy",
-                "copied_from": str(layer.parsed_path(parent_stage, metadata.parent_gen_id).resolve()),
+                "copied_from": str(
+                    data_layer.parsed_path(parent_stage, metadata.parent_gen_id).resolve()
+                ),
             }
         )
         if stage == "draft" and metadata.combo_id:
@@ -96,7 +98,7 @@ def _stage_input_asset(
             parent_stage = _effective_parent_stage(stage)
             if not metadata.parent_gen_id:
                 raise ValueError("essay stage_input_asset requires parent_gen_id")
-            parent_text = layer.read_parsed(parent_stage, metadata.parent_gen_id)
+            parent_text = data_layer.read_parsed(parent_stage, metadata.parent_gen_id)
             template_vars = {
                 "draft_block": parent_text,
                 "links_block": parent_text,
@@ -107,14 +109,14 @@ def _stage_input_asset(
             parent_stage = _effective_parent_stage(stage)
             if not metadata.parent_gen_id:
                 raise ValueError("evaluation stage_input_asset requires parent_gen_id")
-            parent_text = layer.read_parsed(parent_stage, metadata.parent_gen_id)
+            parent_text = data_layer.read_parsed(parent_stage, metadata.parent_gen_id)
             template_vars = {"response": parent_text}
             info["parent_gen_id"] = metadata.parent_gen_id
         else:
             raise ValueError(f"Unsupported stage: {stage}")
 
         input_text = render_template(stage, metadata.template_id, template_vars)
-        input_path = layer.write_input(stage, gen_id, input_text)
+        input_path = data_layer.write_input(stage, gen_id, input_text)
 
     info["input_path"] = str(input_path)
     info["input_lines"] = _count_non_empty_lines(input_text)
@@ -131,11 +133,11 @@ def _stage_input_asset(
 def stage_input_asset(context, stage: Stage, *, content_combinations=None) -> str:
     """Produce the canonical stage input text (prompt or copy) for the next phase."""
 
-    layer = GensDataLayer.from_root(context.resources.data_root)
+    data_layer = GensDataLayer.from_root(context.resources.data_root)
     gen_id = str(context.partition_key)
 
     input_text, info = _stage_input_asset(
-        layer=layer,
+        data_layer=data_layer,
         stage=stage,
         gen_id=gen_id,
         content_combinations=content_combinations,
