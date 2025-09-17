@@ -4,9 +4,9 @@ from dagster import asset_check, AssetCheckResult, MetadataValue
 from pathlib import Path
 import os
 
-from daydreaming_dagster.assets.group_generation_draft import draft_response as draft_response_asset
-from daydreaming_dagster.assets.group_generation_essays import essay_response as essay_response_asset
-from daydreaming_dagster.assets.group_evaluation import evaluation_response as evaluation_response_asset
+from daydreaming_dagster.assets.group_draft import draft_parsed as draft_parsed_asset
+from daydreaming_dagster.assets.group_essay import essay_parsed as essay_parsed_asset
+from daydreaming_dagster.assets.group_evaluation import evaluation_parsed as evaluation_parsed_asset
 import pandas as pd
 from ..config.paths import Paths
 from ..types import Stage
@@ -58,9 +58,9 @@ def _make_files_exist_check(stage: Stage):
 
 # Register checks for each stage using the generic implementation and the global STAGES list
 _ASSET_BY_STAGE = {
-    "draft": draft_response_asset,
-    "essay": essay_response_asset,
-    "evaluation": evaluation_response_asset,
+    "draft": draft_parsed_asset,
+    "essay": essay_parsed_asset,
+    "evaluation": evaluation_parsed_asset,
 }
 
 for _stage, _asset in _ASSET_BY_STAGE.items():

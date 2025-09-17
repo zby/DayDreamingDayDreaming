@@ -2,8 +2,7 @@
 
 import pytest
 from unittest.mock import Mock
-from dagster import DagsterInstance
-from daydreaming_dagster.resources.llm_client import LLMClientResource
+from dagster import DagsterInstance, build_asset_context, DagsterRun
 from dagster import ConfigurableResource
 import tempfile
 from pathlib import Path
@@ -11,10 +10,12 @@ import types
 
 import os
 
+from daydreaming_dagster.resources.llm_client import LLMClientResource
+from daydreaming_dagster.resources.experiment_config import ExperimentConfig, StageSettings
+
 
 # Ensure DAGSTER_HOME points to a temp path for all tests
 # Matches project docs: set DAGSTER_HOME to an absolute path per test run
-import pytest
 @pytest.fixture(scope="session", autouse=True)
 def _dagster_home_env(tmp_path_factory):
     tmp_home = tmp_path_factory.mktemp("dagster_home")
@@ -182,7 +183,22 @@ def make_ctx():
         min_draft_lines: int | None = None,
         membership_service=None,
         run_id: str = "RUNTEST",
+        asset: bool = True,
     ):
+        def _resolve_experiment_config():
+            if exp_config is not None:
+                return exp_config
+            cfg = ExperimentConfig()
+            if min_draft_lines is None:
+                return cfg
+            stage_config = dict(cfg.stage_config)
+            draft_settings = stage_config.get("draft", StageSettings())
+            stage_config["draft"] = StageSettings(
+                generation_max_tokens=draft_settings.generation_max_tokens,
+                min_lines=int(min_draft_lines),
+            )
+            return ExperimentConfig(stage_config=stage_config)
+
         class _Log:
             def info(self, *_args, **_kwargs):
                 return None
@@ -194,14 +210,7 @@ def make_ctx():
                 self.run = types.SimpleNamespace(run_id=run_id)
                 self.resources = types.SimpleNamespace()
                 self.resources.data_root = str(data_root)
-                # Lazy import to avoid heavy imports during collection
-                if exp_config is not None:
-                    self.resources.experiment_config = exp_config
-                else:
-                    from daydreaming_dagster.resources.experiment_config import ExperimentConfig
-
-                    md = 3 if min_draft_lines is None else int(min_draft_lines)
-                    self.resources.experiment_config = ExperimentConfig(min_draft_lines=md)
+                self.resources.experiment_config = _resolve_experiment_config()
                 if llm is not None:
                     self.resources.openrouter_client = llm
                 if membership_service is not None:
@@ -210,7 +219,37 @@ def make_ctx():
             def add_output_metadata(self, _md: dict):
                 return None
 
-        return _Ctx()
+        if not asset:
+            return _Ctx()
+
+        resources = {
+            "data_root": str(data_root),
+            "experiment_config": _resolve_experiment_config(),
+        }
+
+        if llm is not None:
+            resources["openrouter_client"] = llm
+        if membership_service is not None:
+            resources["membership_service"] = membership_service
+
+        ctx = build_asset_context(
+            partition_key=partition_key,
+            resources=resources,
+            run_tags={"run_id": run_id, "dagster/run/id": run_id},
+        )
+        try:
+            setattr(ctx, "run", types.SimpleNamespace(run_id=run_id))
+        except Exception:
+            # Best-effort; some contexts forbid attribute assignment.
+            pass
+        try:
+            ctx._op_execution_context._dagster_run = DagsterRun(
+                job_name="test_job",
+                run_id=run_id,
+            )
+        except Exception:
+            pass
+        return ctx
 
     return _make
 # Helper-style integration support

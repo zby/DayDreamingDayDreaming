@@ -1,8 +1,8 @@
 from pathlib import Path
 
-from dagster import build_asset_context, materialize, DagsterInstance
+from dagster import materialize, DagsterInstance
 
-from daydreaming_dagster.assets.group_generation_essays import essay_response, essay_prompt
+from daydreaming_dagster.assets.group_essay import essay_prompt, essay_raw, essay_parsed
 from daydreaming_dagster.data_layer.gens_data_layer import GensDataLayer
 from daydreaming_dagster.resources.experiment_config import ExperimentConfig
 from daydreaming_dagster.resources.io_managers import InMemoryIOManager
@@ -68,7 +68,7 @@ def test_copy_mode_essay_is_verbatim_draft(tmp_path: Path):
             gens_root=data_root / "gens",
             stage="essay",
         ),
-        "essay_response_io_manager": InMemoryIOManager(),
+        "in_memory_io_manager": InMemoryIOManager(),
     }
 
     # Materialize essay assets end-to-end with partition key under an ephemeral instance
@@ -76,7 +76,7 @@ def test_copy_mode_essay_is_verbatim_draft(tmp_path: Path):
         # Register the essay partition key in the ephemeral instance
         instance.add_dynamic_partitions("essay_gens", [essay_id])
         result = materialize(
-            assets=[essay_prompt, essay_response],
+            assets=[essay_prompt, essay_raw, essay_parsed],
             resources=resources,
             partition_key=essay_id,
             instance=instance,

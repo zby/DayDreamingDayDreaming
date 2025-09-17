@@ -259,14 +259,17 @@ class TestPipelineIntegration:
                     content_combinations,
                     cohort_membership,
                 )
-                from daydreaming_dagster.assets.group_generation_draft import (
-                    draft_prompt, draft_response
+                from daydreaming_dagster.assets.group_draft import (
+                    draft_prompt,
+                    draft_parsed,
                 )
-                from daydreaming_dagster.assets.group_generation_essays import (
-                    essay_prompt, essay_response
+                from daydreaming_dagster.assets.group_essay import (
+                    essay_prompt,
+                    essay_parsed,
                 )
                 from daydreaming_dagster.assets.group_evaluation import (
-                    evaluation_prompt, evaluation_response
+                    evaluation_prompt,
+                    evaluation_parsed,
                 )
                 from daydreaming_dagster.resources.io_managers import CSVIOManager, InMemoryIOManager
                 from daydreaming_dagster.resources.gens_prompt_io_manager import GensPromptIOManager
@@ -293,6 +296,7 @@ class TestPipelineIntegration:
                         stage="evaluation",
                     ),
                     "evaluation_response_io_manager": InMemoryIOManager(),
+                    "in_memory_io_manager": InMemoryIOManager(),
                     "parsing_results_io_manager": CSVIOManager(base_path=pipeline_data_root / "5_parsing"),
                     "summary_results_io_manager": CSVIOManager(base_path=pipeline_data_root / "6_summary"),
                     "error_log_io_manager": CSVIOManager(base_path=pipeline_data_root / "7_reporting"),
@@ -343,11 +347,13 @@ class TestPipelineIntegration:
                 test_gen_partitions = mdf[mdf["stage"] == "draft"]["gen_id"].astype(str).tolist()[:2]
                 
                 # Materialize a few generation tasks for testing
-                from daydreaming_dagster.assets.group_generation_draft import (
-                    draft_prompt, draft_response
+                from daydreaming_dagster.assets.group_draft import (
+                    draft_prompt,
+                    draft_parsed,
                 )
-                from daydreaming_dagster.assets.group_generation_essays import (
-                    essay_prompt, essay_response
+                from daydreaming_dagster.assets.group_essay import (
+                    essay_prompt,
+                    essay_parsed,
                 )
                 
                 # Materialize draft generation for specific partitions
@@ -364,7 +370,8 @@ class TestPipelineIntegration:
                                 cohort_id,
                                 cohort_membership,
                                 # Draft generation assets
-                                draft_prompt, draft_response
+                                draft_prompt,
+                                draft_parsed,
                             ],
                             resources=resources,
                             instance=instance,
@@ -394,7 +401,8 @@ class TestPipelineIntegration:
                             cohort_id,
                             cohort_membership,
                             # Essay generation assets
-                            essay_prompt, essay_response
+                            essay_prompt,
+                            essay_parsed
                         ],
                         resources=resources,
                         instance=instance,

@@ -1,11 +1,12 @@
 from pathlib import Path
 import json
+import os
 
 import pytest
+from dagster import Failure
 
-from daydreaming_dagster.unified.stage_services import render_template
-from daydreaming_dagster.unified.stage_services import draft_response_asset as draft_response_impl
-from daydreaming_dagster.resources.experiment_config import ExperimentConfig
+from daydreaming_dagster.assets.group_draft import draft_prompt, draft_raw, draft_parsed
+from daydreaming_dagster.data_layer.gens_data_layer import GensDataLayer
 from tests.helpers.membership import write_membership_csv
 
 
@@ -34,20 +35,38 @@ def test_draft_truncation_failure_writes_debug_then_raises(tiny_data_root: Path,
         ],
     )
 
-    prompt = render_template(
-        "draft", "test-draft", {"concepts": [{"name": "A"}, {"name": "B"}]},
-        templates_root=tiny_data_root / "1_raw" / "templates",
+    layer = GensDataLayer.from_root(tiny_data_root)
+    layer.write_main_metadata(
+        "draft",
+        draft_id,
+        {
+            "template_id": "test-draft",
+            "mode": "llm",
+            "combo_id": "c-ab",
+            "llm_model_id": "m-gen",
+        },
     )
 
+    os.environ["GEN_TEMPLATES_ROOT"] = str(tiny_data_root / "1_raw" / "templates")
+
+    content_combinations = [
+        {
+            "combo_id": "c-ab",
+            "contents": [{"name": "A"}, {"name": "B"}],
+        }
+    ]
+
     ctx = make_ctx(draft_id, tiny_data_root, llm=mock_llm, min_draft_lines=3)
-    with pytest.raises(Exception):
-        _ = draft_response_impl(ctx, prompt)
+    prompt_text = draft_prompt(ctx, content_combinations)
+    raw_text = draft_raw(ctx, prompt_text)
+    with pytest.raises(Failure):
+        _ = draft_parsed(ctx, raw_text)
 
     ddir = tiny_data_root / "gens" / "draft" / draft_id
     assert (ddir / "raw.txt").exists()
     assert (ddir / "metadata.json").exists()
     assert not (ddir / "parsed.txt").exists()
 
-    # Verify metadata.truncated == true (canonicalized)
-    m = canon_meta(json.loads((ddir / "metadata.json").read_text(encoding="utf-8")))
-    assert m.get("truncated") is True
+    # Verify raw metadata records truncation
+    raw_meta = json.loads((ddir / "raw_metadata.json").read_text(encoding="utf-8"))
+    assert raw_meta.get("truncated") is True

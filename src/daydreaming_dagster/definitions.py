@@ -1,19 +1,18 @@
 from dagster import Definitions, multiprocess_executor, in_process_executor
 import os
-from daydreaming_dagster.assets.group_generation_draft import draft_prompt
-from daydreaming_dagster.assets.group_generation_essays import essay_prompt
-from daydreaming_dagster.assets.group_evaluation import evaluation_prompt
-from daydreaming_dagster.assets.group_generation_raw import (
-    draft_main_metadata,
+from daydreaming_dagster.assets.group_draft import (
+    draft_prompt,
     draft_raw,
-    essay_main_metadata,
-    essay_raw,
-    evaluation_main_metadata,
-    evaluation_raw,
-)
-from daydreaming_dagster.assets.group_generation_parsed import (
     draft_parsed,
+)
+from daydreaming_dagster.assets.group_essay import (
+    essay_prompt,
+    essay_raw,
     essay_parsed,
+)
+from daydreaming_dagster.assets.group_evaluation import (
+    evaluation_prompt,
+    evaluation_raw,
     evaluation_parsed,
 )
 from daydreaming_dagster.assets.results_processing import (
@@ -88,19 +87,16 @@ defs = Definitions(
         content_combinations,
         
         # Two-phase generation assets
-        draft_main_metadata,
-        draft_raw,
         draft_prompt,
+        draft_raw,
         draft_parsed,
 
-        essay_main_metadata,
-        essay_raw,
         essay_prompt,
+        essay_raw,
         essay_parsed,
 
-        evaluation_main_metadata,
-        evaluation_raw,
         evaluation_prompt,
+        evaluation_raw,
         evaluation_parsed,
         
         # Results processing assets

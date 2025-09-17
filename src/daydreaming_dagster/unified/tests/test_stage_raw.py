@@ -69,7 +69,7 @@ def _assert_subset(actual: Dict[str, Any], expected: Dict[str, Any]) -> None:
         assert actual.get(key) == value
 
 
-def test_stage_raw_llm_invokes_raw_generation(tmp_path: Path):
+def test_stage_raw_llm_persists_expected_files(tmp_path: Path):
     paths = _prepare_generation(
         tmp_path,
         "draft",

@@ -3,8 +3,8 @@ import json
 
 import pytest
 
-from daydreaming_dagster.unified.stage_services import essay_response_asset as essay_response_impl
-from daydreaming_dagster.resources.experiment_config import ExperimentConfig
+from daydreaming_dagster.assets.group_essay import essay_prompt, essay_raw, essay_parsed
+from daydreaming_dagster.data_layer.gens_data_layer import GensDataLayer
 from tests.helpers.membership import write_membership_csv
 
 
@@ -18,7 +18,7 @@ def _write_membership(data_root: Path, rows: list[dict]):
     write_membership_csv(data_root, rows)
 
 
-def test_essay_copy_mode_writes_only_parsed_and_metadata(tiny_data_root: Path, make_ctx):
+def test_essay_copy_mode_writes_only_parsed_and_metadata(tiny_data_root: Path, make_ctx, mock_llm):
     # Prepare parent draft parsed text
     parent_draft_id = "d-copy"
     draft_dir = tiny_data_root / "gens" / "draft" / parent_draft_id
@@ -46,20 +46,37 @@ def test_essay_copy_mode_writes_only_parsed_and_metadata(tiny_data_root: Path, m
         ],
     )
 
-    # Call impl directly in copy mode (resolved via CSV, not override)
-    ctx = make_ctx(essay_id, tiny_data_root, min_draft_lines=1)
-    _ = essay_response_impl(ctx, essay_prompt="irrelevant")
+    layer = GensDataLayer.from_root(tiny_data_root)
+    layer.write_main_metadata(
+        "essay",
+        essay_id,
+        {
+            "stage": "essay",
+            "gen_id": essay_id,
+            "template_id": "test-essay-copy",
+            "mode": "copy",
+            "parent_gen_id": parent_draft_id,
+        },
+    )
 
-    # Assert only parsed.txt and metadata.json exist
+    # Execute essay asset chain in copy mode (prompt -> raw -> parsed)
+    ctx = make_ctx(essay_id, tiny_data_root, min_draft_lines=1, llm=mock_llm)
+    prompt_text = essay_prompt(ctx)
+    raw_text = essay_raw(ctx, prompt_text)
+    parsed_text = essay_parsed(ctx, raw_text)
+
+    # Assert files match copy-mode expectations
     edir = tiny_data_root / "gens" / "essay" / essay_id
     assert (edir / "parsed.txt").exists()
     assert (edir / "metadata.json").exists()
-    assert not (edir / "prompt.txt").exists()
-    assert not (edir / "raw.txt").exists()
+    assert (edir / "raw.txt").exists()
 
     meta = json.loads((edir / "metadata.json").read_text(encoding="utf-8"))
+    assert meta["stage"] == "essay"
+    assert meta["gen_id"] == essay_id
     assert meta.get("mode") == "copy"
-    files = meta.get("files", {})
-    assert set(files.keys()) == {"parsed"}
+    raw_meta = json.loads((edir / "raw_metadata.json").read_text(encoding="utf-8"))
+    assert raw_meta.get("input_mode") == "copy"
+    assert raw_meta.get("finish_reason") == "copy"
     # llm_model_id should be absent or None in copy mode
     assert meta.get("llm_model_id") in (None, "")

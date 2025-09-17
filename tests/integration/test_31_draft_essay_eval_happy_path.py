@@ -1,14 +1,17 @@
 import json
+import os
 from pathlib import Path
 
 import pytest
 
-from daydreaming_dagster.unified.stage_services import render_template, execute_llm
-from daydreaming_dagster.unified.stage_services import draft_response_asset as draft_response_impl
-from daydreaming_dagster.unified.stage_services import essay_response_asset as essay_response_impl
-from daydreaming_dagster.assets.group_evaluation import evaluation_response
-from daydreaming_dagster.resources.experiment_config import ExperimentConfig
-from dagster import build_op_context
+from daydreaming_dagster.assets.group_draft import draft_prompt, draft_raw, draft_parsed
+from daydreaming_dagster.assets.group_essay import essay_prompt, essay_raw, essay_parsed
+from daydreaming_dagster.assets.group_evaluation import (
+    evaluation_prompt,
+    evaluation_raw,
+    evaluation_parsed,
+)
+from daydreaming_dagster.data_layer.gens_data_layer import GensDataLayer
 from tests.helpers.membership import write_membership_csv
 
 
@@ -26,8 +29,7 @@ def _read_json(p: Path) -> dict:
     return json.loads(p.read_text(encoding="utf-8"))
 
 
-def test_happy_path_draft_essay_eval_chain(tiny_data_root: Path, mock_llm, canon_meta, make_ctx):
-    import os
+def test_happy_path_draft_essay_eval_chain(tiny_data_root: Path, mock_llm, make_ctx):
     # Arrange membership rows (one draft -> one essay(llm) -> one evaluation)
     draft_id = "d1"
     essay_id = "e1"
@@ -59,13 +61,54 @@ def test_happy_path_draft_essay_eval_chain(tiny_data_root: Path, mock_llm, canon
         ],
     )
 
-    # Draft: render a simple prompt and run LLM path
-    draft_prompt_text = render_template(
+    layer = GensDataLayer.from_root(tiny_data_root)
+    layer.write_main_metadata(
         "draft",
-        "test-draft",
-        {"concepts": [{"name": "Alpha"}, {"name": "Beta"}]},
-        templates_root=tiny_data_root / "1_raw" / "templates",
+        draft_id,
+        {
+            "stage": "draft",
+            "gen_id": draft_id,
+            "template_id": "test-draft",
+            "mode": "llm",
+            "combo_id": "c-test",
+            "llm_model_id": "m-gen",
+        },
     )
+    layer.write_main_metadata(
+        "essay",
+        essay_id,
+        {
+            "stage": "essay",
+            "gen_id": essay_id,
+            "template_id": "test-essay-llm",
+            "mode": "llm",
+            "parent_gen_id": draft_id,
+            "llm_model_id": "m-gen",
+        },
+    )
+    layer.write_main_metadata(
+        "evaluation",
+        eval_id,
+        {
+            "stage": "evaluation",
+            "gen_id": eval_id,
+            "template_id": "test-eval",
+            "mode": "llm",
+            "parent_gen_id": essay_id,
+            "llm_model_id": "m-eval",
+        },
+    )
+
+    # Ensure templates resolve from the tiny data root for all stages
+    os.environ["GEN_TEMPLATES_ROOT"] = str(tiny_data_root / "1_raw" / "templates")
+
+    content_combinations = [
+        {
+            "combo_id": "c-test",
+            "contents": [{"name": "Alpha"}, {"name": "Beta"}],
+        }
+    ]
+
     # Use a tagged LLM so the configured 'essay_block' parser produces a parsed.txt
     class _TaggedLLM:
         def generate_with_info(self, prompt: str, *, model: str, max_tokens=None):
@@ -73,29 +116,21 @@ def test_happy_path_draft_essay_eval_chain(tiny_data_root: Path, mock_llm, canon
             return body, {"finish_reason": "stop", "truncated": False, "usage": {}}
 
     dctx = make_ctx(draft_id, tiny_data_root, llm=_TaggedLLM(), min_draft_lines=3)
-    _ = draft_response_impl(dctx, draft_prompt_text)
+    draft_prompt_text = draft_prompt(dctx, content_combinations)
+    draft_raw_text = draft_raw(dctx, draft_prompt_text)
+    draft_parsed_text = draft_parsed(dctx, draft_raw_text)
 
-    # Ensure templates_root resolves templates from tiny_data_root
-    os.environ["GEN_TEMPLATES_ROOT"] = str(tiny_data_root / "1_raw" / "templates")
-
-    # Essay (LLM mode): implement uses CSV to resolve mode and loads draft parsed text
+    # Essay (LLM mode): asset chain uses upstream parsed draft
     ectx = make_ctx(essay_id, tiny_data_root, llm=mock_llm, min_draft_lines=3)
-    _ = essay_response_impl(ectx, essay_prompt="ok")
+    essay_prompt_text = essay_prompt(ectx)
+    essay_raw_text = essay_raw(ectx, essay_prompt_text)
+    essay_parsed_text = essay_parsed(ectx, essay_raw_text)
 
-    # Evaluation: run via stage_services directly
-    doc_text = (tiny_data_root / "gens" / "essay" / essay_id / "parsed.txt").read_text(encoding="utf-8")
-    _ = execute_llm(
-        stage="evaluation",
-        llm=mock_llm,
-        root_dir=tiny_data_root,
-        gen_id=eval_id,
-        template_id="test-eval",
-        prompt_text=render_template("evaluation", "test-eval", {"response": doc_text}),
-        model="m-eval",
-        max_tokens=2048,
-        min_lines=None,
-        parent_gen_id=essay_id,
-    )
+    # Evaluation asset chain uses essay parsed output
+    vctx = make_ctx(eval_id, tiny_data_root, llm=mock_llm, min_draft_lines=3)
+    evaluation_prompt_text = evaluation_prompt(vctx)
+    evaluation_raw_text = evaluation_raw(vctx, evaluation_prompt_text)
+    evaluation_parsed_text = evaluation_parsed(vctx, evaluation_raw_text)
 
     # Assert filesystem layout and basic invariants
     ddir = tiny_data_root / "gens" / "draft" / draft_id
@@ -110,9 +145,9 @@ def test_happy_path_draft_essay_eval_chain(tiny_data_root: Path, mock_llm, canon
     assert (edir / "raw.txt").exists()
     assert (edir / "parsed.txt").exists()
     assert (edir / "metadata.json").exists()
-    essay_raw = (edir / "raw.txt").read_text(encoding="utf-8").replace("\r\n", "\n")
-    essay_parsed = (edir / "parsed.txt").read_text(encoding="utf-8")
-    assert essay_parsed == essay_raw
+    essay_raw_file = (edir / "raw.txt").read_text(encoding="utf-8").replace("\r\n", "\n")
+    essay_parsed_file = (edir / "parsed.txt").read_text(encoding="utf-8")
+    assert essay_parsed_file == essay_raw_file
 
     # Evaluation: parsed equals single float line 7.0 (default tail_score)
     assert (vdir / "raw.txt").exists()
@@ -121,19 +156,16 @@ def test_happy_path_draft_essay_eval_chain(tiny_data_root: Path, mock_llm, canon
     assert (vdir / "parsed.txt").read_text(encoding="utf-8") == "7.0\n"
 
     # Canonical metadata checks (drop duration, baselined files)
-    dmeta = canon_meta(_read_json(ddir / "metadata.json"))
-    emeta = canon_meta(_read_json(edir / "metadata.json"))
-    vmeta = canon_meta(_read_json(vdir / "metadata.json"))
+    dmeta = _read_json(ddir / "metadata.json")
+    emeta = _read_json(edir / "metadata.json")
+    vmeta = _read_json(vdir / "metadata.json")
 
-    # Draft canonical fields
+    # Draft canonical fields from main metadata
     assert dmeta["stage"] == "draft"
     assert dmeta["gen_id"] == draft_id
     assert dmeta["template_id"] == "test-draft"
     assert dmeta["mode"] == "llm"
     assert dmeta.get("llm_model_id") == "m-gen"
-    assert dmeta.get("finish_reason") == "stop"
-    assert dmeta.get("truncated") is False
-    assert set(dmeta.get("files", {}).keys()) == {"raw"} or set(dmeta.get("files", {}).keys()) == {"raw", "parsed"}
 
     # Essay canonical fields
     assert emeta["stage"] == "essay"
@@ -141,10 +173,6 @@ def test_happy_path_draft_essay_eval_chain(tiny_data_root: Path, mock_llm, canon
     assert emeta["template_id"] == "test-essay-llm"
     assert emeta["mode"] == "llm"
     assert emeta.get("llm_model_id") == "m-gen"
-    assert emeta.get("finish_reason") == "stop"
-    assert emeta.get("truncated") is False
-    # Metadata may omit files.parsed in LLM path (written after metadata for debuggability); prompt not recorded here
-    assert set(emeta.get("files", {}).keys()) in ({"raw"}, {"raw", "parsed"})
 
     # Evaluation canonical fields
     assert vmeta["stage"] == "evaluation"
@@ -152,8 +180,23 @@ def test_happy_path_draft_essay_eval_chain(tiny_data_root: Path, mock_llm, canon
     assert vmeta["template_id"] == "test-eval"
     assert vmeta["mode"] == "llm"
     assert vmeta.get("llm_model_id") == "m-eval"
-    assert vmeta.get("finish_reason") == "stop"
-    assert vmeta.get("truncated") is False
-    # Parser configured via evaluation_templates.csv
-    assert vmeta.get("parser_name") == "in_last_line"
-    assert set(vmeta.get("files", {}).keys()) in ({"raw"}, {"raw", "parsed"})
+
+    # Raw metadata reflects runtime details
+    draft_raw_meta = _read_json(ddir / "raw_metadata.json")
+    essay_raw_meta = _read_json(edir / "raw_metadata.json")
+    evaluation_raw_meta = _read_json(vdir / "raw_metadata.json")
+
+    assert draft_raw_meta.get("finish_reason") == "stop"
+    assert draft_raw_meta.get("truncated") is False
+    assert draft_raw_meta.get("mode") == "llm"
+
+    assert essay_raw_meta.get("finish_reason") == "stop"
+    assert essay_raw_meta.get("truncated") is False
+    assert essay_raw_meta.get("mode") == "llm"
+
+    assert evaluation_raw_meta.get("finish_reason") == "stop"
+    assert evaluation_raw_meta.get("truncated") is False
+    assert evaluation_raw_meta.get("mode") == "llm"
+
+    eval_parsed_meta = _read_json(vdir / "parsed_metadata.json")
+    assert eval_parsed_meta.get("parser_name") == "in_last_line"

@@ -12,7 +12,7 @@ from daydreaming_dagster.assets._helpers import (
     emit_standard_output_metadata,
 )
 from daydreaming_dagster.resources.membership_service import MembershipServiceResource
-from daydreaming_dagster.unified.stage_policy import resolve_generator_mode
+from daydreaming_dagster.unified.stage_core import resolve_generator_mode
 
 
 class _Resources:

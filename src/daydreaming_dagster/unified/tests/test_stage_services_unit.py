@@ -6,7 +6,7 @@ import types
 
 import pytest
 
-from daydreaming_dagster.unified.stage_services import (
+from daydreaming_dagster.unified.stage_core import (
     render_template,
     generate_llm,
     resolve_parser_name,

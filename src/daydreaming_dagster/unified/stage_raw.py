@@ -8,15 +8,6 @@ from daydreaming_dagster.data_layer.gens_data_layer import GensDataLayer, resolv
 from .stage_core import Stage, generate_llm
 
 
-def _effective_parent_stage(stage: Stage) -> Stage | None:
-    parent = "draft" if stage == "draft" else None
-    if stage == "essay":
-        parent = "draft"
-    elif stage == "evaluation":
-        parent = "essay"
-    return parent
-
-
 def _coerce_optional_str(value: Any) -> Optional[str]:
     if value is None:
         return None

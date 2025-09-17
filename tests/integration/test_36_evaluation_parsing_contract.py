@@ -1,36 +1,23 @@
 from pathlib import Path
+import os
 
 import pytest
 
-from daydreaming_dagster.unified.stage_services import render_template, execute_llm
+from daydreaming_dagster.assets.group_evaluation import (
+    evaluation_prompt,
+    evaluation_raw,
+    evaluation_parsed,
+)
+from daydreaming_dagster.data_layer.gens_data_layer import GensDataLayer
 from tests.helpers.membership import write_membership_csv
 
 pytestmark = pytest.mark.integration
-
-class _Log:
-    def info(self, *_args, **_kwargs):
-        pass
-
-class _Ctx:
-    def __init__(self, partition_key: str, data_root: Path, llm):
-        class _Res:
-            pass
-
-        self.partition_key = partition_key
-        self.log = _Log()
-        self.resources = _Res()
-        self.resources.data_root = str(data_root)
-        self.resources.openrouter_client = llm
-        self.resources.experiment_config = ExperimentConfig()
-
-    def add_output_metadata(self, _md: dict):
-        pass
 
 def _write_membership(data_root: Path, rows: list[dict]):
     write_membership_csv(data_root, rows)
 
 @pytest.mark.llm_cfg(tail_score="8.5")
-def test_evaluation_parser_in_last_line_emits_single_float_line(tiny_data_root: Path, mock_llm):
+def test_evaluation_parser_in_last_line_emits_single_float_line(tiny_data_root: Path, mock_llm, make_ctx):
     # Create a minimal essay parent document
     essay_parent_id = "e-for-eval"
     e_dir = tiny_data_root / "gens" / "essay" / essay_parent_id
@@ -52,21 +39,26 @@ def test_evaluation_parser_in_last_line_emits_single_float_line(tiny_data_root: 
         ],
     )
 
-    # Execute evaluation via stage_services directly (no Dagster context required)
-    doc_text = (e_dir / "parsed.txt").read_text(encoding="utf-8")
-    _ = execute_llm(
-        stage="evaluation",
-        llm=mock_llm,
-        root_dir=tiny_data_root,
-        gen_id=eval_id,
-        template_id="test-eval",
-        prompt_text=render_template("evaluation", "test-eval", {"response": doc_text}, templates_root=tiny_data_root / "1_raw" / "templates"),
-        model="m-eval",
-        max_tokens=2048,
-        min_lines=None,
-        parent_gen_id=essay_parent_id,
+    layer = GensDataLayer.from_root(tiny_data_root)
+    layer.write_main_metadata(
+        "evaluation",
+        eval_id,
+        {
+            "template_id": "test-eval",
+            "mode": "llm",
+            "parent_gen_id": essay_parent_id,
+            "llm_model_id": "m-eval",
+        },
     )
+
+    os.environ["GEN_TEMPLATES_ROOT"] = str(tiny_data_root / "1_raw" / "templates")
+
+    ctx = make_ctx(eval_id, tiny_data_root, llm=mock_llm, min_draft_lines=3)
+    prompt_text = evaluation_prompt(ctx)
+    raw_text = evaluation_raw(ctx, prompt_text)
+    parsed_text = evaluation_parsed(ctx, raw_text)
 
     vdir = tiny_data_root / "gens" / "evaluation" / eval_id
     assert (vdir / "parsed.txt").exists()
     assert (vdir / "parsed.txt").read_text(encoding="utf-8") == "8.5\n"
+    assert parsed_text == "8.5\n"

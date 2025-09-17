@@ -9,8 +9,7 @@ from daydreaming_dagster.data_layer.gens_data_layer import (
     GensDataLayer,
     resolve_generation_metadata,
 )
-from .stage_core import Stage, render_template
-from .stage_policy import parent_stage_of
+from .stage_core import Stage, render_template, effective_parent_stage
 
 
 def _count_non_empty_lines(text: str) -> int:
@@ -25,13 +24,6 @@ def _find_content_combination(content_combinations: Iterable[Any], combo_id: str
         if str(candidate or "").strip() == combo_id:
             return combo
     return None
-
-
-def _effective_parent_stage(stage: Stage) -> Stage:
-    parent = parent_stage_of(stage)
-    if parent is None:
-        raise ValueError(f"Stage {stage} does not have a parent stage")
-    return parent
 
 
 def _stage_input_asset(
@@ -61,7 +53,7 @@ def _stage_input_asset(
     extras: dict[str, Any] = {}
 
     if metadata.mode == "copy":
-        parent_stage = _effective_parent_stage(stage)
+        parent_stage = effective_parent_stage(stage)
         if not metadata.parent_gen_id:
             raise ValueError("copy mode requires parent_gen_id")
         input_text = data_layer.read_parsed(parent_stage, metadata.parent_gen_id)
@@ -95,7 +87,7 @@ def _stage_input_asset(
             if metadata.combo_id:
                 extras["combo_id"] = metadata.combo_id
         elif stage == "essay":
-            parent_stage = _effective_parent_stage(stage)
+            parent_stage = effective_parent_stage(stage)
             if not metadata.parent_gen_id:
                 raise ValueError("essay stage_input_asset requires parent_gen_id")
             parent_text = data_layer.read_parsed(parent_stage, metadata.parent_gen_id)
@@ -106,7 +98,7 @@ def _stage_input_asset(
             extras["draft_line_count"] = _count_non_empty_lines(parent_text)
             info["parent_gen_id"] = metadata.parent_gen_id
         elif stage == "evaluation":
-            parent_stage = _effective_parent_stage(stage)
+            parent_stage = effective_parent_stage(stage)
             if not metadata.parent_gen_id:
                 raise ValueError("evaluation stage_input_asset requires parent_gen_id")
             parent_text = data_layer.read_parsed(parent_stage, metadata.parent_gen_id)

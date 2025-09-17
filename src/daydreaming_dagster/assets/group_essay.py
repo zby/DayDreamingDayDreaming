@@ -1,16 +1,15 @@
 """
-Group: evaluation
+Group: generation_essays
 
-Dagster assets for the evaluation stage that delegate to the unified stage
-helpers. These keep Dagster wiring focused on translating context to the
-shared `_stage_*` primitives while the unified layer manages IO.
+Dagster assets for the essay stage built on the unified stage helpers.
+The assets translate Dagster context into the lower-level `_stage_*` helpers,
+leaving IO and metadata persistence to the shared unified implementation.
 """
 
 from __future__ import annotations
 
 from ._decorators import asset_with_boundary
-from .partitions import evaluation_gens_partitions
-from .raw_data import EVALUATION_TEMPLATES_KEY
+from .partitions import essay_gens_partitions
 from ._helpers import build_stage_artifact_metadata, get_run_id
 from ..data_layer.gens_data_layer import GensDataLayer, resolve_generation_metadata
 from ..unified.stage_core import Stage, resolve_parser_name
@@ -19,31 +18,30 @@ from ..unified.stage_raw import _stage_raw_asset
 from ..unified.stage_parsed import _stage_parsed_asset
 
 
-EVALUATION_STAGE: Stage = "evaluation"
+ESSAY_STAGE: Stage = "essay"
 
 
 @asset_with_boundary(
-    stage="evaluation",
-    partitions_def=evaluation_gens_partitions,
-    group_name="evaluation",
-    io_manager_key="evaluation_prompt_io_manager",
+    stage="essay",
+    partitions_def=essay_gens_partitions,
+    group_name="generation_essays",
+    io_manager_key="essay_prompt_io_manager",
     required_resource_keys={"data_root", "experiment_config"},
-    deps={EVALUATION_TEMPLATES_KEY},
 )
-def evaluation_prompt(context) -> str:
-    """Produce the evaluation prompt text via the gens data layer."""
+def essay_prompt(context) -> str:
+    """Produce the canonical essay prompt/input text via the gens data layer."""
     data_layer = GensDataLayer.from_root(context.resources.data_root)
     gen_id = str(context.partition_key)
 
     input_text, info = _stage_input_asset(
         data_layer=data_layer,
-        stage=EVALUATION_STAGE,
+        stage=ESSAY_STAGE,
         gen_id=gen_id,
     )
 
     context.add_output_metadata(
         build_stage_artifact_metadata(
-            function="evaluation_stage_input",
+            function="essay_stage_input",
             artifact_label="input",
             metadata=info,
             text=input_text,
@@ -53,27 +51,27 @@ def evaluation_prompt(context) -> str:
 
 
 @asset_with_boundary(
-    stage="evaluation_raw",
-    partitions_def=evaluation_gens_partitions,
-    group_name="evaluation",
+    stage="essay_raw",
+    partitions_def=essay_gens_partitions,
+    group_name="generation_essays",
     io_manager_key="in_memory_io_manager",
-    required_resource_keys={"openrouter_client", "data_root", "experiment_config"},
+    required_resource_keys={"data_root", "experiment_config", "openrouter_client"},
 )
-def evaluation_raw(context, evaluation_prompt: str) -> str:
-    """Execute evaluation raw generation and persist raw assets via the data layer."""
+def essay_raw(context, essay_prompt: str) -> str:
+    """Execute the essay raw generation and persist raw artifacts via the data layer."""
     data_layer = GensDataLayer.from_root(context.resources.data_root)
     gen_id = str(context.partition_key)
 
     experiment_config = getattr(context.resources, "experiment_config", None)
-    stage_settings = experiment_config.stage_config.get(EVALUATION_STAGE) if experiment_config else None
+    stage_settings = experiment_config.stage_config.get(ESSAY_STAGE) if experiment_config else None
     llm_client = getattr(context.resources, "openrouter_client", None)
     run_id = get_run_id(context)
 
     raw_text, raw_metadata = _stage_raw_asset(
         data_layer=data_layer,
-        stage=EVALUATION_STAGE,
+        stage=ESSAY_STAGE,
         gen_id=gen_id,
-        prompt_text=evaluation_prompt,
+        prompt_text=essay_prompt,
         llm_client=llm_client,
         stage_settings=stage_settings,
         run_id=run_id,
@@ -81,7 +79,7 @@ def evaluation_raw(context, evaluation_prompt: str) -> str:
 
     context.add_output_metadata(
         build_stage_artifact_metadata(
-            function="evaluation_raw",
+            function="essay_raw",
             artifact_label="raw",
             metadata=raw_metadata,
             text=raw_text,
@@ -91,39 +89,39 @@ def evaluation_raw(context, evaluation_prompt: str) -> str:
 
 
 @asset_with_boundary(
-    stage="evaluation_parsed",
-    partitions_def=evaluation_gens_partitions,
-    group_name="evaluation",
+    stage="essay_parsed",
+    partitions_def=essay_gens_partitions,
+    group_name="generation_essays",
     io_manager_key="in_memory_io_manager",
     required_resource_keys={"data_root", "experiment_config"},
 )
-def evaluation_parsed(context, evaluation_raw: str) -> str:
-    """Parse evaluation raw text into the persisted parsed artifact."""
+def essay_parsed(context, essay_raw: str) -> str:
+    """Parse the essay raw text into its persisted parsed representation."""
     data_layer = GensDataLayer.from_root(context.resources.data_root)
     gen_id = str(context.partition_key)
 
-    metadata = resolve_generation_metadata(data_layer, EVALUATION_STAGE, gen_id)
+    metadata = resolve_generation_metadata(data_layer, ESSAY_STAGE, gen_id)
     try:
-        raw_metadata = data_layer.read_raw_metadata(EVALUATION_STAGE, gen_id)
+        raw_metadata = data_layer.read_raw_metadata(ESSAY_STAGE, gen_id)
     except FileNotFoundError:
         raw_metadata = {}
 
     parser_name = resolve_parser_name(
         data_layer.data_root,
-        EVALUATION_STAGE,
+        ESSAY_STAGE,
         metadata.template_id,
         None,
     )
 
     experiment_config = getattr(context.resources, "experiment_config", None)
-    stage_settings = experiment_config.stage_config.get(EVALUATION_STAGE) if experiment_config else None
+    stage_settings = experiment_config.stage_config.get(ESSAY_STAGE) if experiment_config else None
     min_lines_override = stage_settings.min_lines if stage_settings else None
 
     parsed_text, parsed_metadata = _stage_parsed_asset(
         data_layer=data_layer,
-        stage=EVALUATION_STAGE,
+        stage=ESSAY_STAGE,
         gen_id=gen_id,
-        raw_text=evaluation_raw,
+        raw_text=essay_raw,
         parser_name=parser_name,
         raw_metadata=raw_metadata,
         stage_settings=stage_settings,
@@ -134,11 +132,11 @@ def evaluation_parsed(context, evaluation_raw: str) -> str:
     run_id = get_run_id(context)
     if run_id:
         parsed_metadata["run_id"] = run_id
-        data_layer.write_parsed_metadata(EVALUATION_STAGE, gen_id, parsed_metadata)
+        data_layer.write_parsed_metadata(ESSAY_STAGE, gen_id, parsed_metadata)
 
     context.add_output_metadata(
         build_stage_artifact_metadata(
-            function="evaluation_parsed",
+            function="essay_parsed",
             artifact_label="parsed",
             metadata=parsed_metadata,
             text=parsed_text,
@@ -148,7 +146,7 @@ def evaluation_parsed(context, evaluation_raw: str) -> str:
 
 
 __all__ = [
-    "evaluation_prompt",
-    "evaluation_raw",
-    "evaluation_parsed",
+    "essay_prompt",
+    "essay_raw",
+    "essay_parsed",
 ]

@@ -1,36 +1,16 @@
-import pandas as pd
+import json
+import os
 from pathlib import Path
 
-from daydreaming_dagster.unified.stage_services import essay_response_asset as essay_response_impl
-from daydreaming_dagster.resources.experiment_config import ExperimentConfig
+import pandas as pd
+
+from daydreaming_dagster.assets.group_essay import essay_prompt, essay_raw, essay_parsed
+from daydreaming_dagster.data_layer.gens_data_layer import GensDataLayer
 
 
-class _FakeLogger:
-    def info(self, *_args, **_kwargs):
-        pass
-
-
-class _FakeContext:
-    def __init__(self, partition_key: str, data_root: Path):
-        class _Res:
-            pass
-
-        self.partition_key = partition_key
-        self.log = _FakeLogger()
-        self._meta = {}
-        self.resources = _Res()
-        self.resources.data_root = str(data_root)
-        # Provide experiment configuration expected by assets
-        self.resources.experiment_config = ExperimentConfig()
-        # LLM present but unused in copy mode
-        class _LLM:
-            def generate(self, *_args, **_kwargs):
-                return ""
-
-        self.resources.openrouter_client = _LLM()
-
-    def add_output_metadata(self, meta: dict):
-        self._meta.update(meta)
+class _FakeLLM:
+    def generate_with_info(self, *_args, **_kwargs):
+        return "", {"finish_reason": "stop", "truncated": False}
 
 
 def _write_minimal_essay_templates_csv(dir_path: Path):
@@ -50,7 +30,7 @@ def _write_minimal_essay_templates_csv(dir_path: Path):
     df.to_csv(out, index=False)
 
 
-def test_essay_response_copy_mode_returns_draft_content(tmp_path: Path):
+def test_essay_response_copy_mode_returns_draft_content(tmp_path: Path, make_ctx):
     _write_minimal_essay_templates_csv(tmp_path)
 
     # Prepare a parent draft generation on filesystem
@@ -73,12 +53,32 @@ def test_essay_response_copy_mode_returns_draft_content(tmp_path: Path):
     ])
     (tmp_path / "cohorts" / cohort / "membership.csv").write_text(membership.to_csv(index=False), encoding="utf-8")
 
-    ctx = _FakeContext(partition_key=essay_gen_id, data_root=tmp_path)
+    layer = GensDataLayer.from_root(tmp_path)
+    layer.write_main_metadata(
+        "essay",
+        essay_gen_id,
+        {
+            "stage": "essay",
+            "gen_id": essay_gen_id,
+            "template_id": essay_template,
+            "mode": "copy",
+            "parent_gen_id": parent_gen_id,
+        },
+    )
 
-    result = essay_response_impl(ctx, essay_prompt="COPY_MODE")
+    os.environ["GEN_TEMPLATES_ROOT"] = str(tmp_path / "1_raw" / "templates")
 
-    assert result == draft_content
-    mode = ctx._meta.get("mode")
-    src_parent = ctx._meta.get("parent_gen_id")
-    assert (getattr(mode, "text", mode)) == "copy"
-    assert (getattr(src_parent, "text", src_parent)) == parent_gen_id
+    ctx = make_ctx(essay_gen_id, tmp_path, min_draft_lines=1, llm=_FakeLLM())
+
+    prompt_text = essay_prompt(ctx)
+    raw_text = essay_raw(ctx, prompt_text)
+    parsed_text = essay_parsed(ctx, raw_text)
+
+    assert raw_text == draft_content
+    assert parsed_text == draft_content
+
+    raw_meta = json.loads((tmp_path / "gens" / "essay" / essay_gen_id / "raw_metadata.json").read_text(encoding="utf-8"))
+    parsed_meta = json.loads((tmp_path / "gens" / "essay" / essay_gen_id / "parsed_metadata.json").read_text(encoding="utf-8"))
+
+    assert raw_meta.get("mode") == "copy"
+    assert parsed_meta.get("parent_gen_id") == parent_gen_id

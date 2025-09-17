@@ -1,10 +1,10 @@
 from pathlib import Path
+import os
 
 import pytest
 
-from daydreaming_dagster.unified.stage_services import draft_response_asset as draft_response_impl
-from daydreaming_dagster.unified.stage_services import render_template
-from daydreaming_dagster.resources.experiment_config import ExperimentConfig
+from daydreaming_dagster.assets.group_draft import draft_prompt, draft_raw, draft_parsed
+from daydreaming_dagster.data_layer.gens_data_layer import GensDataLayer
 from tests.helpers.membership import write_membership_csv
 
 
@@ -39,13 +39,31 @@ def test_draft_parser_fallback_produces_parsed_text_when_configured(tiny_data_ro
         ],
     )
 
-    # Render a valid prompt and run
-    prompt = render_template(
-        "draft", "test-draft", {"concepts": [{"name": "A"}, {"name": "B"}]},
-        templates_root=tiny_data_root / "1_raw" / "templates",
+    layer = GensDataLayer.from_root(tiny_data_root)
+    layer.write_main_metadata(
+        "draft",
+        draft_id,
+        {
+            "template_id": "test-draft",
+            "mode": "llm",
+            "combo_id": "c-ab",
+            "llm_model_id": "m-gen",
+        },
     )
+
+    os.environ["GEN_TEMPLATES_ROOT"] = str(tiny_data_root / "1_raw" / "templates")
+
+    content_combinations = [
+        {
+            "combo_id": "c-ab",
+            "contents": [{"name": "A"}, {"name": "B"}],
+        }
+    ]
+
     ctx = make_ctx(draft_id, tiny_data_root, llm=_TaggedLLM(), min_draft_lines=1)
-    parsed = draft_response_impl(ctx, prompt)
+    prompt_text = draft_prompt(ctx, content_combinations)
+    raw_text = draft_raw(ctx, prompt_text)
+    parsed = draft_parsed(ctx, raw_text)
 
     ddir = tiny_data_root / "gens" / "draft" / draft_id
     assert (ddir / "parsed.txt").exists()

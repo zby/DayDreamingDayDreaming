@@ -2,9 +2,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, Optional, Tuple, Literal, cast
 import os
 import time
+import math
 
 from jinja2 import Environment, StrictUndefined
 
@@ -15,7 +16,7 @@ from daydreaming_dagster.utils.generation import (
 )
 from daydreaming_dagster.types import Stage
 from daydreaming_dagster.config.paths import Paths, RAW_FILENAME, PARSED_FILENAME
-from .stage_policy import effective_parser_name
+from daydreaming_dagster.utils.raw_readers import read_templates
 
 
 @dataclass
@@ -36,7 +37,16 @@ class LLMClientProto:
 
 ExecutionResultLike = ExecutionResult | Dict[str, Any]
 
+_PARENT_STAGE_MAP: Dict[Stage, Stage] = {
+    "essay": "draft",
+    "evaluation": "essay",
+}
+
 _JINJA = Environment(undefined=StrictUndefined)
+
+
+def parent_stage_of(stage: Stage) -> Optional[Stage]:
+    return _PARENT_STAGE_MAP.get(stage)
 
 
 def _templates_root(default: Optional[Path] = None) -> Path:
@@ -62,6 +72,74 @@ def render_template(
         raise FileNotFoundError(f"Template not found: {path}")
     tpl = _JINJA.from_string(path.read_text(encoding="utf-8"))
     return tpl.render(**values)
+
+
+def effective_parent_stage(stage: Stage) -> Stage:
+    parent = parent_stage_of(stage)
+    if parent is None:
+        raise ValueError(f"Stage {stage} does not have a parent stage")
+    return parent
+
+
+def effective_parser_name(
+    data_root: Path,
+    stage: Stage,
+    template_id: str,
+    override: Optional[str] = None,
+) -> Optional[str]:
+    if isinstance(override, str) and override.strip():
+        return override.strip()
+
+    stage_str = str(stage)
+    if stage_str not in {"draft", "essay", "evaluation"}:
+        raise ValueError(f"Unsupported stage for parser resolution: {stage}")
+
+    df = read_templates(Path(data_root), stage_str, filter_active=False)
+    row = df[df["template_id"].astype(str) == str(template_id)]
+    if row.empty:
+        raise ValueError(f"Template '{template_id}' not found in {stage_str}_templates.csv")
+
+    raw_val = row.iloc[0].get("parser")
+    if raw_val is None or (isinstance(raw_val, float) and math.isnan(raw_val)):
+        parsed_name = ""
+    else:
+        parsed_name = str(raw_val).strip()
+
+    return parsed_name or "identity"
+
+
+def resolve_generator_mode(
+    *,
+    kind: Literal["draft", "essay", "evaluation"],
+    data_root: Path,
+    template_id: str,
+    override_from_prompt: Optional[str] = None,
+    filter_active: Optional[bool] = None,
+) -> Literal["llm", "copy"]:
+    if isinstance(override_from_prompt, str) and override_from_prompt.strip().upper().startswith("COPY_MODE"):
+        return "copy"
+
+    if filter_active is None:
+        filter_active = False
+
+    df = read_templates(Path(data_root), kind, filter_active=bool(filter_active))
+    if df.empty:
+        raise ValueError(f"{kind.capitalize()} templates table is empty; cannot resolve generator mode")
+    if "generator" not in df.columns:
+        raise ValueError(f"{kind.capitalize()} templates CSV missing required 'generator' column")
+
+    row = df[df["template_id"].astype(str) == str(template_id)]
+    if row.empty:
+        raise ValueError(f"{kind.capitalize()} template not found: {template_id}")
+
+    val = row.iloc[0].get("generator")
+    if not isinstance(val, str) or not val.strip():
+        raise ValueError(f"{kind.capitalize()} template has empty/invalid generator value")
+
+    mode = val.strip().lower()
+    if mode not in ("llm", "copy"):
+        raise ValueError(f"{kind.capitalize()} template declares unsupported generator '{mode}'")
+    return mode  # type: ignore[return-value]
 
 
 def generate_llm(
@@ -115,7 +193,7 @@ def resolve_parser_name(
 
     - Explicit override wins when provided and non-empty.
     - For essay/draft in test contexts without CSVs, fall back to "identity" if CSV is absent.
-    - Otherwise, delegate to stage_policy.effective_parser_name (may raise on config errors).
+    - Otherwise, apply the centralized parser policy defined in this module (raises on config errors).
     """
     if isinstance(provided, str) and provided.strip():
         return provided.strip()
@@ -324,7 +402,11 @@ __all__ = [
     "ExecutionResult",
     "LLMClientProto",
     "ExecutionResultLike",
+    "parent_stage_of",
     "render_template",
+    "effective_parent_stage",
+    "effective_parser_name",
+    "resolve_generator_mode",
     "generate_llm",
     "resolve_parser_name",
     "parse_text",

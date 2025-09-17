@@ -2,16 +2,11 @@ from __future__ import annotations
 
 from pathlib import Path
 from os import PathLike
-from typing import Iterable, Optional, Tuple, Any, Dict
+from typing import Optional, Any, Dict
 
-import pandas as pd
-from dagster import Failure, MetadataValue
+from dagster import MetadataValue
 
-from ..utils.membership_lookup import find_membership_row_by_gen
-from ..utils.generation import load_generation
-from ..config.paths import Paths
-from ..unified.stage_policy import parent_stage_of as _parent_stage_of
-from ..types import Stage
+from dagster._core.errors import DagsterInvalidPropertyError
 
 
 """Helper utilities shared across asset implementations.
@@ -22,9 +17,16 @@ Note: prefer using Paths.from_context(context) directly in new code.
 
 def get_run_id(context) -> Optional[str]:
     # Prefer Dagster run.run_id when available; fall back to context.run_id if present
-    run = getattr(context, "run", None)
-    if run is not None and getattr(run, "run_id", None):
-        return str(run.run_id)
+    try:
+        run = getattr(context, "run", None)
+    except DagsterInvalidPropertyError:
+        run = None
+    except AttributeError:
+        run = None
+    if run is not None:
+        rid = getattr(run, "run_id", None)
+        if rid:
+            return str(rid)
     rid = getattr(context, "run_id", None)
     return str(rid) if rid else None
 
@@ -57,10 +59,11 @@ def load_generation_parsed_text(
 
 
 def _parent_stage(stage: Stage) -> Stage:
-    """Wrapper delegating to unified.stage_policy.parent_stage_of for consistency."""
-    ps = _parent_stage_of(stage)
-    # For draft (no parent), keep prior behavior returning "draft" though it shouldn't be requested.
-    return ps or "draft"
+    try:
+        return effective_parent_stage(stage)
+    except ValueError:
+        # For draft (no parent), keep prior behavior returning "draft" though it shouldn't be requested.
+        return "draft"
 
 
 def load_parent_parsed_text(
