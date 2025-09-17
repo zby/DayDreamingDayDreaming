@@ -12,7 +12,7 @@ from typing import Dict, Any
 import json
 
 from ..utils.evaluation_processing import calculate_evaluation_metadata
-from ..config.paths import Paths
+from ..data_layer.paths import Paths
 from ..utils.evaluation_scores import aggregate_evaluation_scores_for_ids
 
 class FilteredEvaluationResultsConfig(Config):

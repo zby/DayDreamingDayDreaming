@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 import os
 
-from daydreaming_dagster.config.paths import Paths
+from daydreaming_dagster.data_layer.paths import Paths
 
 
 def test_generation_dir_and_files_basic():

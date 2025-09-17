@@ -9,7 +9,7 @@ import math
 from jinja2 import Environment, StrictUndefined
 
 from daydreaming_dagster.types import Stage
-from daydreaming_dagster.config.paths import Paths, RAW_FILENAME, PARSED_FILENAME
+from daydreaming_dagster.data_layer.paths import Paths, RAW_FILENAME, PARSED_FILENAME
 from daydreaming_dagster.utils.raw_readers import read_templates
 from daydreaming_dagster.data_layer.gens_data_layer import GensDataLayer
 

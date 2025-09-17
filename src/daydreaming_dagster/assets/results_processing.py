@@ -1,7 +1,7 @@
 from dagster import MetadataValue
 from ._decorators import asset_with_boundary
 from pathlib import Path
-from ..config.paths import Paths
+from ..data_layer.paths import Paths
 import pandas as pd
 from ..utils.evaluation_processing import calculate_evaluation_metadata
 

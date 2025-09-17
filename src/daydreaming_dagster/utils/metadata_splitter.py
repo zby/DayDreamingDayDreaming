@@ -8,7 +8,7 @@ from typing import Any, Dict, Iterable, Optional
 import json
 import math
 
-from daydreaming_dagster.config.paths import Paths
+from daydreaming_dagster.data_layer.paths import Paths
 
 
 @dataclass

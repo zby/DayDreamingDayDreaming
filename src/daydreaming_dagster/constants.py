@@ -5,7 +5,7 @@ assets and utilities. Update here to change project-wide conventions.
 """
 
 from .types import STAGES
-from .config.paths import (
+from .data_layer.paths import (
     PROMPT_FILENAME,
     RAW_FILENAME,
     PARSED_FILENAME,

@@ -28,7 +28,7 @@ from typing import Any, Dict, List, Optional, Set
 import json
 from datetime import datetime
 from daydreaming_dagster.utils.evaluation_scores import aggregate_evaluation_scores_for_ids
-from daydreaming_dagster.config.paths import Paths
+from daydreaming_dagster.data_layer.paths import Paths
  
 import pandas as pd
 

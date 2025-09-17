@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from daydreaming_dagster.config.paths import Paths
+from daydreaming_dagster.data_layer.paths import Paths
 from daydreaming_dagster.utils.metadata_splitter import (
     MetadataSplit,
     migrate_generation_metadata,

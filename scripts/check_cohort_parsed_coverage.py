@@ -18,7 +18,7 @@ def _ensure_src_on_path():
 _ensure_src_on_path()
 
 import pandas as pd  # noqa: E402
-from daydreaming_dagster.config.paths import Paths  # noqa: E402
+from daydreaming_dagster.data_layer.paths import Paths  # noqa: E402
 
 
 def compute_coverage(data_root: Path, cohort_id: str, stages: list[str] | None = None, list_missing: bool = False):
@@ -119,4 +119,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

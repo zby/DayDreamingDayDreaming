@@ -4,7 +4,7 @@ from ._decorators import asset_with_boundary
 import pandas as pd
 import numpy as np
 from pathlib import Path
-from ..config.paths import Paths
+from ..data_layer.paths import Paths
 from .raw_data import EVALUATION_TEMPLATES_KEY
 from ..utils.raw_readers import read_templates
 from ..utils.evaluation_processing import filter_valid_scores

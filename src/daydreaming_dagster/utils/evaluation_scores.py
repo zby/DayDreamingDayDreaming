@@ -6,7 +6,7 @@ import json
 import pandas as pd
 
 from .generation import load_generation
-from ..config.paths import Paths
+from ..data_layer.paths import Paths
 
 
 def aggregate_evaluation_scores_for_ids(data_root: Path, gen_ids: Iterable[str]) -> pd.DataFrame:

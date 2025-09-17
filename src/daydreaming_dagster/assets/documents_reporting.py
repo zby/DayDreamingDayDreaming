@@ -6,7 +6,7 @@ import pandas as pd
 from pathlib import Path
 import json
 from ..constants import STAGES
-from ..config.paths import Paths
+from ..data_layer.paths import Paths
 
 
 @asset_with_boundary(

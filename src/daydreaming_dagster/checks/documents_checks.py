@@ -8,7 +8,7 @@ from daydreaming_dagster.assets.group_draft import draft_parsed as draft_parsed_
 from daydreaming_dagster.assets.group_essay import essay_parsed as essay_parsed_asset
 from daydreaming_dagster.assets.group_evaluation import evaluation_parsed as evaluation_parsed_asset
 import pandas as pd
-from ..config.paths import Paths
+from ..data_layer.paths import Paths
 from ..types import Stage
 
 

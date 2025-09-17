@@ -34,7 +34,7 @@ from .partitions import (
     evaluation_gens_partitions,
 )
 from ..utils.generation import load_generation
-from ..config.paths import Paths
+from ..data_layer.paths import Paths
 
 
 def _load_selected_essays_list(data_root: Path) -> List[str]:

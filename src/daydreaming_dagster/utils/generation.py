@@ -4,7 +4,7 @@ from pathlib import Path
 import json
 from typing import Optional, Dict, Any
 from .ids import gen_dir as build_gen_dir
-from ..config.paths import RAW_FILENAME, PARSED_FILENAME, PROMPT_FILENAME, METADATA_FILENAME
+from ..data_layer.paths import RAW_FILENAME, PARSED_FILENAME, PROMPT_FILENAME, METADATA_FILENAME
 
 
 def _write_atomic(path: Path, data: str) -> None:
