@@ -18,4 +18,4 @@ GEN_FILES = (PROMPT_FILENAME, RAW_FILENAME, PARSED_FILENAME, METADATA_FILENAME)
 # Backcompat aliases for stage names (prefer using values from STAGES directly)
 DRAFT, ESSAY, EVALUATION = STAGES
 
-# Note: Use Paths methods (config.paths.Paths) instead of these filenames directly.
+# Note: Prefer Paths helpers (data_layer.paths.Paths) instead of touching filenames directly.
