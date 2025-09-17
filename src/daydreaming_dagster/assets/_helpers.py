@@ -5,9 +5,7 @@ from os import PathLike
 from typing import Optional, Any, Dict
 
 from dagster import MetadataValue
-
 from dagster._core.errors import DagsterInvalidPropertyError
-
 
 """Helper utilities shared across asset implementations.
 
@@ -16,7 +14,7 @@ Note: prefer using Paths.from_context(context) directly in new code.
 
 
 def get_run_id(context) -> Optional[str]:
-    # Prefer Dagster run.run_id when available; fall back to context.run_id if present
+    """Best-effort extraction of the Dagster run id from an asset context."""
     try:
         run = getattr(context, "run", None)
     except DagsterInvalidPropertyError:
@@ -31,86 +29,6 @@ def get_run_id(context) -> Optional[str]:
     return str(rid) if rid else None
 
 
-## require_membership_row removed — use MembershipServiceResource.require_row instead
-
-
-def load_generation_parsed_text(
-    context,
-    stage: Stage,
-    gen_id: str,
-    *,
-    failure_fn_name: str,
-) -> str:
-    paths = Paths.from_context(context)
-    gen = load_generation(paths.gens_root, stage, str(gen_id))
-    parsed = gen.get("parsed_text") if isinstance(gen, dict) else None
-    if not parsed:
-        paths = Paths.from_context(context)
-        raise Failure(
-            description="Missing or unreadable parsed.txt for upstream generation",
-            metadata={
-                "function": MetadataValue.text(failure_fn_name),
-                "stage": MetadataValue.text(str(stage)),
-                "gen_id": MetadataValue.text(str(gen_id)),
-                "parsed_path": MetadataValue.path(str(paths.parsed_path(stage, str(gen_id)).resolve())),
-            },
-        )
-    return str(parsed).replace("\r\n", "\n")
-
-
-def _parent_stage(stage: Stage) -> Stage:
-    try:
-        return effective_parent_stage(stage)
-    except ValueError:
-        # For draft (no parent), keep prior behavior returning "draft" though it shouldn't be requested.
-        return "draft"
-
-
-def load_parent_parsed_text(
-    context,
-    stage: Stage,
-    gen_id: str,
-    *,
-    failure_fn_name: str,
-) -> tuple[str, str]:
-    """Load parsed.txt for the parent of a generation.
-
-    Resolves the membership row for `stage`/`gen_id`, validates presence of
-    `parent_gen_id`, determines the upstream stage, and returns
-    (parent_gen_id, parent_parsed_text). Raises Failure with helpful metadata
-    if the membership row or files are missing.
-    """
-    from daydreaming_dagster.resources.membership_service import MembershipServiceResource
-    paths = Paths.from_context(context)
-    svc = getattr(getattr(context, "resources", object()), "membership_service", None) or MembershipServiceResource()
-    row, _cohort = svc.require_row(paths.data_root, stage, str(gen_id), require_columns=["parent_gen_id"])
-    parent_gen_id = str(row.get("parent_gen_id") or "").strip()
-    if not parent_gen_id:
-        raise Failure(
-            description="Missing parent_gen_id for upstream document",
-            metadata={
-                "function": MetadataValue.text(str(failure_fn_name)),
-                "stage": MetadataValue.text(str(stage)),
-                "gen_id": MetadataValue.text(str(gen_id)),
-                "resolution": MetadataValue.text(
-                    "Ensure cohort membership row has a valid parent_gen_id"
-                ),
-            },
-        )
-    pstage = _parent_stage(stage)
-    parent_text = load_generation_parsed_text(
-        context,
-        pstage,
-        parent_gen_id,
-        failure_fn_name=failure_fn_name,
-    )
-    return parent_gen_id, parent_text
-
-
-
-
-
-
 def emit_standard_output_metadata(
     context,
     *,
@@ -119,6 +37,8 @@ def emit_standard_output_metadata(
     result: "ExecutionResultLike",
     extras: Optional[dict] = None,
 ) -> None:
+    """Attach standardized metadata for legacy response-style generation outputs."""
+
     # Accept both our dataclass and a mapping-like result
     def _get(obj: Any, key: str, default=None):
         if hasattr(obj, key):
@@ -132,13 +52,17 @@ def emit_standard_output_metadata(
     md: Dict[str, MetadataValue] = {
         "function": MetadataValue.text(str(function)),
         "gen_id": MetadataValue.text(str(gen_id)),
-        "finish_reason": MetadataValue.text(str(info.get("finish_reason")) if isinstance(info.get("finish_reason"), (str, int, float)) else ""),
+        "finish_reason": MetadataValue.text(
+            str(info.get("finish_reason"))
+            if isinstance(info.get("finish_reason"), (str, int, float))
+            else ""
+        ),
         "truncated": MetadataValue.bool(bool(info.get("truncated"))),
     }
-    # Optional: include duration and token usage if available on result.metadata or info.usage
+
     meta = _get(result, "metadata", {}) or {}
-    # If stage_core provided precomputed counts and metrics, include them directly without re-deriving.
-    def _try_add_numeric(key: str, value, *, as_float: bool = False):
+
+    def _try_add_numeric(key: str, value, *, as_float: bool = False) -> None:
         try:
             if value is None:
                 return
@@ -153,13 +77,13 @@ def emit_standard_output_metadata(
                 md["duration_ms"] = MetadataValue.int(int(meta.get("duration_ms")))
     except Exception:
         pass
-    # max_tokens from metadata when present
+
     try:
         if isinstance(meta, dict) and meta.get("max_tokens") is not None:
             md["max_tokens"] = MetadataValue.int(int(meta.get("max_tokens")))
     except Exception:
         pass
-    # Precomputed char/line counts from metadata (if provided by execution layer)
+
     if isinstance(meta, dict):
         _try_add_numeric("prompt_chars", meta.get("prompt_chars"))
         _try_add_numeric("raw_chars", meta.get("raw_chars"))
@@ -167,7 +91,7 @@ def emit_standard_output_metadata(
         _try_add_numeric("prompt_lines", meta.get("prompt_lines"))
         _try_add_numeric("raw_lines", meta.get("raw_lines"))
         _try_add_numeric("parsed_lines", meta.get("parsed_lines"))
-    # total_tokens best-effort from metadata.usage or info.usage
+
     def _total_tokens_from(u: Any) -> int | None:
         if isinstance(u, dict):
             t = u.get("total_tokens")
@@ -188,11 +112,10 @@ def emit_standard_output_metadata(
         tt = _total_tokens_from(u)
         if tt is not None:
             md["total_tokens"] = MetadataValue.int(tt)
+
     if extras:
         for k, v in extras.items():
-            # Avoid overriding the standard keys
             if k not in md:
-                # Coerce common types into MetadataValue
                 if isinstance(v, bool):
                     md[k] = MetadataValue.bool(v)
                 elif isinstance(v, int):
@@ -203,21 +126,18 @@ def emit_standard_output_metadata(
                     md[k] = MetadataValue.json(v)
                 else:
                     md[k] = MetadataValue.text(str(v))
+
     context.add_output_metadata(md)
 
 
-# For type checkers in assets that import this
 ExecutionResultLike = Any
 
 __all__ = [
-    "Stage",
     "get_run_id",
-    "load_generation_parsed_text",
-    "load_parent_parsed_text",
-    "build_stage_input_metadata",
     "build_stage_artifact_metadata",
     "emit_standard_output_metadata",
 ]
+
 
 def _assign_metadata_value(md: Dict[str, MetadataValue], key: str, value: Any) -> None:
     if value is None:
@@ -252,7 +172,6 @@ def build_stage_artifact_metadata(
 
     data = dict(metadata or {})
 
-    # Remove values we turn into dedicated fields
     for drop_key in ("stage", "gen_id", "function"):
         data.pop(drop_key, None)
 
@@ -267,7 +186,6 @@ def build_stage_artifact_metadata(
         if value:
             md[key] = MetadataValue.text(str(value))
 
-    # Text-derived stats
     length_key = f"{label}_length"
     lines_key = f"{label}_lines"
     if text is not None:
@@ -292,23 +210,3 @@ def build_stage_artifact_metadata(
         _assign_metadata_value(md, key, value)
 
     return md
-
-
-def build_stage_input_metadata(
-    context,
-    *,
-    gen_id: str,
-    metadata: Dict[str, Any],
-    text: Optional[str] = None,
-) -> Dict[str, MetadataValue]:
-    data = dict(metadata or {})
-    stage = data.get("stage")
-    if not stage:
-        raise ValueError("metadata must include 'stage' for input artifact")
-    data.setdefault("gen_id", gen_id)
-    return build_stage_artifact_metadata(
-        function=f"{stage}_stage_input",
-        artifact_label="input",
-        metadata=data,
-        text=text,
-    )

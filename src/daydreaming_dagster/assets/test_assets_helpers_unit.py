@@ -7,10 +7,7 @@ import pytest
 
 from dagster import Failure
 
-from daydreaming_dagster.assets._helpers import (
-    load_generation_parsed_text,
-    emit_standard_output_metadata,
-)
+from daydreaming_dagster.assets._helpers import emit_standard_output_metadata
 from daydreaming_dagster.resources.membership_service import MembershipServiceResource
 from daydreaming_dagster.unified.stage_core import resolve_generator_mode
 
@@ -63,19 +60,6 @@ def test_require_membership_row_missing_required_columns(tmp_path: Path):
     with pytest.raises(Failure) as ei:
         svc.require_row(tmp_path, "essay", "E1", require_columns=["llm_model_id"])  # empty
     assert "missing_columns" in str(ei.value)
-
-
-def test_load_generation_parsed_text_success_and_failure(tmp_path: Path):
-    # Success
-    base = tmp_path / "gens" / "draft" / "D1"
-    base.mkdir(parents=True, exist_ok=True)
-    (base / "parsed.txt").write_text("X\n", encoding="utf-8")
-    ctx = _Ctx(tmp_path)
-    text = load_generation_parsed_text(ctx, "draft", "D1", failure_fn_name="fn")
-    assert text == "X\n"
-    # Failure when missing
-    with pytest.raises(Failure):
-        load_generation_parsed_text(ctx, "draft", "D404", failure_fn_name="fn")
 
 
 def test_resolve_essay_generator_mode_csv_and_override(tmp_path: Path):
