@@ -36,7 +36,7 @@ Moving `Paths` into this package keeps the data access layer self-contained; oth
 - Optional helper `exists(stage, gen_id)`.
 
 ### Write helpers
-- `write_prompt(stage, gen_id, text)`
+- `write_input(stage, gen_id, text)`
 - `write_raw(stage, gen_id, text)`
 - `write_parsed(stage, gen_id, text)`
 - `write_main_metadata(stage, gen_id, metadata_dict)`
@@ -62,11 +62,19 @@ Each method should ensure parent directories exist (call `reserve_generation`). 
 ```python
 from dataclasses import dataclass
 from daydreaming_dagster.data_layer.gens_data_layer import GensDataLayer
+from daydreaming_dagster.unified.stage_policy import parent_stage_of
+
+
+def _effective_parent_stage(stage: Stage) -> Stage | None:
+    parent = parent_stage_of(stage)
+    if parent is None and stage == "draft":
+        return "draft"
+    return parent
 
 @dataclass
 class GenerationMetadata:
+    stage: str
     template_id: str
-    parent_stage: str | None
     parent_gen_id: str | None
     mode: str  # "llm" or "copy"
     combo_id: str | None
@@ -76,20 +84,22 @@ class GenerationMetadata:
 def resolve_generation_metadata(layer: GensDataLayer, stage: str, gen_id: str) -> GenerationMetadata:
     meta = layer.read_main_metadata(stage, gen_id)
     template_id = str(meta.get("template_id") or "")
-    mode = str(meta.get("mode") or "llm").lower()
-    parent_gen_id = meta.get("parent_gen_id")
-    parent_stage = _parent_stage(stage) if parent_gen_id else None
+    mode = str(meta.get("mode") or "llm").lower() or "llm"
+    parent_gen_id = str(meta.get("parent_gen_id") or "").strip() or None
 
-    if mode == "copy" and (not parent_stage or not parent_gen_id):
-        raise ValueError(f"copy mode requires parent metadata for {stage}/{gen_id}")
+    parent_required = stage in ("essay", "evaluation") or mode == "copy"
+    if parent_required and not parent_gen_id:
+        raise ValueError(f"parent_gen_id required for {stage}/{gen_id} (mode={mode})")
 
+    combo_val = meta.get("combo_id")
+    cohort_val = meta.get("cohort_id")
     return GenerationMetadata(
+        stage=stage,
         template_id=template_id,
-        parent_stage=parent_stage,
-        parent_gen_id=str(parent_gen_id) if parent_gen_id else None,
+        parent_gen_id=parent_gen_id,
         mode=mode,
-        combo_id=str(meta.get("combo_id") or ""),
-        cohort_id=str(meta.get("cohort_id") or "") if meta.get("cohort_id") else None,
+        combo_id=str(combo_val).strip() if combo_val is not None else None,
+        cohort_id=str(cohort_val).strip() if cohort_val is not None else None,
     )
 ```
 
@@ -128,11 +138,11 @@ def stage_input_asset(context, stage: Stage, *, content_combinations=None) -> st
     metadata = resolve_generation_metadata(layer, stage, gen_id)
     layer.reserve_generation(stage, gen_id, create=True)
 
+    parent_stage = _effective_parent_stage(stage)
+
     if metadata.mode == "copy":
-        if not (metadata.parent_stage and metadata.parent_gen_id):
-            raise ValueError(f"copy mode requires parent metadata for {stage}/{gen_id}")
-        input_text = layer.read_parsed(metadata.parent_stage, metadata.parent_gen_id)
-        layer.write_prompt(stage, gen_id, input_text)
+        input_text = layer.read_parsed(parent_stage, metadata.parent_gen_id)
+        layer.write_input(stage, gen_id, input_text)
         return input_text
 
     if stage == "draft":
@@ -144,9 +154,7 @@ def stage_input_asset(context, stage: Stage, *, content_combinations=None) -> st
             raise ValueError(f"content combination '{combo_id}' missing for draft/{gen_id}")
         template_vars = {"concepts": match.contents}
     elif stage in ("essay", "evaluation"):
-        if not (metadata.parent_stage and metadata.parent_gen_id):
-            raise ValueError(f"Stage {stage} requires parent metadata")
-        parent_text = layer.read_parsed(metadata.parent_stage, metadata.parent_gen_id)
+        parent_text = layer.read_parsed(parent_stage, metadata.parent_gen_id)
         if stage == "essay":
             template_vars = {
                 "draft_block": parent_text,
@@ -158,70 +166,11 @@ def stage_input_asset(context, stage: Stage, *, content_combinations=None) -> st
         raise ValueError(f"Unsupported stage: {stage}")
 
     input_text = render_template(stage, metadata.template_id, template_vars)
-    layer.write_prompt(stage, gen_id, input_text)
+    layer.write_input(stage, gen_id, input_text)
     return input_text
 ```
 
 Key points:
-- `resolve_generation_metadata(...)` reads the current generation’s `metadata.json` (via the data layer) and, if needed, parent metadata to determine `template_id`, `parent_stage`, `parent_gen_id`, `mode`, etc., eliminating the direct dependency on the membership service inside the asset (though cohort lookups can still be validated elsewhere).
+- `resolve_generation_metadata(...)` reads the current generation’s `metadata.json` (via the data layer) and surfaces core fields (`template_id`, `mode`, `parent_gen_id`, etc.); callers reuse `parent_stage_of` when they need the upstream stage, eliminating the direct dependency on the membership service inside the asset (though cohort lookups can still be validated elsewhere).
 - All filesystem interactions (directory creation, reading parent parsed text, writing prompts/inputs) go through `GensDataLayer`.
 - Downstream stages can call `resolve_generation_metadata` again as needed, keeping this asset focused on producing the stage input text.
-
-### `compute_prompt_values` sketch (data layer powered)
-
-```python
-from typing import Any, Sequence
-from dagster import Failure, MetadataValue
-from daydreaming_dagster.types import Stage
-from daydreaming_dagster.data_layer.gens_data_layer import GensDataLayer, GenerationMetadata
-
-
-def compute_prompt_values(
-    layer: GensDataLayer,
-    stage: Stage,
-    gen_id: str,
-    metadata: GenerationMetadata,
-    content_combinations: Sequence[Any] | None,
-) -> dict[str, Any]:
-    if stage == "draft":
-        if content_combinations is None:
-            raise ValueError("draft prompts require preloaded content combinations")
-        combo_id = (metadata.combo_id or "").strip()
-        match = next((c for c in content_combinations if getattr(c, "combo_id", None) == combo_id), None)
-        if match is None:
-            raise ValueError(f"content combination '{combo_id}' missing for draft/{gen_id}")
-        return {"concepts": match.contents}
-
-    if stage == "essay":
-        parent_gen = (metadata.parent_gen_id or "").strip()
-        if not parent_gen:
-            raise Failure(
-                description="essay input missing parent draft",
-                metadata={
-                    "stage": MetadataValue.text(stage),
-                    "gen_id": MetadataValue.text(gen_id),
-                },
-            )
-        parent_stage = metadata.parent_stage or "draft"
-        parent_text = layer.read_parsed(parent_stage, parent_gen)
-        return {
-            "draft_block": parent_text,
-            "links_block": parent_text,
-        }
-
-    if stage == "evaluation":
-        parent_gen = (metadata.parent_gen_id or "").strip()
-        if not parent_gen:
-            raise Failure(
-                description="evaluation input missing parent essay",
-                metadata={
-                    "stage": MetadataValue.text(stage),
-                    "gen_id": MetadataValue.text(gen_id),
-                },
-            )
-        parent_stage = metadata.parent_stage or "essay"
-        parent_text = layer.read_parsed(parent_stage, parent_gen)
-        return {"response": parent_text}
-
-    raise ValueError(f"Unsupported stage for prompt computation: {stage}")
-```
