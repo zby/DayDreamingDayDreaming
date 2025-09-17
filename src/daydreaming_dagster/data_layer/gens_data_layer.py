@@ -37,6 +37,12 @@ class GensDataLayer:
         target.write_text(str(text or ""), encoding="utf-8")
         return target
 
+    def read_input(self, stage: str, gen_id: str) -> str:
+        target = self._paths.input_path(stage, gen_id)
+        if not target.exists():
+            raise FileNotFoundError(f"prompt.txt not found for {stage}/{gen_id}: {target}")
+        return target.read_text(encoding="utf-8")
+
     def write_raw(self, stage: str, gen_id: str, text: str) -> Path:
         target = self._paths.raw_path(stage, gen_id)
         target.parent.mkdir(parents=True, exist_ok=True)

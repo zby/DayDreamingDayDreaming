@@ -2,9 +2,9 @@ from __future__ import annotations
 
 from dagster import IOManager, OutputContext, InputContext
 from pathlib import Path
+
 from ..constants import STAGES
-from ..utils.generation import write_gen_prompt, load_generation
-from ..config.paths import Paths
+from ..data_layer.gens_data_layer import GensDataLayer
 
 
 class GensPromptIOManager(IOManager):
@@ -29,6 +29,8 @@ class GensPromptIOManager(IOManager):
         if stage_str not in STAGES:
             raise ValueError(f"Invalid stage '{stage_str}'. Expected one of {STAGES}.")
         self.stage = stage_str
+        data_root = self.gens_root.parent
+        self._data_layer = GensDataLayer.from_root(data_root)
 
     def _resolve_gen_id(self, partition_key: str) -> str:
         # Partition key is the gen_id in membership-first mode
@@ -39,15 +41,10 @@ class GensPromptIOManager(IOManager):
         if not isinstance(obj, str):
             raise ValueError(f"Expected prompt text (str), got {type(obj)}")
         gen_id = self._resolve_gen_id(pk)
-        write_gen_prompt(self.gens_root, self.stage, gen_id, obj)
+        self._data_layer.write_input(self.stage, gen_id, obj)
 
     def load_input(self, context: InputContext) -> str:
         # Avoid deprecated upstream_output.partition_key; use InputContext.partition_key
         pk = context.partition_key
         gen_id = self._resolve_gen_id(pk)
-        doc = load_generation(self.gens_root, self.stage, gen_id)
-        prompt = doc.get("prompt_text")
-        if not isinstance(prompt, str) or not prompt:
-            p = Paths.from_str(str(self.gens_root.parent)).prompt_path(self.stage, gen_id)
-            raise FileNotFoundError(f"Prompt not found: {p}")
-        return prompt
+        return self._data_layer.read_input(self.stage, gen_id)
