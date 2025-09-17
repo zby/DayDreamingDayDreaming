@@ -11,7 +11,7 @@ from tests.helpers.membership import write_membership_csv
 pytestmark = pytest.mark.integration
 
 
-"""Integration test: essay copy-mode writes only parsed + metadata."""
+"""Integration test: essay copy-mode mirrors draft content and metadata."""
 
 
 def _write_membership(data_root: Path, rows: list[dict]):
@@ -70,6 +70,11 @@ def test_essay_copy_mode_writes_only_parsed_and_metadata(tiny_data_root: Path, m
     assert (edir / "parsed.txt").exists()
     assert (edir / "metadata.json").exists()
     assert (edir / "raw.txt").exists()
+
+    assert raw_text == "X\nY\nZ\n"
+    assert parsed_text == raw_text
+    assert (edir / "parsed.txt").read_text(encoding="utf-8") == parsed_text
+    assert (edir / "raw.txt").read_text(encoding="utf-8") == raw_text
 
     meta = json.loads((edir / "metadata.json").read_text(encoding="utf-8"))
     assert meta["stage"] == "essay"

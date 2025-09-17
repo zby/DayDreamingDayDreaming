@@ -515,128 +515,165 @@ class TestPipelineIntegration:
                 print("✅ Normalized combo_mappings.csv test passed!")
 
     def test_template_filtering_respects_active_column(self):
-        """Specific test for template filtering based on active column in metadata CSV."""
+        """Cohort membership should only include templates marked active."""
         with tempfile.TemporaryDirectory() as temp_root:
             temp_dagster_home = Path(temp_root) / "dagster_home"
             temp_data_dir = Path(temp_root) / "data"
-            
+
             temp_dagster_home.mkdir()
             temp_data_dir.mkdir()
             (temp_data_dir / "1_raw").mkdir()
             (temp_data_dir / "2_tasks").mkdir()
-            # gens store used; legacy single-phase dirs not needed
-            # removed parsed_generation_responses directory creation
-            (temp_data_dir / "4_evaluation").mkdir()
-            (temp_data_dir / "4_evaluation" / "evaluation_prompts").mkdir()
-            (temp_data_dir / "4_evaluation" / "evaluation_responses").mkdir()
+            (temp_data_dir / "gens").mkdir()
             (temp_data_dir / "5_parsing").mkdir()
             (temp_data_dir / "6_summary").mkdir()
             (temp_data_dir / "7_reporting").mkdir()
-            
-            # Create test data with explicit template filtering scenario
+
             raw_data = temp_data_dir / "1_raw"
-            
-            # Create minimal concepts data
+
+            # Minimal concepts data (two actives).
             concepts_dir = raw_data / "concepts"
             concepts_dir.mkdir()
-            
-            test_concepts = pd.DataFrame([
-                {"concept_id": "test-concept-1", "name": "Test Concept 1", "active": True},
-                {"concept_id": "test-concept-2", "name": "Test Concept 2", "active": True},
-            ])
-            test_concepts.to_csv(temp_data_dir / "1_raw" / "concepts_metadata.csv", index=False)
-            
+            pd.DataFrame(
+                [
+                    {"concept_id": "concept-1", "name": "Concept 1", "active": True},
+                    {"concept_id": "concept-2", "name": "Concept 2", "active": True},
+                ]
+            ).to_csv(raw_data / "concepts_metadata.csv", index=False)
+
             desc_para_dir = concepts_dir / "descriptions-paragraph"
             desc_para_dir.mkdir()
-            desc_para_dir.joinpath("test-concept-1.txt").write_text("Test concept 1 description")
-            desc_para_dir.joinpath("test-concept-2.txt").write_text("Test concept 2 description")
-            
-            # Create LLM models data (1 generation model for simplicity)
-            test_models = pd.DataFrame([
-                {"id": "test_gen_model", "model": "test/model", "provider": "test", "display_name": "Test Model", "for_generation": True, "for_evaluation": False, "specialization": "test"}
-            ])
-            test_models.to_csv(raw_data / "llm_models.csv", index=False)
-            
-            # Create generation templates metadata with mixed active/inactive
-            test_gen_templates_metadata = pd.DataFrame([
-                {"template_id": "active-template-1", "template_name": "Active Template 1", "description": "Test active template 1", "active": True},
-                {"template_id": "active-template-2", "template_name": "Active Template 2", "description": "Test active template 2", "active": True},
-                {"template_id": "inactive-template-1", "template_name": "Inactive Template 1", "description": "Test inactive template", "active": False},
-                {"template_id": "inactive-template-2", "template_name": "Inactive Template 2", "description": "Test inactive template", "active": False},
-            ])
-            test_gen_templates_metadata.to_csv(raw_data / "draft_templates.csv", index=False)
-            
-            # Create actual template files (all of them, including inactive ones)
-            # For the new architecture, create template files in the draft subdirectory
-            gen_templates_dir = raw_data / "templates"
-            draft_dir = gen_templates_dir / "draft"
-            draft_dir.mkdir(parents=True)
-            draft_dir.joinpath("active-template-1.txt").write_text("Active template 1 content")
-            draft_dir.joinpath("active-template-2.txt").write_text("Active template 2 content")  
-            draft_dir.joinpath("inactive-template-1.txt").write_text("Inactive template 1 content")
-            draft_dir.joinpath("inactive-template-2.txt").write_text("Inactive template 2 content")
-            
-            with patch.dict(os.environ, {'DAGSTER_HOME': str(temp_dagster_home)}):
+            desc_para_dir.joinpath("concept-1.txt").write_text("Concept 1 paragraph")
+            desc_para_dir.joinpath("concept-2.txt").write_text("Concept 2 paragraph")
+
+            # LLM models with a single generation model.
+            pd.DataFrame(
+                [
+                    {
+                        "id": "generation-model",
+                        "model": "provider/model",
+                        "provider": "provider",
+                        "display_name": "Test Model",
+                        "for_generation": True,
+                        "for_evaluation": False,
+                        "specialization": "test",
+                    }
+                ]
+            ).to_csv(raw_data / "llm_models.csv", index=False)
+
+            # Replication config required by cohort builder.
+            pd.DataFrame(
+                [
+                    {"stage": "draft", "replicates": 1},
+                    {"stage": "essay", "replicates": 1},
+                    {"stage": "evaluation", "replicates": 1},
+                ]
+            ).to_csv(raw_data / "replication_config.csv", index=False)
+
+            # Draft templates with mixed active/inactive rows.
+            pd.DataFrame(
+                [
+                    {"template_id": "draft-active-1", "template_name": "Draft A1", "description": "", "active": True},
+                    {"template_id": "draft-active-2", "template_name": "Draft A2", "description": "", "active": True},
+                    {"template_id": "draft-inactive-1", "template_name": "Draft I1", "description": "", "active": False},
+                ]
+            ).to_csv(raw_data / "draft_templates.csv", index=False)
+
+            # Essay templates with one active and one inactive entry.
+            pd.DataFrame(
+                [
+                    {"template_id": "essay-active-1", "template_name": "Essay A1", "description": "", "active": True, "generator": "copy"},
+                    {"template_id": "essay-inactive-1", "template_name": "Essay I1", "description": "", "active": False, "generator": "copy"},
+                ]
+            ).to_csv(raw_data / "essay_templates.csv", index=False)
+
+            # Evaluation templates to satisfy downstream reads (one active entry).
+            pd.DataFrame(
+                [
+                    {"template_id": "eval-active-1", "template_name": "Eval A1", "description": "", "active": True},
+                ]
+            ).to_csv(raw_data / "evaluation_templates.csv", index=False)
+
+            # Template files (present for completeness).
+            tpl_root = raw_data / "templates"
+            (tpl_root / "draft").mkdir(parents=True)
+            (tpl_root / "essay").mkdir(parents=True)
+            (tpl_root / "evaluation").mkdir(parents=True)
+            for name in ("draft-active-1", "draft-active-2", "draft-inactive-1"):
+                (tpl_root / "draft" / f"{name}.txt").write_text(f"Template {name}")
+            for name in ("essay-active-1", "essay-inactive-1"):
+                (tpl_root / "essay" / f"{name}.txt").write_text(f"Template {name}")
+            (tpl_root / "evaluation" / "eval-active-1.txt").write_text("Evaluation template")
+
+            with patch.dict(os.environ, {"DAGSTER_HOME": str(temp_dagster_home)}):
                 instance = DagsterInstance.ephemeral(tempdir=str(temp_dagster_home))
-                
+
+                from dagster import IOManager
+
+                class _DictIOManager(IOManager):
+                    def __init__(self):
+                        self._store = {}
+
+                    def handle_output(self, context, obj):
+                        key = tuple(context.asset_key.path)
+                        self._store[key] = obj
+
+                    def load_input(self, context):
+                        upstream = context.upstream_output
+                        key = tuple(upstream.asset_key.path)
+                        if key not in self._store:
+                            raise KeyError(f"No stored value for {key}")
+                        return self._store[key]
+
                 from daydreaming_dagster.assets.group_cohorts import (
-                    selected_combo_mappings, content_combinations
+                    selected_combo_mappings,
+                    content_combinations,
+                    cohort_id,
+                    cohort_membership,
                 )
                 from daydreaming_dagster.resources.io_managers import CSVIOManager
                 from daydreaming_dagster.resources.experiment_config import ExperimentConfig
-                
-                test_data_root = str(temp_data_dir)
-                
+
                 resources = {
-                    "data_root": test_data_root,
-                    # no documents_index resource in filesystem-only mode
-                    "csv_io_manager": CSVIOManager(base_path=Path(test_data_root) / "2_tasks"),
-                    "parsing_results_io_manager": CSVIOManager(base_path=Path(test_data_root) / "5_parsing"),
-                    "summary_results_io_manager": CSVIOManager(base_path=Path(test_data_root) / "6_summary"),
-                    "error_log_io_manager": CSVIOManager(base_path=Path(test_data_root) / "7_reporting"),
-                    "experiment_config": ExperimentConfig(k_max=2, description_level="paragraph")
+                    "data_root": str(temp_data_dir),
+                    "csv_io_manager": CSVIOManager(base_path=temp_data_dir / "2_tasks"),
+                    "io_manager": _DictIOManager(),
+                    "experiment_config": ExperimentConfig(k_max=2, description_level="paragraph"),
                 }
-                
-                # First materialize selected_combo_mappings
-                result = materialize([
-                    selected_combo_mappings,
-                ], resources=resources, instance=instance)
-                assert result.success, "Selected combo mappings materialization should succeed"
-                
-                # Then materialize content_combinations
-                result = materialize([
-                    content_combinations,
-                ], resources=resources, instance=instance)
-                
-                assert result.success, "Template filtering test materialization should succeed"
-                
-                # Load results and verify filtering
-                import os as _os
-                gen_tasks_file = temp_data_dir / "2_tasks" / "draft_generation_tasks.csv"
-                pytest.skip("Task CSV writes disabled or task layer removed; this check no longer applies in membership-first mode")
-                
-                # Check that only active templates are used
-                templates_used = set(gen_tasks_df["draft_template"].unique())
-                expected_active_templates = {"active-template-1", "active-template-2"}
-                
-                assert templates_used == expected_active_templates, \
-                    f"Only active templates should be used. Expected: {expected_active_templates}, Got: {templates_used}"
-                
-                # Verify expected task count:
-                # 1 concept combination (k_max=2, we have 2 concepts) × 2 active templates × 1 model = 2 tasks
-                expected_task_count = 1 * 2 * 1  
-                actual_task_count = len(gen_tasks_df)
-                
-                assert actual_task_count == expected_task_count, \
-                    f"Expected {expected_task_count} tasks (1 combo × 2 active templates × 1 model), got {actual_task_count}"
-                
-                # Verify inactive templates are not used
-                assert "inactive-template-1" not in templates_used, "Inactive templates should not be used"
-                assert "inactive-template-2" not in templates_used, "Inactive templates should not be used"
-                
-                print(f"✅ Template filtering test passed!")
-                print(f"   Used {len(templates_used)} active templates out of {len(test_gen_templates_metadata)} total")
-                print(f"   Generated {actual_task_count} tasks as expected")
+
+                # selected_combo_mappings must materialize first to write the CSV consumed downstream.
+                result = materialize([selected_combo_mappings], resources=resources, instance=instance)
+                assert result.success, "selected_combo_mappings materialization should succeed"
+
+                result = materialize([content_combinations], resources=resources, instance=instance)
+                assert result.success, "content_combinations materialization should succeed"
+
+                result = materialize(
+                    [content_combinations, cohort_id, cohort_membership],
+                    resources=resources,
+                    instance=instance,
+                )
+                assert result.success, "cohort assets materialization should succeed"
+
+            cohorts_dir = temp_data_dir / "cohorts"
+            cohort_dirs = list(cohorts_dir.iterdir())
+            assert cohort_dirs, "Cohort directory should be created"
+            membership_path = cohort_dirs[0] / "membership.csv"
+            assert membership_path.exists(), "membership.csv should be written"
+
+            membership_df = pd.read_csv(membership_path)
+            draft_templates = set(
+                membership_df[membership_df["stage"] == "draft"]["template_id"].astype(str).tolist()
+            )
+            essay_templates = set(
+                membership_df[membership_df["stage"] == "essay"]["template_id"].astype(str).tolist()
+            )
+
+            assert draft_templates == {"draft-active-1", "draft-active-2"}
+            assert essay_templates == {"essay-active-1"}
+            assert not membership_df["template_id"].isin(
+                ["draft-inactive-1", "essay-inactive-1"]
+            ).any(), "Inactive templates should not appear in membership"
 
     # Note: Error scenarios (like insufficient drafts/links) are covered by unit tests
     # in daydreaming_dagster/assets/test_two_phase_generation.py (see TestLinksValidation)
