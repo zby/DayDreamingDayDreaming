@@ -8,14 +8,10 @@ import math
 
 from jinja2 import Environment, StrictUndefined
 
-from daydreaming_dagster.utils.generation import (
-    write_gen_raw,
-    write_gen_parsed,
-    write_gen_metadata,
-)
 from daydreaming_dagster.types import Stage
 from daydreaming_dagster.config.paths import Paths, RAW_FILENAME, PARSED_FILENAME
 from daydreaming_dagster.utils.raw_readers import read_templates
+from daydreaming_dagster.data_layer.gens_data_layer import GensDataLayer
 
 
 @dataclass
@@ -242,13 +238,18 @@ def execute_llm(
     metadata_extra: Optional[Dict[str, Any]] = None,
     parser_name: Optional[str] = None,
     # IO injection points (defaults are canonical helpers)
-    write_raw=write_gen_raw,
-    write_parsed=write_gen_parsed,
-    write_metadata=write_gen_metadata,
+    write_raw=None,
+    write_parsed=None,
+    write_metadata=None,
 ) -> ExecutionResult:
     if stage in ("essay", "evaluation"):
         if not (isinstance(parent_gen_id, str) and parent_gen_id.strip()):
             raise ValueError("parent_gen_id is required for essay and evaluation stages")
+
+    paths = Paths.from_str(root_dir)
+    gens_root = paths.gens_root
+    data_layer = GensDataLayer.from_root(root_dir)
+    data_layer.reserve_generation(stage, gen_id, create=True)
 
     t0 = time.time()
     raw_text, info = generate_llm(llm, prompt_text, model=model, max_tokens=max_tokens)
@@ -260,8 +261,7 @@ def execute_llm(
     if stage == "essay" and not isinstance(parsed, str):
         parsed = str(raw_text)
 
-    out_dir = Path(root_dir) / "gens"
-    base = out_dir / str(stage) / str(gen_id)
+    base = gens_root / str(stage) / str(gen_id)
 
     meta: Dict[str, Any] = _base_meta(
         stage=stage,
@@ -271,7 +271,7 @@ def execute_llm(
         parent_gen_id=str(parent_gen_id) if parent_gen_id else None,
         mode="llm",
     )
-    meta["files"] = {"raw": str((base / RAW_FILENAME).resolve())}
+    meta["files"] = {"raw": str((paths.raw_path(stage, str(gen_id))).resolve())}
     meta.update(
         {
             "parser_name": eff_parser_name,
@@ -321,14 +321,24 @@ def execute_llm(
     # execute_llm may raise after generating (e.g., truncation/min-lines validation).
     # Early writes ensure raw.txt and metadata.json are available on failures for
     # postmortem debugging and several tests rely on this behavior.
-    write_raw(out_dir, stage, str(gen_id), str(raw_text or ""))
-    write_metadata(out_dir, stage, str(gen_id), meta)
+    if write_raw is None:
+        data_layer.write_raw(stage, gen_id, str(raw_text or ""))
+    else:
+        write_raw(gens_root, stage, str(gen_id), str(raw_text or ""))
+
+    if write_metadata is None:
+        data_layer.write_main_metadata(stage, gen_id, meta)
+    else:
+        write_metadata(gens_root, stage, str(gen_id), meta)
 
     validate_result(stage, raw_text, info, min_lines=min_lines, fail_on_truncation=bool(fail_on_truncation))
 
     if isinstance(parsed, str):
-        meta["files"]["parsed"] = str((base / PARSED_FILENAME).resolve())
-        write_parsed(out_dir, stage, str(gen_id), str(parsed))
+        meta["files"]["parsed"] = str((paths.parsed_path(stage, str(gen_id))).resolve())
+        if write_parsed is None:
+            data_layer.write_parsed(stage, gen_id, str(parsed))
+        else:
+            write_parsed(gens_root, stage, str(gen_id), str(parsed))
 
     return ExecutionResult(prompt_text=prompt_text, raw_text=raw_text, parsed_text=parsed, info=info, metadata=meta)
 
@@ -382,17 +392,21 @@ def execute_copy(
     t0 = time.time()
     src = Path(pass_through_from)
     parsed = src.read_text(encoding="utf-8") if src.exists() else ""
+    out_root = Path(out_dir)
+    data_root = out_root.parent if out_root.name == "gens" else out_root
+    paths = Paths.from_str(data_root)
+    data_layer = GensDataLayer.from_root(data_root)
+    data_layer.reserve_generation(stage, gen_id, create=True)
     meta = _base_meta(
         stage=stage, gen_id=str(gen_id), template_id=template_id, model=None, parent_gen_id=str(parent_gen_id), mode="copy"
     )
-    base = Path(out_dir) / str(stage) / str(gen_id)
-    meta["files"] = {"parsed": str((base / PARSED_FILENAME).resolve())}
+    meta["files"] = {"parsed": str(paths.parsed_path(stage, str(gen_id)).resolve())}
     meta["duration_s"] = round(time.time() - t0, 3)
     _merge_extras(meta, metadata_extra)
     if "replicate" not in meta:
         meta["replicate"] = 1
-    write_gen_parsed(out_dir, stage, str(gen_id), str(parsed))
-    write_gen_metadata(out_dir, stage, str(gen_id), meta)
+    data_layer.write_parsed(stage, gen_id, str(parsed))
+    data_layer.write_main_metadata(stage, gen_id, meta)
     return ExecutionResult(prompt_text=None, raw_text=None, parsed_text=parsed, info=None, metadata=meta)
 
 
