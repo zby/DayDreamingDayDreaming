@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from os import PathLike
 from typing import Iterable, Optional, Tuple, Any, Dict
 
 import pandas as pd
@@ -210,52 +211,101 @@ __all__ = [
     "get_run_id",
     "load_generation_parsed_text",
     "load_parent_parsed_text",
-    "build_prompt_metadata",
+    "build_stage_input_metadata",
+    "build_stage_artifact_metadata",
     "emit_standard_output_metadata",
 ]
 
-def build_prompt_metadata(
-    context,
-    *,
-    stage: Stage,
-    gen_id: str,
-    template_id: str,
-    mode: str,
-    parent_gen_id: Optional[str] = None,
-    prompt_text: Optional[str] = None,
-    extras: Optional[Dict[str, Any]] = None,
-) -> Dict[str, MetadataValue]:
-    """Standard prompt metadata for Dagster UI.
+def _assign_metadata_value(md: Dict[str, MetadataValue], key: str, value: Any) -> None:
+    if value is None:
+        return
+    if isinstance(value, (str, Path, PathLike)) and key.endswith("_path"):
+        md[key] = MetadataValue.path(str(value))
+        return
+    if isinstance(value, bool):
+        md[key] = MetadataValue.bool(value)
+    elif isinstance(value, int):
+        md[key] = MetadataValue.int(value)
+    elif isinstance(value, float):
+        md[key] = MetadataValue.float(value)
+    elif isinstance(value, (list, dict)):
+        md[key] = MetadataValue.json(value)
+    else:
+        md[key] = MetadataValue.text(str(value))
 
-    - Always includes function, gen_id, template_id, mode, prompt_length.
-    - Includes parent_gen_id when available.
-    - Accepts extras to add stage‑specific fields (e.g., draft_line_count).
-    """
-    def _mlen(s: Optional[str]) -> int:
-        return len(s) if isinstance(s, str) else 0
-    def _lines(s: Optional[str]) -> int:
-        return sum(1 for _ in str(s).splitlines()) if isinstance(s, str) and s else 0
+
+def build_stage_artifact_metadata(
+    *,
+    function: str,
+    artifact_label: str,
+    metadata: Dict[str, Any],
+    text: Optional[str] = None,
+) -> Dict[str, MetadataValue]:
+    """Standardized metadata payload for stage artifacts (input/raw/parsed)."""
+
+    label = str(artifact_label or "artifact").lower()
+    gen_id = metadata["gen_id"]
+    stage = metadata["stage"]
+
+    data = dict(metadata or {})
+
+    # Remove values we turn into dedicated fields
+    for drop_key in ("stage", "gen_id", "function"):
+        data.pop(drop_key, None)
 
     md: Dict[str, MetadataValue] = {
-        "function": MetadataValue.text(f"{stage}_prompt"),
+        "function": MetadataValue.text(str(function)),
         "gen_id": MetadataValue.text(str(gen_id)),
-        "template_id": MetadataValue.text(str(template_id)),
-        "mode": MetadataValue.text(str(mode)),
-        "prompt_length": MetadataValue.int(_mlen(prompt_text)),
-        "prompt_lines": MetadataValue.int(_lines(prompt_text)),
+        "stage": MetadataValue.text(str(stage)),
     }
-    if isinstance(parent_gen_id, str) and parent_gen_id:
-        md["parent_gen_id"] = MetadataValue.text(str(parent_gen_id))
-    if extras:
-        for k, v in extras.items():
-            if isinstance(v, bool):
-                md[k] = MetadataValue.bool(v)
-            elif isinstance(v, int):
-                md[k] = MetadataValue.int(v)
-            elif isinstance(v, float):
-                md[k] = MetadataValue.float(v)
-            elif isinstance(v, (list, dict)):
-                md[k] = MetadataValue.json(v)
-            elif v is not None:
-                md[k] = MetadataValue.text(str(v))
+
+    for key in ("template_id", "mode", "parent_gen_id"):
+        value = data.pop(key, None)
+        if value:
+            md[key] = MetadataValue.text(str(value))
+
+    # Text-derived stats
+    length_key = f"{label}_length"
+    lines_key = f"{label}_lines"
+    if text is not None:
+        data.setdefault(length_key, len(text))
+        data.setdefault(lines_key, sum(1 for _ in str(text).splitlines()))
+
+    for metric_key in (length_key, lines_key):
+        value = data.pop(metric_key, None)
+        if value is not None:
+            _assign_metadata_value(md, metric_key, value)
+
+    path_key = f"{label}_path"
+    meta_path_key = f"{label}_metadata_path"
+    for key in (path_key, meta_path_key):
+        value = data.pop(key, None)
+        if value is not None:
+            _assign_metadata_value(md, key, value)
+
+    md[f"{label}_metadata"] = MetadataValue.json(metadata)
+
+    for key, value in data.items():
+        _assign_metadata_value(md, key, value)
+
     return md
+
+
+def build_stage_input_metadata(
+    context,
+    *,
+    gen_id: str,
+    metadata: Dict[str, Any],
+    text: Optional[str] = None,
+) -> Dict[str, MetadataValue]:
+    data = dict(metadata or {})
+    stage = data.get("stage")
+    if not stage:
+        raise ValueError("metadata must include 'stage' for input artifact")
+    data.setdefault("gen_id", gen_id)
+    return build_stage_artifact_metadata(
+        function=f"{stage}_stage_input",
+        artifact_label="input",
+        metadata=data,
+        text=text,
+    )

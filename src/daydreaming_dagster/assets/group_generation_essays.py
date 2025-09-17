@@ -7,7 +7,7 @@ Logic is implemented in unified.stage_services asset‑style entrypoints.
 
 from ._decorators import asset_with_boundary
 from .partitions import essay_gens_partitions
-from ..unified.stage_services import prompt_asset, essay_response_asset
+from ..unified.stage_services import stage_input_asset, essay_response_asset
 
 
 @asset_with_boundary(
@@ -20,9 +20,9 @@ from ..unified.stage_services import prompt_asset, essay_response_asset
 def essay_prompt(context) -> str:
     """Dagster asset wrapper for essay prompt.
 
-    Delegates to unified.stage_services.prompt_asset(stage="essay").
+    Delegates to unified.stage_services.stage_input_asset(stage="essay").
     """
-    return prompt_asset(context, "essay")
+    return stage_input_asset(context, "essay")
 
 
 @asset_with_boundary(

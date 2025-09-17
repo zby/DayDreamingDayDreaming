@@ -3,6 +3,7 @@ from pathlib import Path
 from dagster import build_asset_context, materialize, DagsterInstance
 
 from daydreaming_dagster.assets.group_generation_essays import essay_response, essay_prompt
+from daydreaming_dagster.data_layer.gens_data_layer import GensDataLayer
 from daydreaming_dagster.resources.experiment_config import ExperimentConfig
 from daydreaming_dagster.resources.io_managers import InMemoryIOManager
 from daydreaming_dagster.resources.gens_prompt_io_manager import GensPromptIOManager
@@ -44,10 +45,23 @@ def test_copy_mode_essay_is_verbatim_draft(tmp_path: Path):
         encoding="utf-8",
     )
 
+    # Seed main metadata for essay
+    layer = GensDataLayer.from_root(data_root)
+    layer.write_main_metadata(
+        "essay",
+        essay_id,
+        {
+            "template_id": "parsed-from-links-v1",
+            "mode": "copy",
+            "parent_gen_id": draft_id,
+            "combo_id": "combo-1",
+        },
+    )
+
     # Resources: copy-mode does not call LLM, but resource must be present
     resources = {
         "data_root": str(data_root),
-        "experiment_config": ExperimentConfig(min_draft_lines=3),
+        "experiment_config": ExperimentConfig(),
         "openrouter_client": _StubLLM(),
         # IO managers used by essay assets
         "essay_prompt_io_manager": GensPromptIOManager(

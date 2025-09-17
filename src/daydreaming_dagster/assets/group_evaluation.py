@@ -8,7 +8,7 @@ unified.stage_services asset‑style entrypoints.
 from ._decorators import asset_with_boundary
 from .partitions import evaluation_gens_partitions
 from .raw_data import EVALUATION_TEMPLATES_KEY
-from ..unified.stage_services import prompt_asset, evaluation_response_asset
+from ..unified.stage_services import stage_input_asset, evaluation_response_asset
 
 
 @asset_with_boundary(
@@ -22,9 +22,9 @@ from ..unified.stage_services import prompt_asset, evaluation_response_asset
 def evaluation_prompt(context) -> str:
     """Dagster asset wrapper for evaluation prompt.
 
-    Delegates to unified.stage_services.prompt_asset(stage="evaluation").
+    Delegates to unified.stage_services.stage_input_asset(stage="evaluation").
     """
-    return prompt_asset(context, "evaluation")
+    return stage_input_asset(context, "evaluation")
 
 
 @asset_with_boundary(

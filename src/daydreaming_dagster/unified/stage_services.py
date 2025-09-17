@@ -7,7 +7,7 @@ This module re-exports stage primitives, execution helpers, and asset-style
 entrypoints from the dedicated submodules:
 
 - stage_core: core types and execution/rendering utilities
-- stage_prompts: prompt asset entrypoint
+- stage_inputs: stage input asset entrypoint
 - stage_responses: response asset entrypoints (draft/essay/evaluation)
 - stage_policy: stage-specific policy helpers (not re-exported by default)
 
@@ -28,7 +28,9 @@ from .stage_core import (
     execute_copy,
     execute_llm,
 )
-from .stage_prompts import prompt_asset
+from .stage_inputs import stage_input_asset
+from .stage_parsed import stage_parsed_asset
+from .stage_raw import stage_raw_asset
 from .stage_responses import (
     response_asset,
     essay_response_asset,
@@ -47,7 +49,9 @@ __all__ = [
     "parse_text",
     "execute_copy",
     "execute_llm",
-    "prompt_asset",
+    "stage_input_asset",
+    "stage_parsed_asset",
+    "stage_raw_asset",
     "response_asset",
     "essay_response_asset",
     "evaluation_response_asset",

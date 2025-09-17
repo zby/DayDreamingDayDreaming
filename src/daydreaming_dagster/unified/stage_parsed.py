@@ -1,0 +1,142 @@
+from __future__ import annotations
+
+from typing import Any, Dict, Optional
+
+from dagster import MetadataValue
+
+from daydreaming_dagster.assets._helpers import get_run_id, build_stage_artifact_metadata
+from daydreaming_dagster.data_layer.gens_data_layer import GensDataLayer, resolve_generation_metadata
+from .stage_core import Stage, parse_text, resolve_parser_name
+
+
+def _count_non_empty_lines(text: str) -> int:
+    return sum(1 for line in text.splitlines() if line.strip())
+
+
+def _stage_parsed_asset(
+    *,
+    layer: GensDataLayer,
+    stage: Stage,
+    gen_id: str,
+    raw_text: str,
+    parser_name: str,
+    raw_metadata: Dict[str, Any],
+    stage_settings,
+    min_lines_override: Optional[int],
+    fail_on_truncation: bool,
+) -> tuple[str, Dict[str, Any]]:
+    layer.reserve_generation(stage, gen_id, create=True)
+
+    metadata = resolve_generation_metadata(layer, stage, gen_id)
+    raw_metadata = raw_metadata or {}
+
+    if fail_on_truncation and bool(raw_metadata.get("truncated")):
+        raise ValueError("Raw generation was truncated; cannot parse")
+
+    effective_min_lines = (
+        min_lines_override
+        if min_lines_override is not None
+        else (stage_settings.min_lines if stage_settings else None)
+    )
+
+    if isinstance(effective_min_lines, int) and effective_min_lines > 0:
+        non_empty = _count_non_empty_lines(raw_text)
+        if non_empty < effective_min_lines:
+            raise ValueError(
+                f"Raw generation has only {non_empty} non-empty lines (required {effective_min_lines})"
+            )
+
+    if not parser_name:
+        raise ValueError("parser_name is required for parsed generation")
+
+    parsed_text = parse_text(stage, raw_text, parser_name)
+    if not isinstance(parsed_text, str):
+        raise ValueError(f"Parser '{parser_name}' returned non-string output for stage {stage}")
+
+    parsed_metadata: Dict[str, Any] = {
+        "stage": str(stage),
+        "gen_id": str(gen_id),
+        "function": f"{stage}_parsed",
+        "parser_name": parser_name,
+        "success": True,
+        "error": None,
+    }
+
+    for key in ("input_mode", "copied_from", "cohort_id", "replicate", "combo_id"):
+        if key in raw_metadata:
+            parsed_metadata[key] = raw_metadata[key]
+    if metadata.parent_gen_id:
+        parsed_metadata["parent_gen_id"] = metadata.parent_gen_id
+
+    parsed_path = layer.write_parsed(stage, gen_id, parsed_text)
+    parsed_metadata_path = layer.paths.parsed_metadata_path(stage, gen_id)
+    parsed_metadata["parsed_path"] = str(parsed_path)
+    parsed_metadata["parsed_metadata_path"] = str(parsed_metadata_path)
+    layer.write_parsed_metadata(stage, gen_id, parsed_metadata)
+
+    return parsed_text, parsed_metadata
+
+
+def stage_parsed_asset(
+    context,
+    stage: Stage,
+    *,
+    raw_text: str,
+    parser_name: Optional[str] = None,
+    raw_metadata: Optional[Dict[str, Any]] = None,
+    fail_on_truncation: bool = True,
+    min_lines: Optional[int] = None,
+) -> str:
+    layer = GensDataLayer.from_root(context.resources.data_root)
+    gen_id = str(context.partition_key)
+
+    metadata = resolve_generation_metadata(layer, stage, gen_id)
+
+    if raw_metadata is None:
+        try:
+            raw_metadata = layer.read_raw_metadata(stage, gen_id)
+        except FileNotFoundError:
+            raw_metadata = {}
+
+    if parser_name is None:
+        parser_name = resolve_parser_name(layer.data_root, stage, metadata.template_id, None)
+
+    experiment_config = getattr(context.resources, "experiment_config", None)
+    if experiment_config is not None:
+        settings = experiment_config.stage_config.get(stage)
+        if min_lines is None and settings:
+            min_lines = settings.min_lines
+
+    run_id = get_run_id(context)
+
+    stage_settings = experiment_config.stage_config.get(stage) if experiment_config else None
+
+    parsed_text, parsed_metadata = _stage_parsed_asset(
+        layer=layer,
+        stage=stage,
+        gen_id=gen_id,
+        raw_text=raw_text,
+        parser_name=parser_name,
+        raw_metadata=raw_metadata or {},
+        stage_settings=stage_settings,
+        min_lines_override=min_lines,
+        fail_on_truncation=fail_on_truncation,
+    )
+
+    if run_id:
+        parsed_metadata["run_id"] = run_id
+        layer.write_parsed_metadata(stage, gen_id, parsed_metadata)
+
+    context.add_output_metadata(
+        build_stage_artifact_metadata(
+            function=f"{stage}_parsed",
+            artifact_label="parsed",
+            metadata=parsed_metadata,
+            text=parsed_text,
+        )
+    )
+
+    return parsed_text
+
+
+__all__ = ["stage_parsed_asset"]

@@ -1,0 +1,130 @@
+from __future__ import annotations
+
+import json
+from pathlib import Path
+
+import pytest
+
+from daydreaming_dagster.data_layer.gens_data_layer import (
+    GensDataLayer,
+    resolve_generation_metadata,
+)
+
+
+@pytest.fixture
+def layer(tmp_path: Path) -> GensDataLayer:
+    return GensDataLayer.from_root(tmp_path)
+
+
+def _write_metadata(layer: GensDataLayer, stage: str, gen_id: str, payload: dict) -> Path:
+    path = layer.paths.metadata_path(stage, gen_id)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(payload), encoding="utf-8")
+    return path
+
+
+def test_write_input_round_trip(layer: GensDataLayer) -> None:
+    stage = "draft"
+    gen_id = "G1"
+    layer.reserve_generation(stage, gen_id)
+    text = "Hello world"
+
+    target = layer.write_input(stage, gen_id, text)
+
+    assert target.exists()
+    assert target.read_text(encoding="utf-8") == text
+
+
+def test_write_main_metadata_round_trip(layer: GensDataLayer) -> None:
+    payload = {"template_id": "tpl", "mode": "copy", "parent_gen_id": "P1"}
+    path = layer.write_main_metadata("essay", "E1", payload)
+    assert path.exists()
+    assert json.loads(path.read_text(encoding="utf-8")) == payload
+
+
+def test_write_raw_and_parsed_round_trip(layer: GensDataLayer) -> None:
+    layer.write_raw("draft", "G1", "RAW")
+    layer.write_parsed("draft", "G1", "PARSED")
+    assert layer.read_raw("draft", "G1") == "RAW"
+    assert layer.read_parsed("draft", "G1") == "PARSED"
+
+
+def test_raw_and_parsed_metadata_round_trip(layer: GensDataLayer) -> None:
+    raw_meta = {"mode": "llm", "truncated": False}
+    parsed_meta = {"parser_name": "identity", "success": True}
+    layer.write_raw_metadata("essay", "E1", raw_meta)
+    layer.write_parsed_metadata("essay", "E1", parsed_meta)
+    assert layer.read_raw_metadata("essay", "E1") == raw_meta
+    assert layer.read_parsed_metadata("essay", "E1") == parsed_meta
+
+
+def test_read_parsed_missing(layer: GensDataLayer) -> None:
+    with pytest.raises(FileNotFoundError):
+        layer.read_parsed("essay", "missing")
+
+
+def test_read_main_metadata_missing(layer: GensDataLayer) -> None:
+    with pytest.raises(FileNotFoundError):
+        layer.read_main_metadata("draft", "missing")
+
+
+def test_read_main_metadata_malformed(layer: GensDataLayer) -> None:
+    path = layer.paths.metadata_path("draft", "bad")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("not-json", encoding="utf-8")
+
+    with pytest.raises(ValueError):
+        layer.read_main_metadata("draft", "bad")
+
+
+def test_resolve_metadata_copy_requires_parent(layer: GensDataLayer) -> None:
+    _write_metadata(
+        layer,
+        "draft",
+        "no-parent",
+        {
+            "template_id": "tpl",
+            "mode": "copy",
+        },
+    )
+
+    with pytest.raises(ValueError):
+        resolve_generation_metadata(layer, "draft", "no-parent")
+
+
+def test_resolve_metadata_stage_requires_parent(layer: GensDataLayer) -> None:
+    _write_metadata(
+        layer,
+        "essay",
+        "no-parent",
+        {
+            "template_id": "tpl",
+            "mode": "llm",
+        },
+    )
+
+    with pytest.raises(ValueError):
+        resolve_generation_metadata(layer, "essay", "no-parent")
+
+
+def test_resolve_metadata_success(layer: GensDataLayer) -> None:
+    _write_metadata(
+        layer,
+        "evaluation",
+        "E1",
+        {
+            "template_id": "eval-tpl",
+            "mode": "copy",
+            "parent_gen_id": "ESS1",
+            "combo_id": "combo-3",
+            "cohort_id": "cohort-a",
+        },
+    )
+
+    meta = resolve_generation_metadata(layer, "evaluation", "E1")
+    assert meta.stage == "evaluation"
+    assert meta.template_id == "eval-tpl"
+    assert meta.parent_gen_id == "ESS1"
+    assert meta.mode == "copy"
+    assert meta.combo_id == "combo-3"
+    assert meta.cohort_id == "cohort-a"

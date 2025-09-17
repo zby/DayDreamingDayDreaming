@@ -7,7 +7,7 @@ Logic is implemented in unified.stage_services asset‑style entrypoints.
 
 from ._decorators import asset_with_boundary
 from .partitions import draft_gens_partitions
-from ..unified.stage_services import prompt_asset, draft_response_asset
+from ..unified.stage_services import stage_input_asset, draft_response_asset
 
 
 @asset_with_boundary(
@@ -19,9 +19,9 @@ from ..unified.stage_services import prompt_asset, draft_response_asset
 def draft_prompt(context, content_combinations) -> str:
     """Dagster asset wrapper for draft prompt.
 
-    Delegates to unified.stage_services.prompt_asset(stage="draft").
+    Delegates to unified.stage_services.stage_input_asset(stage="draft").
     """
-    return prompt_asset(context, "draft", content_combinations=content_combinations)
+    return stage_input_asset(context, "draft", content_combinations=content_combinations)
 
 
 @asset_with_boundary(
