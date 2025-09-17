@@ -5,7 +5,7 @@
 Introduce a dedicated `daydreaming_dagster.data_layer` package that centralises all gens store filesystem operations. This package will contain:
 
 1. A relocated `Paths` class (`data_layer/paths.py`) identical in functionality to the current `config.paths.Paths`, keeping the canonical directory helpers for gens/assets.
-2. A new `GensDataLayer` class (`data_layer/gens_data_layer.py`) that wraps a data root and provides higher-level APIs (gen-id reservation, read/write of prompt/raw/parsed plus metadata).
+2. A new `GensDataLayer` class (`data_layer/gens_data_layer.py`) that wraps a data root and provides higher-level APIs (gen-id reservation, read/write of stage input/raw/parsed plus metadata).
 
 Moving `Paths` into this package keeps the data access layer self-contained; other modules import `Paths` and/or `GensDataLayer` from `daydreaming_dagster.data_layer` going forward.
 
@@ -24,7 +24,7 @@ Moving `Paths` into this package keeps the data access layer self-contained; oth
 
 ### Directory utilities
 - `generation_dir(stage, gen_id)`
-- `prompt_path(stage, gen_id)`
+- `input_path(stage, gen_id)`
 - `raw_path(stage, gen_id)`
 - `parsed_path(stage, gen_id)`
 - `main_metadata_path(stage, gen_id)`
@@ -46,7 +46,7 @@ Moving `Paths` into this package keeps the data access layer self-contained; oth
 Each method should ensure parent directories exist (call `reserve_generation`). Metadata writers should pretty-print JSON with UTF-8 encoding.
 
 ### Read helpers
-- `read_prompt`, `read_raw`, `read_parsed` (optional convenience) returning strings.
+- `read_input`, `read_raw`, `read_parsed` (optional convenience) returning strings.
 - `read_main_metadata`, `read_raw_metadata`, `read_parsed_metadata` returning dicts (raise `FileNotFoundError` or `ValueError` appropriately).
 - Skip compatibility helpers (e.g., `load_generation`) until there is a concrete need.
 
@@ -111,8 +111,8 @@ def resolve_generation_metadata(layer: GensDataLayer, stage: str, gen_id: str) -
 - Keeps API pure (no Dagster-specific dependencies) to ease unit testing.
 
 ### Testing
-- Add unit tests under `daydreaming_dagster/data_layer/tests`, covering:
-  - Reservation + write/read cycle for prompt/raw/parsed/metadata.
+- Add integration-style tests under `tests/data_layer/`, covering:
+  - Reservation + write/read cycle for input/raw/parsed/metadata.
   - Behaviour when reading missing files.
   - Interaction with legacy generation loader.
 
@@ -126,7 +126,7 @@ def resolve_generation_metadata(layer: GensDataLayer, stage: str, gen_id: str) -
 
 ## Stage Input Asset Reimplementation (using GensDataLayer)
 
-Assuming main metadata (template, parent references, etc.) is already written to the generation directory, refactor `unified/stage_prompts.py` so the asset becomes `stage_input_asset` and always materialises the text handed to the next phase:
+Assuming main metadata (template, parent references, etc.) is already written to the generation directory, refactor the stage input module (rename `unified/stage_prompts.py` to `stage_inputs.py`) so the asset becomes `stage_input_asset` and always materialises the text handed to the next phase:
 
 ```python
 from daydreaming_dagster.data_layer.gens_data_layer import GensDataLayer
@@ -172,5 +172,5 @@ def stage_input_asset(context, stage: Stage, *, content_combinations=None) -> st
 
 Key points:
 - `resolve_generation_metadata(...)` reads the current generation’s `metadata.json` (via the data layer) and surfaces core fields (`template_id`, `mode`, `parent_gen_id`, etc.); callers reuse `parent_stage_of` when they need the upstream stage, eliminating the direct dependency on the membership service inside the asset (though cohort lookups can still be validated elsewhere).
-- All filesystem interactions (directory creation, reading parent parsed text, writing prompts/inputs) go through `GensDataLayer`.
+- All filesystem interactions (directory creation, reading parent parsed text, writing stage inputs) go through `GensDataLayer`.
 - Downstream stages can call `resolve_generation_metadata` again as needed, keeping this asset focused on producing the stage input text.
