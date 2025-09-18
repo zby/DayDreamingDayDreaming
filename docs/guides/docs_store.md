@@ -6,10 +6,12 @@ The pipeline persists all generated artifacts under a simple, portable filesyste
 
 - Root: `data/gens/<stage>/<gen_id>/`
 - Files per document:
+  - `prompt.txt` — prompt handed to the generator (if available)
   - `raw.txt` — full unprocessed model output
   - `parsed.txt` — normalized/parsed text used by downstream stages
-  - `prompt.txt` — prompt used to produce the response (when available)
-  - `metadata.json` — minimal metadata (see below)
+  - `metadata.json` — canonical main metadata (mode/copy lineage, template, ids)
+  - `raw_metadata.json` — metadata captured at raw generation time (LLM info, finish reason, token usage)
+  - `parsed_metadata.json` — metadata captured by the parser (parser name, success flags)
 
 Stages:
 - `draft` — Phase 1 drafts
@@ -18,12 +20,7 @@ Stages:
 
 ## Metadata
 
-Each `metadata.json` should include at least:
-- `task_id` — draft/essay/evaluation task id
-- `template_id` — generation/evaluation template id
-- `model_id` — model id used
-- `parent_gen_id` — lineage pointer (essay→draft, evaluation→essay); empty for drafts
-- Optional: `function`, `usage`, other provenance details
+`metadata.json` (main metadata) includes stage, gen id, mode (`llm`/`copy`), template id, optional lineage (combo/cohort/parent ids), and any legacy fields that could not be classified. `raw_metadata.json` captures the generator run (model id, finish reason, duration, token usage, copy provenance). `parsed_metadata.json` records parser details, success flags, and links back to raw metadata.
 
 ## Invariants
 
@@ -35,18 +32,20 @@ Each `metadata.json` should include at least:
 
 ## Programmatic Access
 
-Prefer the centralized `Paths` helpers for building paths and use `load_generation` to read documents:
+Prefer the centralized `Paths` helpers together with the `GensDataLayer` abstraction when accessing documents programmatically:
 
 ```python
+from pathlib import Path
 from daydreaming_dagster.data_layer.paths import Paths
-from daydreaming_dagster.utils.generation import load_generation
+from daydreaming_dagster.data_layer.gens_data_layer import GensDataLayer
 
 paths = Paths.from_str("data")
-gens_root = paths.gens_root
-gen = load_generation(gens_root, "essay", "abc123xyz")
-parsed = gen["parsed_text"]  # or gen["raw_text"] / gen["prompt_text"] / gen["metadata"]
+data_layer = GensDataLayer.from_root(paths.data_root)
 
-# Or address files directly via Paths (single source of truth):
+metadata = data_layer.read_main_metadata("essay", "abc123xyz")
+parsed = data_layer.read_parsed("essay", "abc123xyz")
+
+# Paths remains the single source of truth for file locations
 print(paths.parsed_path("essay", "abc123xyz"))
 ```
 
