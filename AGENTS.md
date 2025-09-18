@@ -15,9 +15,10 @@ Concise, high-signal rules for working in this repo. Keep changes focused, valid
 - Dagster UI (src layout): `export DAGSTER_HOME=$(pwd)/dagster_home && uv run dagster dev -f src/daydreaming_dagster/definitions.py`.
 - Auto-rematerialize on `data/1_raw/**/*` changes: run Dagster with the daemon as above.
 - Seed once: `uv run dagster asset materialize --select "group:cohort" -f src/daydreaming_dagster/definitions.py`.
-- Two‑phase generation:
+- Two‑phase generation (each group materializes prompt/raw/parsed assets):
   - Drafts: `uv run dagster asset materialize --select "group:generation_draft" --partition <gen_id> -f src/daydreaming_dagster/definitions.py`
   - Essays: `uv run dagster asset materialize --select "group:generation_essays" --partition <gen_id> -f src/daydreaming_dagster/definitions.py`
+  - Evaluations: `uv run dagster asset materialize --select "group:evaluation" --partition <gen_id> -f src/daydreaming_dagster/definitions.py`
 - Tests (src layout): unit `.venv/bin/pytest src/daydreaming_dagster/`; integration `.venv/bin/pytest tests/`.
 - Tip: For ad‑hoc scripts, use `PYTHONPATH=src` or install the package (`pip install -e .`) so `daydreaming_dagster` is importable.
 

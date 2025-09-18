@@ -31,8 +31,10 @@ export DAGSTER_HOME=$(pwd)/dagster_home
 uv run dagster asset materialize --select "group:cohort" -f src/daydreaming_dagster/definitions.py
 
 # Run a single draft or essay partition by gen_id (from data/2_tasks/*.csv)
+# Drafts/essays/evaluations expose prompt/raw/parsed assets; run by partition id
 uv run dagster asset materialize --select "group:generation_draft"   --partition <gen_id> -f src/daydreaming_dagster/definitions.py
 uv run dagster asset materialize --select "group:generation_essays"  --partition <gen_id> -f src/daydreaming_dagster/definitions.py
+uv run dagster asset materialize --select "group:evaluation"        --partition <gen_id> -f src/daydreaming_dagster/definitions.py
 
 # Parse and pivot evaluation scores (cross‑experiment)
 uv run python scripts/aggregate_scores.py --output data/7_cross_experiment/parsed_scores.csv
