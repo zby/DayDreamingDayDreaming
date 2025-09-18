@@ -53,28 +53,36 @@ Dimensionality (axes)
 daydreaming_dagster/
 ├── assets/                     # Dagster assets (data pipeline components)
 │   ├── raw_data.py             # Raw data loading assets
-│   ├── partitions.py           # Partition management assets
-│   ├── results_processing.py   # Score parsing and analysis
+│   ├── group_cohorts.py        # Cohort membership + partition registration
+│   ├── group_draft.py          # Draft-stage assets backed by unified runner
+│   ├── group_essay.py          # Essay-stage assets
+│   ├── group_evaluation.py     # Evaluation-stage assets
+│   ├── results_processing.py   # Score parsing/aggregation helpers
 │   ├── results_summary.py      # Final aggregated results
 │   ├── results_analysis.py     # Statistical analysis assets
 │   ├── cross_experiment.py     # Cross-experiment tracking
-│   └── groups/                 # Grouped assets by domain
-│       ├── group_cohorts.py
-│       ├── group_generation_draft.py
-│       ├── group_generation_essays.py
-│       ├── group_evaluation.py
-│       ├── group_results_processing.py
-│       ├── group_results_summary.py
-│       └── group_cross_experiment.py
+│   ├── partitions.py           # Shared partition helpers
+│   └── maintenance.py          # Operational maintenance assets
+├── unified/                    # Stage-agnostic execution primitives
+│   ├── stage_core.py           # Prompt render + LLM/copy orchestration
+│   ├── stage_inputs.py         # Prompt construction / copy helpers
+│   ├── stage_raw.py            # Raw execution wrapper
+│   └── stage_parsed.py         # Parsing + metadata persistence
+├── data_layer/                 # Filesystem abstraction for gens store
+│   ├── gens_data_layer.py
+│   └── paths.py
 ├── utils/                      # Utility modules
-│   ├── template_loader.py      # Phase-aware template loading
-│   ├── draft_parsers.py        # Parser registry for Phase‑1 extraction
-│   ├── eval_response_parser.py # Evaluation response parsing
-│   └── dataframe_helpers.py    # Small helpers for DataFrame lookups
+│   ├── draft_parsers.py        # Draft parser registry
+│   ├── eval_response_parser.py # Evaluation parsing helpers
+│   ├── evaluation_processing.py# Score table utilities
+│   ├── evaluation_scores.py    # Aggregation helpers using data layer
+│   ├── raw_readers.py          # CSV/catalog readers
+│   └── metadata_splitter.py    # Legacy metadata migration helpers
 ├── resources/                  # Dagster resources
-│   ├── llm_client.py           # LLM API client resource
 │   ├── experiment_config.py    # Experiment configuration resource
-│   └── io_managers.py          # Custom I/O managers
+│   ├── gens_prompt_io_manager.py# Prompt IO manager bound to gens store
+│   ├── io_managers.py          # CSV/In-memory IO managers
+│   └── llm_client.py           # LLM API client resource
 ├── definitions.py              # Dagster Definitions (entrypoint)
 └── __init__.py                 # Package initialization
 ```
@@ -87,9 +95,9 @@ Assets are organized into logical groups for easy selection and understanding:
 |-------|--------|---------|
 | **`raw_data`** | concepts, llm_models, draft/essay/evaluation templates | Load external data files |
 | **`cohort`** | cohort_id, selected_combo_mappings, content_combinations, cohort_membership | Cohort-first membership and selection (register dynamic partitions) |
-| **`generation_draft`** 🚀 | draft_prompt, draft_response | Phase‑1 generation; applies parser (if configured) and saves RAW + parsed outputs |
-| **`generation_essays`** | essay_prompt, essay_response | Phase‑2 generation; modes: `llm` (default) and `copy` (parsed draft passthrough) |
-| **`evaluation`** | evaluation_prompt, evaluation_response | LLM evaluation (partitioned by evaluation gen_id from cohort membership) |
+| **`generation_draft`** 🚀 | draft_prompt, draft_raw, draft_parsed | Phase‑1 generation (implemented in `group_draft.py`); applies parser (if configured) and persists prompt/raw/parsed via the unified runner |
+| **`generation_essays`** | essay_prompt, essay_raw, essay_parsed | Phase‑2 generation (`group_essay.py`); modes: `llm` (default) and `copy` (parsed draft passthrough) |
+| **`evaluation`** | evaluation_prompt, evaluation_raw, evaluation_parsed | Evaluation stage assets in `group_evaluation.py`; partitioned by evaluation gen_id from cohort membership |
 | **`results_processing`** | parsed_scores | Parse evaluation scores |
 | **`results_summary`** | final_results, perfect_score_paths, generation_scores_pivot, evaluation_model_template_pivot | Final aggregated results |
 | **`results_analysis`** | evaluator_agreement_analysis, comprehensive_variance_analysis | Statistical analysis |
@@ -165,12 +173,12 @@ LLM generation/evaluation assets remain manual to avoid surprise API usage/costs
 
 Two assets groups implement the two‑phase flow:
 
-1) Phase‑1 — Draft Generation (`group_generation_draft.py`)
-   - Assets: `draft_prompt`, `draft_response` (partitioned by `gen_id`).
+1) Phase‑1 — Draft Generation (`group_draft.py`)
+   - Assets: `draft_prompt`, `draft_raw`, `draft_parsed` (partitioned by `gen_id`).
    - Behavior: Calls the LLM, writes prompt/raw/parsed/metadata to `data/gens/draft/<gen_id>/` (parser from `data/1_raw/draft_templates.csv`, identity when missing). On parser failure, the asset fails with a clear error; RAW remains saved in the gens store.
 
-2) Phase‑2 — Essay Generation (`group_generation_essays.py`)
-   - Assets: `essay_prompt`, `essay_response` (partitioned by `gen_id`).
+2) Phase‑2 — Essay Generation (`group_essay.py`)
+   - Assets: `essay_prompt`, `essay_raw`, `essay_parsed` (partitioned by `gen_id`).
    - Modes: `llm` (default; uses parsed draft as input) and `copy` (returns parsed draft verbatim). Essay‑level parser mode is deprecated after parser‑first.
    - Essay templates live under `data/1_raw/templates/essay/` and typically include a placeholder like `{{ links_block }}` / `{{ draft_block }}` to include the Phase‑1 text in prompts.
    - Behavior: Writes prompt/raw/parsed/metadata to `data/gens/essay/<gen_id>/`; loads the parent draft via `parent_gen_id` from `data/gens/draft/<parent>/parsed.txt`.
@@ -185,7 +193,7 @@ data/1_raw/templates/
 
 ### Unified Stage Runner
 
-The Unified Stage Runner is a single, stage‑agnostic execution path used by generation and evaluation assets to render templates, call the LLM when needed, parse outputs, and persist artifacts in the gens store.
+The Unified Stage Runner (located in `src/daydreaming_dagster/unified/`) is a single, stage‑agnostic execution path used by generation and evaluation assets to render templates, call the LLM when needed, parse outputs, and persist artifacts in the gens store.
 
 - Purpose: consolidate prompt rendering, LLM invocation, parsing, and I/O across `draft`, `essay`, and `evaluation` stages.
 - Template resolution: by `template_id` under `data/1_raw/templates/{draft,essay,evaluation}/` (Jinja with StrictUndefined; prompt assets use the same renderer). The exact on-disk layout is centralized in `src/daydreaming_dagster/data_layer/paths.py`.

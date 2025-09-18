@@ -82,7 +82,7 @@ data/1_raw/templates/
 ```bash
 # Generate a single partition (replace TASK_ID)
 uv run dagster asset materialize -f src/daydreaming_dagster/definitions.py \
-  --select "draft_prompt,draft_response,essay_prompt,essay_response" \
+  --select "draft_prompt,draft_raw,draft_parsed,essay_prompt,essay_raw,essay_parsed" \
   --partition "TASK_ID"
 
 # Or run by asset group
@@ -222,7 +222,7 @@ To run a specific evaluation (e.g., `novelty`) only on chosen documents (e.g., p
    ```
 3. Materialize the evaluation assets for the registered partitions (by `gen_id`). To target a subset, select specific partition keys from `data/cohorts/<cohort_id>/membership.csv` where `stage == 'evaluation'`:
    ```bash
-   uv run dagster asset materialize --select "evaluation_prompt,evaluation_response" \
+uv run dagster asset materialize --select "evaluation_prompt,evaluation_raw,evaluation_parsed" \
      --partition "<evaluation_gen_id>" -f src/daydreaming_dagster/definitions.py
    ```
 4. Re-run `parsed_scores` to ingest the new results.
@@ -254,9 +254,9 @@ What it does
 - Enforces parent integrity within the cohort.
 
 3) Run in Dagster
-- Drafts: materialize `draft_prompt,draft_response` for selected partitions (by gen_id)
-- Essays: materialize `essay_prompt,essay_response`
-- Evaluations: materialize `evaluation_prompt,evaluation_response`
+- Drafts: materialize `draft_prompt,draft_raw,draft_parsed` for selected partitions (by gen_id)
+- Essays: materialize `essay_prompt,essay_raw,essay_parsed`
+- Evaluations: materialize `evaluation_prompt,evaluation_raw,evaluation_parsed`
 
 Tip
 - Set `DD_COHORT=<cohort_id>` to bind generation/evaluation seeds; task assets compute/persist a deterministic cohort id when not provided.
@@ -265,8 +265,8 @@ Tip
 ### Where Assets Live
 
 - cohort (membership/selection): `daydreaming_dagster/assets/group_cohorts.py`
-- generation_draft: `daydreaming_dagster/assets/group_generation_draft.py`
-- generation_essays: `daydreaming_dagster/assets/group_generation_essays.py`
+- generation_draft: `daydreaming_dagster/assets/group_draft.py`
+- generation_essays: `daydreaming_dagster/assets/group_essay.py`
 - evaluation: `daydreaming_dagster/assets/group_evaluation.py`
 - results_processing: `daydreaming_dagster/assets/results_processing.py`
 - results_summary: `daydreaming_dagster/assets/results_summary.py`
@@ -300,19 +300,19 @@ Then materialize generation in two steps:
 ```bash
 # Free-tier generation (serialized globally)
 uv run dagster asset materialize -f src/daydreaming_dagster/definitions.py \
-  --select "content_combinations,draft_prompt,draft_response" \
+  --select "content_combinations,draft_prompt,draft_raw,draft_parsed" \
   --tag experiment_id=exp_free_vs_paid
 
 # Paid generation (parallel per pool)
 uv run dagster asset materialize -f src/daydreaming_dagster/definitions.py \
-  --select "content_combinations,draft_prompt,draft_response" \
+  --select "content_combinations,draft_prompt,draft_raw,draft_parsed" \
   --tag experiment_id=exp_free_vs_paid
 ```
 
 For evaluation with a paid model:
 ```bash
 uv run dagster asset materialize -f src/daydreaming_dagster/definitions.py \
-  --select "evaluation_prompt,evaluation_response" \
+  --select "evaluation_prompt,evaluation_raw,evaluation_parsed" \
   --tag experiment_id=exp_free_vs_paid
 ```
 
@@ -388,11 +388,11 @@ Missing parent essay parsed.txt for evaluation gen_id '<EVAL_GEN_ID>' (parent_ge
 ```bash
 # Option 1: Materialize the parent essay partition by gen_id
 uv run dagster asset materialize -f src/daydreaming_dagster/definitions.py \
-  --select "essay_prompt,essay_response" --partition "<ESSAY_GEN_ID>"
+  --select "essay_prompt,essay_raw,essay_parsed" --partition "<ESSAY_GEN_ID>"
 
 # Option 2: If the essay depends on a missing draft, materialize the draft first
 uv run dagster asset materialize -f src/daydreaming_dagster/definitions.py \
-  --select "draft_prompt,draft_response" --partition "<DRAFT_GEN_ID>"
+  --select "draft_prompt,draft_raw,draft_parsed" --partition "<DRAFT_GEN_ID>"
 
 # Option 3: Rebuild cohort membership (registers partitions); then materialize essays
 uv run dagster asset materialize --select "cohort_id,cohort_membership" -f src/daydreaming_dagster/definitions.py
@@ -518,7 +518,7 @@ Expected path: /path/to/data/gens/essay/<ESSAY_GEN_ID>/parsed.txt
 ```bash
 # Rebuild cohort membership (registers partitions) and materialize required assets
 uv run dagster asset materialize --select "cohort_id,cohort_membership" -f src/daydreaming_dagster/definitions.py
-uv run dagster asset materialize --select "essay_prompt,essay_response" --partition "<ESSAY_GEN_ID>" -f src/daydreaming_dagster/definitions.py
+uv run dagster asset materialize --select "essay_prompt,essay_raw,essay_parsed" --partition "<ESSAY_GEN_ID>" -f src/daydreaming_dagster/definitions.py
 ```
 
 ---
@@ -600,7 +600,7 @@ uv run dagster asset materialize --select "cohort_id,cohort_membership" -f src/d
 head data/cohorts/*/membership.csv
 
 # 3. Run a small subset of LLM assets to test (by gen_id)
-uv run dagster asset materialize --select draft_prompt,draft_response --partition <DRAFT_GEN_ID> -f src/daydreaming_dagster/definitions.py
+uv run dagster asset materialize --select draft_prompt,draft_raw,draft_parsed --partition <DRAFT_GEN_ID> -f src/daydreaming_dagster/definitions.py
 ```
 
 #### Selective Partition Recovery
@@ -611,10 +611,10 @@ For specific broken partitions:
 ESSAY_GEN_ID=<id>
 
 # 2. Rematerialize the essay assets for that gen_id
-uv run dagster asset materialize --select essay_prompt,essay_response --partition ${ESSAY_GEN_ID} -f src/daydreaming_dagster/definitions.py
+uv run dagster asset materialize --select essay_prompt,essay_raw,essay_parsed --partition ${ESSAY_GEN_ID} -f src/daydreaming_dagster/definitions.py
 
 # 3. If the parent draft is missing, materialize it first
-uv run dagster asset materialize --select draft_prompt,draft_response --partition <DRAFT_GEN_ID> -f src/daydreaming_dagster/definitions.py
+uv run dagster asset materialize --select draft_prompt,draft_raw,draft_parsed --partition <DRAFT_GEN_ID> -f src/daydreaming_dagster/definitions.py
 ```
 
 ### When to Escalate

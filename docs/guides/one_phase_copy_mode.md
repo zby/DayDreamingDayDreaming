@@ -22,7 +22,7 @@ Setup
 3) Materialize partitions
    - Drafts: `uv run dagster asset materialize --select "group:generation_draft" -f src/daydreaming_dagster/definitions.py`
    - Essays (copy mode): `uv run dagster asset materialize --select "group:generation_essays" -f src/daydreaming_dagster/definitions.py`
-     - The `essay_prompt` will return `COPY_MODE: ...` and `essay_response` will copy the parsed draft content.
+     - The `essay_prompt` will surface `COPY_MODE: ...` and the `essay_raw`/`essay_parsed` assets will copy the parsed draft content.
    - Evaluations: `uv run dagster asset materialize --select "group:evaluation" -f src/daydreaming_dagster/definitions.py`
 4) Results
    - Parse and summarize: `uv run dagster asset materialize --select "parsed_scores,final_results" -f src/daydreaming_dagster/definitions.py`
@@ -33,8 +33,8 @@ Notes and gotchas
 - Dynamic partitions: ensure `cohort_membership` runs first (or with the daemon) so draft/essay/evaluation partitions exist before materializing stage assets.
 
 Where it’s enforced in code
-- Essay generator mode resolution: `daydreaming_dagster/assets/_helpers.py::resolve_essay_generator_mode`
-- Essay copy path: `daydreaming_dagster/unified/stage_responses.py::essay_response_asset` (mode == `copy`)
+- Essay generator mode resolution: `daydreaming_dagster/unified/stage_core.py::resolve_generator_mode`
+- Essay copy execution path: `daydreaming_dagster/unified/stage_raw.py::_stage_raw_asset` and `stage_core.execute_copy`
 - Cohort Cartesian expansion: `daydreaming_dagster/assets/group_cohorts.py::cohort_membership`
 
 Design discussion: mixing one‑phase and two‑phase

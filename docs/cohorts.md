@@ -79,7 +79,7 @@ Getting partition keys (gen_ids)
 Evaluating historical essays
 - Create or edit `data/2_tasks/selected_essays.txt` with one essay `gen_id` per line.
 - Materialize `cohort_id,cohort_membership` to register evaluation partitions for active axes.
-- Materialize `evaluation_prompt,evaluation_response` for the desired evaluation `gen_id`s.
+- Materialize `evaluation_prompt,evaluation_raw,evaluation_parsed` for the desired evaluation `gen_id`s.
 
 ## Curated Selection Quickstart
 
@@ -122,16 +122,16 @@ Running the curated set
 Drafts and essays (by `gen_id`)
 ```bash
 uv run dagster asset materialize -f src/daydreaming_dagster/definitions.py \
-  --select "draft_prompt,draft_response" --partition "<draft_gen_id>"
+  --select "draft_prompt,draft_raw,draft_parsed" --partition "<draft_gen_id>"
 
 uv run dagster asset materialize -f src/daydreaming_dagster/definitions.py \
-  --select "essay_prompt,essay_response" --partition "<essay_gen_id>"
+  --select "essay_prompt,essay_raw,essay_parsed" --partition "<essay_gen_id>"
 ```
 
 Evaluations (by `gen_id`)
 ```bash
 uv run dagster asset materialize -f src/daydreaming_dagster/definitions.py \
-  --select "evaluation_prompt,evaluation_response" --partition "<evaluation_gen_id>"
+  --select "evaluation_prompt,evaluation_raw,evaluation_parsed" --partition "<evaluation_gen_id>"
 ```
 
 Parsing and summaries

@@ -21,7 +21,7 @@ Common commands
 - Initialize cohort (optional): `uv run dagster asset materialize --select "group:cohort" -f src/daydreaming_dagster/definitions.py`
 - Run a draft: `uv run dagster asset materialize --select "group:generation_draft" --partition "$DRAFT_GEN_ID" -f src/daydreaming_dagster/definitions.py`
 - Run an essay: `uv run dagster asset materialize --select "group:generation_essays" --partition "$ESSAY_GEN_ID" -f src/daydreaming_dagster/definitions.py`
-- Evaluate an essay: `uv run dagster asset materialize --select "evaluation_prompt,evaluation_response" --partition "$EVALUATION_GEN_ID" -f src/daydreaming_dagster/definitions.py`
+- Evaluate an essay: `uv run dagster asset materialize --select "evaluation_prompt,evaluation_raw,evaluation_parsed" --partition "$EVALUATION_GEN_ID" -f src/daydreaming_dagster/definitions.py`
 
 When to revisit
 - If Dagster adds ≥3D partitions or simpler cross‑partition addressing.
