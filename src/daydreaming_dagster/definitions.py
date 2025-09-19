@@ -132,7 +132,7 @@ defs = Definitions(
         
         # IO managers
         "csv_io_manager": CSVIOManager(base_path=Path("data") / "2_tasks"),
-        "in_memory_io_manager": InMemoryIOManager(),
+        "in_memory_io_manager": InMemoryIOManager(fallback_data_root=Path("data")),
         # Prompts persist to gens store; responses are written to gens store by assets
         "draft_prompt_io_manager": GensPromptIOManager(
             gens_root=Path("data") / "gens",
@@ -148,9 +148,9 @@ defs = Definitions(
         ),
         # Responses: no need to persist via IO manager — assets write to the gens store
         # Use in-memory manager only if downstream assets in-process; tests may override
-        "draft_response_io_manager": InMemoryIOManager(),
-        "essay_response_io_manager": InMemoryIOManager(),
-        "evaluation_response_io_manager": InMemoryIOManager(),
+        "draft_response_io_manager": InMemoryIOManager(fallback_data_root=Path("data")),
+        "essay_response_io_manager": InMemoryIOManager(fallback_data_root=Path("data")),
+        "evaluation_response_io_manager": InMemoryIOManager(fallback_data_root=Path("data")),
         "error_log_io_manager": CSVIOManager(base_path=Path("data") / "7_reporting"),
         "parsing_results_io_manager": CSVIOManager(base_path=Path("data") / "5_parsing"),
         "summary_results_io_manager": CSVIOManager(base_path=Path("data") / "6_summary"),

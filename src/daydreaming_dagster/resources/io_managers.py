@@ -71,10 +71,15 @@ class InMemoryIOManager(IOManager):
     """
     Simple in-memory IO manager for tests/ephemeral data passing.
     Stores objects per-asset (and partition if present) within a single process/run.
+
+    When a value is not found in-memory and ``fallback_data_root`` is provided, the
+    manager attempts to load persisted gens-store artifacts. This enables downstream
+    assets (e.g., *_parsed) to rehydrate raw text without re-running *_raw LLM calls.
     """
 
-    def __init__(self):
+    def __init__(self, fallback_data_root: Path | str | None = None):
         self._store = {}
+        self._fallback_root = Path(fallback_data_root) if fallback_data_root else None
 
     def handle_output(self, context: OutputContext, obj):
         key = (tuple(context.asset_key.path), context.partition_key)
@@ -85,5 +90,26 @@ class InMemoryIOManager(IOManager):
         upstream = context.upstream_output
         key = (tuple(upstream.asset_key.path), context.partition_key)
         if key not in self._store:
+            if not self._fallback_root:
+                raise KeyError(f"InMemoryIOManager: no object stored for {key}")
+
+            stage_asset = upstream.asset_key.path[-1] if upstream.asset_key.path else ""
+            partition_key = context.partition_key
+            if not partition_key:
+                raise KeyError(f"InMemoryIOManager: no object stored for {key}")
+
+            if stage_asset.endswith("_raw"):
+                stage = stage_asset.replace("_raw", "")
+                raw_path = (
+                    self._fallback_root
+                    / "gens"
+                    / stage
+                    / str(partition_key)
+                    / "raw.txt"
+                )
+                if raw_path.exists():
+                    return raw_path.read_text(encoding="utf-8")
+
             raise KeyError(f"InMemoryIOManager: no object stored for {key}")
+
         return self._store[key]
