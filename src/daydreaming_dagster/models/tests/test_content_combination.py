@@ -1,6 +1,6 @@
 import pytest
-from .concept import Concept
-from .content_combination import ContentCombination
+from daydreaming_dagster.models.concept import Concept
+from daydreaming_dagster.models.content_combination import ContentCombination
 
 
 def test_from_concepts_basic():

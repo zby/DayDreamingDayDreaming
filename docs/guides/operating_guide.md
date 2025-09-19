@@ -155,7 +155,11 @@ Optionally stash selection files for traceability:
    uv run dagster dev -f src/daydreaming_dagster/definitions.py
    ```
 
-   Raw loaders are standalone (no observable sources). When files under `data/1_raw/**/*` change, re‑materialize `group:raw_data` to refresh downstream tasks.
+  Raw inputs are tracked as `SourceAssets` (see `raw_data.py`). After editing files under `data/1_raw/**/*`, re-materialize the cohort bootstrapping assets so the new configuration flows downstream:
+  ```bash
+  uv run dagster asset materialize -f src/daydreaming_dagster/definitions.py \
+    --select "selected_combo_mappings,content_combinations,cohort_id,cohort_membership,register_cohort_partitions"
+  ```
 
    Optional one-time seed (registers cohort partitions):
    ```bash
@@ -182,10 +186,10 @@ Optionally stash selection files for traceability:
 
 ### Auto-Materializing Assets
 
-Only `raw_data` and cohort assets use eager auto‑materialization during development:
+Raw inputs are not auto-materialized; instead, re-run the cohort setup assets whenever raw CSVs or template files change:
 
-- Raw loaders (`group:raw_data`) can be re‑materialized after editing files under `data/1_raw/**/*`.
-- Cohort assets (`cohort_id`, `cohort_membership`) refresh when raw assets update.
+- `selected_combo_mappings`, `content_combinations`, `cohort_id`, `cohort_membership`, and `register_cohort_partitions` should be materialized after editing `data/1_raw/**/*` or `data/2_tasks/selected_combo_mappings.csv`.
+- This sequence registers dynamic partitions for the downstream generation and evaluation groups.
 
 Cross‑experiment tracking no longer uses auto‑appenders. Use analysis assets (`filtered_evaluation_results`, `template_version_comparison_pivot`) and scripts for backfills under `data/7_cross_experiment/`. These analyses read scores strictly from `data/gens/evaluation/<gen_id>/parsed.txt` and do not parse `raw.txt` — ensure evaluation assets have produced parsed outputs before running cross‑experiment analysis.
 

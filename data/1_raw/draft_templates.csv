@@ -16,8 +16,8 @@ connective-thread-simplified-v1,Connective Thread Simplified V1,Single-thread in
 deliberate-rolling-thread-v2,Deliberate Rolling Thread V2,Tagged rolling idea (free-form thinking) with per-step <essay-idea>,essay_idea_last,llm,False
 deliberate-rolling-thread-v3,Deliberate Rolling Thread V3,Tagged rolling idea (free-form thinking) with per-step <essay-idea>,essay_idea_last,llm,False
 application-implementation-v2,Application Implementation V2 (as draft),Legacy essay template reused for Phase-1 draft,,llm,True
-essay-inventive-synthesis-v3,Essay Inventive Synthesis V3 (as draft),Legacy essay template reused for Phase-1 draft,,llm,True
+essay-inventive-synthesis-v3,Essay Inventive Synthesis V3 (as draft),Legacy essay template reused for Phase-1 draft,,llm,False
 gwern_original,Gwern Original (as draft),Legacy essay template reused for Phase-1 draft,,llm,True
-problem-solving-v2,Problem Solving V2 (as draft),Legacy essay template reused for Phase-1 draft,,llm,True
-research-discovery-v3,Research Discovery V3 (as draft),Legacy essay template reused for Phase-1 draft,,llm,True
-systematic-analytical-v2,Systematic Analytical V2 (as draft),Legacy essay template reused for Phase-1 draft,,llm,True
+problem-solving-v2,Problem Solving V2 (as draft),Legacy essay template reused for Phase-1 draft,,llm,False
+research-discovery-v3,Research Discovery V3 (as draft),Legacy essay template reused for Phase-1 draft,,llm,False
+systematic-analytical-v2,Systematic Analytical V2 (as draft),Legacy essay template reused for Phase-1 draft,,llm,False

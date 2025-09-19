@@ -117,14 +117,15 @@ Note: Observable source assets were removed for simplicity during development. W
 - **Validation**: Ensure required fields and structure
 - **Metadata Extraction**: Generate searchable metadata for concepts
 - **Template Processing**: Load and validate Jinja2 templates
- - **Manual Refresh**: Re‑materialize `group:raw_data` after editing files under `data/1_raw/**` to propagate changes
+- **Manual Refresh**: After editing files under `data/1_raw/**`, materialize `selected_combo_mappings`, `content_combinations`, `cohort_id`, `cohort_membership`, and `register_cohort_partitions` to propagate changes and rebuild dynamic partitions.
 
 **Implementation Details**:
 ```python
-# Raw asset uses eager auto-materialization
-@asset(group_name="raw_data", automation_condition=AutomationCondition.eager())
-def concepts(context) -> List[Concept]:
-    ...  # load from CSV and description files
+# Raw inputs are declared as SourceAssets; see `raw_data.py`
+RAW_SOURCE_ASSETS = [
+    AssetSpec(key=AssetKey(["raw_source", "concepts_metadata_csv"]), ...),
+    ...
+]
 ```
 
 LLM generation/evaluation assets remain manual to avoid surprise API usage/costs.
