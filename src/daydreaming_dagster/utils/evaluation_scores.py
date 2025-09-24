@@ -69,8 +69,18 @@ def aggregate_evaluation_scores_for_ids(data_root: Path, gen_ids: Iterable[str])
         else:
             error = "missing parsed.txt"
 
-        combo_id = ""
-        generation_template = ""
+        combo_meta = md.get("combo_id")
+        combo_id = str(combo_meta).strip() if combo_meta is not None else ""
+        draft_template_meta = md.get("draft_template")
+        draft_template = (
+            str(draft_template_meta).strip() if draft_template_meta is not None else ""
+        )
+        generation_template_meta = md.get("essay_template_id") or md.get("generation_template")
+        generation_template = (
+            str(generation_template_meta).strip()
+            if generation_template_meta is not None
+            else ""
+        )
         generation_model = ""
         parent_draft_id = ""
         if parent_essay_id:
@@ -81,10 +91,17 @@ def aggregate_evaluation_scores_for_ids(data_root: Path, gen_ids: Iterable[str])
                     emd.get("llm_model_id") or emd.get("model_id") or ""
                 )
                 parent_draft_id = str(emd.get("parent_gen_id") or "")
+                if not combo_id:
+                    combo_val = emd.get("combo_id")
+                    if combo_val is not None:
+                        combo_id = str(combo_val).strip()
+                if not draft_template:
+                    draft_val = emd.get("draft_template")
+                    if draft_val is not None:
+                        draft_template = str(draft_val).strip()
             except Exception:
                 pass
 
-        draft_template = ""
         if parent_draft_id:
             try:
                 dmd = load_generation(gens_root, "draft", parent_draft_id).get("metadata") or {}
@@ -96,6 +113,21 @@ def aggregate_evaluation_scores_for_ids(data_root: Path, gen_ids: Iterable[str])
                     )
             except Exception:
                 pass
+        elif not draft_template:
+            draft_template = str(md.get("draft_template") or "")
+        if not combo_id:
+            combo_val = md.get("combo_id")
+            if combo_val is not None:
+                combo_id = str(combo_val).strip()
+
+        if not draft_template:
+            draft_template_meta = md.get("draft_template")
+            if draft_template_meta is not None:
+                draft_template = str(draft_template_meta).strip()
+        if not generation_template:
+            generation_template_meta = md.get("essay_template_id") or md.get("generation_template")
+            if generation_template_meta is not None:
+                generation_template = str(generation_template_meta).strip()
 
         cohort_value = None
         if cohort_id is not None and pd.notna(cohort_id):

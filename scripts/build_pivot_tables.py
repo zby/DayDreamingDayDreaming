@@ -23,11 +23,66 @@ from pathlib import Path
 import pandas as pd
 
 
+def _compose_essay_task_id(df: pd.DataFrame) -> pd.Series:
+    """Derive the essay_task_id using combo/template/model columns from the new schema."""
+
+    required = ["combo_id", "draft_template", "generation_model", "generation_template"]
+    missing_cols = [col for col in required if col not in df.columns]
+    if missing_cols:
+        raise ValueError(
+            "Unable to derive essay_task_id; missing required columns: "
+            f"{missing_cols}"
+        )
+
+    def compose(row: pd.Series) -> str:
+        parts: list[str] = []
+        for col in required:
+            value = row[col]
+            if pd.isna(value):
+                raise ValueError(
+                    "Unable to derive essay_task_id due to NaN in column "
+                    f"'{col}' for row index {row.name}"
+                )
+            text = str(value).strip()
+            if not text:
+                raise ValueError(
+                    "Unable to derive essay_task_id due to empty value in column "
+                    f"'{col}' for row index {row.name}"
+                )
+            parts.append(text)
+        return "_".join(parts)
+
+    return df.apply(compose, axis=1)
+
+
 def build_pivot(parsed_scores: Path, out_dir: Path) -> None:
     if not parsed_scores.exists():
         raise FileNotFoundError(f"Parsed scores CSV not found: {parsed_scores}")
 
     df = pd.read_csv(parsed_scores)
+
+    task_cols = ["combo_id", "draft_template", "generation_template", "generation_model"]
+    missing_task_cols = [col for col in task_cols if col not in df.columns]
+    if missing_task_cols:
+        raise ValueError(
+            "Parsed scores missing required task metadata columns: "
+            f"{missing_task_cols}"
+        )
+
+    missing_mask = df[task_cols].isna().any(axis=1)
+    empty_mask = df[task_cols].astype(str).apply(lambda col: col.str.strip() == "").any(axis=1)
+    drop_mask = missing_mask | empty_mask
+    if drop_mask.any():
+        dropped = int(drop_mask.sum())
+        drop_details = df.loc[drop_mask, task_cols + ["gen_id", "parent_gen_id", "evaluation_template", "evaluation_llm_model"]]
+        print(
+            "Dropping rows without complete task metadata:\n"
+            f"Total dropped: {dropped}\n"
+            f"Missing columns breakdown:\n{drop_details.head(20).to_markdown(index=False)}"
+        )
+        df = df.loc[~drop_mask].copy()
+    if df.empty:
+        raise ValueError("No rows with complete task metadata available for pivot")
 
     # Ensure required columns exist (canonical uses draft_template; support legacy link_template)
     # Accept either 'template_id' (new) or 'evaluation_template' (legacy)
@@ -38,15 +93,17 @@ def build_pivot(parsed_scores: Path, out_dir: Path) -> None:
         "generation_model",
         "score",
     ]
+    df["essay_task_id"] = _compose_essay_task_id(df)
+
     missing = [c for c in required_base if c not in df.columns]
     if missing:
-        raise ValueError(f"Missing columns in parsed scores: {missing}
-Required base columns: {required_base}")
+        raise ValueError(
+            "Missing columns in parsed scores: "
+            f"{missing}; required base columns: {required_base}"
+        )
     # Normalize template column name
-    if "template_id" in df.columns:
-        df = df.rename(columns={"template_id": "evaluation_template"})
-    elif "evaluation_template" not in df.columns:
-        raise ValueError("Missing 'template_id' or 'evaluation_template' column in parsed scores")
+    if "evaluation_template" not in df.columns:
+        raise ValueError("Missing required column 'evaluation_template' in parsed scores")
 
     # Backward-compat: if draft_template missing, populate from link_template when present
     if "draft_template" not in df.columns:
@@ -58,30 +115,52 @@ Required base columns: {required_base}")
 
     # Compose column key as template__evaluator (strict: require evaluation_llm_model)
     if "evaluation_llm_model" not in df.columns:
-        raise ValueError("Missing evaluator id column: expected 'evaluation_llm_model'")
-    df["evaluation_template_model"] = df["evaluation_template"].astype(str) + "__" + df["evaluation_llm_model"].astype(str)
-    # Deterministic order before pivot
+        raise ValueError("Missing required column 'evaluation_llm_model' in parsed scores")
+    df["evaluation_template_model"] = (
+        df["evaluation_template"].astype(str) + "__" + df["evaluation_llm_model"].astype(str)
+    )
+    all_combo_columns = sorted(df["evaluation_template_model"].unique())
+
     df_sorted = df.sort_values(["essay_task_id", "evaluation_template_model"])  # deterministic
 
-    meta_cols = [
-        "essay_task_id",
-        "combo_id",
-        "draft_template",
-        "generation_template",
-        "generation_model",
-    ]
+    meta_columns = {
+        "parent_gen_id": "first",
+        "combo_id": "first",
+        "draft_template": "first",
+        "generation_template": "first",
+        "generation_model": "first",
+        "cohort_id": "first",
+    }
+    available_meta = {col: agg for col, agg in meta_columns.items() if col in df_sorted.columns}
+    meta_df = (
+        df_sorted[["essay_task_id", *available_meta.keys()]]
+        .groupby("essay_task_id", as_index=False)
+        .agg(available_meta)
+    )
 
-    # Create pivot by evaluation_template__evaluation_model
     pivot = (
         df_sorted
         .pivot_table(
-            index=meta_cols,
+            index="essay_task_id",
             columns="evaluation_template_model",
             values="score",
             aggfunc="first",
         )
         .reset_index()
     )
+
+    for combo in all_combo_columns:
+        if combo not in pivot.columns:
+            pivot[combo] = pd.NA
+
+    result = meta_df.merge(pivot, on="essay_task_id", how="outer")
+
+    meta_output_cols = [
+        col for col in ["parent_gen_id", "combo_id", "draft_template", "generation_template", "generation_model", "cohort_id"]
+        if col in result.columns
+    ]
+    ordered_columns = meta_output_cols + [col for col in all_combo_columns if col in result.columns]
+    pivot = result.reindex(columns=ordered_columns)
 
     out_dir.mkdir(parents=True, exist_ok=True)
     out_file = out_dir / "evaluation_scores_by_template_model.csv"
