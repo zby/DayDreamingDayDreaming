@@ -59,7 +59,7 @@ def test_draft_min_lines_failure_writes_debug_then_raises(tiny_data_root: Path, 
     prompt_text = draft_prompt(ctx, content_combinations)
     raw_text = draft_raw(ctx, prompt_text)
     with pytest.raises(Failure):
-        _ = draft_parsed(ctx, raw_text)
+        _ = draft_parsed(ctx)
 
     # Filesystem: raw/metadata exist; parsed.txt absent (prompt not written here)
     ddir = tiny_data_root / "gens" / "draft" / draft_id

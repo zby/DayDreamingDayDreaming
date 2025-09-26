@@ -56,7 +56,7 @@ def test_evaluation_parser_in_last_line_emits_single_float_line(tiny_data_root: 
     ctx = make_ctx(eval_id, tiny_data_root, llm=mock_llm, min_draft_lines=3)
     prompt_text = evaluation_prompt(ctx)
     raw_text = evaluation_raw(ctx, prompt_text)
-    parsed_text = evaluation_parsed(ctx, raw_text)
+    parsed_text = evaluation_parsed(ctx)
 
     vdir = tiny_data_root / "gens" / "evaluation" / eval_id
     assert (vdir / "parsed.txt").exists()

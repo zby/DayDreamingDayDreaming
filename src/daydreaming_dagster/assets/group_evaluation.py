@@ -8,6 +8,8 @@ shared `_stage_*` primitives while the unified layer manages IO.
 
 from __future__ import annotations
 
+from dagster import AssetKey
+
 from ._decorators import asset_with_boundary
 from .partitions import evaluation_gens_partitions
 from .raw_data import EVALUATION_TEMPLATES_KEY
@@ -96,11 +98,15 @@ def evaluation_raw(context, evaluation_prompt: str) -> str:
     group_name="evaluation",
     io_manager_key="in_memory_io_manager",
     required_resource_keys={"data_root", "experiment_config"},
+    deps={AssetKey("evaluation_raw")},
 )
-def evaluation_parsed(context, evaluation_raw: str) -> str:
+def evaluation_parsed(context) -> str:
     """Parse evaluation raw text into the persisted parsed artifact."""
     data_layer = GensDataLayer.from_root(context.resources.data_root)
     gen_id = str(context.partition_key)
+
+    # Reload persisted raw output to remain compatible with multiprocess execution.
+    raw_text = data_layer.read_raw(EVALUATION_STAGE, gen_id)
 
     metadata = resolve_generation_metadata(data_layer, EVALUATION_STAGE, gen_id)
     try:
@@ -123,7 +129,7 @@ def evaluation_parsed(context, evaluation_raw: str) -> str:
         data_layer=data_layer,
         stage=EVALUATION_STAGE,
         gen_id=gen_id,
-        raw_text=evaluation_raw,
+        raw_text=raw_text,
         parser_name=parser_name,
         raw_metadata=raw_metadata,
         stage_settings=stage_settings,

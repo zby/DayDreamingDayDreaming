@@ -8,6 +8,8 @@ all IO and metadata handling stay in the shared unified layer.
 
 from __future__ import annotations
 
+from dagster import AssetKey
+
 from ._decorators import asset_with_boundary
 from .partitions import draft_gens_partitions
 from ._helpers import build_stage_artifact_metadata, get_run_id
@@ -95,11 +97,15 @@ def draft_raw(context, draft_prompt: str) -> str:
     group_name="generation_draft",
     io_manager_key="in_memory_io_manager",
     required_resource_keys={"data_root", "experiment_config"},
+    deps={AssetKey("draft_raw")},
 )
-def draft_parsed(context, draft_raw: str) -> str:
+def draft_parsed(context) -> str:
     """Parse the draft raw text into its persisted parsed representation."""
     data_layer = GensDataLayer.from_root(context.resources.data_root)
     gen_id = str(context.partition_key)
+
+    # Re-read the persisted raw output to support multi-process execution.
+    raw_text = data_layer.read_raw(DRAFT_STAGE, gen_id)
 
     metadata = resolve_generation_metadata(data_layer, DRAFT_STAGE, gen_id)
     try:
@@ -122,7 +128,7 @@ def draft_parsed(context, draft_raw: str) -> str:
         data_layer=data_layer,
         stage=DRAFT_STAGE,
         gen_id=gen_id,
-        raw_text=draft_raw,
+        raw_text=raw_text,
         parser_name=parser_name,
         raw_metadata=raw_metadata,
         stage_settings=stage_settings,

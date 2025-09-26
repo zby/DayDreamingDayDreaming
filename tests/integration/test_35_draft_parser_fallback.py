@@ -63,7 +63,7 @@ def test_draft_parser_fallback_produces_parsed_text_when_configured(tiny_data_ro
     ctx = make_ctx(draft_id, tiny_data_root, llm=_TaggedLLM(), min_draft_lines=1)
     prompt_text = draft_prompt(ctx, content_combinations)
     raw_text = draft_raw(ctx, prompt_text)
-    parsed = draft_parsed(ctx, raw_text)
+    parsed = draft_parsed(ctx)
 
     ddir = tiny_data_root / "gens" / "draft" / draft_id
     assert (ddir / "parsed.txt").exists()

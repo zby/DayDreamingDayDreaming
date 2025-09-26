@@ -93,7 +93,7 @@ def test_draft_parser_failure_saves_raw_then_fails(tmp_path: Path, make_ctx):
     assert result == raw_text
 
     with pytest.raises(Failure):
-        _ = draft_parsed(ctx, raw_text)
+        _ = draft_parsed(ctx)
 
     # In membership-first mode, failures may occur before RAW write depending on setup.
     # If RAW exists, ensure it matches the LLM output; otherwise proceed.

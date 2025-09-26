@@ -118,19 +118,19 @@ def test_happy_path_draft_essay_eval_chain(tiny_data_root: Path, mock_llm, make_
     dctx = make_ctx(draft_id, tiny_data_root, llm=_TaggedLLM(), min_draft_lines=3)
     draft_prompt_text = draft_prompt(dctx, content_combinations)
     draft_raw_text = draft_raw(dctx, draft_prompt_text)
-    draft_parsed_text = draft_parsed(dctx, draft_raw_text)
+    draft_parsed_text = draft_parsed(dctx)
 
     # Essay (LLM mode): asset chain uses upstream parsed draft
     ectx = make_ctx(essay_id, tiny_data_root, llm=mock_llm, min_draft_lines=3)
     essay_prompt_text = essay_prompt(ectx)
     essay_raw_text = essay_raw(ectx, essay_prompt_text)
-    essay_parsed_text = essay_parsed(ectx, essay_raw_text)
+    essay_parsed_text = essay_parsed(ectx)
 
     # Evaluation asset chain uses essay parsed output
     vctx = make_ctx(eval_id, tiny_data_root, llm=mock_llm, min_draft_lines=3)
     evaluation_prompt_text = evaluation_prompt(vctx)
     evaluation_raw_text = evaluation_raw(vctx, evaluation_prompt_text)
-    evaluation_parsed_text = evaluation_parsed(vctx, evaluation_raw_text)
+    evaluation_parsed_text = evaluation_parsed(vctx)
 
     # Assert filesystem layout and basic invariants
     ddir = tiny_data_root / "gens" / "draft" / draft_id

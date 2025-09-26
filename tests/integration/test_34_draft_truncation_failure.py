@@ -60,7 +60,7 @@ def test_draft_truncation_failure_writes_debug_then_raises(tiny_data_root: Path,
     prompt_text = draft_prompt(ctx, content_combinations)
     raw_text = draft_raw(ctx, prompt_text)
     with pytest.raises(Failure):
-        _ = draft_parsed(ctx, raw_text)
+        _ = draft_parsed(ctx)
 
     ddir = tiny_data_root / "gens" / "draft" / draft_id
     assert (ddir / "raw.txt").exists()

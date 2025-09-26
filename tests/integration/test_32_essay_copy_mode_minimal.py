@@ -63,7 +63,7 @@ def test_essay_copy_mode_writes_only_parsed_and_metadata(tiny_data_root: Path, m
     ctx = make_ctx(essay_id, tiny_data_root, min_draft_lines=1, llm=mock_llm)
     prompt_text = essay_prompt(ctx)
     raw_text = essay_raw(ctx, prompt_text)
-    parsed_text = essay_parsed(ctx, raw_text)
+    parsed_text = essay_parsed(ctx)
 
     # Assert files match copy-mode expectations
     edir = tiny_data_root / "gens" / "essay" / essay_id
