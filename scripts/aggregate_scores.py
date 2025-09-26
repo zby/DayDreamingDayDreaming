@@ -13,11 +13,11 @@ Key cross-experiment features:
 
 Defaults:
 - Gens store: data/gens/evaluation/<gen_id>/{parsed.txt,metadata.json}
-- Output: data/7_cross_experiment/parsed_scores.csv
+- Output: data/5_parsing/aggregated_scores.csv
 
 Usage examples:
-- uv run scripts/aggregate_scores.py --output data/cross_experiment/parsed_scores.csv
-- uv run scripts/aggregate_scores.py --data-root data --output tmp/parsed_scores.csv
+- uv run scripts/aggregate_scores.py --output data/5_parsing/aggregated_scores.csv
+- uv run scripts/aggregate_scores.py --data-root data --output tmp/aggregated_scores.csv
 """
 
 from __future__ import annotations
@@ -584,12 +584,11 @@ def main() -> None:
         default=Path("data"),
         help="Base data root directory (default: data)",
     )
-    # No legacy flags
     parser.add_argument(
         "--output",
         type=Path,
-        default=Path('data/7_cross_experiment/parsed_scores.csv'),
-        help="Output CSV path; default is data/7_cross_experiment/parsed_scores.csv",
+        default=Path("data/5_parsing/aggregated_scores.csv"),
+        help="Output CSV path; default is data/5_parsing/aggregated_scores.csv",
     )
     parser.add_argument(
         "--strict",

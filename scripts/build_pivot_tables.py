@@ -3,7 +3,7 @@
 Build cross-experiment pivot table of essay scores by evaluation template+model.
 
 Inputs:
-- Parsed scores CSV (typically produced by scripts/aggregate_scores.py)
+- Aggregated scores CSV (default `data/5_parsing/aggregated_scores.csv`, produced by `scripts/aggregate_scores.py`)
 
 Output (written under data/7_cross_experiment/):
 - evaluation_scores_by_template_model.csv
@@ -13,7 +13,7 @@ Output (written under data/7_cross_experiment/):
 
 Usage:
   python scripts/build_pivot_tables.py \
-    --parsed-scores data/7_cross_experiment/parsed_scores.csv
+    --parsed-scores data/5_parsing/aggregated_scores.csv
 """
 
 from __future__ import annotations
@@ -169,12 +169,12 @@ def build_pivot(parsed_scores: Path, out_dir: Path) -> None:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Build evaluation pivots from parsed scores")
+    parser = argparse.ArgumentParser(description="Build evaluation pivots from aggregated scores")
     parser.add_argument(
         "--parsed-scores",
         type=Path,
-        required=True,
-        help="Path to parsed scores CSV (from scripts/aggregate_scores.py)",
+        default=Path("data/5_parsing/aggregated_scores.csv"),
+        help="Path to aggregated scores CSV (default: data/5_parsing/aggregated_scores.csv)",
     )
     parser.add_argument(
         "--out-dir",
