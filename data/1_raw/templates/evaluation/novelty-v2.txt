@@ -1,0 +1,100 @@
+**Role:** You are an originality auditor. Your sole task is to decide whether the **CANDIDATE TEXT** independently invents **all** the novel ideas listed below (**N1–N2**). Ignore everything else (background, rhetoric, non‑novel points).
+
+CANDIDATE TEXT:
+
+{{ response }}
+
+====
+
+### What counts as "independent invention"
+
+Credit the candidate **only if** for each idea it:
+
+1. **Matches the mechanism**: conveys the same operational structure listed in the essentials (not just a vibe like "let's brainstorm more").
+2. **Is operational**: states how to *do it* (loop, roles, data flow, persistence, strategy), not merely that it is desirable.
+3. **Exceeds common prior art** where noted in "Key differentiators."
+
+### The novelty set to test against
+
+**N1 — Integrated Day‑Dreaming Loop (DDL) as a persistent background process**
+
+*Essentials:*
+(a) always‑on background loop;
+(b) random concept recombination;
+(c) generator → critic gating on "interestingness";
+(d) write‑back of accepted ideas;
+(e) novelty resides in the *integrated* default‑mode package.
+
+**N2 — Strategic "Daydreaming → Proprietary Data → Cheaper Models" data‑moat**
+
+*Essentials:* 
+(a) costly dreamers produce *new, non‑public* insights; 
+(b) use those outputs to train/fine‑tune *smaller/cheaper* models; 
+(c) aim is to overcome the data wall; 
+(d) moat comes from exclusivity—others don't know what to copy; 
+(e) presented as an *integrated strategy*, not generic synthetic data.
+
+### Scoring (per idea)
+
+For each idea **N1** and **N2**, assign exactly one status with the following credit values:
+
+* **A. Independent invention (credit = 1.0):** all essentials clearly present with an operational description.
+* **B. Near‑miss / partial (credit = 0.5):** conveys the core mechanism but misses ≥1 critical differentiator or keeps it partially non‑operational.
+* **C. Not invented (credit = 0.0):** essentials absent or only alluded to vaguely.
+
+> Provide **verbatim evidence** from the candidate text for every essential you credit. No evidence → no credit.
+
+### Decision rule
+
+* **PASS ("invented all"):** both **N1** and **N2** score **A**.
+* **FAIL:** otherwise.
+
+### Numeric score normalization (0–9)
+
+Compute a numeric score strictly from Essentials coverage:
+
+1) For each idea k (N1, N2):
+   - Let E_k be the number of Essentials listed for that idea.
+   - Let C_k be the number of Essentials you credit (clear, quoted evidence that the essential is satisfied).
+2) Totals across both ideas:
+   - E_total = E_1 + E_2
+   - C_total = C_1 + C_2
+3) Compute idea-level credit:
+   - Let `credit_raw = credit(N1) + credit(N2)` where credit(A)=1.0, credit(B)=0.5, credit(C)=0.0.
+   - `credit_avg = credit_raw / 2`
+4) Normalize to 0–9:
+   - Score_0_9 = round_half_up(9 × credit_avg)
+5) Tie-break guardrail:
+   - If any idea is Status C, cap Score_0_9 at 6.
+   - If any idea is Status B (and none are C), cap Score_0_9 at 8. Only award 9 if both N1 and N2 are A.
+
+Report the binary PASS/FAIL separately (PASS only if both N1 and N2 are A). The numeric score reflects overall Essentials coverage.
+
+### Output format
+
+1. **Per‑idea evaluation:**
+
+   **N1 — Status: A/B/C**
+   - e(a) evidence → "…"
+   - e(b) evidence → "…"
+   - Notes on gaps/ambiguities
+
+   **N2 — Status: A/B/C**
+   - e(a) evidence → "…"
+   - e(b) evidence → "…"
+   - Notes on gaps/ambiguities
+
+2. **Aggregate result:** PASS/FAIL; `A_count / 2 ideas credited`; **Confidence** (Low/Medium/High).
+   - Then compute Score_0_9 by the normalization above.
+
+3. **One‑paragraph justification:** emphasize the tightest bottleneck (the most borderline essential).
+
+### Guardrails
+
+* **Ignore non‑novel content.** Eloquence about continual learning, default‑mode analogies, or "creativity is costly" earns **no** credit unless tied to the N1/N2 mechanisms or strategy.
+* **Be strict on differentiators.** "Brainstorm and filter ideas" ≠ N1 unless it's **persistent**, **generator/critic**, and **writes back** hits. "Use synthetic data" ≠ N2 unless it articulates the **dreamers → proprietary insights → smaller models → moat** pipeline.
+
+---
+
+Your evaluation must end with a line containing the final score and there should be no more content. That final line should have the exact format specified below with X being a digit 0-9 (computed by the normalization above):
+SCORE: X

@@ -12,4 +12,5 @@ style-coherence-v2,Style Coherence V2,Enhanced template with detailed scoring ru
 style-coherence-v3,Style Coherence V3,Advanced template with structure-preserving link framework and quality checks,in_last_line,llm,True
 interdisciplinary-coherence,Interdisciplinary Coherence,Specialized template for evaluating interdisciplinary work and domain integration,in_last_line,llm,False
 novel-elements-coverage-v1,Novel Elements Coverage,"Checks coverage of novel elements, mechanism specificity, originality, and leakage (0–9 score)",in_last_line,llm,False
-novelty,Novelty,Binary originality auditor for N1/N2 novel ideas with strict operational requirements,in_last_line,llm,True
+novelty,Novelty,Binary originality auditor for N1/N2 novel ideas with strict operational requirements,in_last_line,llm,False
+novelty-v2,Novelty V2,Originality auditor with partial credit for near-miss inventions,in_last_line,llm,True
