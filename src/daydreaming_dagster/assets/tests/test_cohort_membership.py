@@ -318,6 +318,59 @@ def test_cohort_membership_evaluation_only_fill_up(tmp_path: Path):
     assert set(eval_rows["replicate"]) == {2}
 
 
+def test_cohort_membership_evaluation_only_parent_combo_fallback(tmp_path: Path):
+    data_root = tmp_path
+    (data_root / "1_raw").mkdir(parents=True, exist_ok=True)
+    pd.DataFrame([
+        {"stage": "draft", "replicates": 1},
+        {"stage": "essay", "replicates": 1},
+        {"stage": "evaluation", "replicates": 1},
+    ]).to_csv(data_root / "1_raw" / "replication_config.csv", index=False)
+    pd.DataFrame([
+        {"template_id": "eval-1", "active": True},
+    ]).to_csv(data_root / "1_raw" / "evaluation_templates.csv", index=False)
+    pd.DataFrame([
+        {"id": "eval-model", "model": "provider/eval", "for_generation": False, "for_evaluation": True},
+    ]).to_csv(data_root / "1_raw" / "llm_models.csv", index=False)
+
+    draft_src = "D-parent"
+    essay_src = "E-parent"
+    _write_json(
+        data_root / "gens" / "draft" / draft_src / "metadata.json",
+        {
+            "stage": "draft",
+            "gen_id": draft_src,
+            "combo_id": "combo-parent",
+            "template_id": "draft-parent",
+            "model_id": "gen-parent",
+        },
+    )
+    _write_json(
+        data_root / "gens" / "essay" / essay_src / "metadata.json",
+        {
+            "stage": "essay",
+            "gen_id": essay_src,
+            "parent_gen_id": draft_src,
+            "template_id": "essay-parent",
+            "model_id": "gen-parent",
+        },
+    )
+
+    (data_root / "2_tasks").mkdir(parents=True, exist_ok=True)
+    (data_root / "2_tasks" / "selected_essays.txt").write_text(
+        "# mode: evaluation-only\n" f"{essay_src}\n",
+        encoding="utf-8",
+    )
+
+    ctx = build_asset_context(resources={"data_root": str(data_root)})
+    cid = "cohort-eval-parent-fallback"
+    mdf = cohort_membership(ctx, cid)
+
+    eval_rows = mdf[mdf["stage"] == "evaluation"]
+    assert not eval_rows.empty
+    assert set(eval_rows["combo_id"].astype(str)) == {"combo-parent"}
+
+
 def test_evaluation_only_requires_essay_ids(tmp_path: Path):
     data_root = tmp_path
     (data_root / "1_raw").mkdir(parents=True, exist_ok=True)

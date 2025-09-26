@@ -287,10 +287,12 @@ def cohort_membership(
             raise ValueError("replication_config.csv must define integer replicates>=1 for stages: draft, essay, evaluation")
 
     essay_seed_combo: Dict[str, str] = {}
+    essay_parent_map: Dict[str, str] = {}
     evaluation_only_essays: Dict[str, Dict[str, str]] = {}
     existing_eval_cache: Dict[str, Dict[tuple[str, str], set[str]]] = {}
     evaluation_only_fully_covered: set[str] = set()
     evaluation_fill_added = 0
+    draft_combo_cache: Dict[str, str] = {}
 
     if selected_essays and selected_cfg.mode == "evaluation-only":
         for essay_src_id in selected_essays:
@@ -310,6 +312,27 @@ def cohort_membership(
             essay_gen = load_generation(data_root / "gens", "essay", essay_src_id)
             essay_meta = essay_gen.get("metadata") or {}
             combo_id = str(essay_meta.get("combo_id") or "").strip()
+            draft_parent_src = str(essay_meta.get("parent_gen_id") or "").strip()
+            if not combo_id:
+                if not draft_parent_src:
+                    raise ValueError(
+                        f"Essay '{essay_src_id}' is missing combo_id metadata and parent_gen_id; cannot derive evaluation tasks."
+                    )
+                if draft_parent_src not in draft_combo_cache:
+                    draft_meta_path = data_root / "gens" / "draft" / draft_parent_src / "metadata.json"
+                    if not draft_meta_path.exists():
+                        raise ValueError(
+                            f"Draft parent '{draft_parent_src}' metadata not found for essay '{essay_src_id}'."
+                        )
+                    draft_meta = load_generation(data_root / "gens", "draft", draft_parent_src).get("metadata") or {}
+                    draft_combo = str(draft_meta.get("combo_id") or "").strip()
+                    if not draft_combo:
+                        raise ValueError(
+                            f"Draft '{draft_parent_src}' is missing combo_id metadata; required for essay '{essay_src_id}'."
+                        )
+                    draft_combo_cache[draft_parent_src] = draft_combo
+                combo_id = draft_combo_cache[draft_parent_src]
+            essay_parent_map[essay_src_id] = draft_parent_src
             if not combo_id:
                 raise ValueError(
                     f"Essay '{essay_src_id}' is missing combo_id metadata; cannot derive evaluation tasks."
@@ -401,6 +424,7 @@ def cohort_membership(
                     }
                 )
                 essay_seed_combo[str(essay_cohort_gen)] = combo_id
+                essay_parent_map[str(essay_cohort_gen)] = draft_cohort_gen
 
     else:
         # Cartesian mode — derive from active axes
@@ -476,6 +500,7 @@ def cohort_membership(
                         }
                     )
                     essay_seed_combo[str(essay_cohort_gen)] = combo_id
+                    essay_parent_map[str(essay_cohort_gen)] = draft_cohort_gen
 
     # After drafts and essays are built, expand evaluations once using shared helper
     eval_tpl_ids, eval_model_ids = _eval_axes(data_root)
