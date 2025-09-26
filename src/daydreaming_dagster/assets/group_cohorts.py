@@ -38,6 +38,7 @@ from .partitions import (
 )
 from ..utils.generation import load_generation, write_gen_metadata
 from ..data_layer.paths import Paths
+from ..data_layer.gens_data_layer import GensDataLayer
 
 
 @dataclass
@@ -287,12 +288,12 @@ def cohort_membership(
             raise ValueError("replication_config.csv must define integer replicates>=1 for stages: draft, essay, evaluation")
 
     essay_seed_combo: Dict[str, str] = {}
-    essay_parent_map: Dict[str, str] = {}
     evaluation_only_essays: Dict[str, Dict[str, str]] = {}
     existing_eval_cache: Dict[str, Dict[tuple[str, str], set[str]]] = {}
     evaluation_only_fully_covered: set[str] = set()
     evaluation_fill_added = 0
     draft_combo_cache: Dict[str, str] = {}
+    data_layer = GensDataLayer.from_root(data_root)
 
     if selected_essays and selected_cfg.mode == "evaluation-only":
         for essay_src_id in selected_essays:
@@ -332,7 +333,6 @@ def cohort_membership(
                         )
                     draft_combo_cache[draft_parent_src] = draft_combo
                 combo_id = draft_combo_cache[draft_parent_src]
-            essay_parent_map[essay_src_id] = draft_parent_src
             if not combo_id:
                 raise ValueError(
                     f"Essay '{essay_src_id}' is missing combo_id metadata; cannot derive evaluation tasks."
@@ -424,7 +424,6 @@ def cohort_membership(
                     }
                 )
                 essay_seed_combo[str(essay_cohort_gen)] = combo_id
-                essay_parent_map[str(essay_cohort_gen)] = draft_cohort_gen
 
     else:
         # Cartesian mode — derive from active axes
@@ -500,7 +499,6 @@ def cohort_membership(
                         }
                     )
                     essay_seed_combo[str(essay_cohort_gen)] = combo_id
-                    essay_parent_map[str(essay_cohort_gen)] = draft_cohort_gen
 
     # After drafts and essays are built, expand evaluations once using shared helper
     eval_tpl_ids, eval_model_ids = _eval_axes(data_root)
@@ -586,6 +584,18 @@ def cohort_membership(
                                 "replicate": int(replicate_index),
                             }
                         )
+                        meta_payload = {
+                            "stage": "evaluation",
+                            "gen_id": eval_gen_id,
+                            "template_id": tpl,
+                            "llm_model_id": mid,
+                            "parent_gen_id": essay_gen_id,
+                            "combo_id": combo_id or "",
+                            "cohort_id": str(cohort_id),
+                            "mode": "llm",
+                            "replicate": int(replicate_index),
+                        }
+                        data_layer.write_main_metadata("evaluation", eval_gen_id, meta_payload)
                         evaluation_fill_added += 1
                         essay_missing = True
                     if selected_cfg.mode == "evaluation-only" and selected_cfg.fill_up:
@@ -596,11 +606,19 @@ def cohort_membership(
     # Deduplicate by (stage, gen_id)
     df = pd.DataFrame(rows)
     if not df.empty:
-        df = df.drop_duplicates(subset=["stage", "gen_id"])  # authoritative id set per stage
+        if "stage" in df.columns and "gen_id" in df.columns:
+            df = df.drop_duplicates(subset=["stage", "gen_id"])  # authoritative id set per stage
+        else:
+            df = df.drop_duplicates()
 
     # Parent integrity validation
-    drafts = set(df[df["stage"] == "draft"]["gen_id"].astype(str).tolist())
-    essays = set(df[df["stage"] == "essay"]["gen_id"].astype(str).tolist())
+    stage_col = df.get("stage") if not df.empty else None
+    if stage_col is not None:
+        drafts = set(df[df["stage"] == "draft"]["gen_id"].astype(str).tolist())
+        essays = set(df[df["stage"] == "essay"]["gen_id"].astype(str).tolist())
+    else:
+        drafts = set()
+        essays = set()
     essay_parent_missing = []
     eval_parent_missing = []
     if "parent_gen_id" in df.columns:
@@ -676,11 +694,14 @@ def register_cohort_partitions(context, cohort_membership: pd.DataFrame) -> Dict
         return len(to_add)
 
     df = cohort_membership if isinstance(cohort_membership, pd.DataFrame) else pd.DataFrame()
-    added_draft = _add_only(draft_gens_partitions.name, df[df["stage"] == "draft"]["gen_id"].astype(str))
-    added_essay = _add_only(essay_gens_partitions.name, df[df["stage"] == "essay"]["gen_id"].astype(str))
-    added_eval = _add_only(
-        evaluation_gens_partitions.name, df[df["stage"] == "evaluation"]["gen_id"].astype(str)
-    )
+    if df.empty:
+        added_draft = added_essay = added_eval = 0
+    else:
+        added_draft = _add_only(draft_gens_partitions.name, df[df["stage"] == "draft"]["gen_id"].astype(str))
+        added_essay = _add_only(essay_gens_partitions.name, df[df["stage"] == "essay"]["gen_id"].astype(str))
+        added_eval = _add_only(
+            evaluation_gens_partitions.name, df[df["stage"] == "evaluation"]["gen_id"].astype(str)
+        )
     context.add_output_metadata(
         {
             "partitions_added_draft": MetadataValue.int(added_draft),
