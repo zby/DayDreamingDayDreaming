@@ -104,6 +104,11 @@ uv run python scripts/select_top_prior_art.py \
 
 Notes
 - `selected_essays.txt` is the input signal for curated cohort builds.
+  - Add `# mode: evaluation-only` on the first non-empty line to register **only new evaluations**
+    for the listed essay `gen_id`s. Drafts/essays are not rematerialized; the evaluations point
+    to the original essays as parents.
+  - Optional: add `# skip-existing-evaluations` to top up only the missing evaluation template/model
+    combinations (including replication counts) for each essay. Essays already fully covered are skipped.
 - When pivoting or aggregating parsed results, prefer `parent_gen_id` (the essay `gen_id`) for stable grouping.
 
 Step 2 — Build cohort and register partitions

@@ -7,6 +7,9 @@ registering dynamic partitions based on cohort membership.
 
 from __future__ import annotations
 
+from collections import defaultdict
+from dataclasses import dataclass
+import json
 from pathlib import Path
 from typing import Dict, Iterable, List, Tuple
 
@@ -37,16 +40,63 @@ from ..utils.generation import load_generation, write_gen_metadata
 from ..data_layer.paths import Paths
 
 
-def _load_selected_essays_list(data_root: Path) -> List[str]:
+@dataclass
+class SelectedEssaysConfig:
+    mode: str
+    essay_ids: List[str]
+    fill_up: bool
+
+
+def _load_selected_essays_config(data_root: Path) -> SelectedEssaysConfig:
     sel = data_root / "2_tasks" / "selected_essays.txt"
     if not sel.exists():
-        return []
-    out: List[str] = []
-    for line in sel.read_text(encoding="utf-8").splitlines():
-        line = line.strip()
-        if line and not line.startswith("#"):
-            out.append(line)
-    return out
+        return SelectedEssaysConfig(mode="cartesian", essay_ids=[], fill_up=False)
+
+    mode = "curated"
+    fill_up = False
+    essays: List[str] = []
+    for raw in sel.read_text(encoding="utf-8").splitlines():
+        line = raw.strip()
+        if not line:
+            continue
+        if line.startswith("#"):
+            directive = line[1:].strip().lower()
+            if directive.startswith("mode:"):
+                value = directive.split(":", 1)[1].strip().lower()
+                if value == "evaluation-only":
+                    mode = "evaluation-only"
+            elif directive in {"skip-existing-evaluations", "fill-up", "fillup"}:
+                fill_up = True
+            continue
+        essays.append(line)
+    if mode != "evaluation-only":
+        fill_up = False
+    return SelectedEssaysConfig(mode=mode, essay_ids=essays, fill_up=fill_up)
+
+
+def _existing_evaluations_by_combo(data_root: Path, essay_id: str) -> Dict[tuple[str, str], set[str]]:
+    combos: Dict[tuple[str, str], set[str]] = defaultdict(set)
+    eval_root = data_root / "gens" / "evaluation"
+    if not eval_root.exists():
+        return combos
+    for gen_dir in eval_root.iterdir():
+        if not gen_dir.is_dir():
+            continue
+        meta_path = gen_dir / "metadata.json"
+        if not meta_path.exists():
+            continue
+        try:
+            meta = json.loads(meta_path.read_text(encoding="utf-8")) or {}
+        except Exception:
+            continue
+        if str(meta.get("parent_gen_id") or "").strip() != essay_id:
+            continue
+        tpl = str(meta.get("template_id") or meta.get("evaluation_template") or "").strip()
+        model = str(meta.get("llm_model_id") or meta.get("model_id") or "").strip()
+        if not tpl or not model:
+            continue
+        combos[(tpl, model)].add(gen_dir.name)
+    return combos
 
 
 # Model provider name mapping removed from cohort generation to reduce complexity.
@@ -214,7 +264,8 @@ def cohort_membership(
     out_path = cohort_dir / "membership.csv"
     # No partition pruning here; see note in docstring
 
-    selected_essays = _load_selected_essays_list(data_root)
+    selected_cfg = _load_selected_essays_config(data_root)
+    selected_essays = selected_cfg.essay_ids
     # Cohort membership depends on model_id only (provider names omitted).
 
     # Normalized row schema across all stages:
@@ -235,7 +286,43 @@ def cohort_membership(
         if _st not in rep_cfg or not isinstance(rep_cfg.get(_st), int) or rep_cfg.get(_st, 0) < 1:
             raise ValueError("replication_config.csv must define integer replicates>=1 for stages: draft, essay, evaluation")
 
-    if selected_essays:
+    essay_seed_combo: Dict[str, str] = {}
+    evaluation_only_essays: Dict[str, Dict[str, str]] = {}
+    existing_eval_cache: Dict[str, Dict[tuple[str, str], set[str]]] = {}
+    evaluation_only_fully_covered: set[str] = set()
+    evaluation_fill_added = 0
+
+    if selected_essays and selected_cfg.mode == "evaluation-only":
+        for essay_src_id in selected_essays:
+            essay_meta_path = data_root / "gens" / "essay" / essay_src_id / "metadata.json"
+            if not essay_meta_path.exists():
+                # Detect mis-specified draft ids for clearer error
+                draft_meta_path = data_root / "gens" / "draft" / essay_src_id / "metadata.json"
+                if draft_meta_path.exists():
+                    raise ValueError(
+                        "selected_essays.txt (evaluation-only) requires essay gen_ids; "
+                        f"'{essay_src_id}' is a draft gen_id."
+                    )
+                raise ValueError(
+                    f"Essay metadata not found for '{essay_src_id}'. Ensure the essay exists before building the cohort."
+                )
+
+            essay_gen = load_generation(data_root / "gens", "essay", essay_src_id)
+            essay_meta = essay_gen.get("metadata") or {}
+            combo_id = str(essay_meta.get("combo_id") or "").strip()
+            if not combo_id:
+                raise ValueError(
+                    f"Essay '{essay_src_id}' is missing combo_id metadata; cannot derive evaluation tasks."
+                )
+            evaluation_only_essays[essay_src_id] = {
+                "combo_id": combo_id,
+                "template_id": str(essay_meta.get("template_id") or essay_meta.get("essay_template") or "").strip(),
+            }
+            essay_seed_combo[essay_src_id] = combo_id
+            if selected_cfg.fill_up:
+                existing_eval_cache[essay_src_id] = _existing_evaluations_by_combo(data_root, essay_src_id)
+
+    elif selected_essays:
         # Curated mode — rebuild tasks from prior gens metadata and compute cohort-scoped ids
         for essay_src_id in selected_essays:
             # Load essay metadata
@@ -274,9 +361,6 @@ def cohort_membership(
             draft_task_id = f"{combo_id}__{draft_tpl}__{model_id}"
             draft_cohort_gen = reserve_gen_id("draft", draft_task_id, run_id=cohort_id)
 
-            essay_task_id = f"{draft_task_id}__{essay_tpl}"
-            essay_cohort_gen = reserve_gen_id("essay", essay_task_id, run_id=cohort_id)
-
             # Draft row (no replicates in curated mode)
             rows.append(
                 {
@@ -297,7 +381,12 @@ def cohort_membership(
                 # Salt only when needed
                 salt = f"rep{er}" if essay_reps > 1 else None
                 essay_task_id = f"{draft_task_id}__{essay_tpl}"
-                essay_cohort_gen = reserve_gen_id("essay", essay_task_id, run_id=cohort_id, salt=salt)
+                essay_cohort_gen = reserve_gen_id(
+                    "essay",
+                    essay_task_id,
+                    run_id=cohort_id,
+                    salt=salt,
+                )
                 rows.append(
                     {
                         "stage": "essay",
@@ -311,6 +400,7 @@ def cohort_membership(
                         "replicate": int(er),
                     }
                 )
+                essay_seed_combo[str(essay_cohort_gen)] = combo_id
 
     else:
         # Cartesian mode — derive from active axes
@@ -385,36 +475,98 @@ def cohort_membership(
                             "replicate": int(er),
                         }
                     )
+                    essay_seed_combo[str(essay_cohort_gen)] = combo_id
 
     # After drafts and essays are built, expand evaluations once using shared helper
     eval_tpl_ids, eval_model_ids = _eval_axes(data_root)
     if eval_tpl_ids and eval_model_ids:
-        essay_ids = [str(r["gen_id"]) for r in rows if r.get("stage") == "essay"]
-        essay_combo_map = {
-            str(r["gen_id"]): str(r.get("combo_id") or "") for r in rows if r.get("stage") == "essay"
-        }
+        essay_ids = list(essay_seed_combo.keys())
+        if selected_cfg.mode == "evaluation-only":
+            if not essay_ids:
+                essay_ids = list(evaluation_only_essays.keys())
+
         # Replication factor for evaluations
         eval_reps = int(rep_cfg.get("evaluation"))
         for essay_gen_id in essay_ids:
+            essay_missing = False
+            existing_counts: Dict[tuple[str, str], set[str]] = {}
+            if selected_cfg.mode == "evaluation-only" and selected_cfg.fill_up:
+                existing_counts = existing_eval_cache.get(essay_gen_id, {})
             for tpl in eval_tpl_ids:
                 for mid in eval_model_ids:
+                    existing_ids = set()
+                    if existing_counts:
+                        existing_ids = set(existing_counts.get((tpl, mid), set()))
+                    existing_count = len(existing_ids)
+                    needed = eval_reps - existing_count if eval_reps > existing_count else 0
+                    if selected_cfg.mode == "evaluation-only" and selected_cfg.fill_up:
+                        if needed <= 0:
+                            continue
+                    else:
+                        needed = eval_reps
+                    if needed <= 0:
+                        continue
                     eval_task_id = f"{essay_gen_id}__{tpl}__{mid}"
-                    for r in range(1, eval_reps + 1):
-                        # Preserve prior unsalted id for first replicate
-                        salt = None if r == 1 else f"rep{r}"
-                        eval_gen_id = reserve_gen_id("evaluation", eval_task_id, run_id=cohort_id, salt=salt)
+                    for idx in range(existing_count, existing_count + needed):
+                        replicate_index = idx + 1
+                        attempts = 0
+                        salt_options = []
+                        if replicate_index == 1:
+                            salt_options.append(None)
+                        else:
+                            salt_options.append(f"rep{replicate_index}")
+                        salt_options.append(f"fill{replicate_index}")
+
+                        eval_gen_id = None
+                        for base_salt in salt_options:
+                            candidate = reserve_gen_id(
+                                "evaluation",
+                                eval_task_id,
+                                run_id=cohort_id,
+                                salt=base_salt,
+                            )
+                            if candidate not in existing_ids:
+                                eval_gen_id = candidate
+                                break
+                        if eval_gen_id is None:
+                            attempt = 0
+                            while eval_gen_id is None:
+                                attempt += 1
+                                candidate = reserve_gen_id(
+                                    "evaluation",
+                                    eval_task_id,
+                                    run_id=cohort_id,
+                                    salt=f"fill{replicate_index}-{attempt}",
+                                )
+                                if candidate not in existing_ids:
+                                    eval_gen_id = candidate
+                                    break
+                                if attempt > 20:
+                                    raise ValueError(
+                                        "Unable to generate unique evaluation gen_id during fill-up"
+                                    )
+                        existing_ids.add(eval_gen_id)
+                        combo_id = essay_seed_combo.get(essay_gen_id)
+                        if combo_id is None and essay_gen_id in evaluation_only_essays:
+                            combo_id = evaluation_only_essays[essay_gen_id]["combo_id"]
                         rows.append(
                             {
                                 "stage": "evaluation",
                                 "gen_id": eval_gen_id,
                                 "cohort_id": str(cohort_id),
                                 "parent_gen_id": essay_gen_id,
-                                "combo_id": essay_combo_map.get(essay_gen_id, ""),
+                                "combo_id": combo_id or "",
                                 "template_id": tpl,
                                 "llm_model_id": mid,
-                                "replicate": int(r),
+                                "replicate": int(replicate_index),
                             }
                         )
+                        evaluation_fill_added += 1
+                        essay_missing = True
+                    if selected_cfg.mode == "evaluation-only" and selected_cfg.fill_up:
+                        existing_counts[(tpl, mid)] = existing_ids
+            if selected_cfg.mode == "evaluation-only" and selected_cfg.fill_up and not essay_missing:
+                evaluation_only_fully_covered.add(essay_gen_id)
 
     # Deduplicate by (stage, gen_id)
     df = pd.DataFrame(rows)
@@ -438,7 +590,10 @@ def cohort_membership(
         )
         for pid in eval_parents:
             if pid not in essays:
-                eval_parent_missing.append(pid)
+                try:
+                    load_generation(data_root / "gens", "essay", pid)
+                except Exception:
+                    eval_parent_missing.append(pid)
     if essay_parent_missing or eval_parent_missing:
         raise ValueError(
             "Cohort membership parent integrity check failed: "
@@ -462,6 +617,10 @@ def cohort_membership(
             ),
             "cohort_id": MetadataValue.text(str(cohort_id)),
             "membership_path": MetadataValue.path(str(out_path)),
+            "mode": MetadataValue.text(selected_cfg.mode),
+            "evaluation_fill_up": MetadataValue.bool(selected_cfg.mode == "evaluation-only" and selected_cfg.fill_up),
+            "fill_up_added_evaluations": MetadataValue.int(evaluation_fill_added),
+            "fill_up_fully_covered_essays": MetadataValue.int(len(evaluation_only_fully_covered)),
         }
     )
 

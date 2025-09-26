@@ -186,3 +186,171 @@ def test_evaluation_combo_id_matches_parent_essay(tmp_path: Path):
         parent = str(er["parent_gen_id"])
         assert parent in essays
         assert str(er["combo_id"]) == essay_combo[parent]
+
+
+def test_cohort_membership_evaluation_only_mode(tmp_path: Path):
+    data_root = tmp_path
+
+    (data_root / "1_raw").mkdir(parents=True, exist_ok=True)
+    pd.DataFrame([
+        {"stage": "draft", "replicates": 1},
+        {"stage": "essay", "replicates": 1},
+        {"stage": "evaluation", "replicates": 2},
+    ]).to_csv(data_root / "1_raw" / "replication_config.csv", index=False)
+    pd.DataFrame([
+        {"template_id": "eval-1", "active": True},
+        {"template_id": "eval-2", "active": True},
+    ]).to_csv(data_root / "1_raw" / "evaluation_templates.csv", index=False)
+    pd.DataFrame([
+        {"id": "eval-model-a", "model": "provider/eval-a", "for_generation": False, "for_evaluation": True},
+        {"id": "eval-model-b", "model": "provider/eval-b", "for_generation": False, "for_evaluation": True},
+    ]).to_csv(data_root / "1_raw" / "llm_models.csv", index=False)
+
+    draft_src = "D500"
+    essay_src = "E500"
+    _write_json(
+        data_root / "gens" / "draft" / draft_src / "metadata.json",
+        {
+            "stage": "draft",
+            "gen_id": draft_src,
+            "combo_id": "combo-Z",
+            "template_id": "draft-z",
+            "model_id": "gen-z",
+        },
+    )
+    _write_json(
+        data_root / "gens" / "essay" / essay_src / "metadata.json",
+        {
+            "stage": "essay",
+            "gen_id": essay_src,
+            "parent_gen_id": draft_src,
+            "combo_id": "combo-Z",
+            "template_id": "essay-z",
+            "model_id": "gen-z",
+        },
+    )
+
+    (data_root / "2_tasks").mkdir(parents=True, exist_ok=True)
+    (data_root / "2_tasks" / "selected_essays.txt").write_text(
+        "# mode: evaluation-only\n" f"{essay_src}\n",
+        encoding="utf-8",
+    )
+
+    ctx = build_asset_context(resources={"data_root": str(data_root)})
+    cid = "cohort-eval-only"
+    mdf = cohort_membership(ctx, cid)
+
+    assert not mdf.empty
+    assert (mdf["stage"] == "draft").sum() == 0
+    assert (mdf["stage"] == "essay").sum() == 0
+    eval_rows = mdf[mdf["stage"] == "evaluation"]
+    assert len(eval_rows) == 8  # 2 templates * 2 models * 2 replicates
+    assert set(eval_rows["parent_gen_id"].astype(str)) == {essay_src}
+    assert set(eval_rows["combo_id"].astype(str)) == {"combo-Z"}
+
+
+def test_cohort_membership_evaluation_only_fill_up(tmp_path: Path):
+    data_root = tmp_path
+    (data_root / "1_raw").mkdir(parents=True, exist_ok=True)
+    pd.DataFrame([
+        {"stage": "draft", "replicates": 1},
+        {"stage": "essay", "replicates": 1},
+        {"stage": "evaluation", "replicates": 2},
+    ]).to_csv(data_root / "1_raw" / "replication_config.csv", index=False)
+    pd.DataFrame([
+        {"template_id": "eval-1", "active": True},
+    ]).to_csv(data_root / "1_raw" / "evaluation_templates.csv", index=False)
+    pd.DataFrame([
+        {"id": "eval-model", "model": "provider/eval", "for_generation": False, "for_evaluation": True},
+    ]).to_csv(data_root / "1_raw" / "llm_models.csv", index=False)
+
+    draft_src = "D900"
+    essay_src = "E900"
+    _write_json(
+        data_root / "gens" / "draft" / draft_src / "metadata.json",
+        {
+            "stage": "draft",
+            "gen_id": draft_src,
+            "combo_id": "combo-fill",
+            "template_id": "draft-fill",
+            "model_id": "gen-fill",
+        },
+    )
+    _write_json(
+        data_root / "gens" / "essay" / essay_src / "metadata.json",
+        {
+            "stage": "essay",
+            "gen_id": essay_src,
+            "parent_gen_id": draft_src,
+            "combo_id": "combo-fill",
+            "template_id": "essay-fill",
+            "model_id": "gen-fill",
+        },
+    )
+
+    existing_eval = "EV-existing"
+    _write_json(
+        data_root / "gens" / "evaluation" / existing_eval / "metadata.json",
+        {
+            "stage": "evaluation",
+            "gen_id": existing_eval,
+            "parent_gen_id": essay_src,
+            "template_id": "eval-1",
+            "llm_model_id": "eval-model",
+        },
+    )
+
+    (data_root / "2_tasks").mkdir(parents=True, exist_ok=True)
+    (data_root / "2_tasks" / "selected_essays.txt").write_text(
+        "# mode: evaluation-only\n# skip-existing-evaluations\n" f"{essay_src}\n",
+        encoding="utf-8",
+    )
+
+    ctx = build_asset_context(resources={"data_root": str(data_root)})
+    cid = "cohort-eval-fill"
+    mdf = cohort_membership(ctx, cid)
+
+    eval_rows = mdf[mdf["stage"] == "evaluation"]
+    # Expect only one new evaluation row to top up to 2 replicates
+    assert len(eval_rows) == 1
+    assert set(eval_rows["parent_gen_id"].astype(str)) == {essay_src}
+    assert set(eval_rows["combo_id"].astype(str)) == {"combo-fill"}
+    assert set(eval_rows["replicate"]) == {2}
+
+
+def test_evaluation_only_requires_essay_ids(tmp_path: Path):
+    data_root = tmp_path
+    (data_root / "1_raw").mkdir(parents=True, exist_ok=True)
+    pd.DataFrame([
+        {"stage": "draft", "replicates": 1},
+        {"stage": "essay", "replicates": 1},
+        {"stage": "evaluation", "replicates": 1},
+    ]).to_csv(data_root / "1_raw" / "replication_config.csv", index=False)
+    pd.DataFrame([
+        {"template_id": "eval-1", "active": True},
+    ]).to_csv(data_root / "1_raw" / "evaluation_templates.csv", index=False)
+    pd.DataFrame([
+        {"id": "eval-model", "model": "provider/eval", "for_generation": False, "for_evaluation": True},
+    ]).to_csv(data_root / "1_raw" / "llm_models.csv", index=False)
+
+    draft_src = "D-only"
+    _write_json(
+        data_root / "gens" / "draft" / draft_src / "metadata.json",
+        {
+            "stage": "draft",
+            "gen_id": draft_src,
+            "combo_id": "combo-X",
+            "template_id": "draft-x",
+            "model_id": "gen-x",
+        },
+    )
+
+    (data_root / "2_tasks").mkdir(parents=True, exist_ok=True)
+    (data_root / "2_tasks" / "selected_essays.txt").write_text(
+        "# mode: evaluation-only\n" f"{draft_src}\n",
+        encoding="utf-8",
+    )
+
+    ctx = build_asset_context(resources={"data_root": str(data_root)})
+    with pytest.raises(Exception):
+        cohort_membership(ctx, "cohort-eval-only-invalid")
