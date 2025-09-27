@@ -3,13 +3,13 @@
 
 Outputs:
 - `evaluation_scores_by_template_model.csv` – evaluation template/model pairs
-  per essay task. Pass `--limit-to-active-templates` to include only active
-  evaluation templates in the pivot.
+  per essay task. Pass `--limit-to-active` to include only active evaluation
+  templates and evaluation models in the pivot.
 
 Usage examples:
 ```
 python scripts/build_pivot_tables.py
-python scripts/build_pivot_tables.py --limit-to-active-templates
+python scripts/build_pivot_tables.py --limit-to-active
 ```
 """
 
@@ -17,6 +17,8 @@ from __future__ import annotations
 
 import argparse
 from pathlib import Path
+import json
+from typing import Set
 import pandas as pd
 
 
@@ -66,38 +68,82 @@ def _load_active_templates(eval_templates_path: Path) -> set[str]:
     return active
 
 
+def _load_active_models(llm_models_path: Path) -> Set[str]:
+    import csv
+
+    active: set[str] = set()
+    with llm_models_path.open(newline="") as handle:
+        reader = csv.DictReader(handle)
+        for row in reader:
+            flag = str(row.get("for_evaluation") or "").strip().lower()
+            if flag == "true":
+                model_id = row.get("id", "").strip()
+                if model_id:
+                    active.add(model_id)
+    return active
+
+
+def _load_essay_cohorts(essay_ids: Set[str], data_root: Path) -> dict[str, str]:
+    cohorts: dict[str, str] = {}
+    base = data_root / "gens" / "essay"
+    for essay_id in essay_ids:
+        if not essay_id:
+            continue
+        meta_path = base / essay_id / "metadata.json"
+        if not meta_path.exists():
+            cohorts[essay_id] = ""
+            continue
+        try:
+            data = json.loads(meta_path.read_text(encoding="utf-8"))
+        except Exception:
+            cohorts[essay_id] = ""
+            continue
+        cohorts[essay_id] = str(data.get("cohort_id") or "").strip()
+    return cohorts
+
+
 def build_pivot(
     parsed_scores: Path,
     out_dir: Path,
     *,
-    limit_to_active_templates: bool,
+    limit_to_active: bool,
     evaluation_templates_path: Path,
+    llm_models_path: Path,
+    data_root: Path,
 ) -> None:
     if not parsed_scores.exists():
         raise FileNotFoundError(f"Parsed scores CSV not found: {parsed_scores}")
 
     df = pd.read_csv(parsed_scores)
 
-    if limit_to_active_templates:
+    if limit_to_active:
         active_templates = _load_active_templates(evaluation_templates_path)
+        active_models = _load_active_models(llm_models_path)
         if not active_templates:
             raise RuntimeError(
                 f"No active evaluation templates found in {evaluation_templates_path}."
             )
-        if "evaluation_template" not in df.columns:
+        if not active_models:
+            raise RuntimeError(
+                f"No evaluation models marked active in {llm_models_path}."
+            )
+        if "evaluation_template" not in df.columns or "evaluation_llm_model" not in df.columns:
             raise ValueError(
-                "Missing required column 'evaluation_template' in parsed scores"
+                "Parsed scores missing 'evaluation_template' or 'evaluation_llm_model' columns"
             )
         before = len(df)
-        df = df[df["evaluation_template"].isin(active_templates)].copy()
+        df = df[
+            df["evaluation_template"].isin(active_templates)
+            & df["evaluation_llm_model"].isin(active_models)
+        ].copy()
         if df.empty:
             raise RuntimeError(
-                "Filtering to active evaluation templates removed all rows."
+                "Filtering to active evaluation templates/models removed all rows."
             )
         removed = before - len(df)
         if removed:
             print(
-                "Filtered parsed scores to active evaluation templates: "
+                "Filtered parsed scores to active templates/models: "
                 f"kept {len(df)} rows (dropped {removed})."
             )
 
@@ -163,6 +209,11 @@ def build_pivot(
 
     df_sorted = df.sort_values(["essay_task_id", "evaluation_template_model"])  # deterministic
 
+    essay_ids: Set[str] = set()
+    if "parent_gen_id" in df_sorted.columns:
+        essay_ids = set(df_sorted["parent_gen_id"].dropna().astype(str).tolist())
+    essay_cohort_map = _load_essay_cohorts(essay_ids, data_root)
+
     meta_columns = {
         "parent_gen_id": "first",
         "combo_id": "first",
@@ -178,6 +229,15 @@ def build_pivot(
         .agg(available_meta)
     )
 
+    if "parent_gen_id" in meta_df.columns:
+        meta_df.rename(columns={"parent_gen_id": "essay_gen_id"}, inplace=True)
+        meta_df["essay_gen_id"] = meta_df["essay_gen_id"].astype(str).replace({"nan": ""})
+        if essay_cohort_map:
+            meta_df["cohort_id"] = meta_df["essay_gen_id"].map(lambda x: essay_cohort_map.get(x, ""))
+        else:
+            if "cohort_id" not in meta_df.columns:
+                meta_df["cohort_id"] = ""
+    
     pivot = (
         df_sorted
         .pivot_table(
@@ -196,10 +256,26 @@ def build_pivot(
     result = meta_df.merge(pivot, on="essay_task_id", how="outer")
 
     meta_output_cols = [
-        col for col in ["parent_gen_id", "combo_id", "draft_template", "generation_template", "generation_model", "cohort_id"]
+        col
+        for col in [
+            "essay_gen_id",
+            "combo_id",
+            "draft_template",
+            "generation_template",
+            "generation_model",
+            "cohort_id",
+        ]
         if col in result.columns
     ]
-    ordered_columns = meta_output_cols + [col for col in all_combo_columns if col in result.columns]
+    metric_columns = [col for col in all_combo_columns if col in result.columns]
+
+    numeric_metrics = result[metric_columns].apply(pd.to_numeric, errors="coerce") if metric_columns else None
+    if numeric_metrics is not None:
+        result["active_template_score_sum"] = numeric_metrics.sum(axis=1, skipna=True).fillna(0.0)
+    else:
+        result["active_template_score_sum"] = 0.0
+
+    ordered_columns = meta_output_cols + metric_columns + ["active_template_score_sum"]
     pivot = result.reindex(columns=ordered_columns)
 
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -229,11 +305,22 @@ def main() -> None:
         help="Path to evaluation templates CSV (default: data/1_raw/evaluation_templates.csv)",
     )
     parser.add_argument(
-        "--limit-to-active-templates",
+        "--llm-models",
+        type=Path,
+        default=Path("data/1_raw/llm_models.csv"),
+        help="Path to LLM models CSV (default: data/1_raw/llm_models.csv)",
+    )
+    parser.add_argument(
+        "--data-root",
+        type=Path,
+        default=Path("data"),
+        help="Project data root containing gens metadata (default: data)",
+    )
+    parser.add_argument(
+        "--limit-to-active",
         action="store_true",
         help=(
-            "If set, also write evaluation_scores_by_template_model_limited.csv containing "
-            "only active evaluation templates, per-template averages, and a summed score column."
+            "If set, restrict the pivot to evaluations whose template and LLM model are marked active."
         ),
     )
     args = parser.parse_args()
@@ -241,8 +328,10 @@ def main() -> None:
     build_pivot(
         parsed_scores=args.parsed_scores,
         out_dir=args.out_dir,
-        limit_to_active_templates=args.limit_to_active_templates,
+        limit_to_active=args.limit_to_active,
         evaluation_templates_path=args.evaluation_templates,
+        llm_models_path=args.llm_models,
+        data_root=args.data_root,
     )
 
 
