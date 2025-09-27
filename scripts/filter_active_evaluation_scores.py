@@ -12,6 +12,17 @@ TARGET_PATH = ROOT / "data" / "7_cross_experiment" / "evaluation_scores_by_templ
 SUM_COLUMN = "active_template_score_sum"
 
 
+def group_metric_columns(fieldnames: Sequence[str], active_templates: set[str]) -> dict[str, list[str]]:
+    grouped: dict[str, list[str]] = {template: [] for template in active_templates}
+    for name in fieldnames:
+        if "__" not in name:
+            continue
+        template_id = name.split("__", 1)[0]
+        if template_id in grouped:
+            grouped[template_id].append(name)
+    return grouped
+
+
 def load_active_templates() -> set[str]:
     active: set[str] = set()
     with EVAL_TEMPLATES_PATH.open(newline="") as handle:
@@ -24,17 +35,17 @@ def load_active_templates() -> set[str]:
     return active
 
 
-def select_columns(fieldnames: Sequence[str], active_templates: set[str]) -> tuple[list[str], list[str]]:
+def select_columns(
+    fieldnames: Sequence[str],
+    active_templates: set[str],
+) -> tuple[list[str], list[str], dict[str, list[str]]]:
     fixed: list[str] = []
-    metrics: list[str] = []
     for name in fieldnames:
         if "__" not in name:
             fixed.append(name)
-            continue
-        template_id = name.split("__", 1)[0]
-        if template_id in active_templates:
-            metrics.append(name)
-    return fixed, metrics
+    grouped_metrics = group_metric_columns(fieldnames, active_templates)
+    metrics = [col for columns in grouped_metrics.values() for col in columns]
+    return fixed, metrics, grouped_metrics
 
 
 def to_float(value: str) -> float:
@@ -56,17 +67,45 @@ def main() -> None:
         reader = csv.DictReader(src_handle)
         if reader.fieldnames is None:
             raise SystemExit("Source CSV has no header row.")
-        fixed_columns, metric_columns = select_columns(reader.fieldnames, active_templates)
-        output_columns = [*fixed_columns, *metric_columns, SUM_COLUMN]
+        fixed_columns, metric_columns, grouped_metrics = select_columns(
+            reader.fieldnames, active_templates
+        )
+        average_columns = [f"{template}__average" for template in grouped_metrics]
+        output_columns = [
+            *fixed_columns,
+            *metric_columns,
+            *average_columns,
+            SUM_COLUMN,
+        ]
 
         with TARGET_PATH.open("w", newline="") as dst_handle:
             writer = csv.DictWriter(dst_handle, fieldnames=output_columns)
             writer.writeheader()
 
             for row in reader:
-                total = sum(to_float(row.get(col, "")) for col in metric_columns)
-                filtered_row = {col: row.get(col, "") for col in output_columns if col != SUM_COLUMN}
-                filtered_row[SUM_COLUMN] = f"{total:.1f}" if metric_columns else "0"
+                filtered_row = {
+                    col: row.get(col, "")
+                    for col in output_columns
+                    if col not in (*average_columns, SUM_COLUMN)
+                }
+
+                averages: dict[str, float] = {}
+                for template, columns in grouped_metrics.items():
+                    present_values = []
+                    for metric_column in columns:
+                        raw = row.get(metric_column, "")
+                        if raw is None or raw.strip() == "":
+                            continue
+                        present_values.append(to_float(raw))
+                    if present_values:
+                        average = sum(present_values) / len(present_values)
+                    else:
+                        average = 0.0
+                    averages[template] = average
+                    filtered_row[f"{template}__average"] = f"{average:.1f}"
+
+                total = sum(averages.values())
+                filtered_row[SUM_COLUMN] = f"{total:.1f}" if averages else "0"
                 writer.writerow(filtered_row)
 
 
