@@ -11,12 +11,22 @@ from ..utils.membership_lookup import (
 class MembershipServiceResource:
     """Cohort membership lookups (injectable for testing).
 
-    Provides stage_gen_ids(data_root, stage) that assets can call without
-    importing utils directly. Tests can replace this with a stub.
+    Provides stage/scoped lookup helpers so assets can avoid importing the
+    lower-level utils directly. Tests can replace this with a stub.
     """
 
-    def stage_gen_ids(self, data_root: Path, stage: str) -> list[str]:
-        return list(_stage_gen_ids(Path(data_root), stage))
+    def stage_gen_ids(
+        self,
+        data_root: Path,
+        stage: str,
+        cohort_id: str | None = None,
+    ) -> list[str]:
+        """Return gen_ids for the given stage.
+
+        When ``cohort_id`` is provided, results are limited to that cohort's
+        membership.csv; otherwise all cohorts are scanned.
+        """
+        return list(_stage_gen_ids(Path(data_root), stage, cohort_id))
 
     # New helpers for row access
     def get_row(self, data_root: Path, stage: str, gen_id: str):

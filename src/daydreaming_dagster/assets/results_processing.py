@@ -6,7 +6,13 @@ import pandas as pd
 from ..utils.evaluation_processing import calculate_evaluation_metadata
 
 
-def aggregated_scores_impl(data_root: Path, *, scores_aggregator, membership_service) -> pd.DataFrame:
+def aggregated_scores_impl(
+    data_root: Path,
+    *,
+    scores_aggregator,
+    membership_service,
+    cohort_id: str | None = None,
+) -> pd.DataFrame:
     """Pure implementation for aggregated_scores.
 
     - Reads the evaluation gen_id list from membership_service
@@ -14,7 +20,9 @@ def aggregated_scores_impl(data_root: Path, *, scores_aggregator, membership_ser
     - Returns the resulting DataFrame (no Dagster context required)
     """
     try:
-        keep_list = membership_service.stage_gen_ids(data_root, "evaluation")
+        keep_list = membership_service.stage_gen_ids(
+            data_root, "evaluation", cohort_id=cohort_id
+        )
     except FileNotFoundError:
         keep_list = []
     return scores_aggregator.parse_all_scores(data_root, keep_list)
@@ -31,7 +39,7 @@ def aggregated_scores_impl(data_root: Path, *, scores_aggregator, membership_ser
     ),
     compute_kind="pandas",
 )
-def aggregated_scores(context) -> pd.DataFrame:
+def aggregated_scores(context, cohort_id: str) -> pd.DataFrame:
     """Aggregate evaluation scores for the current cohort.
 
     Source rows come from scripts.aggregate_scores.parse_all, which:
@@ -47,6 +55,7 @@ def aggregated_scores(context) -> pd.DataFrame:
         data_root,
         scores_aggregator=context.resources.scores_aggregator,
         membership_service=context.resources.membership_service,
+        cohort_id=cohort_id,
     )
 
     md = calculate_evaluation_metadata(df)

@@ -48,18 +48,25 @@ def test_aggregated_scores_filters_and_passthrough(tmp_path):
             return df_all
 
     class _Membership:
-        def stage_gen_ids(self, _data_root, stage):
+        def __init__(self):
+            self.calls: list[tuple[str | None, str]] = []
+
+        def stage_gen_ids(self, _data_root, stage, cohort_id=None):
             assert stage == "evaluation"
+            self.calls.append((cohort_id, stage))
             return ["E123"]
 
+    membership = _Membership()
     df = aggregated_scores_impl(
         tmp_path,
         scores_aggregator=_Agg(),
-        membership_service=_Membership(),
+        membership_service=membership,
+        cohort_id="COHORT-Unit",
     )
 
     # Filtered to cohort by the helper's gen_id list
     assert set(df["gen_id"]) == {"E123"}
+    assert membership.calls == [("COHORT-Unit", "evaluation")]
     # Passthrough of enriched fields (stage should not be emitted)
     assert "stage" not in df.columns
     assert "evaluation_model" not in df.columns
