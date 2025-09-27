@@ -82,6 +82,84 @@ def test_generation_scores_pivot_smoke(monkeypatch, tmp_path):
     assert pivot.loc[0, "generation_response_path"] == "data/3_generation/essay_responses/E1.txt"
 
 
+def test_generation_scores_pivot_missing_evaluations_fill_counts(monkeypatch, tmp_path):
+    monkeypatch.setattr(
+        rs,
+        "read_templates",
+        lambda _root, kind, filter_active=True: (
+            pd.DataFrame([
+                {"template_id": "daydreaming-verification-v2", "active": True},
+                {"template_id": "creativity-metrics", "active": True},
+            ]) if kind == "evaluation" else pd.DataFrame([])
+        ),
+    )
+
+    ctx = build_asset_context(resources={"data_root": str(tmp_path)})
+    parsed = pd.DataFrame(
+        [
+            {
+                "combo_id": "combo_001",
+                "stage": "essay2p",
+                "draft_template": "links-v4",
+                "generation_template": "systematic-analytical-v2",
+                "generation_model": "deepseek_r1_f",
+                "evaluation_template": "daydreaming-verification-v2",
+                "evaluation_llm_model": "deepseek",
+                "score": 8.5,
+                "error": None,
+                "generation_response_path": "data/3_generation/essay_responses/E1.txt",
+            },
+            {
+                "combo_id": "combo_001",
+                "stage": "essay2p",
+                "draft_template": "links-v4",
+                "generation_template": "systematic-analytical-v2",
+                "generation_model": "deepseek_r1_f",
+                "evaluation_template": "creativity-metrics",
+                "evaluation_llm_model": "qwen",
+                "score": 9.0,
+                "error": None,
+                "generation_response_path": "data/3_generation/essay_responses/E1.txt",
+            },
+            {
+                "combo_id": "combo_002",
+                "stage": "essay2p",
+                "draft_template": "links-v4",
+                "generation_template": "systematic-analytical-v2",
+                "generation_model": "deepseek_r1_f",
+                "evaluation_template": "daydreaming-verification-v2",
+                "evaluation_llm_model": "deepseek",
+                "score": 9.1,
+                "error": None,
+                "generation_response_path": "data/3_generation/essay_responses/E2.txt",
+            },
+            {
+                "combo_id": "combo_002",
+                "stage": "essay2p",
+                "draft_template": "links-v4",
+                "generation_template": "systematic-analytical-v2",
+                "generation_model": "deepseek_r1_f",
+                "evaluation_template": "creativity-metrics",
+                "evaluation_llm_model": "qwen",
+                "score": None,
+                "error": "parse_error",
+                "generation_response_path": "data/3_generation/essay_responses/E2.txt",
+            },
+        ]
+    )
+
+    pivot = rs.generation_scores_pivot(ctx, parsed)
+
+    # combo_002 only has a valid deepseek evaluation; qwen entry is filtered out
+    row_combo_002 = pivot[pivot["combo_id"] == "combo_002"].iloc[0]
+    assert row_combo_002["deepseek_daydreaming-verification-v2_n"] == 1
+    assert row_combo_002["qwen_creativity-metrics_n"] == 0
+
+    count_columns = [c for c in pivot.columns if c.endswith("_n")]
+    for col in count_columns:
+        assert pd.api.types.is_integer_dtype(pivot[col].dtype)
+
+
 def test_final_results_overall_and_by_template(tmp_path):
     ctx = build_asset_context(resources={"data_root": str(tmp_path)})
     parsed = _make_parsed_scores()

@@ -78,7 +78,7 @@ def generation_scores_pivot(context, aggregated_scores: pd.DataFrame) -> pd.Data
         columns='eval_model_template',
         values='score',
         aggfunc='count'
-    ).astype(int)
+    ).fillna(0).astype(int)
 
     # Flatten and suffix stability columns, keep mean columns unchanged
     def _suffix_cols(df, suffix):
