@@ -4,7 +4,7 @@
 - Replace the denormalised `cohort_membership` CSV with a minimal three-column table (`stage`, `gen_id`, `cohort_id`) while keeping generation metadata authoritative in the gens store.
 
 ## Desired Outcomes
-- Membership assets stay the sole source for "which generations belong to a cohort".
+- Membership assets stay the sole source for "which generations belong to a cohort" while metadata keeps tracking the *origin* cohort that first produced a generation.
 - Prompt/raw/parsed assets continue to find template/combo/model/parent metadata in `data/gens/**/metadata.json` (or an equivalent manifest) without regressions.
 - Dagster pivot assets and external scripts rely on the same enriched scores pipeline.
 - Legacy cohorts either regenerate cleanly or remain readable during the transition.
@@ -36,13 +36,22 @@
 - [ ] Publicise a shared helper (Python module or CLI) that both Dagster assets and external pivot scripts can import to resolve manifest + metadata.
 - [ ] Add regression tests or smoke checks for `generation_scores_pivot` to ensure only active cohort rows appear after the change.
 
+### 5. Formalise origin vs membership semantics
+- [ ] Document that `data/gens/**/metadata.json.cohort_id` represents the *origin* cohort and remains immutable per generation.
+- [ ] Allow membership assets/services to include gens produced by prior cohorts (e.g., reusing existing evaluations when `skip-existing` is enabled) without touching metadata.
+- [ ] Design a lightweight association layer (could be the slim CSV or an in-memory registry) that supplies the active cohort's stage/gen list while deferring lineage back to metadata.
+- [ ] Prepare a future migration to rename the metadata field to `origin_cohort_id` (add TODO/TEMPORARY guard and compatibility readers so legacy data keeps working until rewritten).
+
+
 ## Sequencing & Rollout Checks
 1. Build manifest helper and dual-read `_seed_generation_metadata` (integration test with a temporary cohort).
 2. Switch helper/tests/scripts to manifest-backed metadata.
 3. Flip the feature flag to emit slim CSVs; regenerate current cohorts via Dagster materializations.
 4. Remove wide-CSV compatibility and delete obsolete scripts.
+5. Schedule and execute the metadata rename (`cohort_id -> origin_cohort_id`) once all downstream code reads through the manifest/compatibility layer, keeping a temporary backcompat shim for historical data.
 
 ## Risks & Mitigations
 - Metadata might be missing for historical cohorts → provide a migration script to backfill manifest entries from existing `metadata.json` files before slimming the CSV.
 - Operators may rely on wide CSVs manually → ship a small `scripts/show_cohort_metadata.py` that prints manifest details on demand.
 - Parallel development on cohort tooling → announce the rollout plan and guard the slim CSV write behind a temporary config toggle to prevent conflicts.
+- Renaming `cohort_id` to `origin_cohort_id` could break ad-hoc tooling → ship a compatibility reader that accepts both keys until all metadata files are migrated.
