@@ -30,6 +30,47 @@ else:
 PY
 }
 
+check_template_status() {
+  local gen_id="$1"
+  local output
+  output=$(scripts/check_evaluation_template.py "$gen_id" 2>/dev/null)
+  local status=$?
+  case "$status" in
+    0)
+      echo "Using template ${output}"
+      return 0
+      ;;
+    5)
+      echo "Template ${output} is inactive; skipping ${gen_id}."
+      return 1
+      ;;
+    1)
+      echo "metadata.json missing for ${gen_id}; skipping."
+      return 1
+      ;;
+    2)
+      echo "metadata.json unreadable for ${gen_id}; skipping."
+      return 1
+      ;;
+    3)
+      echo "metadata.json missing template_id for ${gen_id}; skipping."
+      return 1
+      ;;
+    4)
+      echo "evaluation_templates.csv not found; cannot validate template."
+      return 1
+      ;;
+    6)
+      echo "Template not found in evaluation_templates.csv for ${gen_id}; skipping."
+      return 1
+      ;;
+    *)
+      echo "Unexpected template check status (${status}) for ${gen_id}; continuing cautiously."
+      return 0
+      ;;
+  esac
+}
+
 run_with_retry() {
   local gen_id="$1"
   local parsed_path="data/gens/evaluation/${gen_id}/parsed.txt"
@@ -37,6 +78,10 @@ run_with_retry() {
   echo "=== Rebuilding evaluation for ${gen_id} ==="
   if [ -f "${parsed_path}" ]; then
     echo "parsed.txt already present for ${gen_id}; skipping."
+    return
+  fi
+
+  if ! check_template_status "${gen_id}"; then
     return
   fi
 

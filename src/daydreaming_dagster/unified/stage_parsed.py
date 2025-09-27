@@ -51,7 +51,20 @@ def _stage_parsed_asset(
 
     parsed_text = parse_text(stage, raw_text, parser_name)
     if not isinstance(parsed_text, str):
-        raise ValueError(f"Parser '{parser_name}' returned non-string output for stage {stage}")
+        raw_path = data_layer.paths.raw_path(stage, gen_id)
+        tail_lines = [ln.strip() for ln in raw_text.splitlines() if ln.strip()][-5:]
+        preview = " | ".join(tail_lines)
+        hint = (
+            "This usually means the raw evaluation response did not contain a parseable "
+            "0-9 score."
+        )
+        message = (
+            f"Parser '{parser_name}' could not extract a valid result for stage '{stage}' "
+            f"(generation '{gen_id}'). {hint} Inspect the raw output at {raw_path}."
+        )
+        if preview:
+            message += f" Last non-empty lines: {preview}"
+        raise ValueError(message)
 
     parsed_metadata: Dict[str, Any] = {
         "stage": str(stage),
