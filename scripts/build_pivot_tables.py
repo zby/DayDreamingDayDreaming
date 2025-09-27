@@ -1,25 +1,23 @@
 #!/usr/bin/env python3
-"""
-Build cross-experiment pivot table of essay scores by evaluation template+model.
+"""Build cross-experiment pivot tables of essay scores.
 
-Inputs:
-- Aggregated scores CSV (default `data/5_parsing/aggregated_scores.csv`, produced by `scripts/aggregate_scores.py`)
+Outputs:
+- `evaluation_scores_by_template_model.csv` – all evaluation template/model pairs.
+- (optional) `evaluation_scores_by_template_model_limited.csv` – only active
+  evaluation templates with per-template averages and a summed score column.
 
-Output (written under data/7_cross_experiment/):
-- evaluation_scores_by_template_model.csv
-  Rows: essay_task_id (+ key metadata)
-  Columns: evaluation_template__evaluation_model
-  Values: score (first if duplicates)
-
-Usage:
-  python scripts/build_pivot_tables.py \
-    --parsed-scores data/5_parsing/aggregated_scores.csv
+Usage examples:
+```
+python scripts/build_pivot_tables.py
+python scripts/build_pivot_tables.py --limit-to-active-templates
+```
 """
 
 from __future__ import annotations
 
 import argparse
 from pathlib import Path
+from typing import Iterable
 import pandas as pd
 
 
@@ -55,7 +53,92 @@ def _compose_essay_task_id(df: pd.DataFrame) -> pd.Series:
     return df.apply(compose, axis=1)
 
 
-def build_pivot(parsed_scores: Path, out_dir: Path) -> None:
+SUM_COLUMN = "active_template_score_sum"
+
+
+def _load_active_templates(eval_templates_path: Path) -> set[str]:
+    import csv
+
+    active: set[str] = set()
+    with eval_templates_path.open(newline="") as handle:
+        reader = csv.DictReader(handle)
+        for row in reader:
+            if row.get("active", "").strip().lower() == "true":
+                template_id = row.get("template_id", "").strip()
+                if template_id:
+                    active.add(template_id)
+    return active
+
+
+def _active_template_columns(columns: Iterable[str], active_templates: set[str]) -> dict[str, list[str]]:
+    grouped: dict[str, list[str]] = {template: [] for template in active_templates}
+    for column in columns:
+        if "__" not in column:
+            continue
+        template_id = column.split("__", 1)[0]
+        if template_id in grouped:
+            grouped[template_id].append(column)
+    # Drop templates without any matching columns
+    return {template: cols for template, cols in grouped.items() if cols}
+
+
+def _write_active_only_pivot(
+    pivot: pd.DataFrame,
+    out_dir: Path,
+    active_templates_path: Path,
+    meta_columns: list[str],
+) -> None:
+    active_templates = _load_active_templates(active_templates_path)
+    if not active_templates:
+        raise RuntimeError(
+            f"No active evaluation templates found in {active_templates_path}."
+        )
+
+    metric_columns = [col for col in pivot.columns if "__" in col]
+    grouped_metrics = _active_template_columns(metric_columns, active_templates)
+
+    if not grouped_metrics:
+        raise RuntimeError(
+            "Active template filtering yielded no metric columns; check aggregated scores "
+            "or evaluation template configuration."
+        )
+
+    limited_order = meta_columns + [
+        column
+        for template in sorted(grouped_metrics)
+        for column in sorted(grouped_metrics[template])
+    ]
+    limited = pivot.reindex(columns=limited_order)
+
+    average_columns: dict[str, pd.Series] = {}
+    for template, columns in grouped_metrics.items():
+        numeric = limited[columns].apply(pd.to_numeric, errors="coerce")
+        average = numeric.mean(axis=1, skipna=True).fillna(0.0)
+        average_columns[f"{template}__average"] = average
+
+    if average_columns:
+        averages_df = pd.DataFrame(average_columns)
+        limited = pd.concat([limited, averages_df], axis=1)
+        limited[SUM_COLUMN] = averages_df.sum(axis=1)
+    else:
+        limited[SUM_COLUMN] = 0.0
+
+    out_dir.mkdir(parents=True, exist_ok=True)
+    limited_file = out_dir / "evaluation_scores_by_template_model_limited.csv"
+    limited.to_csv(limited_file, index=False)
+    print(
+        "Wrote active-only pivot: "
+        f"{limited_file} ({len(limited)} rows, {len(limited.columns)} cols)"
+    )
+
+
+def build_pivot(
+    parsed_scores: Path,
+    out_dir: Path,
+    *,
+    limit_to_active_templates: bool,
+    evaluation_templates_path: Path,
+) -> None:
     if not parsed_scores.exists():
         raise FileNotFoundError(f"Parsed scores CSV not found: {parsed_scores}")
 
@@ -167,6 +250,14 @@ def build_pivot(parsed_scores: Path, out_dir: Path) -> None:
     pivot.to_csv(out_file, index=False)
     print(f"Wrote pivot: {out_file} ({len(pivot)} rows, {len(pivot.columns)} cols)")
 
+    if limit_to_active_templates:
+        _write_active_only_pivot(
+            pivot,
+            out_dir,
+            evaluation_templates_path,
+            meta_output_cols,
+        )
+
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Build evaluation pivots from aggregated scores")
@@ -182,9 +273,28 @@ def main() -> None:
         default=Path("data/7_cross_experiment"),
         help="Directory to write pivot CSVs (default: data/7_cross_experiment)",
     )
+    parser.add_argument(
+        "--evaluation-templates",
+        type=Path,
+        default=Path("data/1_raw/evaluation_templates.csv"),
+        help="Path to evaluation templates CSV (default: data/1_raw/evaluation_templates.csv)",
+    )
+    parser.add_argument(
+        "--limit-to-active-templates",
+        action="store_true",
+        help=(
+            "If set, also write evaluation_scores_by_template_model_limited.csv containing "
+            "only active evaluation templates, per-template averages, and a summed score column."
+        ),
+    )
     args = parser.parse_args()
 
-    build_pivot(parsed_scores=args.parsed_scores, out_dir=args.out_dir)
+    build_pivot(
+        parsed_scores=args.parsed_scores,
+        out_dir=args.out_dir,
+        limit_to_active_templates=args.limit_to_active_templates,
+        evaluation_templates_path=args.evaluation_templates,
+    )
 
 
 if __name__ == "__main__":
