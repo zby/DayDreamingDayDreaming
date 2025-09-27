@@ -1,57 +1,63 @@
-# Action Plan: Slim the Cohort Membership Schema
+# Action Plan: Cohort Membership as a Scoping Layer
 
-## Goal
-- Replace the denormalised `cohort_membership` CSV with a minimal three-column table (`stage`, `gen_id`, `cohort_id`) while keeping generation metadata authoritative in the gens store.
+## Objectives
+- Treat `data/2_tasks` + membership assets as the live definition of "generations included in the current cohort run".
+- Keep `data/gens/**/metadata.json.cohort_id` as the immutable origin cohort that first produced a generation, with a future rename to `origin_cohort_id`.
+- Remove non-key columns from `cohort_membership.csv`, shifting template/combo/model metadata into a reusable manifest backed by gens metadata.
+- Support selective reruns (`skip-existing`) by reintroducing prior generations into the active cohort list without mutating their origin metadata.
 
-## Desired Outcomes
-- Membership assets stay the sole source for "which generations belong to a cohort" while metadata keeps tracking the *origin* cohort that first produced a generation.
-- Prompt/raw/parsed assets continue to find template/combo/model/parent metadata in `data/gens/**/metadata.json` (or an equivalent manifest) without regressions.
-- Dagster pivot assets and external scripts rely on the same enriched scores pipeline.
-- Legacy cohorts either regenerate cleanly or remain readable during the transition.
+## Guiding Principles
+- **Single Source of Truth:** Metadata files own per-generation lineage; membership files own cohort scope.
+- **Compatibility First:** Maintain a transition layer that reads both wide and slim schemas until all cohorts are regenerated.
+- **Fail Fast:** Surface missing metadata or manifest mismatches at asset materialization time.
+- **Unified Consumption:** Dagster assets and external scripts resolve cohort scope and metadata through the same helper utilities.
 
-## Workstreams & Tasks
+## Phase Plan
 
-### 1. Metadata manifest foundation
-- [ ] Add a `StageManifest` helper (likely `src/.../data_layer/`) that maps `gen_id -> template_id/combo_id/llm_model_id/parent_gen_id/replicate`.
-- [ ] Populate the manifest inside `cohort_membership` before writing CSV output (source data comes from the existing DataFrame or task tables).
-- [ ] Update `_seed_generation_metadata` to read from the manifest (fall back to existing behaviour behind a feature flag until rollout completes).
-- [ ] Add validations: fail fast if required metadata is missing when seeding.
-- [ ] Unit-test manifest creation and the seeding flow using fixture gens.
+### Phase 1 – Manifest & Dual-Read Infrastructure
+- [ ] Build a `StageManifest` helper under `src/daydreaming_dagster/data_layer/` that maps `gen_id -> template_id/combo_id/llm_model_id/parent_gen_id/replicate/origin_cohort_id`.
+- [ ] Populate the manifest during `cohort_membership` materialization (derive from existing DataFrame columns for now).
+- [ ] Update `_seed_generation_metadata` to look up metadata via the manifest first, falling back to legacy DataFrame columns behind a feature flag.
+- [ ] Add validations to error when required manifest fields are absent for any stage/gen pair.
+- [ ] Write unit/integration tests covering manifest creation, dual-read, and metadata seeding.
 
-### 2. Slim the membership CSV
-- [ ] After manifest + metadata seeding succeeds, write `cohort_membership.csv` with only `stage`, `gen_id`, `cohort_id`.
-- [ ] Ensure `MembershipService.stage_gen_ids` and `register_cohort_partitions` continue to work unchanged.
-- [ ] Implement a compatibility reader that can ingest both wide and slim CSVs (used by resources/tests until all cohorts regenerate).
-- [ ] Document the new schema in `docs/` or `AGENTS.md`.
+### Phase 2 – Cohort Scope Service & Skip-Existing Flow
+- [ ] Introduce a `CohortScope` service that loads the manifest + membership table and exposes:
+  - `active_stage_gen_ids(cohort_id)` – current cohort scope from `cohort_membership`.
+  - `origin_metadata(gen_id)` – immutable metadata pulled from gens files/manifest.
+- [ ] Teach the service to union in reused generations when `skip-existing` is enabled:
+  - Read the target stage (e.g., evaluations) from task definitions.
+  - Fetch existing gens with matching prompts/templates from metadata, verify they belong to allowed origin cohorts, and add them to the active scope without copying metadata.
+  - Mark reused gens so downstream assets can short-circuit materializations (`DagsterAssetCheck` or `skipped` outputs).
+- [ ] Document operational flow: a cohort run may contain gens from other origin cohorts; metadata remains unchanged; membership lists carry those gens for scheduling only.
+- [ ] Ensure `MembershipService.stage_gen_ids` delegates to `CohortScope.active_stage_gen_ids` for a single entry point.
 
-### 3. Refactor lookups, helpers, and tests
-- [ ] Rework `membership_lookup.find_membership_row_by_gen` to return the key tuple and fetch extra metadata from the manifest (or gens metadata).
-- [ ] Simplify `MembershipService.require_row` to rely on manifest lookups instead of CSV columns.
-- [ ] Update `tests/helpers/membership.write_membership_csv` and dependent tests to use the slim schema + manifest fixtures.
-- [ ] Backfill new manifest fixtures under `tests/` or `data/gens/*` so unit tests remain fast and isolated.
+### Phase 3 – Slim Membership Artifact
+- [ ] After manifest + scope service are in place, emit `cohort_membership.csv` with only `stage`, `gen_id`, `cohort_id`.
+- [ ] Provide a compatibility loader that accepts both wide and slim CSVs until all historical cohorts are re-materialized.
+- [ ] Update `tests/helpers/membership.write_membership_csv`, asset tests, and fixtures to rely on the manifest + scope service instead of CSV columns.
+- [ ] Deprecate scripts that edited membership metadata directly (`scripts/backfill_draft_combo_ids.py`); replace with validation utilities.
 
-### 4. Clean up scripts & align pipelines
-- [ ] Retire or rewrite `scripts/backfill_draft_combo_ids.py` to operate on manifest or metadata files.
-- [ ] Confirm `aggregated_scores` still scopes to cohort via `stage_gen_ids` and reads enrichment from metadata.
-- [ ] Publicise a shared helper (Python module or CLI) that both Dagster assets and external pivot scripts can import to resolve manifest + metadata.
-- [ ] Add regression tests or smoke checks for `generation_scores_pivot` to ensure only active cohort rows appear after the change.
+### Phase 4 – Consumer Alignment
+- [ ] Update Dagster assets (`aggregated_scores`, pivots, etc.) and external scripts to import the new scope helper, ensuring both pipelines agree on active cohort membership.
+- [ ] Add regression tests/smoke checks verifying `generation_scores_pivot` contains only active cohort rows even when skip-existing reuses prior evaluations.
+- [ ] Publish operator documentation describing how to include existing generations in a cohort via configuration instead of manual CSV edits.
 
-### 5. Formalise origin vs membership semantics
-- [ ] Document that `data/gens/**/metadata.json.cohort_id` represents the *origin* cohort and remains immutable per generation.
-- [ ] Allow membership assets/services to include gens produced by prior cohorts (e.g., reusing existing evaluations when `skip-existing` is enabled) without touching metadata.
-- [ ] Design a lightweight association layer (could be the slim CSV or an in-memory registry) that supplies the active cohort's stage/gen list while deferring lineage back to metadata.
-- [ ] Prepare a future migration to rename the metadata field to `origin_cohort_id` (add TODO/TEMPORARY guard and compatibility readers so legacy data keeps working until rewritten).
+### Phase 5 – Metadata Rename & Cleanup
+- [ ] Gate the metadata key rename (`cohort_id -> origin_cohort_id`) behind feature toggles and compatibility readers.
+- [ ] Backfill historical `metadata.json` files to carry both keys during rollout.
+- [ ] Once all code reads through the manifest, remove the legacy `cohort_id` alias and delete wide-CSV compatibility paths.
 
-
-## Sequencing & Rollout Checks
-1. Build manifest helper and dual-read `_seed_generation_metadata` (integration test with a temporary cohort).
-2. Switch helper/tests/scripts to manifest-backed metadata.
-3. Flip the feature flag to emit slim CSVs; regenerate current cohorts via Dagster materializations.
-4. Remove wide-CSV compatibility and delete obsolete scripts.
-5. Schedule and execute the metadata rename (`cohort_id -> origin_cohort_id`) once all downstream code reads through the manifest/compatibility layer, keeping a temporary backcompat shim for historical data.
+## Skip-Existing Handling Details
+- When an operator enables `skip-existing` for a stage:
+  - The task selection logic derives the candidate gen_ids from previous cohorts using manifest metadata (matching on template/combo/parent).
+  - Those gen_ids are appended to the membership list with the current cohort ID for scheduling, but `origin_cohort_id` in metadata stays untouched.
+  - Dagster partitions check the manifest to determine whether the asset output already exists; if so, materialization is short-circuited and downstream consumers read cached outputs.
+  - Reporting assets (aggregated scores, pivots) filter by active membership while preserving origin metadata for transparency.
 
 ## Risks & Mitigations
-- Metadata might be missing for historical cohorts → provide a migration script to backfill manifest entries from existing `metadata.json` files before slimming the CSV.
-- Operators may rely on wide CSVs manually → ship a small `scripts/show_cohort_metadata.py` that prints manifest details on demand.
-- Parallel development on cohort tooling → announce the rollout plan and guard the slim CSV write behind a temporary config toggle to prevent conflicts.
-- Renaming `cohort_id` to `origin_cohort_id` could break ad-hoc tooling → ship a compatibility reader that accepts both keys until all metadata files are migrated.
+- Missing metadata for historical gens → ship a backfill script that rebuilds the manifest from existing `metadata.json` before slimming the CSV.
+- Manual workflows expecting wide CSVs → provide `scripts/show_cohort_manifest.py` to display enriched metadata on demand.
+- Concurrent changes to cohort tooling → land the manifest + scope service behind feature flags and coordinate rollout with the team.
+- Metadata rename disrupting ad-hoc tooling → keep a temporary reader that accepts both `cohort_id` and `origin_cohort_id` keys until all consumers migrate.
+
