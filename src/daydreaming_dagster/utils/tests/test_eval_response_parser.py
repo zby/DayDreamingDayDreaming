@@ -28,16 +28,18 @@ SCORE: 7.2"""
 
     def test_case_variations(self):
         """Test different case variations."""
-        test_cases = [
+        valid_cases = [
             ("reasoning: Good analysis\nscore: 6.0", 6.0),
-            ("Reasoning: Excellent work\nScore: 9.5", 9.5),
             ("REASONING: Basic response\nSCORE: 4.0", 4.0),
         ]
 
-        for response, expected_score in test_cases:
+        for response, expected_score in valid_cases:
             result = parse_llm_response(response, "complex")
             assert result["score"] == expected_score
             assert result["error"] is None
+
+        with pytest.raises(ValueError, match="Score 9.5 is outside valid range 0-9"):
+            parse_llm_response("Reasoning: Excellent work\nScore: 9.5", "complex")
 
     def test_alternative_separators(self):
         """Test alternative separators like dashes."""
@@ -73,10 +75,10 @@ SCORE: 7.2"""
             parse_llm_response(response, "complex")
 
     def test_score_out_of_range(self):
-        """Test handling of scores outside 0-10 range."""
+        """Test handling of scores outside 0-9 range."""
         test_cases = [
-            ("REASONING: Test\nSCORE: -2.5", "Score -2.5 is outside valid range 0-10"),
-            ("REASONING: Test\nSCORE: 15.0", "Score 15.0 is outside valid range 0-10"),
+            ("REASONING: Test\nSCORE: -2.5", "Score -2.5 is outside valid range 0-9"),
+            ("REASONING: Test\nSCORE: 15.0", "Score 15.0 is outside valid range 0-9"),
         ]
 
         for response, expected_error in test_cases:

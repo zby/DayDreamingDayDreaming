@@ -128,9 +128,9 @@ def _build_score_pattern(value_pattern: str) -> str:
 
 
 def _validate_score_range(score: float) -> None:
-    """Validate that score is within the valid 0-10 range."""
-    if not (0 <= score <= 10):
-        raise ValueError(f"Score {score} is outside valid range 0-10")
+    """Validate that score is within the valid 0-9 range."""
+    if not (0 <= score <= 9):
+        raise ValueError(f"Score {score} is outside valid range 0-9")
 
 
 def _parse_complex_format(response_text: str) -> dict:
@@ -190,8 +190,8 @@ def _parse_complex_format(response_text: str) -> dict:
         raise ValueError("No SCORE field found in response")
 
     # Validate score range
-    if score < 0 or score > 10:
-        raise ValueError(f"Score {score} is outside valid range 0-10")
+    if score < 0 or score > 9:
+        raise ValueError(f"Score {score} is outside valid range 0-9")
 
     return {
         "score": score,
