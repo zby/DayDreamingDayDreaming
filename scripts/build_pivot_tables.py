@@ -2,9 +2,9 @@
 """Build cross-experiment pivot tables of essay scores.
 
 Outputs:
-- `evaluation_scores_by_template_model.csv` – all evaluation template/model pairs.
-- (optional) `evaluation_scores_by_template_model_limited.csv` – only active
-  evaluation templates with per-template averages and a summed score column.
+- `evaluation_scores_by_template_model.csv` – evaluation template/model pairs
+  per essay task. Pass `--limit-to-active-templates` to include only active
+  evaluation templates in the pivot.
 
 Usage examples:
 ```
@@ -17,7 +17,6 @@ from __future__ import annotations
 
 import argparse
 from pathlib import Path
-from typing import Iterable
 import pandas as pd
 
 
@@ -53,9 +52,6 @@ def _compose_essay_task_id(df: pd.DataFrame) -> pd.Series:
     return df.apply(compose, axis=1)
 
 
-SUM_COLUMN = "active_template_score_sum"
-
-
 def _load_active_templates(eval_templates_path: Path) -> set[str]:
     import csv
 
@@ -70,68 +66,6 @@ def _load_active_templates(eval_templates_path: Path) -> set[str]:
     return active
 
 
-def _active_template_columns(columns: Iterable[str], active_templates: set[str]) -> dict[str, list[str]]:
-    grouped: dict[str, list[str]] = {template: [] for template in active_templates}
-    for column in columns:
-        if "__" not in column:
-            continue
-        template_id = column.split("__", 1)[0]
-        if template_id in grouped:
-            grouped[template_id].append(column)
-    # Drop templates without any matching columns
-    return {template: cols for template, cols in grouped.items() if cols}
-
-
-def _write_active_only_pivot(
-    pivot: pd.DataFrame,
-    out_dir: Path,
-    active_templates_path: Path,
-    meta_columns: list[str],
-) -> None:
-    active_templates = _load_active_templates(active_templates_path)
-    if not active_templates:
-        raise RuntimeError(
-            f"No active evaluation templates found in {active_templates_path}."
-        )
-
-    metric_columns = [col for col in pivot.columns if "__" in col]
-    grouped_metrics = _active_template_columns(metric_columns, active_templates)
-
-    if not grouped_metrics:
-        raise RuntimeError(
-            "Active template filtering yielded no metric columns; check aggregated scores "
-            "or evaluation template configuration."
-        )
-
-    limited_order = meta_columns + [
-        column
-        for template in sorted(grouped_metrics)
-        for column in sorted(grouped_metrics[template])
-    ]
-    limited = pivot.reindex(columns=limited_order)
-
-    average_columns: dict[str, pd.Series] = {}
-    for template, columns in grouped_metrics.items():
-        numeric = limited[columns].apply(pd.to_numeric, errors="coerce")
-        average = numeric.mean(axis=1, skipna=True).fillna(0.0)
-        average_columns[f"{template}__average"] = average
-
-    if average_columns:
-        averages_df = pd.DataFrame(average_columns)
-        limited = pd.concat([limited, averages_df], axis=1)
-        limited[SUM_COLUMN] = averages_df.sum(axis=1)
-    else:
-        limited[SUM_COLUMN] = 0.0
-
-    out_dir.mkdir(parents=True, exist_ok=True)
-    limited_file = out_dir / "evaluation_scores_by_template_model_limited.csv"
-    limited.to_csv(limited_file, index=False)
-    print(
-        "Wrote active-only pivot: "
-        f"{limited_file} ({len(limited)} rows, {len(limited.columns)} cols)"
-    )
-
-
 def build_pivot(
     parsed_scores: Path,
     out_dir: Path,
@@ -143,6 +77,29 @@ def build_pivot(
         raise FileNotFoundError(f"Parsed scores CSV not found: {parsed_scores}")
 
     df = pd.read_csv(parsed_scores)
+
+    if limit_to_active_templates:
+        active_templates = _load_active_templates(evaluation_templates_path)
+        if not active_templates:
+            raise RuntimeError(
+                f"No active evaluation templates found in {evaluation_templates_path}."
+            )
+        if "evaluation_template" not in df.columns:
+            raise ValueError(
+                "Missing required column 'evaluation_template' in parsed scores"
+            )
+        before = len(df)
+        df = df[df["evaluation_template"].isin(active_templates)].copy()
+        if df.empty:
+            raise RuntimeError(
+                "Filtering to active evaluation templates removed all rows."
+            )
+        removed = before - len(df)
+        if removed:
+            print(
+                "Filtered parsed scores to active evaluation templates: "
+                f"kept {len(df)} rows (dropped {removed})."
+            )
 
     task_cols = ["combo_id", "draft_template", "generation_template", "generation_model"]
     missing_task_cols = [col for col in task_cols if col not in df.columns]
@@ -249,14 +206,6 @@ def build_pivot(
     out_file = out_dir / "evaluation_scores_by_template_model.csv"
     pivot.to_csv(out_file, index=False)
     print(f"Wrote pivot: {out_file} ({len(pivot)} rows, {len(pivot.columns)} cols)")
-
-    if limit_to_active_templates:
-        _write_active_only_pivot(
-            pivot,
-            out_dir,
-            evaluation_templates_path,
-            meta_output_cols,
-        )
 
 
 def main() -> None:
