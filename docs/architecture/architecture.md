@@ -77,7 +77,6 @@ daydreaming_dagster/
 │   ├── evaluation_processing.py# Score table utilities
 │   ├── evaluation_scores.py    # Aggregation helpers using data layer
 │   ├── raw_readers.py          # CSV/catalog readers
-│   └── metadata_splitter.py    # Legacy metadata migration helpers
 ├── resources/                  # Dagster resources
 │   ├── experiment_config.py    # Experiment configuration resource
 │   ├── gens_prompt_io_manager.py# Prompt IO manager bound to gens store
