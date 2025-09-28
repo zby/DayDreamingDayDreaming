@@ -1,13 +1,11 @@
 from __future__ import annotations
 
 from pathlib import Path
-import json
 
 import pytest
 
 from dagster import Failure
 
-from daydreaming_dagster.assets._helpers import emit_standard_output_metadata
 from daydreaming_dagster.resources.membership_service import MembershipServiceResource
 from daydreaming_dagster.unified.stage_core import resolve_generator_mode
 
@@ -15,15 +13,6 @@ from daydreaming_dagster.unified.stage_core import resolve_generator_mode
 class _Resources:
     def __init__(self, data_root: Path):
         self.data_root = data_root
-
-
-class _Ctx:
-    def __init__(self, data_root: Path):
-        self.resources = _Resources(data_root)
-        self._last_metadata = None
-
-    def add_output_metadata(self, md):
-        self._last_metadata = md
 
 
 def _write_membership(tmp_path: Path, rows: list[str]):
@@ -83,22 +72,3 @@ def test_resolve_essay_generator_mode_csv_and_override(tmp_path: Path):
         )
         == "copy"
     )
-
-
-def test_emit_standard_output_metadata(tmp_path: Path):
-    ctx = _Ctx(tmp_path)
-    # Mimic an ExecutionResult-like dict
-    result = {
-        "prompt": "A\nB",
-        "raw": "X\nY\nZ",
-        "parsed": "9.0\n",
-        "info": {"finish_reason": "stop", "truncated": False},
-    }
-    emit_standard_output_metadata(ctx, function="fn", gen_id="G1", result=result, extras={"note": "ok"})
-    md = ctx._last_metadata
-    # Minimal checks for presence and types (no re-derived counts in UI metadata)
-    assert md["function"].value == "fn"
-    assert md["gen_id"].value == "G1"
-    assert md["finish_reason"].value == "stop"
-    assert md["truncated"].value is False
-    assert md["note"].value == "ok"
