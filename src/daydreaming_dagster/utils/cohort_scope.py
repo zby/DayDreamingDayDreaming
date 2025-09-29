@@ -67,7 +67,7 @@ class CohortScope:
             template_id=_clean(meta.get("template_id") or meta.get(f"{stage}_template")),
             parent_gen_id=_clean(meta.get("parent_gen_id")),
             combo_id=_clean(meta.get("combo_id")),
-            llm_model_id=_clean(meta.get("llm_model_id") or meta.get("model_id")),
+            llm_model_id=_clean(meta.get("llm_model_id")),
             mode=_clean(meta.get("mode")),
             origin_cohort_id=_clean(meta.get("origin_cohort_id")),
             replicate=_coerce_int(meta.get("replicate")),

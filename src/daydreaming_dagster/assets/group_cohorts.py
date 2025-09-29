@@ -100,7 +100,7 @@ def _existing_evaluations_by_combo(data_root: Path, essay_id: str) -> Dict[tuple
         if str(meta.get("parent_gen_id") or "").strip() != essay_id:
             continue
         tpl = str(meta.get("template_id") or meta.get("evaluation_template") or "").strip()
-        model = str(meta.get("llm_model_id") or meta.get("model_id") or "").strip()
+        model = str(meta.get("llm_model_id") or "").strip()
         if not tpl or not model:
             continue
         combos[(tpl, model)].add(gen_dir.name)
@@ -274,7 +274,7 @@ def cohort_membership(
 
     selected_cfg = _load_selected_essays_config(data_root)
     selected_essays = selected_cfg.essay_ids
-    # Cohort membership depends on model_id only (provider names omitted).
+    # Cohort membership depends on llm_model_id only (provider names omitted).
 
     # Normalized row schema (internal while building cohort):
     #   stage, gen_id, origin_cohort_id, parent_gen_id, combo_id, template_id, llm_model_id, replicate (int, optional; default 1)
@@ -357,8 +357,8 @@ def cohort_membership(
             essay_meta = essay_gen.get("metadata") or {}
             essay_tpl = str(essay_meta.get("template_id") or essay_meta.get("essay_template") or "").strip()
             draft_parent_src = str(essay_meta.get("parent_gen_id") or "").strip()
-            # Model id/name: prefer essay metadata; fall back to draft metadata
-            essay_model_id = str(essay_meta.get("model_id") or "").strip()
+            # Model ids are taken directly from llm_model_id metadata
+            essay_llm_model = str(essay_meta.get("llm_model_id") or "").strip()
             if not essay_tpl:
                 raise ValueError("Selected essay is missing required template_id")
 
@@ -369,27 +369,27 @@ def cohort_membership(
             draft_meta = draft_gen.get("metadata") or {}
             combo_id = str(draft_meta.get("combo_id") or "").strip()
             draft_tpl = str(draft_meta.get("template_id") or draft_meta.get("draft_template") or "").strip()
-            draft_model_id = str(draft_meta.get("model_id") or "").strip()
-            model_id = essay_model_id or draft_model_id
+            draft_llm_model = str(draft_meta.get("llm_model_id") or "").strip()
+            llm_model_id = essay_llm_model or draft_llm_model
             # Validate required fields for curated reconstruction
             missing_fields = []
             if not combo_id:
                 missing_fields.append("draft.combo_id")
             if not draft_tpl:
                 missing_fields.append("draft.template_id")
-            if not model_id:
-                missing_fields.append("model_id")
+            if not llm_model_id:
+                missing_fields.append("llm_model_id")
             if missing_fields:
                 raise ValueError(
                     f"Missing required metadata to reconstruct tasks: {', '.join(missing_fields)}"
                 )
 
             # Compose cohort task ids and gen ids
-            draft_task_id = f"{combo_id}__{draft_tpl}__{model_id}"
+            draft_task_id = f"{combo_id}__{draft_tpl}__{llm_model_id}"
             draft_cohort_gen = _draft_gen_id(
                 combo_id=combo_id,
                 draft_template_id=draft_tpl,
-                generation_model_id=model_id,
+                generation_model_id=llm_model_id,
                 replicate_index=1,
                 cohort_id=str(cohort_id),
             )
@@ -403,7 +403,7 @@ def cohort_membership(
                     "parent_gen_id": "",
                     "combo_id": combo_id,
                     "template_id": draft_tpl,
-                    "llm_model_id": model_id,
+                    "llm_model_id": llm_model_id,
                     "replicate": 1,
                 }
             )
@@ -431,7 +431,7 @@ def cohort_membership(
                         "combo_id": combo_id,
                         "template_id": essay_tpl,
                         # Prefer essay model if present; else inherit draft model
-                        "llm_model_id": essay_model_id or model_id,
+                        "llm_model_id": essay_llm_model or llm_model_id,
                         "replicate": int(er),
                     }
                 )

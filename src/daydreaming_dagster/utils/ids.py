@@ -146,7 +146,7 @@ def signature_from_metadata(stage: str, metadata: dict) -> Tuple:
         return evaluation_signature(
             metadata.get("parent_gen_id"),
             metadata.get("template_id") or metadata.get("evaluation_template"),
-            metadata.get("llm_model_id") or metadata.get("model_id"),
+            metadata.get("llm_model_id"),
             rep,
         )
     raise ValueError(f"Unsupported stage '{stage}' for signature computation")

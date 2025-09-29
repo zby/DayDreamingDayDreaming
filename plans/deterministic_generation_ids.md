@@ -44,6 +44,7 @@ Derive generation IDs deterministically from task parameters so cohorts become p
 - `cohort_membership` now always computes deterministic IDs directly and seeds metadata for any missing generations; reuse counters and signature lookups have been removed.
 - Tests exercise curated and cartesian flows using deterministic IDs only; evaluation fill-up relies on the same deterministic helpers.
 - Dagster's partition skipping handles reruns via deterministic IDs; no bespoke reuse logic remains.
+- Legacy `model_id` fields were scrubbed from generation metadata (see `scripts/migrations/remove_model_id_fields.py`); assets now rely solely on `llm_model_id`.
 
 ## Phase 5 – Documentation & Guardrails
 - Update architecture docs with the deterministic ID contract, collision handling policy, and migration procedure.
