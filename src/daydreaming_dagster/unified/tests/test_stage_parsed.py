@@ -4,33 +4,42 @@ import json
 import types
 from pathlib import Path
 
+import pytest
+
 import daydreaming_dagster.unified.stage_parsed as stage_parsed
-from daydreaming_dagster.data_layer.gens_data_layer import GensDataLayer, resolve_generation_metadata
+from daydreaming_dagster.data_layer.gens_data_layer import GensDataLayer
 from daydreaming_dagster.data_layer.paths import Paths
 from daydreaming_dagster.resources.experiment_config import ExperimentConfig, StageSettings
 
 
-def _write_main_and_raw(tmp_path: Path, stage: str, gen_id: str, main: dict, raw: dict | None = None, raw_text: str = "raw") -> Paths:
-    paths = Paths.from_str(tmp_path)
-    data_layer = GensDataLayer.from_root(tmp_path)
-    data_layer.reserve_generation(stage, gen_id)
-    data_layer.write_main_metadata(stage, gen_id, main)
-    data_layer.write_raw(stage, gen_id, raw_text)
-    if raw is not None:
-        data_layer.write_raw_metadata(stage, gen_id, raw)
-    return paths
+def _prepare_generation(
+    tmp_path: Path,
+    *,
+    stage: str,
+    gen_id: str,
+    main: dict,
+    raw_meta: dict | None = None,
+    raw_text: str = "raw",
+) -> tuple[GensDataLayer, Paths]:
+    layer = GensDataLayer.from_root(tmp_path)
+    layer.reserve_generation(stage, gen_id)
+    layer.write_main_metadata(stage, gen_id, main)
+    layer.write_raw(stage, gen_id, raw_text)
+    if raw_meta is not None:
+        layer.write_raw_metadata(stage, gen_id, raw_meta)
+    return layer, Paths.from_str(tmp_path)
+
 
 
 def test_stage_parsed_helper_identity(tmp_path: Path) -> None:
-    paths = _write_main_and_raw(
+    data_layer, paths = _prepare_generation(
         tmp_path,
-        "draft",
-        "D1",
-        {"template_id": "tpl", "mode": "llm", "combo_id": "c1"},
-        raw={"input_mode": "prompt", "truncated": False},
+        stage="draft",
+        gen_id="D1",
+        main={"template_id": "tpl", "mode": "llm", "combo_id": "c1"},
+        raw_meta={"input_mode": "prompt", "truncated": False},
         raw_text="Line1\nLine2",
     )
-    data_layer = GensDataLayer.from_root(tmp_path)
 
     parsed_text, parsed_metadata = stage_parsed._stage_parsed_asset(
         data_layer=data_layer,
@@ -54,9 +63,13 @@ def test_stage_parsed_helper_identity(tmp_path: Path) -> None:
 
 
 def test_stage_parsed_helper_truncation_guard(tmp_path: Path) -> None:
-    data_layer = GensDataLayer.from_root(tmp_path)
-    data_layer.write_main_metadata("essay", "E1", {"template_id": "tpl", "mode": "copy", "parent_gen_id": "D1"})
-    try:
+    data_layer, _ = _prepare_generation(
+        tmp_path,
+        stage="essay",
+        gen_id="E1",
+        main={"template_id": "tpl", "mode": "copy", "parent_gen_id": "D1"},
+    )
+    with pytest.raises(ValueError, match="truncated"):
         stage_parsed._stage_parsed_asset(
             data_layer=data_layer,
             stage="essay",
@@ -68,19 +81,15 @@ def test_stage_parsed_helper_truncation_guard(tmp_path: Path) -> None:
             min_lines_override=None,
             fail_on_truncation=True,
         )
-    except ValueError as err:
-        assert "truncated" in str(err)
-    else:
-        raise AssertionError("Expected ValueError due to truncation")
 
 
 def test_stage_parsed_asset_wires_metadata(tmp_path: Path, monkeypatch) -> None:
-    paths = _write_main_and_raw(
+    _, paths = _prepare_generation(
         tmp_path,
-        "draft",
-        "D1",
-        {"template_id": "tpl", "mode": "llm", "combo_id": "c7"},
-        raw={"truncated": False, "input_mode": "prompt"},
+        stage="draft",
+        gen_id="D1",
+        main={"template_id": "tpl", "mode": "llm", "combo_id": "c7"},
+        raw_meta={"truncated": False, "input_mode": "prompt"},
         raw_text="RAW",
     )
 

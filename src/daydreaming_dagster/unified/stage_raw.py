@@ -51,11 +51,10 @@ def _stage_raw_asset(
     if run_id:
         raw_metadata["run_id"] = run_id
     replicate_val = main_metadata.get("replicate")
-    if replicate_val is not None:
-        try:
-            raw_metadata["replicate"] = int(replicate_val)
-        except Exception:
-            raw_metadata["replicate"] = replicate_val
+    if isinstance(replicate_val, (int, float)):
+        raw_metadata["replicate"] = int(replicate_val)
+    elif isinstance(replicate_val, str) and replicate_val.strip().isdigit():
+        raw_metadata["replicate"] = int(replicate_val.strip())
     else:
         raw_metadata.setdefault("replicate", 1)
 
