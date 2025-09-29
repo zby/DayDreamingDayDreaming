@@ -22,6 +22,7 @@ from ..utils.ids import (
     reserve_gen_id,
     draft_signature,
     essay_signature,
+    evaluation_signature,
     compute_deterministic_gen_id,
 )
 from ..utils.raw_readers import (
@@ -567,10 +568,13 @@ def cohort_membership(
 
                         eval_gen_id = None
                         for base_salt in salt_options:
-                            candidate = reserve_gen_id(
-                                "evaluation",
-                                eval_task_id,
-                                run_id=cohort_id,
+                            candidate = _evaluation_gen_id(
+                                essay_gen_id=essay_gen_id,
+                                evaluation_template_id=tpl,
+                                evaluation_model_id=mid,
+                                replicate_index=replicate_index,
+                                cohort_id=str(cohort_id),
+                                legacy_task_id=eval_task_id,
                                 salt=base_salt,
                             )
                             if candidate not in existing_ids:
@@ -580,10 +584,13 @@ def cohort_membership(
                             attempt = 0
                             while eval_gen_id is None:
                                 attempt += 1
-                                candidate = reserve_gen_id(
-                                    "evaluation",
-                                    eval_task_id,
-                                    run_id=cohort_id,
+                                candidate = _evaluation_gen_id(
+                                    essay_gen_id=essay_gen_id,
+                                    evaluation_template_id=tpl,
+                                    evaluation_model_id=mid,
+                                    replicate_index=replicate_index,
+                                    cohort_id=str(cohort_id),
+                                    legacy_task_id=eval_task_id,
                                     salt=f"fill{replicate_index}-{attempt}",
                                 )
                                 if candidate not in existing_ids:
@@ -894,3 +901,19 @@ def _essay_gen_id(
         signature = essay_signature(draft_gen_id, essay_template_id, replicate_index)
         return compute_deterministic_gen_id("essay", signature)
     return reserve_gen_id("essay", legacy_task_id, run_id=cohort_id, salt=salt)
+
+
+def _evaluation_gen_id(
+    *,
+    essay_gen_id: str,
+    evaluation_template_id: str,
+    evaluation_model_id: str,
+    replicate_index: int,
+    cohort_id: str,
+    legacy_task_id: str,
+    salt: str | None = None,
+) -> str:
+    if ids_utils.DETERMINISTIC_GEN_IDS_ENABLED:
+        signature = evaluation_signature(essay_gen_id, evaluation_template_id, evaluation_model_id, replicate_index)
+        return compute_deterministic_gen_id("evaluation", signature)
+    return reserve_gen_id("evaluation", legacy_task_id, run_id=cohort_id, salt=salt)
