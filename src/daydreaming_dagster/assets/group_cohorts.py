@@ -21,6 +21,7 @@ from ..utils import ids as ids_utils
 from ..utils.ids import (
     reserve_gen_id,
     draft_signature,
+    essay_signature,
     compute_deterministic_gen_id,
 )
 from ..utils.raw_readers import (
@@ -412,10 +413,12 @@ def cohort_membership(
                 # Salt only when needed
                 salt = f"rep{er}" if essay_reps > 1 else None
                 essay_task_id = f"{draft_task_id}__{essay_tpl}"
-                essay_cohort_gen = reserve_gen_id(
-                    "essay",
-                    essay_task_id,
-                    run_id=cohort_id,
+                essay_cohort_gen = _essay_gen_id(
+                    draft_gen_id=draft_cohort_gen,
+                    essay_template_id=essay_tpl,
+                    replicate_index=er,
+                    cohort_id=str(cohort_id),
+                    legacy_task_id=essay_task_id,
                     salt=salt,
                 )
                 rows.append(
@@ -499,7 +502,14 @@ def cohort_membership(
                         salt_e = None
                     else:
                         salt_e = f"rep{int(d.get('replicate', 1))}-{er}"
-                    essay_cohort_gen = reserve_gen_id("essay", essay_task_id, run_id=cohort_id, salt=salt_e)
+                    essay_cohort_gen = _essay_gen_id(
+                        draft_gen_id=draft_cohort_gen,
+                        essay_template_id=essay_tpl,
+                        replicate_index=er,
+                        cohort_id=str(cohort_id),
+                        legacy_task_id=essay_task_id,
+                        salt=salt_e,
+                    )
                     rows.append(
                         {
                             "stage": "essay",
@@ -869,3 +879,18 @@ def _draft_gen_id(
         return compute_deterministic_gen_id("draft", signature)
     task_id = f"{combo_id}__{draft_template_id}__{generation_model_id}"
     return reserve_gen_id("draft", task_id, run_id=cohort_id, salt=salt)
+
+
+def _essay_gen_id(
+    *,
+    draft_gen_id: str,
+    essay_template_id: str,
+    replicate_index: int,
+    cohort_id: str,
+    legacy_task_id: str,
+    salt: str | None = None,
+) -> str:
+    if ids_utils.DETERMINISTIC_GEN_IDS_ENABLED:
+        signature = essay_signature(draft_gen_id, essay_template_id, replicate_index)
+        return compute_deterministic_gen_id("essay", signature)
+    return reserve_gen_id("essay", legacy_task_id, run_id=cohort_id, salt=salt)

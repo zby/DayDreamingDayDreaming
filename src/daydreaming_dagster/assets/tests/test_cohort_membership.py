@@ -7,7 +7,7 @@ from dagster import build_asset_context
 
 from daydreaming_dagster.assets.group_cohorts import cohort_membership
 from daydreaming_dagster.utils import ids as ids_utils
-from daydreaming_dagster.utils.ids import draft_signature, compute_deterministic_gen_id
+from daydreaming_dagster.utils.ids import draft_signature, essay_signature, compute_deterministic_gen_id
 
 
 def _write_json(p: Path, data: dict) -> None:
@@ -154,6 +154,13 @@ def test_cohort_membership_deterministic_draft_ids(tmp_path: Path, monkeypatch):
     expected_sig = draft_signature("combo-1", "draft-tpl", "m-gen", 1)
     expected_id = compute_deterministic_gen_id("draft", expected_sig)
     assert gen_id == expected_id
+
+    essay_rows = mdf[mdf["stage"] == "essay"]
+    assert len(essay_rows) == 1
+    essay_id = essay_rows.iloc[0]["gen_id"]
+    expected_essay_sig = essay_signature(expected_id, "essay-tpl", 1)
+    expected_essay_id = compute_deterministic_gen_id("essay", expected_essay_sig)
+    assert essay_id == expected_essay_id
 
 
 def test_cohort_membership_missing_parent_fails(tmp_path: Path, monkeypatch):
