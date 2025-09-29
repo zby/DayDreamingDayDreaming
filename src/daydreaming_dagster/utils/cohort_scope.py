@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 import json
 from pathlib import Path
-from typing import Dict, Iterable, Optional
+from typing import Dict, Iterable, Optional, Tuple
 
 import pandas as pd
 
@@ -30,6 +30,7 @@ class CohortScope:
         self._data_root = Path(data_root)
         self._cohort_cache: dict[str, pd.DataFrame] = {}
         self._metadata_cache: dict[tuple[str, str], dict] = {}
+        self._signature_index: dict[str, dict[Tuple, str]] = {}
 
     def _membership(self, cohort_id: str) -> pd.DataFrame:
         if cohort_id not in self._cohort_cache:
@@ -71,6 +72,33 @@ class CohortScope:
             origin_cohort_id=_clean(meta.get("origin_cohort_id")),
             replicate=_coerce_int(meta.get("replicate")),
         )
+
+    # --- Deterministic signature helpers ---
+
+    def signature_for_gen(self, stage: str, gen_id: str) -> Tuple:
+        from .ids import signature_from_metadata
+
+        meta = self._load_metadata(stage, gen_id)
+        return signature_from_metadata(stage, meta)
+
+    def find_existing_gen_id(self, stage: str, signature: Tuple) -> Optional[str]:
+        from .ids import signature_from_metadata
+
+        stage_norm = str(stage).lower()
+        stage_root = self._data_root / "gens" / stage_norm
+        if not stage_root.exists():
+            return None
+        for child in stage_root.iterdir():
+            if not child.is_dir():
+                continue
+            try:
+                meta = self._load_metadata(stage_norm, child.name)
+                sig = signature_from_metadata(stage_norm, meta)
+            except Exception:
+                continue
+            if sig == signature:
+                return child.name
+        return None
 
 
 def _clean(value) -> Optional[str]:
