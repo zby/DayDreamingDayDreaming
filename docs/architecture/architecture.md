@@ -93,7 +93,7 @@ Assets are organized into logical groups for easy selection and understanding:
 | Group | Assets | Purpose |
 |-------|--------|---------|
 | **`raw_data`** | concepts, llm_models, draft/essay/evaluation templates | Load external data files |
-| **`cohort`** | cohort_id, selected_combo_mappings, content_combinations, cohort_membership | Cohort-first membership and selection (register dynamic partitions) |
+| **`cohort`** | cohort_id, selected_combo_mappings, content_combinations, cohort_membership | Cohort-first membership and selection (register dynamic partitions). Cohort-aware services (e.g., `CohortScope`) read the slim membership CSV and gens metadata to answer downstream queries. |
 | **`generation_draft`** 🚀 | draft_prompt, draft_raw, draft_parsed | Phase‑1 generation (implemented in `group_draft.py`); applies parser (if configured) and persists prompt/raw/parsed via the unified runner |
 | **`generation_essays`** | essay_prompt, essay_raw, essay_parsed | Phase‑2 generation (`group_essay.py`); modes: `llm` (default) and `copy` (parsed draft passthrough) |
 | **`evaluation`** | evaluation_prompt, evaluation_raw, evaluation_parsed | Evaluation stage assets in `group_evaluation.py`; partitioned by evaluation gen_id from cohort membership |

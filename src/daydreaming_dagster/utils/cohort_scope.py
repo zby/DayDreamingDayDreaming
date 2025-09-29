@@ -1,0 +1,90 @@
+"""Cohort scope helper for resolving active generations and metadata."""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+import json
+from pathlib import Path
+from typing import Dict, Iterable, Optional
+
+import pandas as pd
+
+
+@dataclass(frozen=True)
+class GenerationScope:
+    stage: str
+    gen_id: str
+    template_id: Optional[str]
+    parent_gen_id: Optional[str]
+    combo_id: Optional[str]
+    llm_model_id: Optional[str]
+    mode: Optional[str]
+    origin_cohort_id: Optional[str]
+    replicate: Optional[int]
+
+
+class CohortScope:
+    """Resolve cohort membership and metadata directly from gens store."""
+
+    def __init__(self, data_root: Path | str):
+        self._data_root = Path(data_root)
+        self._cohort_cache: dict[str, pd.DataFrame] = {}
+        self._metadata_cache: dict[tuple[str, str], dict] = {}
+
+    def _membership(self, cohort_id: str) -> pd.DataFrame:
+        if cohort_id not in self._cohort_cache:
+            csv_path = self._data_root / "cohorts" / cohort_id / "membership.csv"
+            df = pd.read_csv(csv_path)
+            if not {"stage", "gen_id"}.issubset(df.columns):
+                raise ValueError("membership.csv must contain 'stage' and 'gen_id' columns")
+            self._cohort_cache[cohort_id] = df
+        return self._cohort_cache[cohort_id]
+
+    def stage_gen_ids(self, cohort_id: str, stage: str) -> list[str]:
+        df = self._membership(str(cohort_id))
+        return (
+            df[df["stage"].astype(str).str.lower() == stage.lower()]["gen_id"].astype(str).tolist()
+        )
+
+    def iter_stage_gen_ids(self, cohort_id: str, stages: Iterable[str]) -> dict[str, list[str]]:
+        return {stage: self.stage_gen_ids(cohort_id, stage) for stage in stages}
+
+    def _load_metadata(self, stage: str, gen_id: str) -> dict:
+        key = (stage, gen_id)
+        if key not in self._metadata_cache:
+            path = self._data_root / "gens" / stage / gen_id / "metadata.json"
+            if not path.exists():
+                raise FileNotFoundError(f"metadata.json not found for {stage}/{gen_id}")
+            self._metadata_cache[key] = json.loads(path.read_text(encoding="utf-8"))
+        return self._metadata_cache[key]
+
+    def get_generation_scope(self, stage: str, gen_id: str) -> GenerationScope:
+        meta = self._load_metadata(stage, gen_id)
+        return GenerationScope(
+            stage=stage,
+            gen_id=gen_id,
+            template_id=_clean(meta.get("template_id") or meta.get(f"{stage}_template")),
+            parent_gen_id=_clean(meta.get("parent_gen_id")),
+            combo_id=_clean(meta.get("combo_id")),
+            llm_model_id=_clean(meta.get("llm_model_id") or meta.get("model_id")),
+            mode=_clean(meta.get("mode")),
+            origin_cohort_id=_clean(meta.get("origin_cohort_id")),
+            replicate=_coerce_int(meta.get("replicate")),
+        )
+
+
+def _clean(value) -> Optional[str]:
+    if value is None:
+        return None
+    text = str(value).strip()
+    return text or None
+
+
+def _coerce_int(value) -> Optional[int]:
+    try:
+        return int(value) if value is not None else None
+    except Exception:
+        return None
+
+
+__all__ = ["CohortScope", "GenerationScope"]

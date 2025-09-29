@@ -58,7 +58,7 @@ def test_stage_parsed_helper_identity(tmp_path: Path) -> None:
     assert parsed_path.read_text(encoding="utf-8") == "Line1\nLine2"
     meta_file = json.loads(paths.parsed_metadata_path("draft", "D1").read_text(encoding="utf-8"))
     assert meta_file["parser_name"] == "identity"
-    assert parsed_metadata["combo_id"] == "c1"
+    assert "combo_id" not in parsed_metadata
     assert parsed_metadata["parsed_path"] == str(parsed_path)
 
 

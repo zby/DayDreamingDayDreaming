@@ -75,11 +75,9 @@ def _stage_parsed_asset(
         "error": None,
     }
 
-    for key in ("input_mode", "copied_from", "origin_cohort_id", "replicate", "combo_id"):
+    for key in ("input_mode", "copied_from"):
         if key in raw_metadata:
             parsed_metadata[key] = raw_metadata[key]
-    if metadata.parent_gen_id:
-        parsed_metadata["parent_gen_id"] = metadata.parent_gen_id
 
     parsed_path = data_layer.write_parsed(stage, gen_id, parsed_text)
     parsed_metadata_path = data_layer.paths.parsed_metadata_path(stage, gen_id)

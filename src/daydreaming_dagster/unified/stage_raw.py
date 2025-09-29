@@ -34,29 +34,13 @@ def _stage_raw_asset(
     max_tokens = stage_settings.generation_max_tokens if stage_settings else None
 
     raw_metadata: Dict[str, Any] = {
+        "function": f"{stage}_raw",
+        "mode": mode,
         "stage": str(stage),
         "gen_id": str(gen_id),
-        "mode": mode,
-        "function": f"{stage}_raw",
-        "input_mode": "copy" if mode == "copy" else "prompt",
-        "template_id": metadata.template_id,
-        "stage_input_function": f"{stage}_stage_input",
     }
-    if metadata.parent_gen_id:
-        raw_metadata["parent_gen_id"] = metadata.parent_gen_id
-    if metadata.origin_cohort_id:
-        raw_metadata["origin_cohort_id"] = metadata.origin_cohort_id
-    if metadata.combo_id and stage == "draft":
-        raw_metadata["combo_id"] = metadata.combo_id
     if run_id:
         raw_metadata["run_id"] = run_id
-    replicate_val = main_metadata.get("replicate")
-    if isinstance(replicate_val, (int, float)):
-        raw_metadata["replicate"] = int(replicate_val)
-    elif isinstance(replicate_val, str) and replicate_val.strip().isdigit():
-        raw_metadata["replicate"] = int(replicate_val.strip())
-    else:
-        raw_metadata.setdefault("replicate", 1)
 
     raw_text: str
 
@@ -85,15 +69,15 @@ def _stage_raw_asset(
         usage = info.get("usage")
         if usage is not None:
             raw_metadata["usage"] = usage
-        raw_metadata["input_mode"] = "prompt"
     elif mode == "copy":
         if prompt_text is None:
             raise ValueError("copy mode requires prompt_text")
         raw_text = prompt_text
-        raw_metadata["input_mode"] = "copy"
         raw_metadata["finish_reason"] = "copy"
     else:
         raise ValueError(f"Unsupported mode '{mode}' for stage raw")
+
+    raw_metadata["input_mode"] = "copy" if mode == "copy" else "prompt"
 
     raw_metadata["raw_length"] = len(raw_text)
     raw_metadata["raw_lines"] = sum(1 for _ in str(raw_text).splitlines())

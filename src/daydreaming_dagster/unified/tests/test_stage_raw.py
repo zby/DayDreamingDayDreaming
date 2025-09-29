@@ -106,9 +106,6 @@ def test_stage_raw_llm_persists_expected_files(tmp_path: Path):
             "function": "draft_raw",
             "run_id": "RUN-123",
             "input_mode": "prompt",
-            "origin_cohort_id": "C1",
-            "combo_id": "combo-1",
-            "replicate": 3,
             "raw_path": str(raw_path),
             "raw_metadata_path": str(paths.raw_metadata_path("draft", "D1")),
         },
@@ -164,7 +161,6 @@ def test_stage_raw_copy_marks_input_mode(tmp_path: Path):
         {
             "mode": "copy",
             "input_mode": "copy",
-            "origin_cohort_id": "C9",
             "raw_path": str(raw_path),
             "raw_metadata_path": str(paths.raw_metadata_path("essay", "E1")),
         },
