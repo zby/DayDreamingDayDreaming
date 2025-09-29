@@ -6,6 +6,8 @@ import pytest
 from dagster import build_asset_context
 
 from daydreaming_dagster.assets.group_cohorts import cohort_membership
+from daydreaming_dagster.utils import ids as ids_utils
+from daydreaming_dagster.utils.ids import draft_signature, compute_deterministic_gen_id
 
 
 def _write_json(p: Path, data: dict) -> None:
@@ -89,6 +91,69 @@ def test_cohort_membership_curated_and_projection(tmp_path: Path, monkeypatch):
     essays = mdf[mdf["stage"] == "essay"]
     evals = mdf[mdf["stage"] == "evaluation"]
     assert not drafts.empty and not essays.empty and not evals.empty
+
+
+def test_cohort_membership_deterministic_draft_ids(tmp_path: Path, monkeypatch):
+    data_root = tmp_path
+    monkeypatch.setattr(ids_utils, "DETERMINISTIC_GEN_IDS_ENABLED", True, raising=False)
+
+    # Minimal config
+    (data_root / "1_raw").mkdir(parents=True, exist_ok=True)
+    pd.DataFrame([
+        {"stage": "draft", "replicates": 1},
+        {"stage": "essay", "replicates": 1},
+        {"stage": "evaluation", "replicates": 1},
+    ]).to_csv(data_root / "1_raw" / "replication_config.csv", index=False)
+
+    pd.DataFrame([
+        {"template_id": "eval-1", "active": True},
+    ]).to_csv(data_root / "1_raw" / "evaluation_templates.csv", index=False)
+
+    pd.DataFrame([
+        {"id": "m-gen", "model": "provider/m-gen", "for_generation": True, "for_evaluation": False},
+        {"id": "m-eval", "model": "provider/m-eval", "for_generation": False, "for_evaluation": True},
+    ]).to_csv(data_root / "1_raw" / "llm_models.csv", index=False)
+
+    # Existing draft and essay metadata
+    draft_id = "D100"
+    essay_id = "E100"
+    _write_json(
+        data_root / "gens" / "draft" / draft_id / "metadata.json",
+        {
+            "stage": "draft",
+            "gen_id": draft_id,
+            "combo_id": "combo-1",
+            "template_id": "draft-tpl",
+            "llm_model_id": "m-gen",
+            "model_id": "m-gen",
+        },
+    )
+    _write_json(
+        data_root / "gens" / "essay" / essay_id / "metadata.json",
+        {
+            "stage": "essay",
+            "gen_id": essay_id,
+            "parent_gen_id": draft_id,
+            "template_id": "essay-tpl",
+            "llm_model_id": "m-gen",
+            "model_id": "m-gen",
+        },
+    )
+
+    # Selected essays
+    (data_root / "2_tasks").mkdir(parents=True, exist_ok=True)
+    (data_root / "2_tasks" / "selected_essays.txt").write_text(f"{essay_id}\n", encoding="utf-8")
+
+    ctx = build_asset_context(resources={"data_root": str(data_root)})
+    cid = "cohort-det"
+    mdf = cohort_membership(ctx, cid)
+
+    draft_rows = mdf[mdf["stage"] == "draft"]
+    assert len(draft_rows) == 1
+    gen_id = draft_rows.iloc[0]["gen_id"]
+    expected_sig = draft_signature("combo-1", "draft-tpl", "m-gen", 1)
+    expected_id = compute_deterministic_gen_id("draft", expected_sig)
+    assert gen_id == expected_id
 
 
 def test_cohort_membership_missing_parent_fails(tmp_path: Path, monkeypatch):

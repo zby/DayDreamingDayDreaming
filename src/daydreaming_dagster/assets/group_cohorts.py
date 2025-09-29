@@ -17,7 +17,12 @@ import pandas as pd
 from dagster import MetadataValue
 from ._decorators import asset_with_boundary
 
-from ..utils.ids import reserve_gen_id
+from ..utils import ids as ids_utils
+from ..utils.ids import (
+    reserve_gen_id,
+    draft_signature,
+    compute_deterministic_gen_id,
+)
 from ..utils.raw_readers import (
     read_concepts,
     read_templates,
@@ -379,7 +384,13 @@ def cohort_membership(
 
             # Compose cohort task ids and gen ids
             draft_task_id = f"{combo_id}__{draft_tpl}__{model_id}"
-            draft_cohort_gen = reserve_gen_id("draft", draft_task_id, run_id=cohort_id)
+            draft_cohort_gen = _draft_gen_id(
+                combo_id=combo_id,
+                draft_template_id=draft_tpl,
+                generation_model_id=model_id,
+                replicate_index=1,
+                cohort_id=str(cohort_id),
+            )
 
             # Draft row (no replicates in curated mode)
             rows.append(
@@ -447,14 +458,21 @@ def cohort_membership(
                     for dr in range(1, draft_reps + 1):
                         # Preserve prior unsalted ids for first replicate
                         salt_d = None if dr == 1 else f"rep{dr}"
-                        draft_cohort_gen = reserve_gen_id("draft", draft_task_id, run_id=cohort_id, salt=salt_d)
-                rows.append(
-                    {
-                        "stage": "draft",
-                        "gen_id": draft_cohort_gen,
-                        "origin_cohort_id": str(cohort_id),
-                        "parent_gen_id": "",
-                        "combo_id": combo_id,
+                        draft_cohort_gen = _draft_gen_id(
+                            combo_id=combo_id,
+                            draft_template_id=draft_tpl,
+                            generation_model_id=mid,
+                            replicate_index=dr,
+                            cohort_id=str(cohort_id),
+                            salt=salt_d,
+                        )
+                        rows.append(
+                            {
+                                "stage": "draft",
+                                "gen_id": draft_cohort_gen,
+                                "origin_cohort_id": str(cohort_id),
+                                "parent_gen_id": "",
+                                "combo_id": combo_id,
                                 "template_id": draft_tpl,
                                 "llm_model_id": mid,
                                 "replicate": int(dr),
@@ -837,3 +855,17 @@ def content_combinations(context) -> list[ContentCombination]:
     concepts = concepts[: max(1, min(k_max, len(concepts)))]
     combo_id = generate_combo_id([c.concept_id for c in concepts], level, k_max)
     return [ContentCombination.from_concepts(concepts, level=level, combo_id=combo_id)]
+def _draft_gen_id(
+    *,
+    combo_id: str,
+    draft_template_id: str,
+    generation_model_id: str,
+    replicate_index: int,
+    cohort_id: str,
+    salt: str | None = None,
+) -> str:
+    if ids_utils.DETERMINISTIC_GEN_IDS_ENABLED:
+        signature = draft_signature(combo_id, draft_template_id, generation_model_id, replicate_index)
+        return compute_deterministic_gen_id("draft", signature)
+    task_id = f"{combo_id}__{draft_template_id}__{generation_model_id}"
+    return reserve_gen_id("draft", task_id, run_id=cohort_id, salt=salt)
