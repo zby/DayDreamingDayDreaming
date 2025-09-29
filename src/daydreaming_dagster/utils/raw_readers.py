@@ -55,10 +55,7 @@ def read_replication_config(data_root: Path) -> dict[str, int] | None:
     path = Path(data_root) / "1_raw" / "replication_config.csv"
     if not path.exists():
         return None
-    try:
-        df = read_csv_with_context(path)
-    except Exception:
-        return None
+    df = read_csv_with_context(path)
     if df is None or df.empty:
         return None
     required = {"stage", "replicates"}
@@ -67,15 +64,15 @@ def read_replication_config(data_root: Path) -> dict[str, int] | None:
     out: dict[str, int] = {}
     from ..types import STAGES
     valid_stages = set(STAGES)
+    df = df[list(required)].copy()
+    df["stage"] = df["stage"].astype(str).str.strip()
+    df["replicates"] = pd.to_numeric(df["replicates"], errors="coerce")
+    df = df.dropna(subset=["replicates"])
+    df["replicates"] = df["replicates"].astype(int)
+    df = df[df["replicates"] >= 1]
+    df = df[df["stage"].isin(valid_stages)]
     for _, row in df.iterrows():
-        stg = str(row.get("stage") or "").strip()
-        reps = row.get("replicates")
-        try:
-            reps_i = int(reps)
-        except Exception:
-            continue
-        if stg in valid_stages and reps_i >= 1:
-            out[stg] = reps_i
+        out[row["stage"]] = int(row["replicates"])
     return out or None
 
 def _read_templates(data_root: Path, filename: str, *, filter_active: bool = True) -> pd.DataFrame:

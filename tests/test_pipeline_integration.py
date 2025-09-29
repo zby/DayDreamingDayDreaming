@@ -388,8 +388,24 @@ class TestPipelineIntegration:
                         continue
                 
                 # Materialize essay generation for corresponding essay task partitions
-                # Choose essay gen_ids whose parent_gen_id corresponds to successful drafts
-                test_essay_partitions = mdf[(mdf["stage"] == "essay") & (mdf["parent_gen_id"].astype(str).isin([str(x) for x in succeeded_gen_partitions]))]["gen_id"].astype(str).tolist()[:2]
+                # Choose essay gen_ids whose parent essay metadata references successful drafts
+                essay_parent_map: dict[str, str] = {}
+                essay_rows = mdf[mdf["stage"] == "essay"]["gen_id"].astype(str).tolist()
+                succeeded_set = {str(x) for x in succeeded_gen_partitions}
+                for essay_id in essay_rows:
+                    meta_path = pipeline_data_root / "gens" / "essay" / essay_id / "metadata.json"
+                    parent = ""
+                    if meta_path.exists():
+                        try:
+                            meta = json.loads(meta_path.read_text(encoding="utf-8"))
+                            parent = str(meta.get("parent_gen_id") or "")
+                        except Exception:
+                            parent = ""
+                    essay_parent_map[essay_id] = parent
+
+                test_essay_partitions = [
+                    essay_id for essay_id, parent in essay_parent_map.items() if parent in succeeded_set
+                ][:2]
                 
                 for partition_key in test_essay_partitions:
                     print(f"  Materializing essays for partition: {partition_key}")

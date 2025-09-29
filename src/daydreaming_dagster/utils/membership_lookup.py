@@ -41,10 +41,7 @@ def stage_gen_ids(
         m = r / "membership.csv"
         if not m.exists():
             continue
-        try:
-            df = pd.read_csv(m, usecols=["stage", "gen_id"])
-        except Exception:
-            continue
+        df = pd.read_csv(m, usecols=["stage", "gen_id"])
         if df.empty:
             continue
         ids = (

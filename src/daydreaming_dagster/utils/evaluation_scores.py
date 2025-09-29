@@ -26,101 +26,67 @@ def aggregate_evaluation_scores_for_ids(data_root: Path, gen_ids: Iterable[str])
     rows: List[Dict[str, Any]] = []
     for gid in gen_ids:
         gid = str(gid)
-        try:
-            eval_doc = load_generation(gens_root, "evaluation", gid)
-        except Exception:
-            # Missing or unreadable: still emit a row with error
-            rows.append(
-                {
-                    "gen_id": gid,
-                    "parent_gen_id": "",
-                    "evaluation_template": None,
-                    "evaluation_llm_model": None,
-                    "score": None,
-                    "error": "unreadable evaluation generation",
-                    "evaluation_response_path": str(paths.parsed_path("evaluation", gid).resolve()),
-                    "combo_id": None,
-                    "draft_template": None,
-                    "generation_template": None,
-                    "generation_model": None,
-                    "origin_cohort_id": None,
-                    "generation_response_path": "",
-                }
-            )
-            continue
+        eval_doc = load_generation(gens_root, "evaluation", gid)
 
         md = eval_doc.get("metadata") or {}
-        parent_essay_id = str(md.get("parent_gen_id") or "")
+        parent_essay_id = str(md.get("parent_gen_id") or "").strip()
         eval_template = md.get("template_id")
         eval_model = md.get("llm_model_id")
         origin_cohort_id = md.get("origin_cohort_id")
-        eval_parsed = eval_doc.get("parsed_text")
+        eval_parsed = (eval_doc.get("parsed_text") or "").strip()
         eval_parsed_path = paths.parsed_path("evaluation", gid).resolve()
 
         score = None
         error = None
-        if isinstance(eval_parsed, str) and eval_parsed.strip():
+        if eval_parsed:
+            last_line = eval_parsed.splitlines()[-1].strip()
             try:
-                last = eval_parsed.strip().splitlines()[-1].strip()
-                score = float(last)
-            except Exception as e:
-                error = f"Invalid parsed.txt: {e}"
+                score = float(last_line)
+            except ValueError as exc:  # keep row but note failure
+                error = f"Invalid parsed.txt: {exc}"
         else:
             error = "missing parsed.txt"
 
-        combo_id = ""
-        draft_template = str(md.get("draft_template") or "").strip()
-        generation_template = str(md.get("essay_template_id") or md.get("generation_template") or "").strip()
+        generation_template = ""
         generation_model = ""
         parent_draft_id = ""
         if parent_essay_id:
-            try:
-                emd = load_generation(gens_root, "essay", parent_essay_id).get("metadata") or {}
-                generation_template = str(emd.get("template_id") or emd.get("essay_template") or "")
-                generation_model = str(emd.get("llm_model_id") or "")
-                parent_draft_id = str(emd.get("parent_gen_id") or "")
-                if not draft_template:
-                    draft_val = emd.get("draft_template")
-                    if draft_val is not None:
-                        draft_template = str(draft_val).strip()
-            except Exception:
-                pass
+            essay_doc = load_generation(gens_root, "essay", parent_essay_id)
+            essay_md = essay_doc.get("metadata") or {}
+            generation_template = str(
+                essay_md.get("template_id")
+                or essay_md.get("essay_template_id")
+                or ""
+            ).strip()
+            generation_model = str(essay_md.get("llm_model_id") or "").strip()
+            parent_draft_id = str(essay_md.get("parent_gen_id") or "").strip()
 
+        combo_id = str(md.get("combo_id") or "").strip()
+        draft_template = str(md.get("draft_template") or "").strip()
         if parent_draft_id:
-            try:
-                dmd = load_generation(gens_root, "draft", parent_draft_id).get("metadata") or {}
-                combo_id = str(dmd.get("combo_id") or "")
-                draft_template = str(dmd.get("template_id") or dmd.get("draft_template") or "")
-                if not generation_model:
-                    generation_model = str(dmd.get("llm_model_id") or "")
-            except Exception:
-                pass
-        elif not draft_template:
-            draft_template = str(md.get("draft_template") or "")
-
-        if not draft_template:
-            draft_template_meta = md.get("draft_template")
-            if draft_template_meta is not None:
-                draft_template = str(draft_template_meta).strip()
-        if not generation_template:
-            generation_template_meta = md.get("essay_template_id") or md.get("generation_template")
-            if generation_template_meta is not None:
-                generation_template = str(generation_template_meta).strip()
+            draft_doc = load_generation(gens_root, "draft", parent_draft_id)
+            draft_md = draft_doc.get("metadata") or {}
+            combo_id = str(draft_md.get("combo_id") or combo_id or "").strip()
+            draft_template = str(
+                draft_md.get("template_id")
+                or draft_md.get("draft_template")
+                or draft_template
+            ).strip()
+            if not generation_model:
+                generation_model = str(draft_md.get("llm_model_id") or "").strip()
 
         cohort_value = None
         if origin_cohort_id is not None and pd.notna(origin_cohort_id):
-            cohort_value = str(origin_cohort_id)
+            origin_str = str(origin_cohort_id).strip()
+            cohort_value = origin_str or None
 
+        raw_meta_path = paths.raw_metadata_path("evaluation", gid)
         input_mode = None
         copied_from = None
-        try:
-            raw_meta_path = paths.raw_metadata_path("evaluation", gid)
-            if raw_meta_path.exists():
-                raw_meta = json.loads(raw_meta_path.read_text(encoding="utf-8")) or {}
-                input_mode = raw_meta.get("input_mode")
-                copied_from = raw_meta.get("copied_from")
-        except Exception:
-            pass
+        if raw_meta_path.exists():
+            raw_meta = json.loads(raw_meta_path.read_text(encoding="utf-8")) or {}
+            input_mode = raw_meta.get("input_mode")
+            copied_from = raw_meta.get("copied_from")
 
         rows.append(
             {

@@ -59,13 +59,10 @@ def list_parsers(stage: StageName) -> Dict[str, ParserFn]:
 # ---- Built-in registrations ----
 
 # Draft: reuse existing registry
-try:
-    from .draft_parsers import DRAFT_PARSERS_REGISTRY as _DRAFTS
+from .draft_parsers import DRAFT_PARSERS_REGISTRY as _DRAFTS
 
-    for _name, _fn in _DRAFTS.items():
-        register_parser("draft", _name, _fn)
-except Exception:  # pragma: no cover - import-time tolerance
-    pass
+for _name, _fn in _DRAFTS.items():
+    register_parser("draft", _name, _fn)
 
 
 # Essay/Draft: identity parser

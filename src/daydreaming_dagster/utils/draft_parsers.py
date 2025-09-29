@@ -35,10 +35,9 @@ def parse_essay_idea_last(text: str) -> str:
         stage_val = None
         m_stage = stage_attr_re.search(text[line_start : m.end()])
         if m_stage:
-            try:
-                stage_val = int(m_stage.group(1))
-            except ValueError:
-                stage_val = None
+            stage_token = m_stage.group(1)
+            if stage_token.isdigit():
+                stage_val = int(stage_token)
         staged.append((stage_val, m.group(1)))
 
     if any(s is not None for s, _ in staged):

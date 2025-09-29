@@ -1,3 +1,5 @@
+import pytest
+
 from daydreaming_dagster.utils.draft_parsers import parse_essay_idea_last
 
 
@@ -35,8 +37,5 @@ def test_preserves_inner_newlines_verbatim():
 
 def test_raises_when_no_essay_idea_blocks_found():
     content = "No tags here.\n<thinking>but thinking exists</thinking>\n"
-    try:
+    with pytest.raises(ValueError, match="No <essay-idea> blocks"):
         parse_essay_idea_last(content)
-        assert False, "Expected ValueError when no <essay-idea> blocks present"
-    except ValueError as e:
-        assert "No <essay-idea> blocks" in str(e)
