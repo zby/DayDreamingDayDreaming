@@ -20,9 +20,10 @@ Migrate `cohort_membership` and related helpers to deterministic generation IDs 
 2. Update evaluation membership output accordingly, with feature flag fallback.
 3. Update tests and scripts relying on evaluation IDs.
 
-### Step 4 – CohortScope & Reuse Integration
-1. Ensure `CohortScope` signature lookups are used in each stage for reuse detection.
-2. Log metrics summarizing reused vs new IDs per stage; expose reuse status for diagnostics.
+### Step 4 – Cohort Asset Simplification
+1. Drop reuse-specific signature lookups inside `cohort_membership`; always compute deterministic IDs from task parameters.
+2. Seed metadata for any newly materialized deterministic IDs and rely on Dagster's partition skipping for reruns.
+3. Trim membership metadata/metrics to focus on row counts and evaluation fill-up diagnostics.
 
 ### Step 5 – Test & Fixture Updates
 1. Regenerate test fixtures (`tests/data_pipeline_test/gens/**`) and update unit/integration tests to assert deterministic IDs when the flag is enabled.

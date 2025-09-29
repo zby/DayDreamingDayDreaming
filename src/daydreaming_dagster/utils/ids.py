@@ -1,12 +1,11 @@
 from __future__ import annotations
 
 import hashlib
-import os
 from hashlib import blake2b
 from typing import Iterable, Tuple
 
 
-DETERMINISTIC_GEN_IDS_ENABLED = os.getenv("DD_DETERMINISTIC_GEN_IDS", "").lower() in {"1", "true", "yes"}
+DETERMINISTIC_GEN_IDS_ENABLED = True  # BACKCOMPAT: deterministic IDs are always enabled post-migration.
 
 
 def _hash_bytes(parts: Iterable[str]) -> bytes:

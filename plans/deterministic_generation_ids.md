@@ -29,19 +29,21 @@ Derive generation IDs deterministically from task parameters so cohorts become p
   - Script to traverse `data/gens/<stage>/*`, compute deterministic IDs, generate an old→new mapping CSV, and detect collisions or missing parents.
 - **Migration Execution**
   1. Snapshot/backup `data/gens`, `cohorts`, and derived outputs (`5_parsing`, `6_summary`, `7_reporting`).
-  2. For each stage (draft → essay → evaluation):
-     - Rename `data/gens/<stage>/<old>` directories to `<new>`.
-     - Rewrite `metadata.json` with the new `gen_id` and updated `parent_gen_id` references.
-     - Rewrite `raw_metadata.json` / `parsed_metadata.json` to update `gen_id` values (other runtime fields remain untouched).
+  2. Execute `scripts/migrations/run_deterministic_id_migrations.sh` which performs, in order:
+     - Replicate index normalization (`scripts/migrate_replicate_indexes.py`).
+     - Deterministic ID dry-run + mapping export.
+     - Synthetic draft backfill for copy-mode essays (`scripts/migrations/backfill_copy_mode_drafts.py`).
+     - Deterministic rename + metadata rewrite.
   3. Regenerate downstream artifacts by re-running assets/scripts (aggregated scores, pivot tables, cohort manifests) instead of editing in place.
   4. Update test fixtures (`tests/data_pipeline_test/gens/**`) via the same renaming script.
 - **Validation & Rollout**
   - Perform the migration in staging first; verify parent chains, run targeted asset tests, and confirm Dagster skips reruns with the new IDs.
-  - Production rollout: execute migration with logging, backups, and automatic rollback on failure; keep an old→new mapping until stable.
+  - Production rollout: execute migration with logging, backups, synthetic-draft summary CSVs, and automatic rollback on failure; keep an old→new mapping until stable.
 
 ## Phase 4 – Cohort Simplification
-- Remove reuse-specific logic from `cohort_membership`; it will simply enumerate task signatures per cohort.
-- Ensure Dagster's partition skipping handles reruns; additional reuse code becomes unnecessary once IDs are deterministic.
+- `cohort_membership` now always computes deterministic IDs directly and seeds metadata for any missing generations; reuse counters and signature lookups have been removed.
+- Tests exercise curated and cartesian flows using deterministic IDs only; evaluation fill-up relies on the same deterministic helpers.
+- Dagster's partition skipping handles reruns via deterministic IDs; no bespoke reuse logic remains.
 
 ## Phase 5 – Documentation & Guardrails
 - Update architecture docs with the deterministic ID contract, collision handling policy, and migration procedure.

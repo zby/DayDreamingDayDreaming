@@ -1,12 +1,12 @@
 import json
-from types import SimpleNamespace
-from daydreaming_dagster.models.content_combination import ContentCombination
 
 import pandas as pd
 from dagster import build_asset_context
 
+from daydreaming_dagster.models.content_combination import ContentCombination
 
-def _stub_tables(monkeypatch, m):
+
+def _stub_tables(monkeypatch, module):
     draft_templates_df = pd.DataFrame([
         {"template_id": "draft-A", "active": True},
         {"template_id": "draft-old", "active": False},
@@ -24,7 +24,8 @@ def _stub_tables(monkeypatch, m):
             {"id": "eval-model-1", "for_generation": False, "for_evaluation": True},
         ]
     )
-    def _read_templates(_root, kind, filter_active=True):
+
+    def _read_templates(_root, kind: str, filter_active: bool = True):
         if kind == "draft":
             return draft_templates_df
         if kind == "essay":
@@ -32,26 +33,27 @@ def _stub_tables(monkeypatch, m):
         if kind == "evaluation":
             return evaluation_templates_df
         return pd.DataFrame([])
-    monkeypatch.setattr(m, "read_templates", _read_templates)
-    monkeypatch.setattr(m, "read_llm_models", lambda _root: models_df)
+
+    monkeypatch.setattr(module, "read_templates", _read_templates)
+    monkeypatch.setattr(module, "read_llm_models", lambda _root: models_df)
 
 
 def test_cohort_id_deterministic_and_manifest_written(tmp_path, monkeypatch):
-    import daydreaming_dagster.assets.group_cohorts as m
+    import daydreaming_dagster.assets.group_cohorts as module
 
-    _stub_tables(monkeypatch, m)
+    _stub_tables(monkeypatch, module)
 
-    ctx = build_asset_context(resources={"data_root": str(tmp_path)}, asset_config={})
+    context = build_asset_context(resources={"data_root": str(tmp_path)}, asset_config={})
     combos = [
         ContentCombination(contents=[{"name": "a", "content": "x"}], combo_id="c1", concept_ids=["a"]),
         ContentCombination(contents=[{"name": "b", "content": "y"}], combo_id="c2", concept_ids=["b"]),
     ]
 
-    cid1 = m.cohort_id(ctx, content_combinations=combos)
-    cid2 = m.cohort_id(ctx, content_combinations=combos)
+    cid1 = module.cohort_id(context, content_combinations=combos)
+    cid2 = module.cohort_id(context, content_combinations=combos)
 
     assert isinstance(cid1, str) and cid1.startswith("cohort-")
-    assert cid1 == cid2  # deterministic for same manifest
+    assert cid1 == cid2
 
     manifest_path = tmp_path / "cohorts" / cid1 / "manifest.json"
     assert manifest_path.exists()
@@ -65,60 +67,22 @@ def test_cohort_id_deterministic_and_manifest_written(tmp_path, monkeypatch):
 
 
 def test_cohort_id_override_precedence_config_over_env(tmp_path, monkeypatch):
-    import daydreaming_dagster.assets.group_cohorts as m
+    import daydreaming_dagster.assets.group_cohorts as module
 
-    _stub_tables(monkeypatch, m)
+    _stub_tables(monkeypatch, module)
     monkeypatch.setenv("DD_COHORT", "ENV-COHORT-123")
 
-    ctx = build_asset_context(
+    context = build_asset_context(
         resources={"data_root": str(tmp_path)},
         asset_config={"override": "CONFIG-COHORT-999"},
     )
     combos = [ContentCombination(contents=[{"name": "x", "content": "p"}], combo_id="x", concept_ids=["x"])]
-    cid = m.cohort_id(ctx, content_combinations=combos)
-    assert cid == "CONFIG-COHORT-999"
-    assert (tmp_path / "cohorts" / cid / "manifest.json").exists()
 
-    # Without asset_config, env var should be used
-    ctx2 = build_asset_context(resources={"data_root": str(tmp_path)}, asset_config={})
-    cid_env = m.cohort_id(ctx2, content_combinations=combos)
+    cid_config = module.cohort_id(context, content_combinations=combos)
+    assert cid_config == "CONFIG-COHORT-999"
+    assert (tmp_path / "cohorts" / cid_config / "manifest.json").exists()
+
+    context_env = build_asset_context(resources={"data_root": str(tmp_path)}, asset_config={})
+    cid_env = module.cohort_id(context_env, content_combinations=combos)
     assert cid_env == "ENV-COHORT-123"
     assert (tmp_path / "cohorts" / cid_env / "manifest.json").exists()
-
-
-def test_draft_generation_tasks_includes_cohort_id(tmp_path, monkeypatch):
-    import daydreaming_dagster.assets.group_cohorts as m
-
-    # Stub draft templates and models to compute expected gen_id
-    draft_templates_df = pd.DataFrame([{"template_id": "draft-A", "active": True}])
-    models_df = pd.DataFrame([
-        {"id": "gen-model-1", "model": "provider/model-1", "for_generation": True},
-    ])
-    monkeypatch.setattr(m, "read_templates", lambda _root, kind, filter_active=True: draft_templates_df if kind == "draft" else pd.DataFrame([]))
-    monkeypatch.setattr(m, "read_llm_models", lambda _root: models_df)
-
-    # Provide cohort via env and pre-write membership.csv for projection
-    cohort = "COH-1"
-    monkeypatch.setenv("DD_COHORT", cohort)
-    cohort_dir = tmp_path / "cohorts" / cohort
-    cohort_dir.mkdir(parents=True, exist_ok=True)
-    # Compute expected gen_id
-    draft_task_id = "combo-1__draft-A__gen-model-1"
-    expected_gen_id = m.reserve_gen_id("draft", draft_task_id, run_id=cohort)
-    mdraft = pd.DataFrame([
-        {
-            "stage": "draft",
-            "gen_id": expected_gen_id,
-        }
-    ])
-    (cohort_dir / "membership.csv").write_text(mdraft.to_csv(index=False), encoding="utf-8")
-
-    ctx = build_asset_context(resources={"data_root": str(tmp_path)}, asset_config={})
-    combos = [ContentCombination(contents=[{"name": "a", "content": "x"}], combo_id="combo-1", concept_ids=["a"])]
-    # Validate via membership (task projections removed)
-    mpath = cohort_dir / "membership.csv"
-    assert mpath.exists()
-    df = pd.read_csv(mpath)
-    drafts = df[df["stage"] == "draft"]
-    assert not drafts.empty
-    assert expected_gen_id in drafts["gen_id"].astype(str).tolist()
