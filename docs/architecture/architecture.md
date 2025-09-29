@@ -144,6 +144,25 @@ LLM generation/evaluation assets remain manual to avoid surprise API usage/costs
 - **Combinatorial Generation**: Efficient k-sized combination generation
 - **Membership Hierarchies**: Structured parent links (draft → essay → evaluation)
 - **CSV Output**: Human-readable `membership.csv` for debugging
+- **Deterministic IDs**: Draft/essay/evaluation `gen_id`s are derived from task signatures so reruns reuse the same identifiers
+
+### Deterministic Generation IDs & Guardrails
+
+We encode every generation ID from stage-specific signatures and a 1-based replicate index:
+
+| Stage       | Signature Fields | ID Prefix |
+|-------------|------------------|-----------|
+| Draft       | `(combo_id, draft_template_id, llm_model_id, replicate)` | `d_` |
+| Essay       | `(draft_gen_id, essay_template_id, replicate)`            | `e_` |
+| Evaluation  | `(essay_gen_id, evaluation_template_id, llm_model_id, replicate)` | `v_` |
+
+Replicate counts are sourced from `data/1_raw/replication_config.csv`; cohort membership enforces these values when building rows. Because IDs are fully deterministic, the pipeline no longer keeps “reuse” counters or legacy fallbacks—re-running a cohort with the same manifest simply reuses the existing identifiers and Dagster reports `SKIPPED` partitions.
+
+We keep two maintenance scripts alongside the migration tooling:
+- `scripts/migrate_replicate_indexes.py` – normalises replicate fields across `metadata.json`, `raw_metadata.json`, and `parsed_metadata.json` so signatures are well-formed before a migration.
+- `scripts/migrations/remove_model_id_fields.py` – scrubs legacy top-level `model_id` keys now that every asset reads only `llm_model_id`.
+
+Production migrations run via `scripts/migrations/run_deterministic_id_migrations.sh`, which sequences replicate normalisation, deterministic ID dry-run, synthetic draft backfill for copy-mode essays, and the final rename/metadata rewrite. After the one-time cleanup, the cohort assets operate purely on deterministic IDs without additional guardrails.
 
 **Search Strategy**: The experiment currently uses a **focused search strategy** that tests only k_max-sized concept combinations (e.g., if k_max=4, only 4-concept combinations are tested). This approach is based on the insight that richer contextual combinations are more likely to elicit the complex DayDreaming concept from LLMs.
 

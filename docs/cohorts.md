@@ -63,6 +63,7 @@ Implementation notes
 - If a subset materialization runs without `cohort_id`, assets still resolve membership via the latest cohort files unless `DD_COHORT` pins an explicit ID.
 - The deterministic ID changes when any manifest component changes (combos/templates/models, or a pipeline version constant for material changes).
 - Generation/evaluation assets consult membership.csv directly and keep narrow CSV fallbacks for back‑compat only.
+- Metadata now relies solely on `llm_model_id`; the legacy `model_id` field was removed via `scripts/migrations/remove_model_id_fields.py`.
 
 Operational flow
 - Set actives in `data/1_raw/*.csv` and ExperimentConfig (k_max, level).
