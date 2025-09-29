@@ -70,6 +70,9 @@ def test_cohort_membership_curated_and_projection(tmp_path: Path, monkeypatch):
     out_path = data_root / "cohorts" / cid / "membership.csv"
     assert out_path.exists()
 
+    # DataFrame is slim (stage/gen only)
+    assert list(mdf.columns) == ["stage", "gen_id"]
+
     # Expect one draft, one essay, >=1 evaluation
     assert (mdf["stage"] == "draft").sum() == 1
     assert (mdf["stage"] == "essay").sum() == 1
@@ -77,8 +80,9 @@ def test_cohort_membership_curated_and_projection(tmp_path: Path, monkeypatch):
 
     # Parent integrity in memory
     draft_id = mdf[mdf["stage"] == "draft"]["gen_id"].iloc[0]
-    essay_row = mdf[mdf["stage"] == "essay"].iloc[0]
-    assert essay_row["parent_gen_id"] == draft_id
+    essay_id = mdf[mdf["stage"] == "essay"]["gen_id"].iloc[0]
+    essay_meta = json.loads((data_root / "gens" / "essay" / essay_id / "metadata.json").read_text(encoding="utf-8"))
+    assert essay_meta["parent_gen_id"] == draft_id
 
     # Projection layer removed; verify membership rows directly
     drafts = mdf[mdf["stage"] == "draft"]
@@ -175,17 +179,19 @@ def test_evaluation_combo_id_matches_parent_essay(tmp_path: Path):
     cid = "cohort-combo-prop"
     mdf = cohort_membership(ctx, cid)
 
-    # Build mapping essay gen_id -> combo_id from essay rows
+    # Build mapping essay gen_id -> combo_id from metadata
     essays = mdf[mdf["stage"] == "essay"]["gen_id"].astype(str).tolist()
-    essay_combo = {
-        row["gen_id"]: row["combo_id"]
-        for _, row in mdf[mdf["stage"] == "essay"]["gen_id combo_id".split()].astype(str).iterrows()
-    }
+    essay_combo: dict[str, str] = {}
+    for essay_id in essays:
+        meta = json.loads((data_root / "gens" / "essay" / essay_id / "metadata.json").read_text(encoding="utf-8"))
+        essay_combo[essay_id] = meta.get("combo_id")
+
     # For each evaluation row, ensure its combo_id equals its parent essay's combo_id
-    for _, er in mdf[mdf["stage"] == "evaluation"].iterrows():
-        parent = str(er["parent_gen_id"])
+    for eval_id in mdf[mdf["stage"] == "evaluation"]["gen_id"].astype(str):
+        meta = json.loads((data_root / "gens" / "evaluation" / eval_id / "metadata.json").read_text(encoding="utf-8"))
+        parent = str(meta.get("parent_gen_id"))
         assert parent in essays
-        assert str(er["combo_id"]) == essay_combo[parent]
+        assert meta.get("combo_id") == essay_combo[parent]
 
 
 def test_cohort_membership_evaluation_only_mode(tmp_path: Path):
@@ -245,8 +251,12 @@ def test_cohort_membership_evaluation_only_mode(tmp_path: Path):
     assert (mdf["stage"] == "essay").sum() == 0
     eval_rows = mdf[mdf["stage"] == "evaluation"]
     assert len(eval_rows) == 8  # 2 templates * 2 models * 2 replicates
-    assert set(eval_rows["parent_gen_id"].astype(str)) == {essay_src}
-    assert set(eval_rows["combo_id"].astype(str)) == {"combo-Z"}
+    meta_records = [
+        json.loads((data_root / "gens" / "evaluation" / gid / "metadata.json").read_text(encoding="utf-8"))
+        for gid in eval_rows["gen_id"].astype(str)
+    ]
+    assert {m.get("parent_gen_id") for m in meta_records} == {essay_src}
+    assert {m.get("combo_id") for m in meta_records} == {"combo-Z"}
 
 
 def test_cohort_membership_evaluation_only_fill_up(tmp_path: Path):
@@ -313,9 +323,10 @@ def test_cohort_membership_evaluation_only_fill_up(tmp_path: Path):
     eval_rows = mdf[mdf["stage"] == "evaluation"]
     # Expect only one new evaluation row to top up to 2 replicates
     assert len(eval_rows) == 1
-    assert set(eval_rows["parent_gen_id"].astype(str)) == {essay_src}
-    assert set(eval_rows["combo_id"].astype(str)) == {"combo-fill"}
-    assert set(eval_rows["replicate"]) == {2}
+    meta = json.loads((data_root / "gens" / "evaluation" / eval_rows["gen_id"].iloc[0] / "metadata.json").read_text(encoding="utf-8"))
+    assert meta.get("parent_gen_id") == essay_src
+    assert meta.get("combo_id") == "combo-fill"
+    assert meta.get("replicate") == 2
 
 
 def test_cohort_membership_evaluation_only_parent_combo_fallback(tmp_path: Path):
@@ -368,7 +379,11 @@ def test_cohort_membership_evaluation_only_parent_combo_fallback(tmp_path: Path)
 
     eval_rows = mdf[mdf["stage"] == "evaluation"]
     assert not eval_rows.empty
-    assert set(eval_rows["combo_id"].astype(str)) == {"combo-parent"}
+    combos = {
+        json.loads((data_root / "gens" / "evaluation" / gid / "metadata.json").read_text(encoding="utf-8")).get("combo_id")
+        for gid in eval_rows["gen_id"].astype(str)
+    }
+    assert combos == {"combo-parent"}
 
 
 def test_evaluation_only_requires_essay_ids(tmp_path: Path):

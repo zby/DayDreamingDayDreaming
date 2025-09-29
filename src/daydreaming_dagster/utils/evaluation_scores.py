@@ -52,8 +52,7 @@ def aggregate_evaluation_scores_for_ids(data_root: Path, gen_ids: Iterable[str])
         md = eval_doc.get("metadata") or {}
         parent_essay_id = str(md.get("parent_gen_id") or "")
         eval_template = md.get("template_id")
-        # Prefer canonical field name used by new pipeline; fall back to legacy key
-        eval_model = md.get("llm_model_id") or md.get("model_id")
+        eval_model = md.get("llm_model_id")
         cohort_id = md.get("cohort_id")
         eval_parsed = eval_doc.get("parsed_text")
         eval_parsed_path = paths.parsed_path("evaluation", gid).resolve()
@@ -69,32 +68,17 @@ def aggregate_evaluation_scores_for_ids(data_root: Path, gen_ids: Iterable[str])
         else:
             error = "missing parsed.txt"
 
-        combo_meta = md.get("combo_id")
-        combo_id = str(combo_meta).strip() if combo_meta is not None else ""
-        draft_template_meta = md.get("draft_template")
-        draft_template = (
-            str(draft_template_meta).strip() if draft_template_meta is not None else ""
-        )
-        generation_template_meta = md.get("essay_template_id") or md.get("generation_template")
-        generation_template = (
-            str(generation_template_meta).strip()
-            if generation_template_meta is not None
-            else ""
-        )
+        combo_id = ""
+        draft_template = str(md.get("draft_template") or "").strip()
+        generation_template = str(md.get("essay_template_id") or md.get("generation_template") or "").strip()
         generation_model = ""
         parent_draft_id = ""
         if parent_essay_id:
             try:
                 emd = load_generation(gens_root, "essay", parent_essay_id).get("metadata") or {}
                 generation_template = str(emd.get("template_id") or emd.get("essay_template") or "")
-                generation_model = str(
-                    emd.get("llm_model_id") or emd.get("model_id") or ""
-                )
+                generation_model = str(emd.get("llm_model_id") or "")
                 parent_draft_id = str(emd.get("parent_gen_id") or "")
-                if not combo_id:
-                    combo_val = emd.get("combo_id")
-                    if combo_val is not None:
-                        combo_id = str(combo_val).strip()
                 if not draft_template:
                     draft_val = emd.get("draft_template")
                     if draft_val is not None:
@@ -108,17 +92,11 @@ def aggregate_evaluation_scores_for_ids(data_root: Path, gen_ids: Iterable[str])
                 combo_id = str(dmd.get("combo_id") or "")
                 draft_template = str(dmd.get("template_id") or dmd.get("draft_template") or "")
                 if not generation_model:
-                    generation_model = str(
-                        dmd.get("llm_model_id") or dmd.get("model_id") or ""
-                    )
+                    generation_model = str(dmd.get("llm_model_id") or "")
             except Exception:
                 pass
         elif not draft_template:
             draft_template = str(md.get("draft_template") or "")
-        if not combo_id:
-            combo_val = md.get("combo_id")
-            if combo_val is not None:
-                combo_id = str(combo_val).strip()
 
         if not draft_template:
             draft_template_meta = md.get("draft_template")

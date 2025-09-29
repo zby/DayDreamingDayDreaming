@@ -269,8 +269,9 @@ def cohort_membership(
     selected_essays = selected_cfg.essay_ids
     # Cohort membership depends on model_id only (provider names omitted).
 
-    # Normalized row schema across all stages:
+    # Normalized row schema (internal while building cohort):
     #   stage, gen_id, cohort_id, parent_gen_id, combo_id, template_id, llm_model_id, replicate (int, optional; default 1)
+    # The persisted membership.csv is slimmed down to just stage/gen_id for each cohort.
     rows: List[Dict] = []
 
     template_modes = {
@@ -312,31 +313,27 @@ def cohort_membership(
 
             essay_gen = load_generation(data_root / "gens", "essay", essay_src_id)
             essay_meta = essay_gen.get("metadata") or {}
-            combo_id = str(essay_meta.get("combo_id") or "").strip()
             draft_parent_src = str(essay_meta.get("parent_gen_id") or "").strip()
-            if not combo_id:
-                if not draft_parent_src:
-                    raise ValueError(
-                        f"Essay '{essay_src_id}' is missing combo_id metadata and parent_gen_id; cannot derive evaluation tasks."
-                    )
-                if draft_parent_src not in draft_combo_cache:
-                    draft_meta_path = data_root / "gens" / "draft" / draft_parent_src / "metadata.json"
-                    if not draft_meta_path.exists():
-                        raise ValueError(
-                            f"Draft parent '{draft_parent_src}' metadata not found for essay '{essay_src_id}'."
-                        )
-                    draft_meta = load_generation(data_root / "gens", "draft", draft_parent_src).get("metadata") or {}
-                    draft_combo = str(draft_meta.get("combo_id") or "").strip()
-                    if not draft_combo:
-                        raise ValueError(
-                            f"Draft '{draft_parent_src}' is missing combo_id metadata; required for essay '{essay_src_id}'."
-                        )
-                    draft_combo_cache[draft_parent_src] = draft_combo
-                combo_id = draft_combo_cache[draft_parent_src]
-            if not combo_id:
+            if not draft_parent_src:
                 raise ValueError(
-                    f"Essay '{essay_src_id}' is missing combo_id metadata; cannot derive evaluation tasks."
+                    f"Essay '{essay_src_id}' is missing parent_gen_id; cannot derive evaluation tasks."
                 )
+
+            if draft_parent_src not in draft_combo_cache:
+                draft_meta_path = data_root / "gens" / "draft" / draft_parent_src / "metadata.json"
+                if not draft_meta_path.exists():
+                    raise ValueError(
+                        f"Draft parent '{draft_parent_src}' metadata not found for essay '{essay_src_id}'."
+                    )
+                draft_meta = load_generation(data_root / "gens", "draft", draft_parent_src).get("metadata") or {}
+                draft_combo = str(draft_meta.get("combo_id") or "").strip()
+                if not draft_combo:
+                    raise ValueError(
+                        f"Draft '{draft_parent_src}' is missing combo_id metadata; required for essay '{essay_src_id}'."
+                    )
+                draft_combo_cache[draft_parent_src] = draft_combo
+
+            combo_id = draft_combo_cache[draft_parent_src]
             evaluation_only_essays[essay_src_id] = {
                 "combo_id": combo_id,
                 "template_id": str(essay_meta.get("template_id") or essay_meta.get("essay_template") or "").strip(),
@@ -647,16 +644,21 @@ def cohort_membership(
     # Seed metadata.json for cohort generations before materializing downstream assets
     _seed_generation_metadata(data_root, cohort_id, df, template_modes)
 
-    # Write membership.csv
-    df.to_csv(out_path, index=False)
+    # Persist slim membership (stage + gen_id only)
+    slim_df = (
+        df[["stage", "gen_id"]].drop_duplicates(subset=["stage", "gen_id"])
+        if not df.empty
+        else pd.DataFrame(columns=["stage", "gen_id"])
+    )
+    slim_df.to_csv(out_path, index=False)
 
     context.add_output_metadata(
         {
-            "rows": MetadataValue.int(len(df)),
-            "drafts": MetadataValue.int(int((df["stage"] == "draft").sum() if not df.empty else 0)),
-            "essays": MetadataValue.int(int((df["stage"] == "essay").sum() if not df.empty else 0)),
+            "rows": MetadataValue.int(len(slim_df)),
+            "drafts": MetadataValue.int(int((slim_df["stage"] == "draft").sum() if not slim_df.empty else 0)),
+            "essays": MetadataValue.int(int((slim_df["stage"] == "essay").sum() if not slim_df.empty else 0)),
             "evaluations": MetadataValue.int(
-                int((df["stage"] == "evaluation").sum() if not df.empty else 0)
+                int((slim_df["stage"] == "evaluation").sum() if not slim_df.empty else 0)
             ),
             "cohort_id": MetadataValue.text(str(cohort_id)),
             "membership_path": MetadataValue.path(str(out_path)),
@@ -667,7 +669,7 @@ def cohort_membership(
         }
     )
 
-    return df
+    return slim_df
 
 @asset_with_boundary(
     stage="cohort",

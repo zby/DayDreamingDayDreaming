@@ -4,8 +4,6 @@ from pathlib import Path
 
 import pytest
 
-from dagster import Failure
-
 from daydreaming_dagster.resources.membership_service import MembershipServiceResource
 from daydreaming_dagster.unified.stage_core import resolve_generator_mode
 
@@ -21,34 +19,32 @@ def _write_membership(tmp_path: Path, rows: list[str]):
     (root / "membership.csv").write_text("\n".join(rows), encoding="utf-8")
 
 
-def test_require_membership_row_success_and_missing(tmp_path: Path):
+def test_stage_gen_ids_basic(tmp_path: Path):
     _write_membership(
         tmp_path,
         [
-            "stage,gen_id,template_id,llm_model_id,parent_gen_id",
-            "draft,D1,t,m,",
+            "stage,gen_id",
+            "draft,D1",
+            "essay,E1",
+            "evaluation,V1",
         ],
     )
     svc = MembershipServiceResource()
-    row, cohort = svc.require_row(tmp_path, "draft", "D1")
-    assert row.get("template_id") == "t"
-    assert cohort == "C1"
-    with pytest.raises(Failure):
-        svc.require_row(tmp_path, "essay", "E404")
+    assert svc.stage_gen_ids(tmp_path, "draft") == ["D1"]
+    assert set(svc.stage_gen_ids(tmp_path, "evaluation")) == {"V1"}
 
 
-def test_require_membership_row_missing_required_columns(tmp_path: Path):
-    _write_membership(
-        tmp_path,
-        [
-            "stage,gen_id,template_id,llm_model_id,parent_gen_id",
-            "essay,E1,t,,D1",
-        ],
-    )
+def test_stage_gen_ids_filters_by_cohort(tmp_path: Path):
+    root1 = tmp_path / "cohorts" / "C1"
+    root1.mkdir(parents=True, exist_ok=True)
+    (root1 / "membership.csv").write_text("stage,gen_id\ndraft,D1\n", encoding="utf-8")
+    root2 = tmp_path / "cohorts" / "C2"
+    root2.mkdir(parents=True, exist_ok=True)
+    (root2 / "membership.csv").write_text("stage,gen_id\ndraft,D2\n", encoding="utf-8")
+
     svc = MembershipServiceResource()
-    with pytest.raises(Failure) as ei:
-        svc.require_row(tmp_path, "essay", "E1", require_columns=["llm_model_id"])  # empty
-    assert "missing_columns" in str(ei.value)
+    assert svc.stage_gen_ids(tmp_path, "draft") == ["D1", "D2"]
+    assert svc.stage_gen_ids(tmp_path, "draft", cohort_id="C1") == ["D1"]
 
 
 def test_resolve_essay_generator_mode_csv_and_override(tmp_path: Path):
