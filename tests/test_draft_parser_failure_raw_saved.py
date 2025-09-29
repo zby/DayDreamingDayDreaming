@@ -48,11 +48,6 @@ def _write_membership(dir_path: Path, *, gen_id: str, template_id: str, model_id
             {
                 "stage": "draft",
                 "gen_id": gen_id,
-                "cohort_id": "TEST",
-                "parent_gen_id": "",
-                "combo_id": "comboX",
-                "template_id": template_id,
-                "llm_model_id": model_id,
             }
         ],
         cohort="TEST",

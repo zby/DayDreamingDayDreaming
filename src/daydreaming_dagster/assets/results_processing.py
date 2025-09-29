@@ -46,7 +46,7 @@ def aggregated_scores(context, cohort_id: str) -> pd.DataFrame:
     - Reads data/gens/evaluation/<gen_id>/{parsed.txt,metadata.json}
     - Requires parsed.txt; when missing, emits a row with error="missing parsed.txt"
     - Emits enriched columns required downstream (combo_id, draft_template, generation_template,
-      generation_model, generation_response_path, evaluation_llm_model, cohort_id).
+      generation_model, generation_response_path, evaluation_llm_model, origin_cohort_id).
     This asset simply filters that cross-experiment aggregation down to the current cohort.
     """
     data_root = Paths.from_context(context).data_root

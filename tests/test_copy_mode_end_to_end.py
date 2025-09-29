@@ -5,8 +5,9 @@ from dagster import materialize, DagsterInstance
 from daydreaming_dagster.assets.group_essay import essay_prompt, essay_raw, essay_parsed
 from daydreaming_dagster.data_layer.gens_data_layer import GensDataLayer
 from daydreaming_dagster.resources.experiment_config import ExperimentConfig
-from daydreaming_dagster.resources.io_managers import InMemoryIOManager
 from daydreaming_dagster.resources.gens_prompt_io_manager import GensPromptIOManager
+from daydreaming_dagster.resources.io_managers import InMemoryIOManager
+from tests.helpers.membership import write_membership_csv
 
 
 class _StubLLM:
@@ -22,12 +23,13 @@ def test_copy_mode_essay_is_verbatim_draft(tmp_path: Path):
     cohort = "C-COPY"
     draft_id = "D100"
     essay_id = "E100"
-    (data_root / "cohorts" / cohort).mkdir(parents=True, exist_ok=True)
-    (data_root / "cohorts" / cohort / "membership.csv").write_text(
-        "stage,gen_id,cohort_id,parent_gen_id,combo_id,template_id,llm_model_id\n"
-        f"draft,{draft_id},{cohort},,,links-vX,gen-1\n"
-        f"essay,{essay_id},{cohort},{draft_id},combo-1,parsed-from-links-v1,gen-1\n",
-        encoding="utf-8",
+    write_membership_csv(
+        data_root,
+        [
+            {"stage": "draft", "gen_id": draft_id},
+            {"stage": "essay", "gen_id": essay_id},
+        ],
+        cohort=cohort,
     )
 
     # Seed draft parsed text in gens store

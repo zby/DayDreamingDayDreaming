@@ -213,7 +213,7 @@ def _seed_generation_metadata(
         metadata: Dict[str, object] = {
             "stage": stage,
             "gen_id": gen_id,
-            "cohort_id": str(cohort_id),
+            "origin_cohort_id": str(cohort_id),
             "mode": mode or "llm",
         }
         if template_id:
@@ -270,7 +270,7 @@ def cohort_membership(
     # Cohort membership depends on model_id only (provider names omitted).
 
     # Normalized row schema (internal while building cohort):
-    #   stage, gen_id, cohort_id, parent_gen_id, combo_id, template_id, llm_model_id, replicate (int, optional; default 1)
+    #   stage, gen_id, origin_cohort_id, parent_gen_id, combo_id, template_id, llm_model_id, replicate (int, optional; default 1)
     # The persisted membership.csv is slimmed down to just stage/gen_id for each cohort.
     rows: List[Dict] = []
 
@@ -386,7 +386,7 @@ def cohort_membership(
                 {
                     "stage": "draft",
                     "gen_id": draft_cohort_gen,
-                    "cohort_id": str(cohort_id),
+                    "origin_cohort_id": str(cohort_id),
                     "parent_gen_id": "",
                     "combo_id": combo_id,
                     "template_id": draft_tpl,
@@ -411,7 +411,7 @@ def cohort_membership(
                     {
                         "stage": "essay",
                         "gen_id": essay_cohort_gen,
-                        "cohort_id": str(cohort_id),
+                        "origin_cohort_id": str(cohort_id),
                         "parent_gen_id": draft_cohort_gen,
                         "combo_id": combo_id,
                         "template_id": essay_tpl,
@@ -448,13 +448,13 @@ def cohort_membership(
                         # Preserve prior unsalted ids for first replicate
                         salt_d = None if dr == 1 else f"rep{dr}"
                         draft_cohort_gen = reserve_gen_id("draft", draft_task_id, run_id=cohort_id, salt=salt_d)
-                        rows.append(
-                            {
-                                "stage": "draft",
-                                "gen_id": draft_cohort_gen,
-                                "cohort_id": str(cohort_id),
-                                "parent_gen_id": "",
-                                "combo_id": combo_id,
+                rows.append(
+                    {
+                        "stage": "draft",
+                        "gen_id": draft_cohort_gen,
+                        "origin_cohort_id": str(cohort_id),
+                        "parent_gen_id": "",
+                        "combo_id": combo_id,
                                 "template_id": draft_tpl,
                                 "llm_model_id": mid,
                                 "replicate": int(dr),
@@ -486,7 +486,7 @@ def cohort_membership(
                         {
                             "stage": "essay",
                             "gen_id": essay_cohort_gen,
-                            "cohort_id": str(cohort_id),
+                            "origin_cohort_id": str(cohort_id),
                             "parent_gen_id": draft_cohort_gen,
                             "combo_id": combo_id,
                             "template_id": essay_tpl,
@@ -573,7 +573,7 @@ def cohort_membership(
                             {
                                 "stage": "evaluation",
                                 "gen_id": eval_gen_id,
-                                "cohort_id": str(cohort_id),
+                                "origin_cohort_id": str(cohort_id),
                                 "parent_gen_id": essay_gen_id,
                                 "combo_id": combo_id or "",
                                 "template_id": tpl,
@@ -588,7 +588,7 @@ def cohort_membership(
                             "llm_model_id": mid,
                             "parent_gen_id": essay_gen_id,
                             "combo_id": combo_id or "",
-                            "cohort_id": str(cohort_id),
+                            "origin_cohort_id": str(cohort_id),
                             "mode": "llm",
                             "replicate": int(replicate_index),
                         }
@@ -660,7 +660,7 @@ def cohort_membership(
             "evaluations": MetadataValue.int(
                 int((slim_df["stage"] == "evaluation").sum() if not slim_df.empty else 0)
             ),
-            "cohort_id": MetadataValue.text(str(cohort_id)),
+            "origin_cohort_id": MetadataValue.text(str(cohort_id)),
             "membership_path": MetadataValue.path(str(out_path)),
             "mode": MetadataValue.text(selected_cfg.mode),
             "evaluation_fill_up": MetadataValue.bool(selected_cfg.mode == "evaluation-only" and selected_cfg.fill_up),
@@ -758,7 +758,7 @@ def cohort_id(context, content_combinations: list[ContentCombination]) -> str:
     cid = compute_cohort_id("cohort", manifest, explicit=(override or env_override))
     write_manifest(str(data_root), cid, manifest)
     context.add_output_metadata({
-        "cohort_id": MetadataValue.text(cid),
+        "origin_cohort_id": MetadataValue.text(cid),
         "manifest_path": MetadataValue.path(str((data_root / "cohorts" / cid / "manifest.json").resolve())),
     })
     return cid

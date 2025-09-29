@@ -281,7 +281,7 @@ def parse_all(
                 "generation_template",
                 "generation_model",
                 "generation_response_path",
-                "cohort_id",
+                "origin_cohort_id",
                 "input_mode",
                 "copied_from",
             ]
@@ -378,7 +378,7 @@ def parse_all(
                     "generation_model": gen_model,
                     "stage": stage,
                     "generation_response_path": gen_path,
-                    "cohort_id": meta.get("cohort_id") if isinstance(meta, dict) else None,
+                    "origin_cohort_id": meta.get("origin_cohort_id") if isinstance(meta, dict) else None,
                     "input_mode": input_mode,
                     "copied_from": copied_from,
                 })
@@ -474,7 +474,7 @@ def parse_all(
                 "generation_model": gen_model,
                 "stage": stage,
                 "generation_response_path": gen_path,
-                "cohort_id": meta.get("cohort_id") if isinstance(meta, dict) else None,
+                "origin_cohort_id": meta.get("origin_cohort_id") if isinstance(meta, dict) else None,
                 "input_mode": raw_meta.get("input_mode"),
                 "copied_from": raw_meta.get("copied_from"),
             })
@@ -501,7 +501,7 @@ def parse_all(
         "generation_model",
         "stage",
         "generation_response_path",
-        "cohort_id",
+        "origin_cohort_id",
         "input_mode",
         "copied_from",
     ]
@@ -532,7 +532,7 @@ def parse_all(
         "generation_model",
         "stage",
         "generation_response_path",
-        "cohort_id",
+        "origin_cohort_id",
         "input_mode",
         "copied_from",
     ]

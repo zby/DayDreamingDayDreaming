@@ -43,7 +43,7 @@ def aggregate_evaluation_scores_for_ids(data_root: Path, gen_ids: Iterable[str])
                     "draft_template": None,
                     "generation_template": None,
                     "generation_model": None,
-                    "cohort_id": None,
+                    "origin_cohort_id": None,
                     "generation_response_path": "",
                 }
             )
@@ -53,7 +53,7 @@ def aggregate_evaluation_scores_for_ids(data_root: Path, gen_ids: Iterable[str])
         parent_essay_id = str(md.get("parent_gen_id") or "")
         eval_template = md.get("template_id")
         eval_model = md.get("llm_model_id")
-        cohort_id = md.get("cohort_id")
+        origin_cohort_id = md.get("origin_cohort_id")
         eval_parsed = eval_doc.get("parsed_text")
         eval_parsed_path = paths.parsed_path("evaluation", gid).resolve()
 
@@ -108,8 +108,8 @@ def aggregate_evaluation_scores_for_ids(data_root: Path, gen_ids: Iterable[str])
                 generation_template = str(generation_template_meta).strip()
 
         cohort_value = None
-        if cohort_id is not None and pd.notna(cohort_id):
-            cohort_value = str(cohort_id)
+        if origin_cohort_id is not None and pd.notna(origin_cohort_id):
+            cohort_value = str(origin_cohort_id)
 
         input_mode = None
         copied_from = None
@@ -136,7 +136,7 @@ def aggregate_evaluation_scores_for_ids(data_root: Path, gen_ids: Iterable[str])
                 "draft_template": draft_template,
                 "generation_template": generation_template,
                 "generation_model": generation_model,
-                "cohort_id": cohort_value,
+                "origin_cohort_id": cohort_value,
                 "generation_response_path": str(paths.parsed_path("essay", parent_essay_id).resolve())
                 if parent_essay_id
                 else "",
@@ -161,7 +161,7 @@ def aggregate_evaluation_scores_for_ids(data_root: Path, gen_ids: Iterable[str])
         "generation_template",
         "generation_model",
         "generation_response_path",
-        "cohort_id",
+        "origin_cohort_id",
         "input_mode",
         "copied_from",
     ]

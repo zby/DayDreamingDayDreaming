@@ -123,7 +123,7 @@ class GenerationMetadata:
     parent_gen_id: str | None
     mode: str  # "llm" or "copy"
     combo_id: str | None
-    cohort_id: str | None
+    origin_cohort_id: str | None
 
 
 def resolve_generation_metadata(
@@ -141,14 +141,14 @@ def resolve_generation_metadata(
         raise ValueError(f"parent_gen_id required for {stage}/{gen_id} (mode={mode})")
 
     combo_val = meta.get("combo_id")
-    cohort_val = meta.get("cohort_id")
+    cohort_val = meta.get("origin_cohort_id")
     return GenerationMetadata(
         stage=stage,
         template_id=template_id,
         parent_gen_id=parent_gen_raw,
         mode=mode,
         combo_id=str(combo_val).strip() if combo_val is not None else None,
-        cohort_id=str(cohort_val).strip() if cohort_val is not None else None,
+        origin_cohort_id=str(cohort_val).strip() if cohort_val is not None else None,
     )
 
 

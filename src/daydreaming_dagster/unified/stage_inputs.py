@@ -45,8 +45,8 @@ def _stage_input_asset(
     }
     if metadata.combo_id:
         info["combo_id"] = metadata.combo_id
-    if metadata.cohort_id:
-        info["cohort_id"] = metadata.cohort_id
+    if metadata.origin_cohort_id:
+        info["origin_cohort_id"] = metadata.origin_cohort_id
     if metadata.parent_gen_id:
         info["parent_gen_id"] = metadata.parent_gen_id
 

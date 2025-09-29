@@ -662,18 +662,28 @@ class TestPipelineIntegration:
             assert membership_path.exists(), "membership.csv should be written"
 
             membership_df = pd.read_csv(membership_path)
-            draft_templates = set(
-                membership_df[membership_df["stage"] == "draft"]["template_id"].astype(str).tolist()
-            )
-            essay_templates = set(
-                membership_df[membership_df["stage"] == "essay"]["template_id"].astype(str).tolist()
-            )
+
+            def _templates_for_stage(stage: str) -> set[str]:
+                templates: set[str] = set()
+                for gid in membership_df[membership_df["stage"] == stage]["gen_id"].astype(str):
+                    meta_path = temp_data_dir / "gens" / stage / gid / "metadata.json"
+                    if not meta_path.exists():
+                        continue
+                    meta = json.loads(meta_path.read_text(encoding="utf-8"))
+                    template = meta.get("template_id") or meta.get("draft_template") or meta.get("essay_template")
+                    if isinstance(template, str) and template.strip():
+                        templates.add(template.strip())
+                return templates
+
+            draft_templates = _templates_for_stage("draft")
+            essay_templates = _templates_for_stage("essay")
+            all_templates = draft_templates | essay_templates
 
             assert draft_templates == {"draft-active-1", "draft-active-2"}
             assert essay_templates == {"essay-active-1"}
-            assert not membership_df["template_id"].isin(
-                ["draft-inactive-1", "essay-inactive-1"]
-            ).any(), "Inactive templates should not appear in membership"
+            assert not (all_templates & {"draft-inactive-1", "essay-inactive-1"}), (
+                "Inactive templates should not appear in cohort membership scope"
+            )
 
     # Note: Error scenarios (like insufficient drafts/links) are covered by unit tests
     # in daydreaming_dagster/assets/test_two_phase_generation.py (see TestLinksValidation)

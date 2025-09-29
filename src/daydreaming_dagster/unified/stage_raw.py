@@ -44,8 +44,8 @@ def _stage_raw_asset(
     }
     if metadata.parent_gen_id:
         raw_metadata["parent_gen_id"] = metadata.parent_gen_id
-    if metadata.cohort_id:
-        raw_metadata["cohort_id"] = metadata.cohort_id
+    if metadata.origin_cohort_id:
+        raw_metadata["origin_cohort_id"] = metadata.origin_cohort_id
     if metadata.combo_id and stage == "draft":
         raw_metadata["combo_id"] = metadata.combo_id
     if run_id:

@@ -75,7 +75,7 @@ def _stage_parsed_asset(
         "error": None,
     }
 
-    for key in ("input_mode", "copied_from", "cohort_id", "replicate", "combo_id"):
+    for key in ("input_mode", "copied_from", "origin_cohort_id", "replicate", "combo_id"):
         if key in raw_metadata:
             parsed_metadata[key] = raw_metadata[key]
     if metadata.parent_gen_id:

@@ -33,7 +33,7 @@ def test_aggregate_scores_prefers_llm_ids_and_omits_stage(tmp_path):
                 "template_id": "eval-template",
                 "llm_model_id": "eval-llm",
                 "parent_gen_id": essay_id,
-                "cohort_id": "cohort-42",
+                "origin_cohort_id": "cohort-42",
             }
         ),
         encoding="utf-8",
@@ -71,7 +71,7 @@ def test_aggregate_scores_prefers_llm_ids_and_omits_stage(tmp_path):
     assert row["generation_model"] == "essay-llm"
     assert row["combo_id"] == "combo-7"
     assert row["evaluation_llm_model"] == "eval-llm"
-    assert row["cohort_id"] == "cohort-42"
+    assert row["origin_cohort_id"] == "cohort-42"
     assert row["generation_response_path"] == str((essay_dir / "parsed.txt").resolve())
     assert row["input_mode"] == "copy"
     assert row["copied_from"].endswith("essay/essay-123/parsed.txt")

@@ -46,16 +46,16 @@ def parse_args() -> argparse.Namespace:
     return p.parse_args()
 
 
-def read_cohort_id(md_path: Path) -> str:
+def read_origin_cohort_id(md_path: Path) -> str:
     try:
         md = json.loads(md_path.read_text(encoding="utf-8"))
-        val = md.get("cohort_id")
+        val = md.get("origin_cohort_id")
         return str(val).strip() if val is not None else ""
     except Exception:
         return ""
 
 
-def collect_targets(data_root: Path, cohort_id: str, stages: List[str]) -> Dict[str, List[Path]]:
+def collect_targets(data_root: Path, origin_cohort_id: str, stages: List[str]) -> Dict[str, List[Path]]:
     gens_root = data_root / "gens"
     out: Dict[str, List[Path]] = {s: [] for s in stages}
     for stage in stages:
@@ -68,8 +68,8 @@ def collect_targets(data_root: Path, cohort_id: str, stages: List[str]) -> Dict[
             mdp = child / "metadata.json"
             if not mdp.exists():
                 continue
-            cid = read_cohort_id(mdp)
-            if cid == cohort_id:
+            cid = read_origin_cohort_id(mdp)
+            if cid == origin_cohort_id:
                 out[stage].append(child)
     return out
 
@@ -96,24 +96,23 @@ def purge(targets: Dict[str, List[Path]], *, execute: bool) -> Tuple[int, int]:
 def main() -> int:
     args = parse_args()
     data_root: Path = args.data_root
-    cohort_id: str = args.cohort_id
+    origin_cohort_id: str = args.cohort_id
     stages: List[str] = list(args.stages)
 
-    if not cohort_id:
+    if not origin_cohort_id:
         print("ERROR: --cohort-id is required", file=sys.stderr)
         return 3
 
-    targets = collect_targets(data_root, cohort_id, stages)
+    targets = collect_targets(data_root, origin_cohort_id, stages)
     total = sum(len(v) for v in targets.values())
     if total == 0:
-        print(f"No generations found for cohort_id='{cohort_id}' under {data_root}/gens")
+        print(f"No generations found for cohort_id='{origin_cohort_id}' under {data_root}/gens")
         return 2
 
     examined, deleted = purge(targets, execute=args.execute)
-    print(f"Summary: cohort='{cohort_id}' examined={examined} deleted={deleted} dry_run={not args.execute}")
+    print(f"Summary: cohort='{origin_cohort_id}' examined={examined} deleted={deleted} dry_run={not args.execute}")
     return 0
 
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

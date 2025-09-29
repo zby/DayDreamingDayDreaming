@@ -78,7 +78,7 @@ def test_stage_raw_llm_persists_expected_files(tmp_path: Path):
             "template_id": "draft-tpl",
             "mode": "llm",
             "llm_model_id": "model-x",
-            "cohort_id": "C1",
+            "origin_cohort_id": "C1",
             "combo_id": "combo-1",
             "replicate": 3,
         },
@@ -106,7 +106,7 @@ def test_stage_raw_llm_persists_expected_files(tmp_path: Path):
             "function": "draft_raw",
             "run_id": "RUN-123",
             "input_mode": "prompt",
-            "cohort_id": "C1",
+            "origin_cohort_id": "C1",
             "combo_id": "combo-1",
             "replicate": 3,
             "raw_path": str(raw_path),
@@ -141,7 +141,7 @@ def test_stage_raw_copy_marks_input_mode(tmp_path: Path):
             "template_id": "essay-tpl",
             "mode": "copy",
             "parent_gen_id": "D5",
-            "cohort_id": "C9",
+            "origin_cohort_id": "C9",
         },
     )
 
@@ -164,7 +164,7 @@ def test_stage_raw_copy_marks_input_mode(tmp_path: Path):
         {
             "mode": "copy",
             "input_mode": "copy",
-            "cohort_id": "C9",
+            "origin_cohort_id": "C9",
             "raw_path": str(raw_path),
             "raw_metadata_path": str(paths.raw_metadata_path("essay", "E1")),
         },

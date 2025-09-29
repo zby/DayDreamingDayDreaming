@@ -117,7 +117,7 @@ def test_resolve_metadata_success(layer: GensDataLayer) -> None:
             "mode": "copy",
             "parent_gen_id": "ESS1",
             "combo_id": "combo-3",
-            "cohort_id": "cohort-a",
+            "origin_cohort_id": "cohort-a",
         },
     )
 
@@ -127,4 +127,4 @@ def test_resolve_metadata_success(layer: GensDataLayer) -> None:
     assert meta.parent_gen_id == "ESS1"
     assert meta.mode == "copy"
     assert meta.combo_id == "combo-3"
-    assert meta.cohort_id == "cohort-a"
+    assert meta.origin_cohort_id == "cohort-a"

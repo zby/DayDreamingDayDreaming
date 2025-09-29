@@ -98,7 +98,7 @@ def _load_essay_cohorts(essay_ids: Set[str], data_root: Path) -> dict[str, str]:
         except Exception:
             cohorts[essay_id] = ""
             continue
-        cohorts[essay_id] = str(data.get("cohort_id") or "").strip()
+        cohorts[essay_id] = str(data.get("origin_cohort_id") or "").strip()
     return cohorts
 
 
@@ -220,7 +220,7 @@ def build_pivot(
         "draft_template": "first",
         "generation_template": "first",
         "generation_model": "first",
-        "cohort_id": "first",
+        "origin_cohort_id": "first",
     }
     available_meta = {col: agg for col, agg in meta_columns.items() if col in df_sorted.columns}
     meta_df = (
@@ -233,10 +233,9 @@ def build_pivot(
         meta_df.rename(columns={"parent_gen_id": "essay_gen_id"}, inplace=True)
         meta_df["essay_gen_id"] = meta_df["essay_gen_id"].astype(str).replace({"nan": ""})
         if essay_cohort_map:
-            meta_df["cohort_id"] = meta_df["essay_gen_id"].map(lambda x: essay_cohort_map.get(x, ""))
-        else:
-            if "cohort_id" not in meta_df.columns:
-                meta_df["cohort_id"] = ""
+            meta_df["origin_cohort_id"] = meta_df["essay_gen_id"].map(lambda x: essay_cohort_map.get(x, ""))
+        if "origin_cohort_id" not in meta_df.columns:
+            meta_df["origin_cohort_id"] = ""
     
     pivot = (
         df_sorted
@@ -263,7 +262,7 @@ def build_pivot(
             "draft_template",
             "generation_template",
             "generation_model",
-            "cohort_id",
+            "origin_cohort_id",
         ]
         if col in result.columns
     ]
