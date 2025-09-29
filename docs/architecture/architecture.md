@@ -201,7 +201,7 @@ The Unified Stage Runner (located in `src/daydreaming_dagster/unified/`) is a si
   - `llm`: render prompt, call model, write `prompt.txt` and `raw.txt`; write `parsed.txt` if a parser is configured.
   - `copy` (essay only): pass through the parent draft’s `parsed.txt` to the essay `parsed.txt` (no prompt/LLM).
 - Parsers:
-  - evaluation: required via `evaluation_templates.csv` `parser` column (e.g., `in_last_line`, `complex`) and resolved internally by the stage runner; assets do not pass a parser.
+  - evaluation: required via `evaluation_templates.csv` `parser` column (currently `in_last_line`) and resolved internally by the stage runner; assets do not pass a parser.
   - draft: optional; applied when present, otherwise identity.
   - essay: not used; we keep normalized raw as parsed unless using `copy`.
 - Inputs (conceptual): stage (`draft`|`essay`|`evaluation`), `gen_id`, `template_id`, small `values` dict for template variables, `llm_model_id` (for `llm`), optional `parser_name` (for direct calls only; assets pass `None`), optional pre‑rendered `prompt_text` (skips template render), optional `pass_through_from` for `copy`, and `parent_gen_id` for essay/evaluation.
@@ -222,7 +222,7 @@ The Unified Stage Runner (located in `src/daydreaming_dagster/unified/`) is a si
 **Processing Pipeline**:
 1. **Sequential File Processing**: Read evaluation response files one at a time to avoid memory issues
 2. **Multi-Format Score Extraction**: Automatically detect and parse various LLM response formats
-3. **Strategy Selection**: Parsing strategy is driven by `data/1_raw/evaluation_templates.csv` column `parser` (`in_last_line` or `complex`). The `parser` column is required per template.
+3. **Strategy Selection**: Parsing strategy is driven by `data/1_raw/evaluation_templates.csv` column `parser` (`in_last_line`). The `parser` column is required per template.
 4. **Metadata Enhancement**: Enrich with combo/template/model and parent links via gens-store metadata (and membership when available)
 5. **Aggregation**: Calculate summary statistics and perfect score analysis
 6. **CSV Output**: Structured results for further analysis

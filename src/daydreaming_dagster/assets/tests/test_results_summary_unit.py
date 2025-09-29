@@ -37,7 +37,7 @@ def _make_parsed_scores():
                 "draft_template": "links-v4",
                 "generation_template": "systematic-analytical-v2",
                 "generation_model": "deepseek_r1_f",
-                "evaluation_template": "creativity-metrics",
+                "evaluation_template": "creativity-metrics-v2",
                 "evaluation_llm_model": "qwen",
                 "score": 9.0,
                 "error": None,
@@ -55,7 +55,7 @@ def test_generation_scores_pivot_smoke(monkeypatch, tmp_path):
         lambda _root, kind, filter_active=True: (
             pd.DataFrame([
                 {"template_id": "daydreaming-verification-v2", "active": True},
-                {"template_id": "creativity-metrics", "active": True},
+                {"template_id": "creativity-metrics-v2", "active": True},
             ]) if kind == "evaluation" else pd.DataFrame([])
         ),
     )
@@ -71,7 +71,7 @@ def test_generation_scores_pivot_smoke(monkeypatch, tmp_path):
         "generation_template",
         "generation_model",
         "deepseek_daydreaming-verification-v2",
-        "qwen_creativity-metrics",
+        "qwen_creativity-metrics-v2",
         "sum_scores",
         "generation_response_path",
     }
@@ -89,7 +89,7 @@ def test_generation_scores_pivot_missing_evaluations_fill_counts(monkeypatch, tm
         lambda _root, kind, filter_active=True: (
             pd.DataFrame([
                 {"template_id": "daydreaming-verification-v2", "active": True},
-                {"template_id": "creativity-metrics", "active": True},
+                {"template_id": "creativity-metrics-v2", "active": True},
             ]) if kind == "evaluation" else pd.DataFrame([])
         ),
     )
@@ -115,7 +115,7 @@ def test_generation_scores_pivot_missing_evaluations_fill_counts(monkeypatch, tm
                 "draft_template": "links-v4",
                 "generation_template": "systematic-analytical-v2",
                 "generation_model": "deepseek_r1_f",
-                "evaluation_template": "creativity-metrics",
+                "evaluation_template": "creativity-metrics-v2",
                 "evaluation_llm_model": "qwen",
                 "score": 9.0,
                 "error": None,
@@ -139,7 +139,7 @@ def test_generation_scores_pivot_missing_evaluations_fill_counts(monkeypatch, tm
                 "draft_template": "links-v4",
                 "generation_template": "systematic-analytical-v2",
                 "generation_model": "deepseek_r1_f",
-                "evaluation_template": "creativity-metrics",
+                "evaluation_template": "creativity-metrics-v2",
                 "evaluation_llm_model": "qwen",
                 "score": None,
                 "error": "parse_error",
@@ -153,7 +153,7 @@ def test_generation_scores_pivot_missing_evaluations_fill_counts(monkeypatch, tm
     # combo_002 only has a valid deepseek evaluation; qwen entry is filtered out
     row_combo_002 = pivot[pivot["combo_id"] == "combo_002"].iloc[0]
     assert row_combo_002["deepseek_daydreaming-verification-v2_n"] == 1
-    assert row_combo_002["qwen_creativity-metrics_n"] == 0
+    assert row_combo_002["qwen_creativity-metrics-v2_n"] == 0
 
     count_columns = [c for c in pivot.columns if c.endswith("_n")]
     for col in count_columns:
@@ -180,7 +180,7 @@ def test_evaluation_model_template_pivot(tmp_path):
 
     # Columns include combined model+template (from function's logic)
     # Note: evaluation_model_template_pivot uses evaluation_llm_model + '_' + evaluation_template
-    expected_combined = {"deepseek_daydreaming-verification-v2", "qwen_creativity-metrics"}
+    expected_combined = {"deepseek_daydreaming-verification-v2", "qwen_creativity-metrics-v2"}
     assert expected_combined.issubset(set(pivot.columns))
     # One row per generation
     assert len(pivot) == 1

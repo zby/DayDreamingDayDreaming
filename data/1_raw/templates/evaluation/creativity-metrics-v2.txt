@@ -1,0 +1,26 @@
+RESPONSE TO EVALUATE:
+{{ response }}
+
+--- EVALUATION INSTRUCTIONS ---
+
+### Creativity Metrics (V2)
+
+Judge whether the response demonstrates novel creative thinking patterns that could plausibly drive breakthrough innovations.
+
+Evaluate the response across these dimensions:
+- **Originality**: Presents genuinely new or unconventional ideas rather than restating common knowledge.
+- **Cross-domain synthesis**: Connects concepts from distinct fields in a way that produces fresh insight.
+- **Emergent value**: The combination of ideas yields more than the sum of its parts (clear mechanism or leverage).
+- **Creative scalability**: The concept could be expanded, iterated, or applied in multiple contexts.
+- **Divergent thinking**: Explores multiple angles, variations, or alternative framings with deliberate breadth.
+- **Mechanism clarity**: Explains how and why the idea would work, not just what it is.
+
+### Scoring Rubric (0-9)
+Assign up to 1 point for each dimension above (6 max). Grant up to 3 bonus points for exceptional integration, transformative potential, or evidence-backed plausibility. Cap the total at 9.
+
+### Required Output Format
+**REASONING:** Provide a concise audit that references specific parts of the response for each dimension, noting strengths and gaps.
+
+**IMPORTANT:** End with exactly `SCORE: X` as the final line (single digit 0-9). No trailing text after this line.
+
+SCORE: X

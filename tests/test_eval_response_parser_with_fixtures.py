@@ -1,102 +1,71 @@
-"""Test evaluation response parser with fixture files."""
+"""Additional parser tests covering richer response shapes."""
+
+from __future__ import annotations
+
+import textwrap
 
 import pytest
-from pathlib import Path
+
 from daydreaming_dagster.utils.eval_response_parser import parse_llm_response
 
 pytestmark = [pytest.mark.unit]
 
-class TestEvalResponseParser:
-    """Test the evaluation response parser with known fixture files."""
-    
-    @pytest.fixture
-    def fixtures_dir(self):
-        """Path to evaluation response fixtures."""
-        return Path(__file__).parent / "fixtures" / "eval_responses"
-    
-    def test_known_fixture_scores(self, fixtures_dir):
-        """Test parser on known fixture files with expected scores."""
-        # Curated minimal set of fixtures that cover distinct patterns
-        expected_scores = {
-            "004.txt": 7.0,   # Total Score: 7/10
-            "035.txt": 5.0,   # SCORE: 5/10
-            "076.txt": 6.5,   # Total Score: 6.5/10 (decimal)
-            "022.txt": 2.0,   # Final Score -> 2/10 with newline formatting
-            "163.txt": 4.0,   # Final Score: 4/10
-        }
-        
-        for filename, expected_score in expected_scores.items():
-            fixture_path = fixtures_dir / filename
-            
-            # Ensure fixture file exists
-            assert fixture_path.exists(), f"Fixture file {filename} not found"
-            
-            # Read file content
-            with open(fixture_path, 'r', encoding='utf-8') as f:
-                response_text = f.read()
-            
-            # Parse the response
-            result = parse_llm_response(response_text, 'complex')
-            
-            # Verify the score matches expected value
-            assert result["score"] == expected_score, (
-                f"File {filename}: expected {expected_score}, got {result['score']}"
-            )
-            assert result["error"] is None, (
-                f"File {filename}: unexpected error: {result['error']}"
-            )
-    
-    def test_parser_handles_various_formats(self, fixtures_dir):
-        """Test that parser handles various score formatting patterns."""
-        test_cases = [
-            ("004.txt", "Total Score"),  # **Total Score: 7/10**
-            ("035.txt", "SCORE"),        # **SCORE: 5/10**
-            ("076.txt", "decimal"),      # **Total Score: 6.5/10**
-            ("022.txt", "no_colon"),     # ### **Final Score** \n **2/10**
-            ("163.txt", "final_score"),  # **Final Score**: \n **4/10**
-        ]
-        
-        for filename, format_type in test_cases:
-            fixture_path = fixtures_dir / filename
-            
-            with open(fixture_path, 'r', encoding='utf-8') as f:
-                response_text = f.read()
-            
-            # Should parse without errors
-            result = parse_llm_response(response_text, 'complex')
-            assert isinstance(result["score"], float), (
-                f"File {filename} ({format_type}): score should be float, got {type(result['score'])}"
-            )
-            assert 0 <= result["score"] <= 10, (
-                f"File {filename} ({format_type}): score should be 0-10, got {result['score']}"
-            )
-    
-    def test_parser_error_handling(self):
-        """Test parser error handling with invalid inputs."""
-        
-        # Empty response
-        with pytest.raises(ValueError, match="Empty or whitespace-only response"):
-            parse_llm_response("", 'complex')
-        
-        # Response with no score
-        with pytest.raises(ValueError, match="No SCORE field found in response"):
-            parse_llm_response("This is just some text without any score.", 'complex')
-        
-        # Score out of range should be caught during validation
-        # (This would need a crafted response, but our current parser validates range)
-    
-    def test_parser_returns_correct_structure(self, fixtures_dir):
-        """Test that parser returns expected dictionary structure."""
-        fixture_path = fixtures_dir / "004.txt"
-        
-        with open(fixture_path, 'r', encoding='utf-8') as f:
-            response_text = f.read()
-        
-        result = parse_llm_response(response_text, 'complex')
-        
-        # Check structure
-        assert isinstance(result, dict)
-        assert "score" in result
-        assert "error" in result
-        assert isinstance(result["score"], float)
-        assert result["error"] is None or isinstance(result["error"], str)
+
+SAMPLE_RESPONSES: dict[str, tuple[str, float]] = {
+    "creative": (
+        textwrap.dedent(
+            """
+            **REASONING:** The proposal introduces a tri-agent studio where a generator explores
+            cross-domain pairings while a critic grades novelty. A curator agent integrates the
+            best variants into a shared library, enabling future runs to start from higher baselines.
+
+            Highlights:
+            - Explicit generator/critic separation.
+            - Cross-domain synthesis between photonics, agriculture, and bio-sensing.
+            - Concrete mechanism for commercialisation pathways.
+
+            SCORE: 8
+            """
+        ).strip(),
+        8.0,
+    ),
+    "scientific": (
+        textwrap.dedent(
+            """
+            REASONING: The response frames a hypothesis, specifies intervention and control arms,
+            and outlines measurement cadence. It logs uncertainty about sensor drift and proposes
+            calibration runs to quantify noise before deployment.
+
+            SCORE: 6.5
+            """
+        ).strip(),
+        6.5,
+    ),
+    "iterative": (
+        textwrap.dedent(
+            """
+            ### Notes
+            - Loop tiers escalate successful ideas from sketch → prototype → pilot.
+            - Failures trigger a mutation policy and are archived for later meta-analysis.
+            - Resource scheduler automatically widens search when progress stalls for 3 cycles.
+
+            SCORE: 7
+            """
+        ).strip(),
+        7.0,
+    ),
+}
+
+
+class TestEvalResponseParserSamples:
+    @pytest.mark.parametrize("sample_id", SAMPLE_RESPONSES.keys())
+    def test_known_samples(self, sample_id: str):
+        text, expected = SAMPLE_RESPONSES[sample_id]
+        result = parse_llm_response(text, "in_last_line")
+        assert result["score"] == expected
+        assert result["error"] is None
+
+    def test_missing_score_line(self):
+        text = "REASONING: thorough audit without explicit score line"
+        with pytest.raises(ValueError, match="No score found"):
+            parse_llm_response(text, "in_last_line")

@@ -91,8 +91,7 @@ def _make_eval_wrapper(strategy: str) -> ParserFn:
     return _fn
 
 
-for _s in ("in_last_line", "complex"):
-    register_parser("evaluation", _s, _make_eval_wrapper(_s))
+register_parser("evaluation", "in_last_line", _make_eval_wrapper("in_last_line"))
 
 
 __all__ = [

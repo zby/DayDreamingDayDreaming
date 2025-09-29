@@ -1,0 +1,28 @@
+RESPONSE TO EVALUATE:
+{{ response }}
+
+--- EVALUATION INSTRUCTIONS ---
+
+### Scientific Rigor (V2)
+
+Determine whether the response exhibits disciplined scientific thinking and methodological care when advancing claims.
+
+Assess the response across these criteria:
+- **Structured methodology**: Lays out stepwise plans, controls, or protocols.
+- **Evidence grounding**: Cites data, observations, or logical derivations that support conclusions.
+- **Hypothesis craft**: States clear, testable predictions or measurable targets.
+- **Experiment design**: Describes how the idea could be validated or falsified, including instrumentation or sampling.
+- **Limitations awareness**: Acknowledges uncertainties, confounders, or failure modes.
+- **Reproducibility focus**: Enables independent verification through shared assumptions, metrics, or open procedures.
+- **Quantitative reasoning**: Uses numbers, models, or statistical thinking when appropriate.
+- **Causal clarity**: Explains mechanisms linking cause and effect rather than correlational hand-waving.
+
+### Scoring Rubric (0-9)
+Award 0-1 points for each criterion above (8 max). Grant up to 1 bonus point when the response demonstrates exceptional rigor or novel methodological insight. Cap the total at 9.
+
+### Required Output Format
+**REASONING:** Summarize which scientific elements are present, which are missing, and reference the relevant passages.
+
+**IMPORTANT:** End with exactly `SCORE: X` as the final line (single digit 0-9). No text after this line.
+
+SCORE: X

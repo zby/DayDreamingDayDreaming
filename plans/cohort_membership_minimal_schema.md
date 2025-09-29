@@ -38,7 +38,7 @@
 - [ ] Provide a compatibility loader that accepts both wide and slim CSVs until all historical cohorts are re-materialized.
 - [ ] Shrink `tests/helpers/membership.write_membership_csv` to the minimal column set and update integration/unit fixtures to source metadata through manifest-aware helpers.
 - [ ] Update `utils/membership_lookup` to hydrate metadata from the manifest (single CSV pass for scope only) once slim membership is the default.
-- [ ] Deprecate scripts that edited membership metadata directly (`scripts/backfill_draft_combo_ids.py`); replace with validation utilities.
+- [x] Deprecate scripts that edited membership metadata directly (former `scripts/backfill_draft_combo_ids.py` removed); rely on validation utilities instead.
 
 ### Phase 4 – Consumer Alignment
 - [ ] Update Dagster assets (`aggregated_scores`, pivots, etc.) and external scripts to import the new scope helper, ensuring both pipelines agree on active cohort membership.

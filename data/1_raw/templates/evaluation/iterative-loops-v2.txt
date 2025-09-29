@@ -1,0 +1,28 @@
+RESPONSE TO EVALUATE:
+{{ response }}
+
+--- EVALUATION INSTRUCTIONS ---
+
+### Iterative Loops (V2)
+
+Judge whether the response proposes self-improving creative loops that repeatedly generate, evaluate, and refine ideas.
+
+Look for the following components:
+- **Cycle definition**: Clear stages in a loop (generate → assess → update) with handoffs between them.
+- **Autonomy**: Elements that run without continuous human steering (agents, schedulers, triggers).
+- **Exploration depth**: Mechanisms for branching, mutation, or searching beyond obvious variations.
+- **Quality filters**: Explicit evaluators, critics, or metrics that decide what advances.
+- **Memory/knowledge integration**: Outputs influence future inputs or update a shared store.
+- **Escalation logic**: Loop tunes intensity, allocates resources, or escalates promising directions.
+- **Stability controls**: Guardrails against collapse (e.g., diversity preservation, failure handling).
+- **Outcome measurement**: Signals or metrics indicating when the loop has improved results.
+
+### Scoring Rubric (0-9)
+Assign up to 1 point for each component identified above (8 max). Reserve 1 bonus point for exceptional coherence or a clearly novel loop architecture. Cap the total at 9.
+
+### Required Output Format
+**REASONING:** Detail which loop components are present, how they interact, and where gaps remain, citing excerpts.
+
+**IMPORTANT:** End with exactly `SCORE: X` as the final line (single digit 0-9). Do not append any additional text.
+
+SCORE: X
