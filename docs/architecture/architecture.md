@@ -158,6 +158,11 @@ We encode every generation ID from stage-specific signatures and a 1-based repli
 
 Replicate counts are sourced from `data/1_raw/replication_config.csv`; cohort membership enforces these values when building rows. Because IDs are fully deterministic, the pipeline no longer keeps “reuse” counters or legacy fallbacks—re-running a cohort with the same manifest simply reuses the existing identifiers and Dagster reports `SKIPPED` partitions.
 
+When a curated rerun asks for new replicates, the allocator walks deterministic IDs until it
+finds the next unused number. If prior gens directories are removed manually, the next cohort may
+reissue those replicate indices; prefer the migration scripts (or a complete cleanup) when
+trimming state.
+
 We keep two maintenance scripts alongside the migration tooling:
 - `scripts/migrate_replicate_indexes.py` – normalises replicate fields across `metadata.json`, `raw_metadata.json`, and `parsed_metadata.json` so signatures are well-formed before a migration.
 - `scripts/migrations/remove_model_id_fields.py` – scrubs legacy top-level `model_id` keys now that every asset reads only `llm_model_id`.

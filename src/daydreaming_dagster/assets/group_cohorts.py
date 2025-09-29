@@ -45,7 +45,6 @@ from .partitions import (
 )
 from ..utils.generation import load_generation, write_gen_metadata
 from ..data_layer.paths import Paths
-from ..data_layer.gens_data_layer import GensDataLayer
 
 
 @dataclass
@@ -55,12 +54,41 @@ class SelectedEssaysConfig:
     fill_up: bool
 
 
+CURATED_MODE_REGENERATE = "regenerate"
+CURATED_MODE_REUSE_DRAFTS = "reuse-drafts"
+CURATED_MODE_REUSE_ESSAYS = "reuse-essays"
+_CURATED_MODE_ALIASES = {
+    "evaluation-only": CURATED_MODE_REUSE_ESSAYS,
+    "evaluations-only": CURATED_MODE_REUSE_ESSAYS,
+    "reuse_drafts": CURATED_MODE_REUSE_DRAFTS,
+    "reuse_essays": CURATED_MODE_REUSE_ESSAYS,
+}
+_CURATED_ALLOWED_MODES = {
+    CURATED_MODE_REGENERATE,
+    CURATED_MODE_REUSE_DRAFTS,
+    CURATED_MODE_REUSE_ESSAYS,
+}
+
+
+@dataclass
+class CuratedEssay:
+    essay_gen_id: str
+    draft_gen_id: str
+    combo_id: str
+    draft_template_id: str
+    essay_template_id: str
+    draft_llm_model_id: str
+    essay_llm_model_id: str
+    draft_replicate: int
+    essay_replicate: int
+
+
 def _load_selected_essays_config(data_root: Path) -> SelectedEssaysConfig:
     sel = data_root / "2_tasks" / "selected_essays.txt"
     if not sel.exists():
-        return SelectedEssaysConfig(mode="cartesian", essay_ids=[], fill_up=False)
+        return SelectedEssaysConfig(mode=CURATED_MODE_REGENERATE, essay_ids=[], fill_up=False)
 
-    mode = "curated"
+    mode = CURATED_MODE_REGENERATE
     fill_up = False
     essays: List[str] = []
     for raw in sel.read_text(encoding="utf-8").splitlines():
@@ -71,15 +99,61 @@ def _load_selected_essays_config(data_root: Path) -> SelectedEssaysConfig:
             directive = line[1:].strip().lower()
             if directive.startswith("mode:"):
                 value = directive.split(":", 1)[1].strip().lower()
-                if value == "evaluation-only":
-                    mode = "evaluation-only"
+                value = _CURATED_MODE_ALIASES.get(value, value)
+                if value not in _CURATED_ALLOWED_MODES:
+                    raise ValueError(f"Unsupported curated selection mode '{value}'")
+                mode = value
             elif directive in {"skip-existing-evaluations", "fill-up", "fillup"}:
                 fill_up = True
             continue
         essays.append(line)
-    if mode != "evaluation-only":
+    if mode != CURATED_MODE_REUSE_ESSAYS:
         fill_up = False
     return SelectedEssaysConfig(mode=mode, essay_ids=essays, fill_up=fill_up)
+
+
+class _ReplicateAllocator:
+    """Allocate deterministic replicate indices without reusing existing ids."""
+
+    def __init__(self, gens_root: Path):
+        self._gens_root = gens_root
+        self._next_indices: Dict[tuple[str, tuple], int] = {}
+
+    def allocate(self, stage: str, base_signature: tuple, count: int) -> List[int]:
+        if count <= 0:
+            return []
+        stage_norm = str(stage).lower()
+        key = (stage_norm, base_signature)
+        next_rep = self._next_indices.get(key)
+        if next_rep is None:
+            next_rep = self._discover_next(stage_norm, base_signature)
+        allocations = [next_rep + offset for offset in range(count)]
+        self._next_indices[key] = allocations[-1] + 1
+        return allocations
+
+    def _discover_next(self, stage: str, base_signature: tuple) -> int:
+        probe = 1
+        while True:
+            gen_id = _deterministic_id_for_base(stage, base_signature, probe)
+            if not (self._gens_root / stage / gen_id).exists():
+                return probe
+            probe += 1
+
+
+def _deterministic_id_for_base(stage: str, base_signature: tuple, replicate_index: int) -> str:
+    stage_norm = str(stage).lower()
+    if stage_norm == "draft":
+        combo_id, draft_template_id, llm_model_id = base_signature
+        signature = draft_signature(combo_id, draft_template_id, llm_model_id, replicate_index)
+    elif stage_norm == "essay":
+        draft_gen_id, essay_template_id = base_signature
+        signature = essay_signature(draft_gen_id, essay_template_id, replicate_index)
+    elif stage_norm == "evaluation":
+        essay_gen_id, evaluation_template_id, evaluation_model_id = base_signature
+        signature = evaluation_signature(essay_gen_id, evaluation_template_id, evaluation_model_id, replicate_index)
+    else:
+        raise ValueError(f"Unsupported stage '{stage}' for replicate allocation")
+    return compute_deterministic_gen_id(stage_norm, signature)
 
 
 def _existing_evaluations_by_combo(data_root: Path, essay_id: str) -> Dict[tuple[str, str], set[str]]:
@@ -103,8 +177,71 @@ def _existing_evaluations_by_combo(data_root: Path, essay_id: str) -> Dict[tuple
         model = str(meta.get("llm_model_id") or "").strip()
         if not tpl or not model:
             continue
-        combos[(tpl, model)].add(gen_dir.name)
+            combos[(tpl, model)].add(gen_dir.name)
     return combos
+
+
+def _prepare_curated_entries(data_root: Path, essay_ids: Iterable[str]) -> List[CuratedEssay]:
+    entries: List[CuratedEssay] = []
+    for essay_src_id in essay_ids:
+        essay_meta_path = data_root / "gens" / "essay" / essay_src_id / "metadata.json"
+        if not essay_meta_path.exists():
+            draft_meta_path = data_root / "gens" / "draft" / essay_src_id / "metadata.json"
+            if draft_meta_path.exists():
+                raise ValueError(
+                    "selected_essays.txt requires essay gen_ids; "
+                    f"'{essay_src_id}' is a draft gen_id."
+                )
+            raise ValueError(
+                f"Essay metadata not found for '{essay_src_id}'. Ensure the essay exists before building the cohort."
+            )
+
+        essay_meta = load_generation(data_root / "gens", "essay", essay_src_id).get("metadata") or {}
+        essay_tpl = str(essay_meta.get("template_id") or essay_meta.get("essay_template") or "").strip()
+        essay_llm_model = str(essay_meta.get("llm_model_id") or "").strip()
+        draft_parent_src = str(essay_meta.get("parent_gen_id") or "").strip()
+        if not essay_tpl:
+            raise ValueError("Selected essay is missing required template_id")
+        if not draft_parent_src:
+            raise ValueError("Selected essay is missing parent draft gen id")
+
+        draft_meta_path = data_root / "gens" / "draft" / draft_parent_src / "metadata.json"
+        if not draft_meta_path.exists():
+            raise ValueError(
+                f"Draft parent '{draft_parent_src}' metadata not found for essay '{essay_src_id}'."
+            )
+        draft_meta = load_generation(data_root / "gens", "draft", draft_parent_src).get("metadata") or {}
+        combo_id = str(draft_meta.get("combo_id") or "").strip()
+        draft_tpl = str(draft_meta.get("template_id") or draft_meta.get("draft_template") or "").strip()
+        draft_llm_model = str(draft_meta.get("llm_model_id") or "").strip()
+
+        llm_model_id = essay_llm_model or draft_llm_model
+        missing_fields: List[str] = []
+        if not combo_id:
+            missing_fields.append("draft.combo_id")
+        if not draft_tpl:
+            missing_fields.append("draft.template_id")
+        if not llm_model_id:
+            missing_fields.append("llm_model_id")
+        if missing_fields:
+            raise ValueError(
+                f"Missing required metadata to reconstruct tasks: {', '.join(missing_fields)}"
+            )
+
+        entries.append(
+            CuratedEssay(
+                essay_gen_id=essay_src_id,
+                draft_gen_id=draft_parent_src,
+                combo_id=combo_id,
+                draft_template_id=draft_tpl,
+                essay_template_id=essay_tpl,
+                draft_llm_model_id=draft_llm_model,
+                essay_llm_model_id=essay_llm_model,
+                draft_replicate=_normalize_int(draft_meta.get("replicate"), default=1),
+                essay_replicate=_normalize_int(essay_meta.get("replicate"), default=1),
+            )
+        )
+    return entries
 
 
 # Model provider name mapping removed from cohort generation to reduce complexity.
@@ -296,146 +433,111 @@ def cohort_membership(
             raise ValueError("replication_config.csv must define integer replicates>=1 for stages: draft, essay, evaluation")
 
     essay_seed_combo: Dict[str, str] = {}
-    evaluation_only_essays: Dict[str, Dict[str, str]] = {}
     existing_eval_cache: Dict[str, Dict[tuple[str, str], set[str]]] = {}
-    evaluation_only_fully_covered: set[str] = set()
+    fill_up_fully_covered: set[str] = set()
     evaluation_fill_added = 0
-    draft_combo_cache: Dict[str, str] = {}
-    data_layer = GensDataLayer.from_root(data_root)
 
-    if selected_essays and selected_cfg.mode == "evaluation-only":
-        for essay_src_id in selected_essays:
-            essay_meta_path = data_root / "gens" / "essay" / essay_src_id / "metadata.json"
-            if not essay_meta_path.exists():
-                # Detect mis-specified draft ids for clearer error
-                draft_meta_path = data_root / "gens" / "draft" / essay_src_id / "metadata.json"
-                if draft_meta_path.exists():
-                    raise ValueError(
-                        "selected_essays.txt (evaluation-only) requires essay gen_ids; "
-                        f"'{essay_src_id}' is a draft gen_id."
-                    )
-                raise ValueError(
-                    f"Essay metadata not found for '{essay_src_id}'. Ensure the essay exists before building the cohort."
-                )
+    allocator = _ReplicateAllocator(Paths.from_str(data_root).gens_root)
 
-            essay_gen = load_generation(data_root / "gens", "essay", essay_src_id)
-            essay_meta = essay_gen.get("metadata") or {}
-            draft_parent_src = str(essay_meta.get("parent_gen_id") or "").strip()
-            if not draft_parent_src:
-                raise ValueError(
-                    f"Essay '{essay_src_id}' is missing parent_gen_id; cannot derive evaluation tasks."
-                )
-
-            if draft_parent_src not in draft_combo_cache:
-                draft_meta_path = data_root / "gens" / "draft" / draft_parent_src / "metadata.json"
-                if not draft_meta_path.exists():
-                    raise ValueError(
-                        f"Draft parent '{draft_parent_src}' metadata not found for essay '{essay_src_id}'."
-                    )
-                draft_meta = load_generation(data_root / "gens", "draft", draft_parent_src).get("metadata") or {}
-                draft_combo = str(draft_meta.get("combo_id") or "").strip()
-                if not draft_combo:
-                    raise ValueError(
-                        f"Draft '{draft_parent_src}' is missing combo_id metadata; required for essay '{essay_src_id}'."
-                    )
-                draft_combo_cache[draft_parent_src] = draft_combo
-
-            combo_id = draft_combo_cache[draft_parent_src]
-            evaluation_only_essays[essay_src_id] = {
+    def _add_draft_row(gen_id: str, combo_id: str, template_id: str, llm_model_id: str, replicate: int) -> None:
+        rows.append(
+            {
+                "stage": "draft",
+                "gen_id": gen_id,
+                "origin_cohort_id": str(cohort_id),
+                "parent_gen_id": "",
                 "combo_id": combo_id,
-                "template_id": str(essay_meta.get("template_id") or essay_meta.get("essay_template") or "").strip(),
+                "template_id": template_id,
+                "llm_model_id": llm_model_id,
+                "replicate": int(replicate),
             }
-            essay_seed_combo[essay_src_id] = combo_id
-            if selected_cfg.fill_up:
-                existing_eval_cache[essay_src_id] = _existing_evaluations_by_combo(data_root, essay_src_id)
+        )
 
-    elif selected_essays:
-        # Curated mode — rebuild tasks from prior gens metadata and compute cohort-scoped ids
-        for essay_src_id in selected_essays:
-            # Load essay metadata
-            essay_gen = load_generation(data_root / "gens", "essay", essay_src_id)
-            essay_meta = essay_gen.get("metadata") or {}
-            essay_tpl = str(essay_meta.get("template_id") or essay_meta.get("essay_template") or "").strip()
-            draft_parent_src = str(essay_meta.get("parent_gen_id") or "").strip()
-            # Model ids are taken directly from llm_model_id metadata
-            essay_llm_model = str(essay_meta.get("llm_model_id") or "").strip()
-            if not essay_tpl:
-                raise ValueError("Selected essay is missing required template_id")
+    def _add_essay_row(gen_id: str, parent_gen_id: str, combo_id: str, template_id: str, llm_model_id: str, replicate: int) -> None:
+        rows.append(
+            {
+                "stage": "essay",
+                "gen_id": gen_id,
+                "origin_cohort_id": str(cohort_id),
+                "parent_gen_id": parent_gen_id,
+                "combo_id": combo_id,
+                "template_id": template_id,
+                "llm_model_id": llm_model_id,
+                "replicate": int(replicate),
+            }
+        )
 
-            # Load draft metadata
-            if not draft_parent_src:
-                raise ValueError("Selected essay is missing parent draft gen id")
-            draft_gen = load_generation(data_root / "gens", "draft", draft_parent_src)
-            draft_meta = draft_gen.get("metadata") or {}
-            combo_id = str(draft_meta.get("combo_id") or "").strip()
-            draft_tpl = str(draft_meta.get("template_id") or draft_meta.get("draft_template") or "").strip()
-            draft_llm_model = str(draft_meta.get("llm_model_id") or "").strip()
-            llm_model_id = essay_llm_model or draft_llm_model
-            # Validate required fields for curated reconstruction
-            missing_fields = []
-            if not combo_id:
-                missing_fields.append("draft.combo_id")
-            if not draft_tpl:
-                missing_fields.append("draft.template_id")
-            if not llm_model_id:
-                missing_fields.append("llm_model_id")
-            if missing_fields:
-                raise ValueError(
-                    f"Missing required metadata to reconstruct tasks: {', '.join(missing_fields)}"
+    def _build_curated_regenerate(entries: List[CuratedEssay]) -> None:
+        for entry in entries:
+            llm_model_id = entry.essay_llm_model_id or entry.draft_llm_model_id
+            draft_base = (entry.combo_id, entry.draft_template_id, llm_model_id)
+            draft_task_id = f"{entry.combo_id}__{entry.draft_template_id}__{llm_model_id}"
+            draft_reps = int(rep_cfg.get("draft"))
+            for draft_rep in allocator.allocate("draft", draft_base, draft_reps):
+                draft_gen_id = _draft_gen_id(
+                    combo_id=entry.combo_id,
+                    draft_template_id=entry.draft_template_id,
+                    generation_model_id=llm_model_id,
+                    replicate_index=int(draft_rep),
+                    cohort_id=str(cohort_id),
                 )
+                _add_draft_row(draft_gen_id, entry.combo_id, entry.draft_template_id, llm_model_id, draft_rep)
 
-            # Compose cohort task ids and gen ids
-            draft_task_id = f"{combo_id}__{draft_tpl}__{llm_model_id}"
-            draft_cohort_gen = _draft_gen_id(
-                combo_id=combo_id,
-                draft_template_id=draft_tpl,
-                generation_model_id=llm_model_id,
-                replicate_index=1,
-                cohort_id=str(cohort_id),
-            )
+                essay_reps = int(rep_cfg.get("essay"))
+                essay_base = (draft_gen_id, entry.essay_template_id)
+                for essay_rep in allocator.allocate("essay", essay_base, essay_reps):
+                    essay_task_id = f"{draft_task_id}__{entry.essay_template_id}"
+                    essay_gen_id = _essay_gen_id(
+                        draft_gen_id=draft_gen_id,
+                        essay_template_id=entry.essay_template_id,
+                        replicate_index=int(essay_rep),
+                        cohort_id=str(cohort_id),
+                        legacy_task_id=essay_task_id,
+                    )
+                    essay_llm_model_id = entry.essay_llm_model_id or llm_model_id
+                    _add_essay_row(essay_gen_id, draft_gen_id, entry.combo_id, entry.essay_template_id, essay_llm_model_id, essay_rep)
+                    essay_seed_combo[essay_gen_id] = entry.combo_id
 
-            # Draft row (no replicates in curated mode)
-            rows.append(
-                {
-                    "stage": "draft",
-                    "gen_id": draft_cohort_gen,
-                    "origin_cohort_id": str(cohort_id),
-                    "parent_gen_id": "",
-                    "combo_id": combo_id,
-                    "template_id": draft_tpl,
-                    "llm_model_id": llm_model_id,
-                    "replicate": 1,
-                }
-            )
+    def _build_curated_reuse_drafts(entries: List[CuratedEssay]) -> None:
+        for entry in entries:
+            llm_model_id = entry.essay_llm_model_id or entry.draft_llm_model_id
+            draft_llm_for_row = entry.draft_llm_model_id or llm_model_id
+            _add_draft_row(entry.draft_gen_id, entry.combo_id, entry.draft_template_id, draft_llm_for_row, entry.draft_replicate)
 
-            # Essay rows (replicates allowed in curated mode)
+            draft_task_id = f"{entry.combo_id}__{entry.draft_template_id}__{llm_model_id}"
             essay_reps = int(rep_cfg.get("essay"))
-            for er in range(1, essay_reps + 1):
-                # Salt only when needed
-                salt = f"rep{er}" if essay_reps > 1 else None
-                essay_task_id = f"{draft_task_id}__{essay_tpl}"
-                essay_cohort_gen = _essay_gen_id(
-                    draft_gen_id=draft_cohort_gen,
-                    essay_template_id=essay_tpl,
-                    replicate_index=er,
+            essay_base = (entry.draft_gen_id, entry.essay_template_id)
+            for essay_rep in allocator.allocate("essay", essay_base, essay_reps):
+                essay_task_id = f"{draft_task_id}__{entry.essay_template_id}"
+                essay_gen_id = _essay_gen_id(
+                    draft_gen_id=entry.draft_gen_id,
+                    essay_template_id=entry.essay_template_id,
+                    replicate_index=int(essay_rep),
                     cohort_id=str(cohort_id),
                     legacy_task_id=essay_task_id,
-                    salt=salt,
                 )
-                rows.append(
-                    {
-                        "stage": "essay",
-                        "gen_id": essay_cohort_gen,
-                        "origin_cohort_id": str(cohort_id),
-                        "parent_gen_id": draft_cohort_gen,
-                        "combo_id": combo_id,
-                        "template_id": essay_tpl,
-                        # Prefer essay model if present; else inherit draft model
-                        "llm_model_id": essay_llm_model or llm_model_id,
-                        "replicate": int(er),
-                    }
-                )
-                essay_seed_combo[str(essay_cohort_gen)] = combo_id
+                essay_llm_model_id = entry.essay_llm_model_id or llm_model_id
+                _add_essay_row(essay_gen_id, entry.draft_gen_id, entry.combo_id, entry.essay_template_id, essay_llm_model_id, essay_rep)
+                essay_seed_combo[essay_gen_id] = entry.combo_id
+
+    def _build_curated_reuse_essays(entries: List[CuratedEssay]) -> None:
+        for entry in entries:
+            llm_model_id = entry.essay_llm_model_id or entry.draft_llm_model_id
+            draft_llm_for_row = entry.draft_llm_model_id or llm_model_id
+            _add_draft_row(entry.draft_gen_id, entry.combo_id, entry.draft_template_id, draft_llm_for_row, entry.draft_replicate)
+            essay_llm_model_id = entry.essay_llm_model_id or llm_model_id
+            _add_essay_row(entry.essay_gen_id, entry.draft_gen_id, entry.combo_id, entry.essay_template_id, essay_llm_model_id, entry.essay_replicate)
+            essay_seed_combo[entry.essay_gen_id] = entry.combo_id
+            existing_eval_cache[entry.essay_gen_id] = _existing_evaluations_by_combo(data_root, entry.essay_gen_id)
+
+    if selected_essays:
+        curated_entries = _prepare_curated_entries(data_root, selected_essays)
+        if selected_cfg.mode == CURATED_MODE_REUSE_ESSAYS:
+            _build_curated_reuse_essays(curated_entries)
+        elif selected_cfg.mode == CURATED_MODE_REUSE_DRAFTS:
+            _build_curated_reuse_drafts(curated_entries)
+        else:
+            _build_curated_regenerate(curated_entries)
 
     else:
         # Cartesian mode — derive from active axes
@@ -530,110 +632,53 @@ def cohort_membership(
     eval_tpl_ids, eval_model_ids = _eval_axes(data_root)
     if eval_tpl_ids and eval_model_ids:
         essay_ids = list(essay_seed_combo.keys())
-        if selected_cfg.mode == "evaluation-only":
-            if not essay_ids:
-                essay_ids = list(evaluation_only_essays.keys())
-
-        # Replication factor for evaluations
         eval_reps = int(rep_cfg.get("evaluation"))
         for essay_gen_id in essay_ids:
-            essay_missing = False
+            combo_ref = essay_seed_combo.get(essay_gen_id, "")
             existing_counts: Dict[tuple[str, str], set[str]] = {}
-            if selected_cfg.mode == "evaluation-only" and selected_cfg.fill_up:
+            if selected_cfg.mode == CURATED_MODE_REUSE_ESSAYS and selected_cfg.fill_up:
                 existing_counts = existing_eval_cache.get(essay_gen_id, {})
+
+            created_for_essay = 0
             for tpl in eval_tpl_ids:
                 for mid in eval_model_ids:
-                    existing_ids = set()
-                    if existing_counts:
-                        existing_ids = set(existing_counts.get((tpl, mid), set()))
-                    existing_count = len(existing_ids)
-                    needed = eval_reps - existing_count if eval_reps > existing_count else 0
-                    if selected_cfg.mode == "evaluation-only" and selected_cfg.fill_up:
-                        if needed <= 0:
+                    if selected_cfg.mode == CURATED_MODE_REUSE_ESSAYS and selected_cfg.fill_up:
+                        current = existing_counts.get((tpl, mid), set())
+                        needed = max(0, eval_reps - len(current))
+                        if needed == 0:
                             continue
                     else:
                         needed = eval_reps
-                    if needed <= 0:
-                        continue
-                    eval_task_id = f"{essay_gen_id}__{tpl}__{mid}"
-                    for idx in range(existing_count, existing_count + needed):
-                        replicate_index = idx + 1
-                        attempts = 0
-                        salt_options = []
-                        if replicate_index == 1:
-                            salt_options.append(None)
-                        else:
-                            salt_options.append(f"rep{replicate_index}")
-                        salt_options.append(f"fill{replicate_index}")
 
-                        eval_gen_id = None
-                        for base_salt in salt_options:
-                            candidate = _evaluation_gen_id(
-                                essay_gen_id=essay_gen_id,
-                                evaluation_template_id=tpl,
-                                evaluation_model_id=mid,
-                                replicate_index=replicate_index,
-                                cohort_id=str(cohort_id),
-                                legacy_task_id=eval_task_id,
-                                salt=base_salt,
-                            )
-                            if candidate not in existing_ids:
-                                eval_gen_id = candidate
-                                break
-                        if eval_gen_id is None:
-                            attempt = 0
-                            while eval_gen_id is None:
-                                attempt += 1
-                                candidate = _evaluation_gen_id(
-                                    essay_gen_id=essay_gen_id,
-                                    evaluation_template_id=tpl,
-                                    evaluation_model_id=mid,
-                                    replicate_index=replicate_index,
-                                    cohort_id=str(cohort_id),
-                                    legacy_task_id=eval_task_id,
-                                    salt=f"fill{replicate_index}-{attempt}",
-                                )
-                                if candidate not in existing_ids:
-                                    eval_gen_id = candidate
-                                    break
-                                if attempt > 20:
-                                    raise ValueError(
-                                        "Unable to generate unique evaluation gen_id during fill-up"
-                                    )
-                        existing_ids.add(eval_gen_id)
-                        combo_id = essay_seed_combo.get(essay_gen_id)
-                        if combo_id is None and essay_gen_id in evaluation_only_essays:
-                            combo_id = evaluation_only_essays[essay_gen_id]["combo_id"]
+                    replicate_indices = allocator.allocate(
+                        "evaluation", (essay_gen_id, tpl, mid), needed
+                    )
+                    for replicate_index in replicate_indices:
+                        legacy_task_id = f"{essay_gen_id}__{tpl}__{mid}"
+                        eval_gen_id = _evaluation_gen_id(
+                            essay_gen_id=essay_gen_id,
+                            evaluation_template_id=tpl,
+                            evaluation_model_id=mid,
+                            replicate_index=int(replicate_index),
+                            cohort_id=str(cohort_id),
+                            legacy_task_id=legacy_task_id,
+                        )
                         rows.append(
                             {
                                 "stage": "evaluation",
                                 "gen_id": eval_gen_id,
                                 "origin_cohort_id": str(cohort_id),
                                 "parent_gen_id": essay_gen_id,
-                                "combo_id": combo_id or "",
+                                "combo_id": combo_ref or "",
                                 "template_id": tpl,
                                 "llm_model_id": mid,
                                 "replicate": int(replicate_index),
                             }
                         )
-                        meta_payload = {
-                            "stage": "evaluation",
-                            "gen_id": eval_gen_id,
-                            "template_id": tpl,
-                            "llm_model_id": mid,
-                            "parent_gen_id": essay_gen_id,
-                            "combo_id": combo_id or "",
-                            "origin_cohort_id": str(cohort_id),
-                            "mode": "llm",
-                            "replicate": int(replicate_index),
-                        }
-                        data_layer.write_main_metadata("evaluation", eval_gen_id, meta_payload)
                         evaluation_fill_added += 1
-                        essay_missing = True
-                    if selected_cfg.mode == "evaluation-only" and selected_cfg.fill_up:
-                        existing_counts[(tpl, mid)] = existing_ids
-            if selected_cfg.mode == "evaluation-only" and selected_cfg.fill_up and not essay_missing:
-                evaluation_only_fully_covered.add(essay_gen_id)
+                        created_for_essay += 1
+            if selected_cfg.mode == CURATED_MODE_REUSE_ESSAYS and selected_cfg.fill_up and created_for_essay == 0:
+                fill_up_fully_covered.add(essay_gen_id)
 
     # Deduplicate by (stage, gen_id)
     df = pd.DataFrame(rows)
@@ -698,9 +743,11 @@ def cohort_membership(
             "origin_cohort_id": MetadataValue.text(str(cohort_id)),
             "membership_path": MetadataValue.path(str(out_path)),
             "mode": MetadataValue.text(selected_cfg.mode),
-            "evaluation_fill_up": MetadataValue.bool(selected_cfg.mode == "evaluation-only" and selected_cfg.fill_up),
+            "evaluation_fill_up": MetadataValue.bool(
+                selected_cfg.mode == CURATED_MODE_REUSE_ESSAYS and selected_cfg.fill_up
+            ),
             "fill_up_added_evaluations": MetadataValue.int(evaluation_fill_added),
-            "fill_up_fully_covered_essays": MetadataValue.int(len(evaluation_only_fully_covered)),
+            "fill_up_fully_covered_essays": MetadataValue.int(len(fill_up_fully_covered)),
         }
     )
 

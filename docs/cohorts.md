@@ -64,6 +64,7 @@ Implementation notes
 - The deterministic ID changes when any manifest component changes (combos/templates/models, or a pipeline version constant for material changes).
 - Generation/evaluation assets consult membership.csv directly and keep narrow CSV fallbacks for back‑compat only.
 - Metadata now relies solely on `llm_model_id`; the legacy `model_id` field was removed via `scripts/migrations/remove_model_id_fields.py`.
+- Replicate numbers for curated reruns are chosen by scanning deterministic IDs until an unused slot is found; avoid manually deleting gens directories or the next cohort may reuse prior numbers.
 
 Operational flow
 - Set actives in `data/1_raw/*.csv` and ExperimentConfig (k_max, level).
@@ -104,12 +105,19 @@ uv run python scripts/select_top_prior_art.py \
 ```
 
 Notes
-- `selected_essays.txt` is the input signal for curated cohort builds.
-  - Add `# mode: evaluation-only` on the first non-empty line to register **only new evaluations**
-    for the listed essay `gen_id`s. Drafts/essays are not rematerialized; the evaluations point
-    to the original essays as parents.
-  - Optional: add `# skip-existing-evaluations` to top up only the missing evaluation template/model
-    combinations (including replication counts) for each essay. Essays already fully covered are skipped.
+- `selected_essays.txt` is the input signal for curated cohort builds. You can prefix it with a
+  `# mode:` directive (default is `regenerate`).
+
+  | Mode | Behavior |
+  |------|----------|
+  | *(default)* `# mode: regenerate` | create fresh deterministic drafts, essays, and evaluations for each listed essay. Replicate indices start after the highest existing deterministic ID so nothing is overwritten. |
+  | `# mode: reuse-drafts` | reuse the original draft IDs but create new essays/evaluations (again continuing replicate numbers). |
+  | `# mode: reuse-essays` | reuse both drafts and essays; only evaluations are scheduled. |
+
+  - Optionally add `# fill-up` (or the legacy `# skip-existing-evaluations`) when using
+    `reuse-essays` to only top up missing evaluation replicate slots. Without this directive we
+    always schedule the configured number of evaluation replicates per cohort run.
+  - The legacy directive `# mode: evaluation-only` is kept as an alias for `reuse-essays` for backward compatibility.
 - When pivoting or aggregating parsed results, prefer `parent_gen_id` (the essay `gen_id`) for stable grouping.
 
 Step 2 — Build cohort and register partitions

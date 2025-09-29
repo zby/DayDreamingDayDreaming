@@ -65,13 +65,19 @@ def base_data_root(tmp_path: Path) -> Path:
     return tmp_path
 
 
-def test_cohort_membership_curated_builds_deterministic_ids(base_data_root: Path) -> None:
+def test_cohort_membership_curated_regenerate_allocates_new_replicates(base_data_root: Path) -> None:
     data_root = base_data_root
     cohort_id = "cohort-curated"
 
     # Seed existing draft/essay metadata referenced by selected_essays
-    draft_src = "d-src"
-    essay_src = "e-src"
+    draft_src = compute_deterministic_gen_id(
+        "draft",
+        draft_signature("combo-1", "draft-A", "gen-model", 1),
+    )
+    essay_src = compute_deterministic_gen_id(
+        "essay",
+        essay_signature(draft_src, "essay-X", 1),
+    )
     _write_json(
         data_root / "gens" / "draft" / draft_src / "metadata.json",
         {
@@ -100,12 +106,32 @@ def test_cohort_membership_curated_builds_deterministic_ids(base_data_root: Path
     # Selected essays list puts membership in curated mode
     (data_root / "2_tasks" / "selected_essays.txt").write_text(f"{essay_src}\n", encoding="utf-8")
 
+    # Pretend a prior deterministic run exists (replicate=1)
+    existing_draft_id = draft_src
+    existing_essay_id = essay_src
+    existing_eval_id = compute_deterministic_gen_id(
+        "evaluation",
+        evaluation_signature(existing_essay_id, "eval-1", "eval-model", 1),
+    )
+    _write_json(
+        data_root / "gens" / "evaluation" / existing_eval_id / "metadata.json",
+        {
+            "stage": "evaluation",
+            "gen_id": existing_eval_id,
+            "parent_gen_id": existing_essay_id,
+            "template_id": "eval-1",
+            "llm_model_id": "eval-model",
+            "replicate": 1,
+            "origin_cohort_id": "legacy-cohort",
+        },
+    )
+
     context = build_asset_context(resources={"data_root": str(data_root)})
     df = cohort_membership(context, cohort_id=cohort_id)
 
     expected_draft = compute_deterministic_gen_id(
         "draft",
-        draft_signature("combo-1", "draft-A", "gen-model", 1),
+        draft_signature("combo-1", "draft-A", "gen-model", 2),
     )
     expected_essay = compute_deterministic_gen_id(
         "essay",
@@ -126,7 +152,7 @@ def test_cohort_membership_curated_builds_deterministic_ids(base_data_root: Path
         (data_root / "gens" / "draft" / expected_draft / "metadata.json").read_text(encoding="utf-8")
     )
     assert draft_meta["origin_cohort_id"] == cohort_id
-    assert draft_meta["replicate"] == 1
+    assert draft_meta["replicate"] == 2
 
     essay_meta = json.loads(
         (data_root / "gens" / "essay" / expected_essay / "metadata.json").read_text(encoding="utf-8")
@@ -140,6 +166,159 @@ def test_cohort_membership_curated_builds_deterministic_ids(base_data_root: Path
     assert eval_meta["parent_gen_id"] == expected_essay
     assert eval_meta["origin_cohort_id"] == cohort_id
 
+
+def test_cohort_membership_curated_reuse_drafts_creates_new_essays(base_data_root: Path) -> None:
+    data_root = base_data_root
+    cohort_id = "cohort-reuse-drafts"
+
+    draft_src = compute_deterministic_gen_id(
+        "draft",
+        draft_signature("combo-1", "draft-A", "gen-model", 1),
+    )
+    essay_src = compute_deterministic_gen_id(
+        "essay",
+        essay_signature(draft_src, "essay-X", 1),
+    )
+    _write_json(
+        data_root / "gens" / "draft" / draft_src / "metadata.json",
+        {
+            "stage": "draft",
+            "gen_id": draft_src,
+            "combo_id": "combo-1",
+            "template_id": "draft-A",
+            "llm_model_id": "gen-model",
+            "replicate": 1,
+        },
+    )
+    _write_json(
+        data_root / "gens" / "essay" / essay_src / "metadata.json",
+        {
+            "stage": "essay",
+            "gen_id": essay_src,
+            "template_id": "essay-X",
+            "parent_gen_id": draft_src,
+            "llm_model_id": "gen-model",
+            "replicate": 1,
+        },
+    )
+
+    existing_draft_id = draft_src
+    existing_essay_id = essay_src
+
+    (data_root / "2_tasks" / "selected_essays.txt").write_text(
+        "# mode: reuse-drafts\n" + essay_src + "\n",
+        encoding="utf-8",
+    )
+
+    context = build_asset_context(resources={"data_root": str(data_root)})
+    df = cohort_membership(context, cohort_id=cohort_id)
+
+    new_essay_id = compute_deterministic_gen_id(
+        "essay",
+        essay_signature(existing_draft_id, "essay-X", 2),
+    )
+    new_eval_id = compute_deterministic_gen_id(
+        "evaluation",
+        evaluation_signature(new_essay_id, "eval-1", "eval-model", 1),
+    )
+
+    drafts = df[df["stage"] == "draft"]["gen_id"].tolist()
+    essays = df[df["stage"] == "essay"]["gen_id"].tolist()
+    evaluations = df[df["stage"] == "evaluation"]["gen_id"].tolist()
+
+    assert drafts == [existing_draft_id]
+    assert essays == [new_essay_id]
+    assert evaluations == [new_eval_id]
+
+    essay_meta = json.loads(
+        (data_root / "gens" / "essay" / new_essay_id / "metadata.json").read_text(encoding="utf-8")
+    )
+    assert essay_meta["replicate"] == 2
+    assert essay_meta["parent_gen_id"] == existing_draft_id
+
+
+def test_cohort_membership_curated_reuse_essays_adds_new_evaluations(base_data_root: Path) -> None:
+    data_root = base_data_root
+    cohort_id = "cohort-reuse-essays"
+
+    draft_src = compute_deterministic_gen_id(
+        "draft",
+        draft_signature("combo-1", "draft-A", "gen-model", 1),
+    )
+    essay_src = compute_deterministic_gen_id(
+        "essay",
+        essay_signature(draft_src, "essay-X", 1),
+    )
+    _write_json(
+        data_root / "gens" / "draft" / draft_src / "metadata.json",
+        {
+            "stage": "draft",
+            "gen_id": draft_src,
+            "combo_id": "combo-1",
+            "template_id": "draft-A",
+            "llm_model_id": "gen-model",
+            "replicate": 1,
+        },
+    )
+    _write_json(
+        data_root / "gens" / "essay" / essay_src / "metadata.json",
+        {
+            "stage": "essay",
+            "gen_id": essay_src,
+            "template_id": "essay-X",
+            "parent_gen_id": draft_src,
+            "llm_model_id": "gen-model",
+            "replicate": 1,
+        },
+    )
+
+    existing_draft_id = draft_src
+    existing_essay_id = essay_src
+    existing_eval_id = compute_deterministic_gen_id(
+        "evaluation",
+        evaluation_signature(existing_essay_id, "eval-1", "eval-model", 1),
+    )
+
+    for stage, gen_id in (("draft", existing_draft_id), ("essay", existing_essay_id), ("evaluation", existing_eval_id)):
+        _write_json(
+            data_root / "gens" / stage / gen_id / "metadata.json",
+            {
+                "stage": stage,
+                "gen_id": gen_id,
+                "parent_gen_id": existing_draft_id if stage != "draft" else "",
+                "combo_id": "combo-1",
+                "template_id": "draft-A" if stage == "draft" else ("essay-X" if stage == "essay" else "eval-1"),
+                "llm_model_id": "gen-model" if stage != "evaluation" else "eval-model",
+                "replicate": 1,
+            },
+        )
+
+    (data_root / "2_tasks" / "selected_essays.txt").write_text(
+        "# mode: reuse-essays\n" + essay_src + "\n",
+        encoding="utf-8",
+    )
+
+    context = build_asset_context(resources={"data_root": str(data_root)})
+    df = cohort_membership(context, cohort_id=cohort_id)
+
+    new_eval_id = compute_deterministic_gen_id(
+        "evaluation",
+        evaluation_signature(existing_essay_id, "eval-1", "eval-model", 2),
+    )
+
+    drafts = df[df["stage"] == "draft"]["gen_id"].tolist()
+    essays = df[df["stage"] == "essay"]["gen_id"].tolist()
+    evaluations = df[df["stage"] == "evaluation"]["gen_id"].tolist()
+
+    assert drafts == [existing_draft_id]
+    assert essays == [existing_essay_id]
+    assert evaluations == [new_eval_id]
+
+    eval_meta = json.loads(
+        (data_root / "gens" / "evaluation" / new_eval_id / "metadata.json").read_text(encoding="utf-8")
+    )
+    assert eval_meta["replicate"] == 2
+    assert eval_meta["parent_gen_id"] == existing_essay_id
 
 def test_cohort_membership_cartesian_multiple_replicates(tmp_path: Path) -> None:
     data_root = tmp_path
