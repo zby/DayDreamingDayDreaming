@@ -150,9 +150,10 @@ def main() -> int:
     print(f"Wrote {len(missing)} essay gen_ids missing {args.target_template} evaluations to {out_path}")
     print(f"Essays: {', '.join(missing[:5])}{'...' if len(missing) > 5 else ''}")
     print(f"\nTo run this cohort:")
-    print(f"  export DD_COHORT_ID={args.cohort}")
-    print(f"  uv run dagster asset materialize --select 'group:cohort' -f src/daydreaming_dagster/definitions.py")
-    print(f"  uv run dagster asset materialize --select 'group:evaluation' -f src/daydreaming_dagster/definitions.py")
+    print(f"  1. Set environment: export DD_COHORT_ID={args.cohort}")
+    print(f"  2. Start Dagster UI: uv run dagster dev -f src/daydreaming_dagster/definitions.py")
+    print(f"  3. Materialize cohort assets (group:cohort)")
+    print(f"  4. Materialize evaluation assets (group:evaluation) - use backfill for all partitions")
 
     return 0
 
