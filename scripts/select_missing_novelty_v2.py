@@ -134,10 +134,9 @@ def main() -> int:
         print(f"All top {args.top_n} essays already have {args.target_template} evaluations!")
         return 0
 
-    # Write to cohort's selected_essays.txt with evaluation-only mode
-    cohort_dir = Path("data/cohorts") / args.cohort
-    cohort_dir.mkdir(parents=True, exist_ok=True)
-    out_path = cohort_dir / "selected_essays.txt"
+    # Write to data/2_tasks/selected_essays.txt with evaluation-only mode
+    out_path = Path("data/2_tasks/selected_essays.txt")
+    out_path.parent.mkdir(parents=True, exist_ok=True)
 
     lines = [
         "# mode: evaluation-only",
@@ -149,11 +148,12 @@ def main() -> int:
 
     print(f"Wrote {len(missing)} essay gen_ids missing {args.target_template} evaluations to {out_path}")
     print(f"Essays: {', '.join(missing[:5])}{'...' if len(missing) > 5 else ''}")
-    print(f"\nTo run this cohort:")
-    print(f"  1. Set environment: export DD_COHORT_ID={args.cohort}")
+    print(f"\nTo run cohort '{args.cohort}':")
+    print(f"  1. Set environment: export DD_COHORT={args.cohort}")
     print(f"  2. Start Dagster UI: uv run dagster dev -f src/daydreaming_dagster/definitions.py")
     print(f"  3. Materialize cohort assets (group:cohort)")
     print(f"  4. Materialize evaluation assets (group:evaluation) - use backfill for all partitions")
+    print(f"\nNote: The cohort will be written to data/cohorts/{args.cohort}/")
 
     return 0
 
