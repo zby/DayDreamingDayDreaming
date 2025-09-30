@@ -119,7 +119,7 @@ def _parse_selection_file(path: Path) -> tuple[str, List[str], bool, bool]:
                     )
                 mode = value
                 explicit_mode = True
-            elif directive in {"skip-existing-evaluations", "fill-up", "fillup"}:
+            elif directive in {"skip-existing-evaluations", "fill-up", "fillup", "include-existing-evaluations", "backfill-mode"}:
                 fill_up = True
             continue
         ids.append(line)
@@ -898,6 +898,20 @@ def cohort_membership(
                         and selection_cfg.fill_up
                     ):
                         current = existing_counts.get((tpl, mid), set())
+                        # Add existing evaluations to membership first
+                        for existing_gen_id in sorted(current):
+                            rows.append(
+                                {
+                                    "stage": "evaluation",
+                                    "gen_id": existing_gen_id,
+                                    "origin_cohort_id": str(cohort_id),
+                                    "parent_gen_id": essay_gen_id,
+                                    "combo_id": combo_ref or "",
+                                    "template_id": tpl,
+                                    "llm_model_id": mid,
+                                    "replicate": 0,  # Existing evals don't have cohort replicate numbers
+                                }
+                            )
                         needed = max(0, eval_reps - len(current))
                         if needed == 0:
                             continue
@@ -1051,17 +1065,48 @@ def register_cohort_partitions(context, cohort_membership: pd.DataFrame) -> Dict
         added_eval = _add_only(
             evaluation_gens_partitions.name, df[df["stage"] == "evaluation"]["gen_id"].astype(str)
         )
+
+    # Report materializations for existing files (backfill mode support)
+    data_root = Path(context.resources.data_root)
+    gens_root = data_root / "gens"
+    materialized_count = 0
+
+    for _, row in df.iterrows():
+        stage = str(row.get("stage", ""))
+        gen_id = str(row.get("gen_id", ""))
+        if not stage or not gen_id:
+            continue
+
+        # Check if parsed file exists (indicates completion)
+        parsed_path = gens_root / stage / gen_id / "parsed.txt"
+        if parsed_path.exists():
+            try:
+                from dagster import AssetKey, AssetMaterialization
+                asset_key = AssetKey([f"{stage}_parsed"])
+                mat = AssetMaterialization(
+                    asset_key=asset_key,
+                    partition=gen_id,
+                    description=f"Existing {stage} marked as materialized during cohort registration",
+                )
+                instance.report_runless_asset_event(mat)
+                materialized_count += 1
+            except Exception:
+                # Best effort - don't fail cohort registration if this fails
+                pass
+
     context.add_output_metadata(
         {
             "partitions_added_draft": MetadataValue.int(added_draft),
             "partitions_added_essay": MetadataValue.int(added_essay),
             "partitions_added_evaluation": MetadataValue.int(added_eval),
+            "existing_files_marked_materialized": MetadataValue.int(materialized_count),
         }
     )
     return {
         "draft": added_draft,
         "essay": added_essay,
         "evaluation": added_eval,
+        "marked_materialized": materialized_count,
     }
 @asset_with_boundary(
     stage="cohort",

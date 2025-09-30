@@ -141,7 +141,7 @@ def main() -> int:
 
     lines = [
         "# mode: evaluation-only",
-        "# skip-existing-evaluations",
+        "# include-existing-evaluations",
     ] + missing + [""]
 
     content = "\n".join(lines)
