@@ -19,17 +19,24 @@ _ensure_src_on_path()
 
 import pandas as pd  # noqa: E402
 from daydreaming_dagster.data_layer.paths import Paths  # noqa: E402
+from daydreaming_dagster.utils.errors import DDError, Err  # noqa: E402
 
 
 def compute_coverage(data_root: Path, cohort_id: str, stages: list[str] | None = None, list_missing: bool = False):
     paths = Paths.from_str(str(data_root))
     membership_csv = data_root / "cohorts" / str(cohort_id) / "membership.csv"
     if not membership_csv.exists():
-        raise FileNotFoundError(f"membership.csv not found: {membership_csv}")
+        raise DDError(
+            Err.DATA_MISSING,
+            ctx={"reason": "cohort_membership_missing", "path": str(membership_csv)},
+        )
 
     df = pd.read_csv(membership_csv)
     if df.empty or "stage" not in df.columns or "gen_id" not in df.columns:
-        raise ValueError("membership.csv is empty or missing required columns: stage, gen_id")
+        raise DDError(
+            Err.INVALID_CONFIG,
+            ctx={"reason": "membership_missing_required_columns"},
+        )
 
     target_stages = stages or sorted(df["stage"].astype(str).dropna().unique().tolist())
     stats: dict[str, dict] = {}

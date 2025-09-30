@@ -22,15 +22,35 @@ from typing import Set, List
 import pandas as pd
 
 
+def _ensure_src_on_path() -> None:
+    import sys
+
+    repo_root = Path(__file__).resolve().parents[2]
+    src_dir = repo_root / "src"
+    if src_dir.exists():
+        sys.path.insert(0, str(src_dir))
+
+
+_ensure_src_on_path()
+
+from daydreaming_dagster.utils.errors import DDError, Err
+
+
 def read_all_draft_templates(data_root: Path, active_only: bool) -> List[str]:
     csv_path = data_root / "1_raw" / "draft_templates.csv"
     if not csv_path.exists():
-        raise FileNotFoundError(f"draft_templates.csv not found: {csv_path}")
+        raise DDError(
+            Err.DATA_MISSING,
+            ctx={"reason": "draft_templates_csv_missing", "path": str(csv_path)},
+        )
     df = pd.read_csv(csv_path)
     if active_only and "active" in df.columns:
         df = df[df["active"] == True]
     if "template_id" not in df.columns:
-        raise ValueError("draft_templates.csv must include 'template_id' column")
+        raise DDError(
+            Err.INVALID_CONFIG,
+            ctx={"reason": "draft_templates_missing_template_id"},
+        )
     return (
         df["template_id"]
         .astype(str)
@@ -95,4 +115,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

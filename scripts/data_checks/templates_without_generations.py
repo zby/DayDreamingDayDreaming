@@ -24,6 +24,20 @@ from typing import Dict, Iterable, Tuple
 import pandas as pd
 
 
+def _ensure_src_on_path() -> None:
+    import sys
+
+    repo_root = Path(__file__).resolve().parents[2]
+    src_dir = repo_root / "src"
+    if src_dir.exists():
+        sys.path.insert(0, str(src_dir))
+
+
+_ensure_src_on_path()
+
+from daydreaming_dagster.utils.errors import DDError, Err
+
+
 STAGES = ("draft", "essay", "evaluation")
 
 
@@ -40,7 +54,10 @@ def _read_templates_table(stage: str, data_root: Path) -> pd.DataFrame:
     df = pd.read_csv(fp)
     # Normalize minimal columns
     if "template_id" not in df.columns:
-        raise ValueError(f"Missing 'template_id' in {fp}")
+        raise DDError(
+            Err.INVALID_CONFIG,
+            ctx={"reason": "templates_missing_template_id", "path": str(fp)},
+        )
     if "active" not in df.columns:
         # default inactive when absent
         df["active"] = False
@@ -135,4 +152,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

@@ -25,6 +25,20 @@ import json
 from typing import Dict, Tuple
 
 
+def _ensure_src_on_path() -> None:
+    import sys
+
+    repo_root = Path(__file__).resolve().parents[2]
+    src_dir = repo_root / "src"
+    if src_dir.exists():
+        sys.path.insert(0, str(src_dir))
+
+
+_ensure_src_on_path()
+
+from daydreaming_dagster.utils.errors import DDError, Err
+
+
 def classify_family(tpl: str) -> str:
     s = tpl.lower()
     # Link-style buckets
@@ -41,10 +55,16 @@ def classify_family(tpl: str) -> str:
 
 def load_templates(csv: Path) -> pd.DataFrame:
     if not csv.exists():
-        raise FileNotFoundError(f"draft_templates.csv not found: {csv}")
+        raise DDError(
+            Err.DATA_MISSING,
+            ctx={"reason": "draft_templates_csv_missing", "path": str(csv)},
+        )
     df = pd.read_csv(csv)
     if "template_id" not in df.columns:
-        raise ValueError(f"Missing template_id column in: {csv}")
+        raise DDError(
+            Err.INVALID_CONFIG,
+            ctx={"reason": "draft_templates_missing_template_id", "path": str(csv)},
+        )
     if "active" not in df.columns:
         df["active"] = False
     df["family"] = df["template_id"].astype(str).map(classify_family)
@@ -118,4 +138,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-
