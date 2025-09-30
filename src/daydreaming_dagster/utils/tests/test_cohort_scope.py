@@ -3,7 +3,10 @@ import json
 
 import pandas as pd
 
+import pytest
+
 from daydreaming_dagster.utils.cohort_scope import CohortScope
+from daydreaming_dagster.utils.errors import DDError, Err
 from daydreaming_dagster.utils.ids import draft_signature, compute_deterministic_gen_id
 
 
@@ -36,3 +39,14 @@ def test_signature_lookup(tmp_path: Path):
     det_id = compute_deterministic_gen_id("draft", sig)
     assert det_id.startswith("d_")
     assert scope.find_existing_gen_id("draft", sig) == "d1"
+
+
+def test_membership_missing_columns_raises(tmp_path: Path) -> None:
+    data_root = tmp_path
+    (data_root / "cohorts" / "bad").mkdir(parents=True, exist_ok=True)
+    pd.DataFrame([{"foo": "x"}]).to_csv(data_root / "cohorts" / "bad" / "membership.csv", index=False)
+
+    scope = CohortScope(data_root)
+    with pytest.raises(DDError) as err:
+        scope.stage_gen_ids("bad", "draft")
+    assert err.value.code is Err.INVALID_CONFIG

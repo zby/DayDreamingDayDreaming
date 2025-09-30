@@ -14,6 +14,7 @@ from daydreaming_dagster.unified.stage_core import (
     execute_copy,
     execute_llm,
 )
+from daydreaming_dagster.utils.errors import Err
 from daydreaming_dagster.utils.parser_registry import ParserError
 
 
@@ -75,8 +76,10 @@ def test_parse_draft_uses_registry():
     text = "<essay>Body</essay>"
     parsed = parse_text("draft", text, "essay_block")
     assert parsed == "Body"
-    with pytest.raises(ParserError):
+    with pytest.raises(ParserError) as err:
         parse_text("draft", text, "missing_parser")
+    assert err.value.code is Err.PARSER_FAILURE
+    assert err.value.ctx.get("reason") == "missing_parser"
 
 
 def test_parse_evaluation_in_last_line():

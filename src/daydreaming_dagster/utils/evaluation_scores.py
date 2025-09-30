@@ -5,6 +5,7 @@ from typing import Iterable, Dict, Any, List
 import json
 import pandas as pd
 
+from .errors import DDError, Err
 from .generation import load_generation
 from ..data_layer.paths import Paths
 
@@ -84,7 +85,12 @@ def aggregate_evaluation_scores_for_ids(data_root: Path, gen_ids: Iterable[str])
         input_mode = None
         copied_from = None
         if raw_meta_path.exists():
-            raw_meta = json.loads(raw_meta_path.read_text(encoding="utf-8")) or {}
+            try:
+                raw_meta = json.loads(raw_meta_path.read_text(encoding="utf-8")) or {}
+            except OSError as exc:
+                raise DDError(Err.IO_ERROR, ctx={"path": str(raw_meta_path)}) from exc
+            except json.JSONDecodeError as exc:
+                raise DDError(Err.PARSER_FAILURE, ctx={"path": str(raw_meta_path)}) from exc
             input_mode = raw_meta.get("input_mode")
             copied_from = raw_meta.get("copied_from")
 

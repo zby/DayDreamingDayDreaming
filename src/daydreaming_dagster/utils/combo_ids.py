@@ -5,6 +5,8 @@ from typing import List
 
 import pandas as pd
 
+from .errors import DDError, Err
+
 
 class ComboIDManager:
     """Manage the global append-only mapping of combo IDs to their components.
@@ -31,7 +33,12 @@ class ComboIDManager:
         combo_id = _gen_combo_id(concept_ids, description_level, k_max)
 
         if self.mappings_path.exists():
-            existing_mappings = pd.read_csv(self.mappings_path)
+            try:
+                existing_mappings = pd.read_csv(self.mappings_path)
+            except FileNotFoundError as exc:
+                raise DDError(Err.DATA_MISSING, ctx={"path": str(self.mappings_path)}) from exc
+            except pd.errors.ParserError as exc:
+                raise DDError(Err.PARSER_FAILURE, ctx={"path": str(self.mappings_path)}) from exc
             existing_combo = existing_mappings[existing_mappings["combo_id"] == combo_id]
             if not existing_combo.empty:
                 # Validate that existing rows match current parameters
@@ -50,8 +57,14 @@ class ComboIDManager:
                 if same_params and same_concepts:
                     return combo_id
 
-                raise ValueError(
-                    f"combo_id collision detected for {combo_id}: existing params/concepts do not match."
+                raise DDError(
+                    Err.INVALID_CONFIG,
+                    ctx={
+                        "combo_id": combo_id,
+                        "reason": "combo_collision",
+                        "existing_concepts": sorted(existing_concepts),
+                        "requested_concepts": sorted(requested_concepts),
+                    },
                 )
 
         # Append new mapping rows (one per concept)
@@ -71,18 +84,31 @@ class ComboIDManager:
         new_df = pd.DataFrame(new_rows)
 
         if self.mappings_path.exists():
-            existing_df = pd.read_csv(self.mappings_path)
+            try:
+                existing_df = pd.read_csv(self.mappings_path)
+            except FileNotFoundError as exc:
+                raise DDError(Err.DATA_MISSING, ctx={"path": str(self.mappings_path)}) from exc
+            except pd.errors.ParserError as exc:
+                raise DDError(Err.PARSER_FAILURE, ctx={"path": str(self.mappings_path)}) from exc
             combined_df = pd.concat([existing_df, new_df], ignore_index=True)
         else:
             combined_df = new_df
             self.mappings_path.parent.mkdir(parents=True, exist_ok=True)
 
-        combined_df.to_csv(self.mappings_path, index=False)
+        try:
+            combined_df.to_csv(self.mappings_path, index=False)
+        except OSError as exc:
+            raise DDError(Err.IO_ERROR, ctx={"path": str(self.mappings_path)}) from exc
         return combo_id
 
     def load_mappings(self) -> pd.DataFrame:
         if self.mappings_path.exists():
-            return pd.read_csv(self.mappings_path)
+            try:
+                return pd.read_csv(self.mappings_path)
+            except FileNotFoundError as exc:
+                raise DDError(Err.DATA_MISSING, ctx={"path": str(self.mappings_path)}) from exc
+            except pd.errors.ParserError as exc:
+                raise DDError(Err.PARSER_FAILURE, ctx={"path": str(self.mappings_path)}) from exc
         return pd.DataFrame(
             columns=[
                 "combo_id",

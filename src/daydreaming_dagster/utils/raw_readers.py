@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import List
 import pandas as pd
 from .csv_reading import read_csv_with_context
+from .errors import DDError, Err
 
 from ..models import Concept
 
@@ -93,7 +94,10 @@ def _validate_templates_df(df: pd.DataFrame, csv_path: Path) -> pd.DataFrame:
     required = {"template_id", "active"}
     missing = [c for c in required if c not in df.columns]
     if missing:
-        raise ValueError(f"{csv_path} must include columns {sorted(required)}; missing {missing}")
+        raise DDError(
+            Err.INVALID_CONFIG,
+            ctx={"path": str(csv_path), "missing": sorted(required)},
+        )
     return df
 
 
@@ -105,6 +109,6 @@ def read_templates(data_root: Path, kind: str, filter_active: bool = True) -> pd
     """
     kind = str(kind).strip().lower()
     if kind not in {"draft", "essay", "evaluation"}:
-        raise ValueError(f"Unknown template kind: {kind}")
+        raise DDError(Err.INVALID_CONFIG, ctx={"kind": kind})
     filename = f"{kind}_templates.csv"
     return _read_templates(data_root, filename, filter_active=filter_active)

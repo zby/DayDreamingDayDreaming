@@ -12,12 +12,19 @@ Evaluation parsers are thin wrappers around eval_response_parser.parse_llm_respo
 to normalize outputs to a single-line numeric string (e.g., "7.0\n").
 """
 
-from typing import Callable, Dict, Optional
+from typing import Any, Callable, Dict, Optional
+
+from .errors import DDError, Err
 
 
-class ParserError(Exception):
+class ParserError(DDError):
     """Raised when a required parser is missing or parsing fails decisively."""
-    pass
+
+    def __init__(self, *, reason: str, ctx: dict[str, Any] | None = None):
+        base_ctx = {"reason": reason}
+        if ctx:
+            base_ctx.update(ctx)
+        super().__init__(Err.PARSER_FAILURE, ctx=base_ctx)
 
 StageName = str
 ParserFn = Callable[[str], str]
@@ -33,9 +40,9 @@ _REGISTRY: Dict[StageName, Dict[str, ParserFn]] = {
 def register_parser(stage: StageName, name: str, fn: ParserFn) -> None:
     stage = str(stage)
     if stage not in _REGISTRY:
-        raise ValueError(f"Unknown stage '{stage}' for parser registration")
+        raise DDError(Err.INVALID_CONFIG, ctx={"stage": stage})
     if not isinstance(name, str) or not name.strip():
-        raise ValueError("Parser name must be a non-empty string")
+        raise DDError(Err.INVALID_CONFIG, ctx={"stage": stage, "reason": "empty_parser_name"})
     _REGISTRY[stage][name.strip()] = fn
 
 
@@ -82,7 +89,10 @@ def _make_eval_wrapper(strategy: str) -> ParserFn:
         res = parse_llm_response(str(text), strategy)  # may raise
         score = res.get("score")
         if not isinstance(score, (int, float)):
-            raise ValueError("Parsed evaluation missing numeric score")
+            raise ParserError(
+                reason="missing_numeric_score",
+                ctx={"strategy": strategy},
+            )
         return f"{float(score)}\n"
 
     return _fn

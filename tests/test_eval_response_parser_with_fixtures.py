@@ -6,6 +6,7 @@ import textwrap
 
 import pytest
 
+from daydreaming_dagster.utils.errors import DDError, Err
 from daydreaming_dagster.utils.eval_response_parser import parse_llm_response
 
 pytestmark = [pytest.mark.unit]
@@ -67,5 +68,7 @@ class TestEvalResponseParserSamples:
 
     def test_missing_score_line(self):
         text = "REASONING: thorough audit without explicit score line"
-        with pytest.raises(ValueError, match="No score found"):
+        with pytest.raises(DDError) as err:
             parse_llm_response(text, "in_last_line")
+        assert err.value.code is Err.PARSER_FAILURE
+        assert err.value.ctx.get("reason") == "no_score_last_lines"

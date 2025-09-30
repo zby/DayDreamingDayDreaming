@@ -215,7 +215,10 @@ def parse_text(stage: Stage, raw_text: str, parser_name: Optional[str]) -> Optio
 
     parser = get_parser(stage, parser_name)
     if parser is None:
-        raise ParserError(f"Missing parser '{parser_name}' for stage '{stage}'")
+        raise ParserError(
+            reason="missing_parser",
+            ctx={"stage": stage, "parser_name": parser_name},
+        )
     try:
         return parser(str(raw_text))
     except Exception:

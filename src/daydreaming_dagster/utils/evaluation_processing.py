@@ -8,6 +8,8 @@ import pandas as pd
 from typing import Dict, Any
 from dagster import MetadataValue
 
+from .errors import DDError, Err
+
 
 def calculate_evaluation_metadata(df: pd.DataFrame, score_column: str = 'score', error_column: str = 'error') -> Dict[str, Any]:
     """Calculate essential metadata for evaluation DataFrame assets.
@@ -20,8 +22,13 @@ def calculate_evaluation_metadata(df: pd.DataFrame, score_column: str = 'score',
     Returns:
         Dictionary of evaluation metadata values
     """
+    if df is None:
+        raise DDError(Err.DATA_MISSING, ctx={"reason": "evaluation_df_none"})
+    if error_column not in df.columns:
+        raise DDError(Err.INVALID_CONFIG, ctx={"missing": error_column})
+
     total_responses = len(df)
-    successful_parses = len(df[df[error_column].isna()]) if error_column in df.columns else total_responses
+    successful_parses = len(df[df[error_column].isna()])
     
     metadata = {
         "total_responses": MetadataValue.int(total_responses),
@@ -47,9 +54,11 @@ def filter_valid_scores(df: pd.DataFrame, *, score_column: str = 'score', error_
 
     Centralizes the common filtering pattern used by pivot/analysis assets.
     """
-    if df is None or df.empty:
-        return df if df is not None else pd.DataFrame()
-    if score_column not in df.columns or error_column not in df.columns:
-        # Be conservative: if required columns are missing, return empty
-        return df[df.index == -1]
+    if df is None:
+        raise DDError(Err.DATA_MISSING, ctx={"reason": "score_df_none"})
+    if df.empty:
+        return df
+    missing = [col for col in (score_column, error_column) if col not in df.columns]
+    if missing:
+        raise DDError(Err.INVALID_CONFIG, ctx={"missing": missing})
     return df[df[error_column].isna() & df[score_column].notna()].copy()

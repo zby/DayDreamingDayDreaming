@@ -1,3 +1,6 @@
+import pytest
+
+from daydreaming_dagster.utils.errors import DDError, Err
 from daydreaming_dagster.utils.ids import (
     reserve_gen_id,
     draft_signature,
@@ -11,6 +14,12 @@ from daydreaming_dagster.utils.ids import (
 def test_draft_signature_normalization():
     sig = draft_signature("ComboA", "Draft-Tpl", "Gen-Model", 2)
     assert sig == ("comboa", "draft-tpl", "gen-model", 2)
+
+
+def test_draft_signature_missing_component_raises():
+    with pytest.raises(DDError) as err:
+        draft_signature(None, "tpl", "model", 1)
+    assert err.value.code is Err.INVALID_CONFIG
 
 
 def test_deterministic_gen_id_stable():
@@ -40,6 +49,12 @@ def test_signature_from_metadata_eval():
     }
     sig = signature_from_metadata("evaluation", meta)
     assert sig == ("essay123", "eval-temp", "eval-model", 1)
+
+
+def test_signature_from_metadata_invalid_stage():
+    with pytest.raises(DDError) as err:
+        signature_from_metadata("unknown", {})
+    assert err.value.code is Err.INVALID_CONFIG
 
 
 class TestIDs:

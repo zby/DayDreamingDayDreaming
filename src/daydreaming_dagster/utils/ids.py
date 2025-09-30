@@ -4,6 +4,8 @@ import hashlib
 from hashlib import blake2b
 from typing import Iterable, Tuple
 
+from .errors import DDError, Err
+
 
 DETERMINISTIC_GEN_IDS_ENABLED = True  # BACKCOMPAT: deterministic IDs are always enabled post-migration.
 
@@ -70,38 +72,45 @@ _PREFIX_BY_STAGE = {
 }
 
 
-def _normalize_component(value) -> str:
+def _normalize_component(value, *, field: str) -> str:
     if value is None:
-        raise ValueError("Deterministic ID components cannot be None")
+        raise DDError(Err.INVALID_CONFIG, ctx={"field": field, "reason": "missing"})
     text = str(value).strip()
     if not text:
-        raise ValueError("Deterministic ID components cannot be empty")
+        raise DDError(Err.INVALID_CONFIG, ctx={"field": field, "reason": "empty"})
     return text.lower()
+
+
+def _coerce_replicate(value, *, field: str) -> int:
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        raise DDError(Err.INVALID_CONFIG, ctx={"field": field, "value": value})
 
 
 def draft_signature(combo_id: str, draft_template_id: str, generation_model_id: str, replicate_index: int) -> tuple[str, str, str, int]:
     return (
-        _normalize_component(combo_id),
-        _normalize_component(draft_template_id),
-        _normalize_component(generation_model_id),
-        int(replicate_index),
+        _normalize_component(combo_id, field="combo_id"),
+        _normalize_component(draft_template_id, field="draft_template_id"),
+        _normalize_component(generation_model_id, field="llm_model_id"),
+        _coerce_replicate(replicate_index, field="replicate"),
     )
 
 
 def essay_signature(draft_gen_id: str, essay_template_id: str, replicate_index: int) -> tuple[str, str, int]:
     return (
-        _normalize_component(draft_gen_id),
-        _normalize_component(essay_template_id),
-        int(replicate_index),
+        _normalize_component(draft_gen_id, field="draft_gen_id"),
+        _normalize_component(essay_template_id, field="essay_template_id"),
+        _coerce_replicate(replicate_index, field="replicate"),
     )
 
 
 def evaluation_signature(essay_gen_id: str, evaluation_template_id: str, evaluation_model_id: str, replicate_index: int) -> tuple[str, str, str, int]:
     return (
-        _normalize_component(essay_gen_id),
-        _normalize_component(evaluation_template_id),
-        _normalize_component(evaluation_model_id),
-        int(replicate_index),
+        _normalize_component(essay_gen_id, field="essay_gen_id"),
+        _normalize_component(evaluation_template_id, field="evaluation_template_id"),
+        _normalize_component(evaluation_model_id, field="llm_model_id"),
+        _coerce_replicate(replicate_index, field="replicate"),
     )
 
 
@@ -109,7 +118,7 @@ def compute_deterministic_gen_id(stage: str, signature: Tuple) -> str:
     stage_norm = str(stage).lower()
     prefix = _PREFIX_BY_STAGE.get(stage_norm)
     if not prefix:
-        raise ValueError(f"Unsupported stage '{stage}' for deterministic gen id")
+        raise DDError(Err.INVALID_CONFIG, ctx={"stage": stage})
     canonical = "|".join(str(part) for part in signature)
     digest = blake2b(canonical.encode("utf-8"), digest_size=10).digest()
     value = int.from_bytes(digest, "big")
@@ -127,7 +136,7 @@ def signature_from_metadata(stage: str, metadata: dict) -> Tuple:
     elif isinstance(rep, (int, float)):
         rep = int(rep)
     else:
-        raise ValueError("replicate must be an integer")
+        raise DDError(Err.INVALID_CONFIG, ctx={"field": "replicate", "value": rep})
 
     if stage_norm == "draft":
         return draft_signature(
@@ -149,4 +158,4 @@ def signature_from_metadata(stage: str, metadata: dict) -> Tuple:
             metadata.get("llm_model_id"),
             rep,
         )
-    raise ValueError(f"Unsupported stage '{stage}' for signature computation")
+    raise DDError(Err.INVALID_CONFIG, ctx={"stage": stage})

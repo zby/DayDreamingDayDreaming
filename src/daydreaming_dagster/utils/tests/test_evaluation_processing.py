@@ -2,10 +2,12 @@
 
 import pandas as pd
 import pytest
-from pathlib import Path
-from unittest.mock import Mock
 
-from daydreaming_dagster.utils.evaluation_processing import calculate_evaluation_metadata
+from daydreaming_dagster.utils.errors import DDError, Err
+from daydreaming_dagster.utils.evaluation_processing import (
+    calculate_evaluation_metadata,
+    filter_valid_scores,
+)
 
 
 """Legacy parsing helpers were removed. Remaining helpers operate on DataFrames.
@@ -13,10 +15,6 @@ from daydreaming_dagster.utils.evaluation_processing import calculate_evaluation
 This test module validates the enrichment utilities that are still used by
 gens-store based assets.
 """
-
-
-def dummy():
-    pass
 
 
 def test_calculate_evaluation_metadata():
@@ -34,4 +32,21 @@ def test_calculate_evaluation_metadata():
     assert metadata['avg_score'].value == 8.0
 
 
-    # Parsing functions removed; file path helper removed.
+def test_calculate_evaluation_metadata_requires_error_column():
+    df = pd.DataFrame({'score': [1, 2, 3]})
+    with pytest.raises(DDError) as err:
+        calculate_evaluation_metadata(df)
+    assert err.value.code is Err.INVALID_CONFIG
+
+
+def test_filter_valid_scores_missing_columns():
+    df = pd.DataFrame({'score': [1, 2, 3]})
+    with pytest.raises(DDError) as err:
+        filter_valid_scores(df)
+    assert err.value.code is Err.INVALID_CONFIG
+
+
+def test_filter_valid_scores_none():
+    with pytest.raises(DDError) as err:
+        filter_valid_scores(None)
+    assert err.value.code is Err.DATA_MISSING
