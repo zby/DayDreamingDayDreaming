@@ -9,8 +9,8 @@ Goal: produce a prioritized list of refactor recommendations that simplify `src/
 
 ## 1. Preparation Pass
 - Read `AGENTS.md`, `tools/refactor_contract.yaml`, and module-level READMEs to confirm expectations.
-- Baseline metrics: `radon cc`, `cloc`, and current pytest status (unit focus). Capture numbers for later comparison.
-  - Commands: `uv run radon cc src/daydreaming_dagster -s --total-average`, `uv run cloc src/daydreaming_dagster`, `.venv/bin/pytest src/daydreaming_dagster -q` (or `uv run pytest src/daydreaming_dagster -q`).
+- Baseline metrics: `radon cc`, `sloccount`, and current pytest status (unit focus). Capture numbers for later comparison.
+  - Commands: `uv run radon cc src/daydreaming_dagster -s --total-average`, `uv run sloccount src/daydreaming_dagster`, `.venv/bin/pytest src/daydreaming_dagster -q` (or `uv run pytest src/daydreaming_dagster -q`).
 - Inventory existing colocated tests inside each module tree; note any missing coverage hotspots.
 
 ## 2. Review Batches (load-limited)
