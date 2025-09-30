@@ -52,30 +52,6 @@ from ..data_layer.paths import Paths
 class CuratedSelectionConfig:
     selection_type: Optional[str]  # 'essay', 'draft', or None
     ids: List[str]
-    mode: str
-    fill_up: bool
-
-
-CURATED_MODE_REGENERATE = "regenerate"
-CURATED_MODE_REUSE_DRAFTS = "reuse-drafts"
-CURATED_MODE_REUSE_ESSAYS = "reuse-essays"
-_CURATED_MODE_ALIASES = {
-    "evaluation-only": CURATED_MODE_REUSE_ESSAYS,
-    "evaluations-only": CURATED_MODE_REUSE_ESSAYS,
-    "reuse_drafts": CURATED_MODE_REUSE_DRAFTS,
-    "reuse_essays": CURATED_MODE_REUSE_ESSAYS,
-}
-_CURATED_ALLOWED_MODES = {
-    CURATED_MODE_REGENERATE,
-    CURATED_MODE_REUSE_DRAFTS,
-    CURATED_MODE_REUSE_ESSAYS,
-}
-
-# NOTE: With automatic skip behavior in stage_raw/stage_parsed (see StageSettings.force),
-# mode directives are now less critical for avoiding redundant LLM calls. The modes still
-# control *which stages* get materialized (draft, essay, evaluation), but skipping existing
-# artifacts is handled automatically by default. Future work could simplify or deprecate
-# these modes in favor of simple replication counts + force flags.
 
 
 @dataclass
@@ -127,37 +103,18 @@ def _require_replication_config(data_root: Path) -> dict[str, int]:
     return rep_cfg
 
 
-def _parse_selection_file(path: Path) -> tuple[str, List[str], bool, bool]:
-    mode = CURATED_MODE_REGENERATE
-    fill_up = False
+def _parse_selection_file(path: Path) -> List[str]:
     ids: List[str] = []
-    explicit_mode = False
 
     for raw in path.read_text(encoding="utf-8").splitlines():
         line = raw.strip()
         if not line:
             continue
         if line.startswith("#"):
-            directive = line[1:].strip().lower()
-            if directive.startswith("mode:"):
-                value = directive.split(":", 1)[1].strip().lower()
-                value = _CURATED_MODE_ALIASES.get(value, value)
-                if value not in _CURATED_ALLOWED_MODES:
-                    raise DDError(
-                        Err.INVALID_CONFIG,
-                        ctx={
-                            "reason": "unsupported_curated_mode",
-                            "mode": value,
-                        },
-                    )
-                mode = value
-                explicit_mode = True
-            elif directive in {"skip-existing-evaluations", "fill-up", "fillup", "include-existing-evaluations", "backfill-mode"}:
-                fill_up = True
             continue
         ids.append(line)
 
-    return mode, ids, fill_up, explicit_mode
+    return ids
 
 
 def _load_curated_selection_config(data_root: Path) -> CuratedSelectionConfig:
@@ -173,40 +130,22 @@ def _load_curated_selection_config(data_root: Path) -> CuratedSelectionConfig:
         )
 
     if essays_exists:
-        mode, ids, fill_up, _ = _parse_selection_file(essays_path)
+        ids = _parse_selection_file(essays_path)
         return CuratedSelectionConfig(
             selection_type="essay",
             ids=ids,
-            mode=mode,
-            fill_up=fill_up,
         )
 
     if drafts_exists:
-        mode, ids, fill_up, explicit_mode = _parse_selection_file(drafts_path)
-        if not explicit_mode and mode == CURATED_MODE_REGENERATE:
-            mode = CURATED_MODE_REUSE_DRAFTS
-        if mode == CURATED_MODE_REUSE_ESSAYS:
-            raise DDError(
-                Err.INVALID_CONFIG,
-                ctx={"reason": "reuse_essays_requires_selected_essays"},
-            )
-        if fill_up:
-            raise DDError(
-                Err.INVALID_CONFIG,
-                ctx={"reason": "fill_up_requires_selected_essays"},
-            )
+        ids = _parse_selection_file(drafts_path)
         return CuratedSelectionConfig(
             selection_type="draft",
             ids=ids,
-            mode=mode,
-            fill_up=False,
         )
 
     return CuratedSelectionConfig(
         selection_type=None,
         ids=[],
-        mode=CURATED_MODE_REGENERATE,
-        fill_up=False,
     )
 
 
@@ -613,8 +552,6 @@ def cohort_membership(
 
     essay_seed_combo: Dict[str, str] = {}
     existing_eval_cache: Dict[str, Dict[tuple[str, str], list[ExistingEvaluation]]] = {}
-    fill_up_fully_covered: set[str] = set()
-    evaluation_fill_added = 0
 
     allocator = _ReplicateAllocator(Paths.from_str(data_root).gens_root)
 
@@ -646,117 +583,29 @@ def cohort_membership(
             }
         )
 
-    def _build_curated_regenerate(entries: List[CuratedEssay]) -> None:
-        for entry in entries:
-            llm_model_id = entry.essay_llm_model_id or entry.draft_llm_model_id
-            draft_base = (entry.combo_id, entry.draft_template_id, llm_model_id)
-            draft_task_id = f"{entry.combo_id}__{entry.draft_template_id}__{llm_model_id}"
-            draft_reps = int(rep_cfg.get("draft"))
-            for draft_rep in allocator.allocate("draft", draft_base, draft_reps):
-                draft_gen_id = _draft_gen_id(
-                    combo_id=entry.combo_id,
-                    draft_template_id=entry.draft_template_id,
-                    generation_model_id=llm_model_id,
-                    replicate_index=int(draft_rep),
-                    cohort_id=str(cohort_id),
-                )
-                _add_draft_row(draft_gen_id, entry.combo_id, entry.draft_template_id, llm_model_id, draft_rep)
-
-                essay_reps = int(rep_cfg.get("essay"))
-                essay_base = (draft_gen_id, entry.essay_template_id)
-                for essay_rep in allocator.allocate("essay", essay_base, essay_reps):
-                    essay_task_id = f"{draft_task_id}__{entry.essay_template_id}"
-                    essay_gen_id = _essay_gen_id(
-                        draft_gen_id=draft_gen_id,
-                        essay_template_id=entry.essay_template_id,
-                        replicate_index=int(essay_rep),
-                        cohort_id=str(cohort_id),
-                        legacy_task_id=essay_task_id,
-                    )
-                    essay_llm_model_id = entry.essay_llm_model_id or llm_model_id
-                    _add_essay_row(essay_gen_id, draft_gen_id, entry.combo_id, entry.essay_template_id, essay_llm_model_id, essay_rep)
-                    essay_seed_combo[essay_gen_id] = entry.combo_id
-
-    def _build_curated_reuse_drafts(entries: List[CuratedEssay]) -> None:
+    def _build_curated_entries(entries: List[CuratedEssay]) -> None:
+        """Unified builder: Always add draft + essay + eval rows for selected essays."""
         for entry in entries:
             llm_model_id = entry.essay_llm_model_id or entry.draft_llm_model_id
             draft_llm_for_row = entry.draft_llm_model_id or llm_model_id
+
+            # Always add existing draft row to membership
             _add_draft_row(entry.draft_gen_id, entry.combo_id, entry.draft_template_id, draft_llm_for_row, entry.draft_replicate)
 
-            draft_task_id = f"{entry.combo_id}__{entry.draft_template_id}__{llm_model_id}"
-            essay_reps = int(rep_cfg.get("essay"))
-            essay_base = (entry.draft_gen_id, entry.essay_template_id)
-            for essay_rep in allocator.allocate("essay", essay_base, essay_reps):
-                essay_task_id = f"{draft_task_id}__{entry.essay_template_id}"
-                essay_gen_id = _essay_gen_id(
-                    draft_gen_id=entry.draft_gen_id,
-                    essay_template_id=entry.essay_template_id,
-                    replicate_index=int(essay_rep),
-                    cohort_id=str(cohort_id),
-                    legacy_task_id=essay_task_id,
-                )
-                essay_llm_model_id = entry.essay_llm_model_id or llm_model_id
-                _add_essay_row(essay_gen_id, entry.draft_gen_id, entry.combo_id, entry.essay_template_id, essay_llm_model_id, essay_rep)
-                essay_seed_combo[essay_gen_id] = entry.combo_id
-
-    def _build_curated_reuse_essays(entries: List[CuratedEssay]) -> None:
-        for entry in entries:
-            llm_model_id = entry.essay_llm_model_id or entry.draft_llm_model_id
-            draft_llm_for_row = entry.draft_llm_model_id or llm_model_id
-            _add_draft_row(entry.draft_gen_id, entry.combo_id, entry.draft_template_id, draft_llm_for_row, entry.draft_replicate)
+            # Always add existing essay row to membership
             essay_llm_model_id = entry.essay_llm_model_id or llm_model_id
             _add_essay_row(entry.essay_gen_id, entry.draft_gen_id, entry.combo_id, entry.essay_template_id, essay_llm_model_id, entry.essay_replicate)
             essay_seed_combo[entry.essay_gen_id] = entry.combo_id
+
+            # Cache existing evaluations for this essay (will be processed later)
             existing_eval_cache[entry.essay_gen_id] = _existing_evaluations_by_template_model(data_root, entry.essay_gen_id)
 
-    def _build_from_drafts_regenerate(entries: List[CuratedDraft]) -> None:
-        essay_tpl_ids = active_essay_templates["template_id"].astype(str).tolist()
-        draft_reps = int(rep_cfg.get("draft"))
-        essay_reps = int(rep_cfg.get("essay"))
-        for entry in entries:
-            draft_base = (entry.combo_id, entry.draft_template_id, entry.draft_llm_model_id)
-            draft_task_id = f"{entry.combo_id}__{entry.draft_template_id}__{entry.draft_llm_model_id}"
-            for draft_rep in allocator.allocate("draft", draft_base, draft_reps):
-                draft_gen_id = _draft_gen_id(
-                    combo_id=entry.combo_id,
-                    draft_template_id=entry.draft_template_id,
-                    generation_model_id=entry.draft_llm_model_id,
-                    replicate_index=int(draft_rep),
-                    cohort_id=str(cohort_id),
-                )
-                _add_draft_row(
-                    draft_gen_id,
-                    entry.combo_id,
-                    entry.draft_template_id,
-                    entry.draft_llm_model_id,
-                    draft_rep,
-                )
-
-                for essay_tpl in essay_tpl_ids:
-                    essay_base = (draft_gen_id, essay_tpl)
-                    for essay_rep in allocator.allocate("essay", essay_base, essay_reps):
-                        essay_task_id = f"{draft_task_id}__{essay_tpl}"
-                        essay_gen_id = _essay_gen_id(
-                            draft_gen_id=draft_gen_id,
-                            essay_template_id=essay_tpl,
-                            replicate_index=int(essay_rep),
-                            cohort_id=str(cohort_id),
-                            legacy_task_id=essay_task_id,
-                        )
-                        _add_essay_row(
-                            essay_gen_id,
-                            draft_gen_id,
-                            entry.combo_id,
-                            essay_tpl,
-                            entry.draft_llm_model_id,
-                            essay_rep,
-                        )
-                        essay_seed_combo[essay_gen_id] = entry.combo_id
-
-    def _build_from_drafts_reuse_drafts(entries: List[CuratedDraft]) -> None:
+    def _build_from_drafts(entries: List[CuratedDraft]) -> None:
+        """Unified builder: Always add existing draft rows + allocate essay replicates."""
         essay_tpl_ids = active_essay_templates["template_id"].astype(str).tolist()
         essay_reps = int(rep_cfg.get("essay"))
         for entry in entries:
+            # Always add existing draft row to membership
             _add_draft_row(
                 entry.draft_gen_id,
                 entry.combo_id,
@@ -764,6 +613,8 @@ def cohort_membership(
                 entry.draft_llm_model_id,
                 entry.draft_replicate,
             )
+
+            # Allocate essay replicates for each active essay template
             for essay_tpl in essay_tpl_ids:
                 essay_base = (entry.draft_gen_id, essay_tpl)
                 for essay_rep in allocator.allocate("essay", essay_base, essay_reps):
@@ -788,18 +639,10 @@ def cohort_membership(
 
     if selection_cfg.selection_type == "essay":
         curated_entries = _prepare_curated_entries(data_root, selected_ids)
-        if selection_cfg.mode == CURATED_MODE_REUSE_ESSAYS:
-            _build_curated_reuse_essays(curated_entries)
-        elif selection_cfg.mode == CURATED_MODE_REUSE_DRAFTS:
-            _build_curated_reuse_drafts(curated_entries)
-        else:
-            _build_curated_regenerate(curated_entries)
+        _build_curated_entries(curated_entries)
     elif selection_cfg.selection_type == "draft":
         curated_drafts = _prepare_curated_drafts(data_root, selected_ids)
-        if selection_cfg.mode == CURATED_MODE_REUSE_DRAFTS:
-            _build_from_drafts_reuse_drafts(curated_drafts)
-        else:
-            _build_from_drafts_regenerate(curated_drafts)
+        _build_from_drafts(curated_drafts)
 
     else:
         # Cartesian mode — derive from active axes
@@ -904,30 +747,24 @@ def cohort_membership(
         eval_reps = int(rep_cfg.get("evaluation"))
         for essay_gen_id in essay_ids:
             combo_ref = essay_seed_combo.get(essay_gen_id, "")
-            reuse_existing = (
-                selection_cfg.selection_type is None
-                or (
-                    selection_cfg.selection_type == "essay"
-                    and selection_cfg.mode == CURATED_MODE_REUSE_ESSAYS
+
+            # Always check for existing evaluations
+            existing_counts = existing_eval_cache.get(essay_gen_id)
+            if existing_counts is None:
+                existing_counts = _existing_evaluations_by_template_model(
+                    data_root, essay_gen_id
                 )
-            )
-            existing_counts: Dict[tuple[str, str], list[ExistingEvaluation]] = {}
-            if reuse_existing:
-                existing_counts = existing_eval_cache.get(essay_gen_id)
-                if existing_counts is None:
-                    existing_counts = _existing_evaluations_by_template_model(
-                        data_root, essay_gen_id
-                    )
-                    existing_eval_cache[essay_gen_id] = existing_counts
+                existing_eval_cache[essay_gen_id] = existing_counts
 
             created_for_essay = 0
             for tpl in eval_tpl_ids:
                 for mid in eval_model_ids:
+                    # Always include existing evaluations in membership
                     existing_entries = sorted(
                         existing_counts.get((tpl, mid), []),
                         key=lambda item: item.replicate,
                     )
-                    reuse_entries = existing_entries[:eval_reps] if reuse_existing else []
+                    reuse_entries = existing_entries[:eval_reps]
                     for existing_entry in reuse_entries:
                         rows.append(
                             {
@@ -941,6 +778,8 @@ def cohort_membership(
                                 "replicate": int(existing_entry.replicate),
                             }
                         )
+
+                    # Allocate only remaining needed evaluations
                     needed = max(0, eval_reps - len(reuse_entries))
                     if needed == 0:
                         continue
@@ -970,15 +809,6 @@ def cohort_membership(
                                 "replicate": int(replicate_index),
                             }
                         )
-                        evaluation_fill_added += 1
-                        created_for_essay += 1
-            if (
-                selection_cfg.selection_type == "essay"
-                and selection_cfg.mode == CURATED_MODE_REUSE_ESSAYS
-                and selection_cfg.fill_up
-                and created_for_essay == 0
-            ):
-                fill_up_fully_covered.add(essay_gen_id)
 
     # Deduplicate by (stage, gen_id)
     df = pd.DataFrame(rows)
@@ -1045,14 +875,6 @@ def cohort_membership(
             ),
             "origin_cohort_id": MetadataValue.text(str(cohort_id)),
             "membership_path": MetadataValue.path(str(out_path)),
-            "mode": MetadataValue.text(selection_cfg.mode),
-            "evaluation_fill_up": MetadataValue.bool(
-                selection_cfg.selection_type == "essay"
-                and selection_cfg.mode == CURATED_MODE_REUSE_ESSAYS
-                and selection_cfg.fill_up
-            ),
-            "fill_up_added_evaluations": MetadataValue.int(evaluation_fill_added),
-            "fill_up_fully_covered_essays": MetadataValue.int(len(fill_up_fully_covered)),
         }
     )
 

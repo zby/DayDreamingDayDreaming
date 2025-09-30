@@ -108,20 +108,17 @@ uv run python scripts/select_top_prior_art.py \
 ```
 
 Notes
-- `selected_essays.txt` is the input signal for curated cohort builds. You can prefix it with a
-  `# mode:` directive (default is `regenerate`).
+- `selected_essays.txt` is the input signal for curated cohort builds. When present, the cohort
+  membership will include all stages (draft + essay + evaluation) for the selected essays.
 
-  | Mode | Behavior |
-  |------|----------|
-  | *(default)* `# mode: regenerate` | create fresh deterministic drafts, essays, and evaluations for each listed essay. Replicate indices start after the highest existing deterministic ID so nothing is overwritten. |
-  | `# mode: reuse-drafts` | reuse the original draft IDs but create new essays/evaluations (again continuing replicate numbers). |
-  | `# mode: reuse-essays` | reuse both drafts and essays; only evaluations are scheduled. |
-
-  - Optionally add `# fill-up` (or the legacy `# skip-existing-evaluations`) when using
-    `reuse-essays` to only top up missing evaluation replicate slots. Without this directive we
-    always schedule the configured number of evaluation replicates per cohort run.
-  - The legacy directive `# mode: evaluation-only` is kept as an alias for `reuse-essays` for backward compatibility.
-  - When using `selected_drafts.txt`, the default behaviour is `reuse-drafts` (provide draft IDs and mint new essays/evaluations); specify `# mode: regenerate` explicitly if you want to create fresh draft replicates as well. `reuse-essays` is not valid with draft selections and will raise an error.
+  - **Unified behavior:** All stages are always added to cohort membership for complete tracking.
+  - **Skip logic:** Existing artifacts (`raw.txt`, `parsed.txt`) are automatically reused unless
+    `force: true` is set in `StageSettings` (see `experiment_config.py`).
+  - **Replication:** The configured number of evaluation replicates are scheduled per cohort run.
+    Existing evaluations are automatically reused by skip logic.
+  - **Legacy directives:** Old `# mode:` and `# fill-up` directives are no longer recognized.
+    Remove them from selection files - skip logic now handles reuse automatically.
+  - When using `selected_drafts.txt`, essays and evaluations are added for each active essay template.
   - If both `selected_essays.txt` and `selected_drafts.txt` are present the cohort build fails fast—pick one curated entry point per run.
 - When pivoting or aggregating parsed results, prefer `parent_gen_id` (the essay `gen_id`) for stable grouping.
 

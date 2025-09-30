@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Select essays missing novelty-v2 evaluations from the top-N promising essays
-and write them to a cohort's selected_essays.txt for evaluation-only mode.
+and write them to data/2_tasks/selected_essays.txt.
 
 Usage examples:
   uv run python scripts/select_missing_novelty_v2.py --cohort novelty_v2_backfill --top-n 30
@@ -134,13 +134,12 @@ def main() -> int:
         print(f"All top {args.top_n} essays already have {args.target_template} evaluations!")
         return 0
 
-    # Write to data/2_tasks/selected_essays.txt with evaluation-only mode
+    # Write to data/2_tasks/selected_essays.txt
     out_path = Path("data/2_tasks/selected_essays.txt")
     out_path.parent.mkdir(parents=True, exist_ok=True)
 
     lines = [
-        "# mode: evaluation-only",
-        "# include-existing-evaluations",
+        f"# Essays missing {args.target_template} evaluations (top {args.top_n} by {args.baseline_template})",
     ] + missing + [""]
 
     content = "\n".join(lines)
@@ -154,6 +153,7 @@ def main() -> int:
     print(f"  3. Materialize cohort assets (group:cohort)")
     print(f"  4. Materialize evaluation assets (group:evaluation) - use backfill for all partitions")
     print(f"\nNote: The cohort will be written to data/cohorts/{args.cohort}/")
+    print(f"      Existing artifacts (drafts, essays, evaluations) will be reused automatically via skip logic.")
 
     return 0
 
