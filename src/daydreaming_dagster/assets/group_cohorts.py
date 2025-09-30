@@ -245,11 +245,13 @@ def _deterministic_id_for_base(stage: str, base_signature: tuple, replicate_inde
     return compute_deterministic_gen_id(stage_norm, signature)
 
 
-def _existing_evaluations_by_combo(data_root: Path, essay_id: str) -> Dict[tuple[str, str], set[str]]:
-    combos: Dict[tuple[str, str], set[str]] = defaultdict(set)
+def _existing_evaluations_by_template_model(data_root: Path, essay_id: str) -> Dict[tuple[str, str], set[str]]:
+    """Return existing evaluation gen_ids keyed by (template_id, llm_model_id)."""
+
+    existing: Dict[tuple[str, str], set[str]] = defaultdict(set)
     eval_root = data_root / "gens" / "evaluation"
     if not eval_root.exists():
-        return combos
+        return existing
     for gen_dir in eval_root.iterdir():
         if not gen_dir.is_dir():
             continue
@@ -266,8 +268,8 @@ def _existing_evaluations_by_combo(data_root: Path, essay_id: str) -> Dict[tuple
         model = str(meta.get("llm_model_id") or "").strip()
         if not tpl or not model:
             continue
-        combos[(tpl, model)].add(gen_dir.name)
-    return combos
+        existing[(tpl, model)].add(gen_dir.name)
+    return existing
 
 
 def _prepare_curated_entries(data_root: Path, essay_ids: Iterable[str]) -> List[CuratedEssay]:
@@ -690,7 +692,7 @@ def cohort_membership(
             essay_llm_model_id = entry.essay_llm_model_id or llm_model_id
             _add_essay_row(entry.essay_gen_id, entry.draft_gen_id, entry.combo_id, entry.essay_template_id, essay_llm_model_id, entry.essay_replicate)
             essay_seed_combo[entry.essay_gen_id] = entry.combo_id
-            existing_eval_cache[entry.essay_gen_id] = _existing_evaluations_by_combo(data_root, entry.essay_gen_id)
+            existing_eval_cache[entry.essay_gen_id] = _existing_evaluations_by_template_model(data_root, entry.essay_gen_id)
 
     def _build_from_drafts_regenerate(entries: List[CuratedDraft]) -> None:
         essay_tpl_ids = active_essay_templates["template_id"].astype(str).tolist()
