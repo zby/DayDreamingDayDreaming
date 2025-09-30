@@ -245,7 +245,7 @@ def _existing_evaluations_by_combo(data_root: Path, essay_id: str) -> Dict[tuple
         model = str(meta.get("llm_model_id") or "").strip()
         if not tpl or not model:
             continue
-            combos[(tpl, model)].add(gen_dir.name)
+        combos[(tpl, model)].add(gen_dir.name)
     return combos
 
 
