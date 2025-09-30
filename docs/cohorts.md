@@ -11,6 +11,7 @@ What the assets do
   - combo IDs (from `content_combinations`)
   - active draft/essay/evaluation templates
   - active generation/evaluation model IDs
+  - per-stage replication targets (from `data/1_raw/replication_config.csv`)
   - Writes the manifest to `data/cohorts/<cohort_id>/manifest.json` and returns the cohort ID.
 - Asset `cohort_membership` (group `cohort`) builds an authoritative membership file and registers dynamic partitions:
   - Reads `data/2_tasks/selected_essays.txt` (one gen_id per line) when present; otherwise uses the active axes (Cartesian).

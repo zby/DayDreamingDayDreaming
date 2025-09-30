@@ -36,6 +36,7 @@ def _stub_tables(monkeypatch, module):
 
     monkeypatch.setattr(module, "read_templates", _read_templates)
     monkeypatch.setattr(module, "read_llm_models", lambda _root: models_df)
+    monkeypatch.setattr(module, "read_replication_config", lambda _root: {"draft": 2, "essay": 1, "evaluation": 3})
 
 
 def test_cohort_id_deterministic_and_manifest_written(tmp_path, monkeypatch):
@@ -64,6 +65,7 @@ def test_cohort_id_deterministic_and_manifest_written(tmp_path, monkeypatch):
     assert manifest["templates"]["evaluation"] == ["eval-1"]
     assert manifest["llms"]["generation"] == ["gen-model-1"]
     assert manifest["llms"]["evaluation"] == ["eval-model-1"]
+    assert manifest["replication"] == {"draft": 2, "essay": 1, "evaluation": 3}
 
 
 def test_cohort_id_override_precedence_config_over_env(tmp_path, monkeypatch):

@@ -24,7 +24,7 @@ The DayDreaming pipeline is built on **Dagster**, a modern data orchestration pl
        ▼
 ┌──────────────────────────────────────────────────────────────┐
 │ Cohorts (cohort_id + membership)                              │
-│ • cohort_id = deterministic manifest (combos, templates, llms)│
+│ • cohort_id = deterministic manifest (combos, templates, llms, replication)│
 │ • cohort_membership = normalized rows + partition registration│
 └───────────────┬───────────────────────────────┬───────────────┘
                 │                               │
@@ -137,7 +137,7 @@ LLM generation/evaluation assets remain manual to avoid surprise API usage/costs
 
 **Data Flow**:
 1. **Concept Combinations**: Generate k_max-sized combinations from concepts or consume a curated `selected_combo_mappings` CSV.
-2. **Cohort ID**: Compute deterministic ID from active combos/templates/models and write manifest.
+2. **Cohort ID**: Compute deterministic ID from active combos/templates/models and replication targets, then write the manifest.
 3. **Cohort Membership**: Build normalized rows for `draft`, `essay`, and `evaluation` and register dynamic partitions by `gen_id`.
 
 **Key Features**:
@@ -156,7 +156,7 @@ We encode every generation ID from stage-specific signatures and a 1-based repli
 | Essay       | `(draft_gen_id, essay_template_id, replicate)`            | `e_` |
 | Evaluation  | `(essay_gen_id, evaluation_template_id, llm_model_id, replicate)` | `v_` |
 
-Replicate counts are sourced from `data/1_raw/replication_config.csv`; cohort membership enforces these values when building rows. Because IDs are fully deterministic, the pipeline no longer keeps “reuse” counters or legacy fallbacks—re-running a cohort with the same manifest simply reuses the existing identifiers and Dagster reports `SKIPPED` partitions.
+Replicate counts are sourced from `data/1_raw/replication_config.csv`; the cohort manifest persists these per-stage targets and membership enforces them when building rows. Because IDs are fully deterministic, the pipeline no longer keeps “reuse” counters or legacy fallbacks—re-running a cohort with the same manifest simply reuses the existing identifiers and Dagster reports `SKIPPED` partitions.
 
 When a curated rerun asks for new replicates, the allocator walks deterministic IDs until it
 finds the next unused number. If prior gens directories are removed manually, the next cohort may

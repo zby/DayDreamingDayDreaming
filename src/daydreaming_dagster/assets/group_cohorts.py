@@ -94,6 +94,27 @@ class CuratedDraft:
     draft_replicate: int
 
 
+def _require_replication_config(data_root: Path) -> dict[str, int]:
+    rep_cfg = read_replication_config(data_root)
+    if not isinstance(rep_cfg, dict):
+        raise DDError(
+            Err.DATA_MISSING,
+            ctx={"reason": "replication_config_missing"},
+        )
+    for stage in ("draft", "essay", "evaluation"):
+        value = rep_cfg.get(stage)
+        if not isinstance(value, int) or value < 1:
+            raise DDError(
+                Err.INVALID_CONFIG,
+                ctx={
+                    "reason": "invalid_replication_config",
+                    "stage": stage,
+                    "value": value,
+                },
+            )
+    return rep_cfg
+
+
 def _parse_selection_file(path: Path) -> tuple[str, List[str], bool, bool]:
     mode = CURATED_MODE_REGENERATE
     fill_up = False
@@ -571,22 +592,7 @@ def cohort_membership(
     active_essay_templates = read_templates(data_root, "essay", filter_active=True)
 
     # Replication config: required and authoritative
-    rep_cfg = read_replication_config(data_root)
-    if not isinstance(rep_cfg, dict):
-        raise DDError(
-            Err.DATA_MISSING,
-            ctx={"reason": "replication_config_missing"},
-        )
-    for _st in ("draft", "essay", "evaluation"):
-        if _st not in rep_cfg or not isinstance(rep_cfg.get(_st), int) or rep_cfg.get(_st, 0) < 1:
-            raise DDError(
-                Err.INVALID_CONFIG,
-                ctx={
-                    "reason": "invalid_replication_config",
-                    "stage": _st,
-                    "value": rep_cfg.get(_st),
-                },
-            )
+    rep_cfg = _require_replication_config(data_root)
 
     essay_seed_combo: Dict[str, str] = {}
     existing_eval_cache: Dict[str, Dict[tuple[str, str], set[str]]] = {}
@@ -898,8 +904,9 @@ def cohort_membership(
                         and selection_cfg.fill_up
                     ):
                         current = existing_counts.get((tpl, mid), set())
-                        # Add existing evaluations to membership first
-                        for existing_gen_id in sorted(current):
+                        # Add existing evaluations to membership (up to eval_reps)
+                        existing_to_include = sorted(current)[:eval_reps]
+                        for existing_gen_id in existing_to_include:
                             rows.append(
                                 {
                                     "stage": "evaluation",
@@ -912,7 +919,7 @@ def cohort_membership(
                                     "replicate": 0,  # Existing evals don't have cohort replicate numbers
                                 }
                             )
-                        needed = max(0, eval_reps - len(current))
+                        needed = max(0, eval_reps - len(existing_to_include))
                         if needed == 0:
                             continue
                     else:
@@ -1133,10 +1140,13 @@ def cohort_id(context, content_combinations: list[ContentCombination]) -> str:
     gen_models = sorted(mdf[mdf["for_generation"] == True]["id"].astype(str).tolist()) if not mdf.empty else []
     eval_models = sorted(mdf[mdf["for_evaluation"] == True]["id"].astype(str).tolist()) if not mdf.empty else []
     combos = sorted([str(c.combo_id) for c in (content_combinations or [])])
+    rep_cfg = _require_replication_config(data_root)
+
     manifest = {
         "combos": combos,
         "templates": {"draft": drafts, "essay": essays, "evaluation": evals},
         "llms": {"generation": gen_models, "evaluation": eval_models},
+        "replication": rep_cfg,
     }
     override = None
     asset_cfg = getattr(context, "asset_config", None)

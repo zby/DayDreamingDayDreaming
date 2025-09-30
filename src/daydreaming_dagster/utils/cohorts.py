@@ -38,6 +38,7 @@ def compute_cohort_id(
         "combos": manifest.get("combos"),
         "llms": manifest.get("llms"),
         "templates": manifest.get("templates"),
+        "replication": manifest.get("replication"),
         "prompt_versions": manifest.get("prompt_versions"),
         "pipeline_version": PIPELINE_VERSION,
     }
