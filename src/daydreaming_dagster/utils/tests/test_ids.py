@@ -1,3 +1,6 @@
+import pytest
+
+from daydreaming_dagster.utils.errors import DDError, Err
 from daydreaming_dagster.utils.ids import (
     reserve_gen_id,
     draft_signature,
@@ -13,11 +16,24 @@ def test_draft_signature_normalization():
     assert sig == ("comboa", "draft-tpl", "gen-model", 2)
 
 
+def test_draft_signature_missing_component_raises():
+    with pytest.raises(DDError) as err:
+        draft_signature(None, "tpl", "model", 1)
+    assert err.value.code is Err.INVALID_CONFIG
+
+
 def test_deterministic_gen_id_stable():
     sig = draft_signature("combo", "tpl", "model", 1)
     gid1 = compute_deterministic_gen_id("draft", sig)
     gid2 = compute_deterministic_gen_id("draft", sig)
     assert gid1 == gid2 and gid1.startswith("d_")
+
+
+def test_compute_deterministic_gen_id_rejects_non_stage():
+    sig = draft_signature("combo", "tpl", "model", 1)
+    with pytest.raises(DDError) as err:
+        compute_deterministic_gen_id("DRAFT", sig)  # type: ignore[arg-type]
+    assert err.value.code is Err.INVALID_CONFIG
 
 
 def test_signature_from_metadata_draft():
@@ -40,6 +56,12 @@ def test_signature_from_metadata_eval():
     }
     sig = signature_from_metadata("evaluation", meta)
     assert sig == ("essay123", "eval-temp", "eval-model", 1)
+
+
+def test_signature_from_metadata_invalid_stage():
+    with pytest.raises(DDError) as err:
+        signature_from_metadata("unknown", {})  # type: ignore[arg-type]
+    assert err.value.code is Err.INVALID_CONFIG
 
 
 class TestIDs:

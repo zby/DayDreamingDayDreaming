@@ -22,15 +22,29 @@ from typing import Set
 import pandas as pd
 
 
+def _ensure_src_on_path() -> None:
+    import sys
+
+    repo_root = Path(__file__).resolve().parents[1]
+    src_dir = repo_root / "src"
+    if src_dir.exists():
+        sys.path.insert(0, str(src_dir))
+
+
+_ensure_src_on_path()
+
+from daydreaming_dagster.utils.errors import DDError, Err
+
+
 def _compose_essay_task_id(df: pd.DataFrame) -> pd.Series:
     """Derive the essay_task_id using combo/template/model columns from the new schema."""
 
     required = ["combo_id", "draft_template", "generation_model", "generation_template"]
     missing_cols = [col for col in required if col not in df.columns]
     if missing_cols:
-        raise ValueError(
-            "Unable to derive essay_task_id; missing required columns: "
-            f"{missing_cols}"
+        raise DDError(
+            Err.INVALID_CONFIG,
+            ctx={"reason": "missing_task_columns", "missing": missing_cols},
         )
 
     def compose(row: pd.Series) -> str:
@@ -38,15 +52,23 @@ def _compose_essay_task_id(df: pd.DataFrame) -> pd.Series:
         for col in required:
             value = row[col]
             if pd.isna(value):
-                raise ValueError(
-                    "Unable to derive essay_task_id due to NaN in column "
-                    f"'{col}' for row index {row.name}"
+                raise DDError(
+                    Err.DATA_MISSING,
+                    ctx={
+                        "reason": "essay_task_component_nan",
+                        "column": col,
+                        "row_index": int(row.name),
+                    },
                 )
             text = str(value).strip()
             if not text:
-                raise ValueError(
-                    "Unable to derive essay_task_id due to empty value in column "
-                    f"'{col}' for row index {row.name}"
+                raise DDError(
+                    Err.DATA_MISSING,
+                    ctx={
+                        "reason": "essay_task_component_empty",
+                        "column": col,
+                        "row_index": int(row.name),
+                    },
                 )
             parts.append(text)
         return "_".join(parts)
@@ -112,7 +134,10 @@ def build_pivot(
     data_root: Path,
 ) -> None:
     if not parsed_scores.exists():
-        raise FileNotFoundError(f"Parsed scores CSV not found: {parsed_scores}")
+        raise DDError(
+            Err.DATA_MISSING,
+            ctx={"reason": "parsed_scores_missing", "path": str(parsed_scores)},
+        )
 
     df = pd.read_csv(parsed_scores)
 
@@ -120,16 +145,27 @@ def build_pivot(
         active_templates = _load_active_templates(evaluation_templates_path)
         active_models = _load_active_models(llm_models_path)
         if not active_templates:
-            raise RuntimeError(
-                f"No active evaluation templates found in {evaluation_templates_path}."
+            raise DDError(
+                Err.DATA_MISSING,
+                ctx={
+                    "reason": "no_active_evaluation_templates",
+                    "path": str(evaluation_templates_path),
+                },
             )
         if not active_models:
-            raise RuntimeError(
-                f"No evaluation models marked active in {llm_models_path}."
+            raise DDError(
+                Err.DATA_MISSING,
+                ctx={
+                    "reason": "no_active_evaluation_models",
+                    "path": str(llm_models_path),
+                },
             )
         if "evaluation_template" not in df.columns or "evaluation_llm_model" not in df.columns:
-            raise ValueError(
-                "Parsed scores missing 'evaluation_template' or 'evaluation_llm_model' columns"
+            raise DDError(
+                Err.INVALID_CONFIG,
+                ctx={
+                    "reason": "parsed_scores_missing_evaluation_columns",
+                },
             )
         before = len(df)
         df = df[
@@ -137,8 +173,9 @@ def build_pivot(
             & df["evaluation_llm_model"].isin(active_models)
         ].copy()
         if df.empty:
-            raise RuntimeError(
-                "Filtering to active evaluation templates/models removed all rows."
+            raise DDError(
+                Err.DATA_MISSING,
+                ctx={"reason": "active_filter_removed_all_rows"},
             )
         removed = before - len(df)
         if removed:
@@ -150,9 +187,9 @@ def build_pivot(
     task_cols = ["combo_id", "draft_template", "generation_template", "generation_model"]
     missing_task_cols = [col for col in task_cols if col not in df.columns]
     if missing_task_cols:
-        raise ValueError(
-            "Parsed scores missing required task metadata columns: "
-            f"{missing_task_cols}"
+        raise DDError(
+            Err.INVALID_CONFIG,
+            ctx={"reason": "missing_task_metadata", "missing": missing_task_cols},
         )
 
     missing_mask = df[task_cols].isna().any(axis=1)
@@ -168,7 +205,10 @@ def build_pivot(
         )
         df = df.loc[~drop_mask].copy()
     if df.empty:
-        raise ValueError("No rows with complete task metadata available for pivot")
+        raise DDError(
+            Err.DATA_MISSING,
+            ctx={"reason": "no_complete_task_metadata"},
+        )
 
     # Ensure required columns exist (canonical uses draft_template; support legacy link_template)
     # Accept either 'template_id' (new) or 'evaluation_template' (legacy)
@@ -183,13 +223,16 @@ def build_pivot(
 
     missing = [c for c in required_base if c not in df.columns]
     if missing:
-        raise ValueError(
-            "Missing columns in parsed scores: "
-            f"{missing}; required base columns: {required_base}"
+        raise DDError(
+            Err.INVALID_CONFIG,
+            ctx={"reason": "parsed_scores_missing_base_columns", "missing": missing},
         )
     # Normalize template column name
     if "evaluation_template" not in df.columns:
-        raise ValueError("Missing required column 'evaluation_template' in parsed scores")
+        raise DDError(
+            Err.INVALID_CONFIG,
+            ctx={"reason": "missing_evaluation_template_column"},
+        )
 
     # Backward-compat: if draft_template missing, populate from link_template when present
     if "draft_template" not in df.columns:
@@ -201,7 +244,10 @@ def build_pivot(
 
     # Compose column key as template__evaluator (strict: require evaluation_llm_model)
     if "evaluation_llm_model" not in df.columns:
-        raise ValueError("Missing required column 'evaluation_llm_model' in parsed scores")
+        raise DDError(
+            Err.INVALID_CONFIG,
+            ctx={"reason": "missing_evaluation_llm_model_column"},
+        )
     df["evaluation_template_model"] = (
         df["evaluation_template"].astype(str) + "__" + df["evaluation_llm_model"].astype(str)
     )
@@ -288,8 +334,8 @@ def main() -> None:
     parser.add_argument(
         "--parsed-scores",
         type=Path,
-        default=Path("data/5_parsing/aggregated_scores.csv"),
-        help="Path to aggregated scores CSV (default: data/5_parsing/aggregated_scores.csv)",
+        default=Path("data/7_cross_experiment/aggregated_scores.csv"),
+        help="Path to aggregated scores CSV (default: data/7_cross_experiment/aggregated_scores.csv)",
     )
     parser.add_argument(
         "--out-dir",

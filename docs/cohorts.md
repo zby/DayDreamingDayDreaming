@@ -11,6 +11,7 @@ What the assets do
   - combo IDs (from `content_combinations`)
   - active draft/essay/evaluation templates
   - active generation/evaluation model IDs
+  - per-stage replication targets (from `data/1_raw/replication_config.csv`)
   - Writes the manifest to `data/cohorts/<cohort_id>/manifest.json` and returns the cohort ID.
 - Asset `cohort_membership` (group `cohort`) builds an authoritative membership file and registers dynamic partitions:
   - Reads `data/2_tasks/selected_essays.txt` (one gen_id per line) when present; otherwise uses the active axes (Cartesian).
@@ -54,7 +55,7 @@ Recommended policy
 CLI examples
 ```bash
 # Curated: write selected essays then build cohort
-uv run python scripts/select_top_prior_art.py --top-n 25 --parsed-scores data/5_parsing/aggregated_scores.csv
+uv run python scripts/select_top_prior_art.py --top-n 25 --parsed-scores data/7_cross_experiment/aggregated_scores.csv
 uv run dagster asset materialize --select "cohort_id,cohort_membership" -f src/daydreaming_dagster/definitions.py
 
 # Cartesian: no selection file; cohort_membership derives from active axes
@@ -73,7 +74,7 @@ Operational flow
 - Optional curated selection: write essay gen_ids to `data/2_tasks/selected_essays.txt`.
 - Materialize `cohort_id,cohort_membership` to register dynamic partitions by `gen_id`.
 - Materialize per-stage assets by partition key (`gen_id`): drafts, essays, evaluations.
-- Parse and summarize results (`parsed_scores`, `final_results`).
+- Parse and summarize results (`cohort_aggregated_scores`, `final_results`).
 
 Getting partition keys (gen_ids)
 - Drafts: `awk -F',' 'NR==1 || $1=="draft"' data/cohorts/*/membership.csv | cut -d',' -f2 | tail -n +2`
@@ -92,7 +93,7 @@ This section summarizes the curated workflow previously documented in the select
 Prerequisites
 - Set `DAGSTER_HOME` to a writable directory, e.g. `export DAGSTER_HOME=$(pwd)/dagster_home`.
 - Optional: build cross‑experiment scores if you plan to select by prior‑art top‑N:
-  `uv run python scripts/aggregate_scores.py --output data/5_parsing/aggregated_scores.csv`.
+  `uv run python scripts/aggregate_scores.py --output data/7_cross_experiment/aggregated_scores.csv`.
 - Start Dagster for a richer experience: `uv run dagster dev -f src/daydreaming_dagster/definitions.py`.
 
 Step 1 — Select essay gen_ids
@@ -102,7 +103,7 @@ Example
 ```bash
 uv run python scripts/select_top_prior_art.py \
   --top-n 25 \
-  --parsed-scores data/5_parsing/aggregated_scores.csv \
+  --parsed-scores data/7_cross_experiment/aggregated_scores.csv \
   # optional: --prior-art-templates gemini-prior-art-eval gemini-prior-art-eval-v2
 ```
 
@@ -155,7 +156,7 @@ uv run dagster asset materialize -f src/daydreaming_dagster/definitions.py \
 Parsing and summaries
 ```bash
 uv run dagster asset materialize -f src/daydreaming_dagster/definitions.py \
-  --select parsed_scores,final_results
+  --select cohort_aggregated_scores,final_results
 ```
 
 Environment tip

@@ -9,6 +9,8 @@ from typing import Dict, Iterable, Optional, Tuple
 
 import pandas as pd
 
+from .errors import DDError, Err
+
 
 @dataclass(frozen=True)
 class GenerationScope:
@@ -35,9 +37,14 @@ class CohortScope:
     def _membership(self, cohort_id: str) -> pd.DataFrame:
         if cohort_id not in self._cohort_cache:
             csv_path = self._data_root / "cohorts" / cohort_id / "membership.csv"
-            df = pd.read_csv(csv_path)
+            try:
+                df = pd.read_csv(csv_path)
+            except FileNotFoundError as exc:
+                raise DDError(Err.DATA_MISSING, ctx={"path": str(csv_path)}) from exc
+            except pd.errors.ParserError as exc:
+                raise DDError(Err.PARSER_FAILURE, ctx={"path": str(csv_path)}) from exc
             if not {"stage", "gen_id"}.issubset(df.columns):
-                raise ValueError("membership.csv must contain 'stage' and 'gen_id' columns")
+                raise DDError(Err.INVALID_CONFIG, ctx={"path": str(csv_path), "missing": ["stage", "gen_id"]})
             self._cohort_cache[cohort_id] = df
         return self._cohort_cache[cohort_id]
 
@@ -55,8 +62,13 @@ class CohortScope:
         if key not in self._metadata_cache:
             path = self._data_root / "gens" / stage / gen_id / "metadata.json"
             if not path.exists():
-                raise FileNotFoundError(f"metadata.json not found for {stage}/{gen_id}")
-            self._metadata_cache[key] = json.loads(path.read_text(encoding="utf-8"))
+                raise DDError(Err.DATA_MISSING, ctx={"path": str(path)})
+            try:
+                self._metadata_cache[key] = json.loads(path.read_text(encoding="utf-8"))
+            except OSError as exc:
+                raise DDError(Err.IO_ERROR, ctx={"path": str(path)}) from exc
+            except json.JSONDecodeError as exc:
+                raise DDError(Err.PARSER_FAILURE, ctx={"path": str(path)}) from exc
         return self._metadata_cache[key]
 
     def get_generation_scope(self, stage: str, gen_id: str) -> GenerationScope:
@@ -94,7 +106,7 @@ class CohortScope:
             try:
                 meta = self._load_metadata(stage_norm, child.name)
                 sig = signature_from_metadata(stage_norm, meta)
-            except Exception:
+            except DDError:
                 continue
             if sig == signature:
                 return child.name

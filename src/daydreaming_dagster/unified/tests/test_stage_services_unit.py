@@ -14,6 +14,7 @@ from daydreaming_dagster.unified.stage_core import (
     execute_copy,
     execute_llm,
 )
+from daydreaming_dagster.utils.errors import DDError, Err
 from daydreaming_dagster.utils.parser_registry import ParserError
 
 
@@ -75,8 +76,10 @@ def test_parse_draft_uses_registry():
     text = "<essay>Body</essay>"
     parsed = parse_text("draft", text, "essay_block")
     assert parsed == "Body"
-    with pytest.raises(ParserError):
+    with pytest.raises(ParserError) as err:
         parse_text("draft", text, "missing_parser")
+    assert err.value.code is Err.PARSER_FAILURE
+    assert err.value.ctx.get("reason") == "missing_parser"
 
 
 def test_parse_evaluation_in_last_line():
@@ -132,7 +135,7 @@ def test_execute_draft_llm_happy_path(tmp_path: Path):
 
 def test_execute_draft_llm_min_lines_failure(tmp_path: Path):
     llm = _StubLLM("one line only", info={"finish_reason": "stop", "truncated": False})
-    with pytest.raises(ValueError):
+    with pytest.raises(DDError) as err:
         execute_llm(
             stage="draft",
             llm=llm,
@@ -145,6 +148,8 @@ def test_execute_draft_llm_min_lines_failure(tmp_path: Path):
             min_lines=3,
             parser_name="essay_block",
         )
+    assert err.value.code is Err.INVALID_CONFIG
+    assert err.value.ctx.get("reason") == "min_lines_not_met"
     base = tmp_path / "gens" / "draft" / "D2"
     assert (base / "raw.txt").exists()
     assert not (base / "parsed.txt").exists()
@@ -152,7 +157,7 @@ def test_execute_draft_llm_min_lines_failure(tmp_path: Path):
 
 def test_execute_draft_llm_truncation_failure_after_raw(tmp_path: Path):
     llm = _StubLLM("short text", info={"finish_reason": "length", "truncated": True})
-    with pytest.raises(ValueError):
+    with pytest.raises(DDError) as err:
         execute_llm(
             stage="draft",
             llm=llm,
@@ -166,6 +171,8 @@ def test_execute_draft_llm_truncation_failure_after_raw(tmp_path: Path):
             fail_on_truncation=True,
             parser_name="essay_block",
         )
+    assert err.value.code is Err.INVALID_CONFIG
+    assert err.value.ctx.get("reason") == "truncated_response"
     base = tmp_path / "gens" / "draft" / "D3"
     assert (base / "raw.txt").exists()
     assert not (base / "parsed.txt").exists()
@@ -218,12 +225,22 @@ def test_validate_result_min_lines_and_truncation():
     from daydreaming_dagster.unified.stage_core import validate_result
 
     # Min-lines failure
-    with pytest.raises(ValueError):
+    with pytest.raises(DDError) as err:
         validate_result("draft", "only one line", {"truncated": False}, min_lines=3)
+    assert err.value.code is Err.INVALID_CONFIG
+    assert err.value.ctx.get("reason") == "min_lines_not_met"
 
     # Truncation failure
-    with pytest.raises(ValueError):
-        validate_result("essay", "line\nline\n", {"truncated": True}, min_lines=None, fail_on_truncation=True)
+    with pytest.raises(DDError) as err:
+        validate_result(
+            "essay",
+            "line\nline\n",
+            {"truncated": True},
+            min_lines=None,
+            fail_on_truncation=True,
+        )
+    assert err.value.code is Err.INVALID_CONFIG
+    assert err.value.ctx.get("reason") == "truncated_response"
 
     # No failure when truncation disabled
     validate_result("essay", "line\n", {"truncated": True}, min_lines=None, fail_on_truncation=False)
@@ -247,7 +264,7 @@ def test_execute_llm_io_injection_early_write_order_failure(tmp_path: Path):
         calls.append(("parsed", args, kwargs))
 
     llm = _StubLLM("line1\n")
-    with pytest.raises(ValueError):
+    with pytest.raises(DDError) as err:
         execute_llm(
             stage="essay",
             llm=llm,
@@ -263,6 +280,8 @@ def test_execute_llm_io_injection_early_write_order_failure(tmp_path: Path):
             write_metadata=_w_md,
             write_parsed=_w_parsed,
         )
+    assert err.value.code is Err.INVALID_CONFIG
+    assert err.value.ctx.get("reason") == "min_lines_not_met"
     # Assert raw and metadata called, parsed not called, and order raw -> metadata
     kinds = [k for (k, _a, _k) in calls]
     assert kinds[:2] == ["raw", "metadata"]

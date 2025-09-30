@@ -6,6 +6,7 @@ import pytest
 
 from daydreaming_dagster.resources.membership_service import MembershipServiceResource
 from daydreaming_dagster.unified.stage_core import resolve_generator_mode
+from daydreaming_dagster.utils.errors import DDError, Err
 
 
 class _Resources:
@@ -58,9 +59,10 @@ def test_resolve_essay_generator_mode_csv_and_override(tmp_path: Path):
     )
     assert resolve_generator_mode(kind="essay", data_root=tmp_path, template_id="t1") == "llm"
     assert resolve_generator_mode(kind="essay", data_root=tmp_path, template_id="t2") == "copy"
-    # invalid row -> ValueError (policy layer)
-    with pytest.raises(ValueError):
+    # invalid row -> structured error
+    with pytest.raises(DDError) as err:
         resolve_generator_mode(kind="essay", data_root=tmp_path, template_id="missing")
+    assert err.value.code is Err.DATA_MISSING
     # override
     assert (
         resolve_generator_mode(

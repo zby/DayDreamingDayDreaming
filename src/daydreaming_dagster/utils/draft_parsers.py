@@ -7,6 +7,7 @@ Canonical module for draft parsers. Formerly lived under `link_parsers`.
 from typing import Callable, Optional, Dict
 import re
 
+from .errors import DDError, Err
 
 # Inline idea parser implementation (used by deliberate-rolling-thread*)
 ESSAY_IDEA_BLOCK_RE = re.compile(
@@ -24,7 +25,10 @@ def parse_essay_idea_last(text: str) -> str:
     """
     matches = list(ESSAY_IDEA_BLOCK_RE.finditer(text))
     if not matches:
-        raise ValueError("No <essay-idea> blocks found in links output")
+        raise DDError(
+            Err.PARSER_FAILURE,
+            ctx={"reason": "missing_essay_idea_block"},
+        )
 
     stage_attr_re = re.compile(r"<essay-idea[^>]*stage=\"(\d+)\"", re.MULTILINE)
     staged = []
@@ -71,7 +75,10 @@ def parse_essay_block(text: str) -> str:
     start = text.find("<essay>")
     if start != -1:
         return text[start + len("<essay>"):].strip()
-    raise ValueError("No <essay> block found")
+    raise DDError(
+        Err.PARSER_FAILURE,
+        ctx={"reason": "missing_essay_block"},
+    )
 
 
 # Register under a simple name referenced by draft_templates.csv

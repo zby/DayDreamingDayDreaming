@@ -11,6 +11,7 @@ from jinja2 import Environment, StrictUndefined
 from daydreaming_dagster.types import Stage
 from daydreaming_dagster.data_layer.paths import Paths, RAW_FILENAME, PARSED_FILENAME
 from daydreaming_dagster.utils.raw_readers import read_templates
+from daydreaming_dagster.utils.errors import DDError, Err
 from daydreaming_dagster.data_layer.gens_data_layer import GensDataLayer
 
 
@@ -72,7 +73,10 @@ def render_template(
 def effective_parent_stage(stage: Stage) -> Stage:
     parent = parent_stage_of(stage)
     if parent is None:
-        raise ValueError(f"Stage {stage} does not have a parent stage")
+        raise DDError(
+            Err.INVALID_CONFIG,
+            ctx={"stage": stage, "reason": "no_parent_stage"},
+        )
     return parent
 
 
@@ -87,12 +91,23 @@ def effective_parser_name(
 
     stage_str = str(stage)
     if stage_str not in {"draft", "essay", "evaluation"}:
-        raise ValueError(f"Unsupported stage for parser resolution: {stage}")
+        raise DDError(
+            Err.INVALID_CONFIG,
+            ctx={"stage": stage, "reason": "unsupported_stage"},
+        )
 
     df = read_templates(Path(data_root), stage_str, filter_active=False)
     row = df[df["template_id"].astype(str) == str(template_id)]
     if row.empty:
-        raise ValueError(f"Template '{template_id}' not found in {stage_str}_templates.csv")
+        raise DDError(
+            Err.DATA_MISSING,
+            ctx={
+                "stage": stage_str,
+                "template_id": template_id,
+                "artifact": "template_csv",
+                "reason": "template_not_found",
+            },
+        )
 
     raw_val = row.iloc[0].get("parser")
     if raw_val is None or (isinstance(raw_val, float) and math.isnan(raw_val)):
@@ -119,21 +134,49 @@ def resolve_generator_mode(
 
     df = read_templates(Path(data_root), kind, filter_active=bool(filter_active))
     if df.empty:
-        raise ValueError(f"{kind.capitalize()} templates table is empty; cannot resolve generator mode")
+        raise DDError(
+            Err.DATA_MISSING,
+            ctx={"stage": kind, "reason": "templates_empty"},
+        )
     if "generator" not in df.columns:
-        raise ValueError(f"{kind.capitalize()} templates CSV missing required 'generator' column")
+        raise DDError(
+            Err.INVALID_CONFIG,
+            ctx={"stage": kind, "missing": "generator", "reason": "missing_generator_column"},
+        )
 
     row = df[df["template_id"].astype(str) == str(template_id)]
     if row.empty:
-        raise ValueError(f"{kind.capitalize()} template not found: {template_id}")
+        raise DDError(
+            Err.DATA_MISSING,
+            ctx={
+                "stage": kind,
+                "template_id": template_id,
+                "reason": "template_not_found",
+            },
+        )
 
     val = row.iloc[0].get("generator")
     if not isinstance(val, str) or not val.strip():
-        raise ValueError(f"{kind.capitalize()} template has empty/invalid generator value")
+        raise DDError(
+            Err.INVALID_CONFIG,
+            ctx={
+                "stage": kind,
+                "template_id": template_id,
+                "reason": "invalid_generator_value",
+            },
+        )
 
     mode = val.strip().lower()
     if mode not in ("llm", "copy"):
-        raise ValueError(f"{kind.capitalize()} template declares unsupported generator '{mode}'")
+        raise DDError(
+            Err.INVALID_CONFIG,
+            ctx={
+                "stage": kind,
+                "template_id": template_id,
+                "reason": "unsupported_generator_mode",
+                "value": mode,
+            },
+        )
     return mode  # type: ignore[return-value]
 
 
@@ -153,8 +196,14 @@ def _validate_min_lines(stage: Stage, raw_text: str, min_lines: Optional[int]) -
     if isinstance(min_lines, int) and min_lines > 0:
         response_lines = [ln for ln in str(raw_text).split("\n") if ln.strip()]
         if len(response_lines) < min_lines:
-            raise ValueError(
-                f"{str(stage).capitalize()} validation failed: only {len(response_lines)} non-empty lines, minimum required {min_lines}"
+            raise DDError(
+                Err.INVALID_CONFIG,
+                ctx={
+                    "stage": stage,
+                    "reason": "min_lines_not_met",
+                    "observed": len(response_lines),
+                    "required": min_lines,
+                },
             )
 
 
@@ -173,8 +222,13 @@ def validate_result(
     """
     _validate_min_lines(stage, raw_text, min_lines)
     if bool(fail_on_truncation) and isinstance(info, dict) and info.get("truncated"):
-        raise ValueError(
-            "LLM response appears truncated (finish_reason=length or max_tokens hit)"
+        raise DDError(
+            Err.INVALID_CONFIG,
+            ctx={
+                "stage": stage,
+                "reason": "truncated_response",
+                "finish_reason": info.get("finish_reason") or info.get("finishReason"),
+            },
         )
 
 
@@ -215,7 +269,10 @@ def parse_text(stage: Stage, raw_text: str, parser_name: Optional[str]) -> Optio
 
     parser = get_parser(stage, parser_name)
     if parser is None:
-        raise ParserError(f"Missing parser '{parser_name}' for stage '{stage}'")
+        raise ParserError(
+            reason="missing_parser",
+            ctx={"stage": stage, "parser_name": parser_name},
+        )
     try:
         return parser(str(raw_text))
     except Exception:
@@ -244,7 +301,14 @@ def execute_llm(
 ) -> ExecutionResult:
     if stage in ("essay", "evaluation"):
         if not (isinstance(parent_gen_id, str) and parent_gen_id.strip()):
-            raise ValueError("parent_gen_id is required for essay and evaluation stages")
+            raise DDError(
+                Err.INVALID_CONFIG,
+                ctx={
+                    "stage": stage,
+                    "gen_id": gen_id,
+                    "reason": "missing_parent",
+                },
+            )
 
     paths = Paths.from_str(root_dir)
     gens_root = paths.gens_root

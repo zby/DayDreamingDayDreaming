@@ -280,17 +280,19 @@ def test_cohort_membership_curated_reuse_essays_adds_new_evaluations(base_data_r
     )
 
     for stage, gen_id in (("draft", existing_draft_id), ("essay", existing_essay_id), ("evaluation", existing_eval_id)):
+        metadata = {
+            "stage": stage,
+            "gen_id": gen_id,
+            "parent_gen_id": existing_draft_id if stage != "draft" else "",
+            "template_id": "draft-A" if stage == "draft" else ("essay-X" if stage == "essay" else "eval-1"),
+            "llm_model_id": "gen-model" if stage != "evaluation" else "eval-model",
+            "replicate": 1,
+        }
+        if stage == "draft":
+            metadata["combo_id"] = "combo-1"
         _write_json(
             data_root / "gens" / stage / gen_id / "metadata.json",
-            {
-                "stage": stage,
-                "gen_id": gen_id,
-                "parent_gen_id": existing_draft_id if stage != "draft" else "",
-                "combo_id": "combo-1",
-                "template_id": "draft-A" if stage == "draft" else ("essay-X" if stage == "essay" else "eval-1"),
-                "llm_model_id": "gen-model" if stage != "evaluation" else "eval-model",
-                "replicate": 1,
-            },
+            metadata,
         )
 
     (data_root / "2_tasks" / "selected_essays.txt").write_text(
@@ -406,8 +408,14 @@ def test_curfated_selection_conflict_raises(base_data_root: Path) -> None:
     (select_dir / "selected_drafts.txt").write_text("d_456\n", encoding="utf-8")
 
     context = build_asset_context(resources={"data_root": str(data_root)})
-    with pytest.raises(Failure, match="Both selected_essays.txt and selected_drafts.txt are present"):
+    with pytest.raises(Failure) as err:
         cohort_membership(context, cohort_id="cohort-conflict")
+    failure = err.value
+    assert failure.metadata["error_code"].value == "INVALID_CONFIG"
+    ctx = failure.metadata.get("error_ctx")
+    if ctx is not None:
+        assert ctx.data.get("reason") == "multiple_curated_inputs"
+
 
 
 def test_selected_drafts_reuse_essays_mode_invalid(base_data_root: Path) -> None:
@@ -417,5 +425,10 @@ def test_selected_drafts_reuse_essays_mode_invalid(base_data_root: Path) -> None
     (select_dir / "selected_drafts.txt").write_text("# mode: reuse-essays\nd_123\n", encoding="utf-8")
 
     context = build_asset_context(resources={"data_root": str(data_root)})
-    with pytest.raises(Failure, match="requires selected essays"):
+    with pytest.raises(Failure) as err:
         cohort_membership(context, cohort_id="cohort-invalid-mode")
+    failure = err.value
+    assert failure.metadata["error_code"].value == "INVALID_CONFIG"
+    ctx = failure.metadata.get("error_ctx")
+    if ctx is not None:
+        assert ctx.data.get("reason") == "reuse_essays_requires_selected_essays"

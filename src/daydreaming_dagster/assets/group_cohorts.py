@@ -44,6 +44,7 @@ from .partitions import (
     evaluation_gens_partitions,
 )
 from ..utils.generation import load_generation, write_gen_metadata
+from ..utils.errors import DDError, Err
 from ..data_layer.paths import Paths
 
 
@@ -93,6 +94,27 @@ class CuratedDraft:
     draft_replicate: int
 
 
+def _require_replication_config(data_root: Path) -> dict[str, int]:
+    rep_cfg = read_replication_config(data_root)
+    if not isinstance(rep_cfg, dict):
+        raise DDError(
+            Err.DATA_MISSING,
+            ctx={"reason": "replication_config_missing"},
+        )
+    for stage in ("draft", "essay", "evaluation"):
+        value = rep_cfg.get(stage)
+        if not isinstance(value, int) or value < 1:
+            raise DDError(
+                Err.INVALID_CONFIG,
+                ctx={
+                    "reason": "invalid_replication_config",
+                    "stage": stage,
+                    "value": value,
+                },
+            )
+    return rep_cfg
+
+
 def _parse_selection_file(path: Path) -> tuple[str, List[str], bool, bool]:
     mode = CURATED_MODE_REGENERATE
     fill_up = False
@@ -109,10 +131,16 @@ def _parse_selection_file(path: Path) -> tuple[str, List[str], bool, bool]:
                 value = directive.split(":", 1)[1].strip().lower()
                 value = _CURATED_MODE_ALIASES.get(value, value)
                 if value not in _CURATED_ALLOWED_MODES:
-                    raise ValueError(f"Unsupported curated selection mode '{value}'")
+                    raise DDError(
+                        Err.INVALID_CONFIG,
+                        ctx={
+                            "reason": "unsupported_curated_mode",
+                            "mode": value,
+                        },
+                    )
                 mode = value
                 explicit_mode = True
-            elif directive in {"skip-existing-evaluations", "fill-up", "fillup"}:
+            elif directive in {"skip-existing-evaluations", "fill-up", "fillup", "include-existing-evaluations", "backfill-mode"}:
                 fill_up = True
             continue
         ids.append(line)
@@ -127,8 +155,9 @@ def _load_curated_selection_config(data_root: Path) -> CuratedSelectionConfig:
     essays_exists = essays_path.exists()
     drafts_exists = drafts_path.exists()
     if essays_exists and drafts_exists:
-        raise ValueError(
-            "Both selected_essays.txt and selected_drafts.txt are present; only one curated input is supported."
+        raise DDError(
+            Err.INVALID_CONFIG,
+            ctx={"reason": "multiple_curated_inputs"},
         )
 
     if essays_exists:
@@ -145,9 +174,15 @@ def _load_curated_selection_config(data_root: Path) -> CuratedSelectionConfig:
         if not explicit_mode and mode == CURATED_MODE_REGENERATE:
             mode = CURATED_MODE_REUSE_DRAFTS
         if mode == CURATED_MODE_REUSE_ESSAYS:
-            raise ValueError("`reuse-essays` mode requires selected essays, not drafts.")
+            raise DDError(
+                Err.INVALID_CONFIG,
+                ctx={"reason": "reuse_essays_requires_selected_essays"},
+            )
         if fill_up:
-            raise ValueError("fill-up is only supported with `reuse-essays` and selected essays.")
+            raise DDError(
+                Err.INVALID_CONFIG,
+                ctx={"reason": "fill_up_requires_selected_essays"},
+            )
         return CuratedSelectionConfig(
             selection_type="draft",
             ids=ids,
@@ -203,15 +238,20 @@ def _deterministic_id_for_base(stage: str, base_signature: tuple, replicate_inde
         essay_gen_id, evaluation_template_id, evaluation_model_id = base_signature
         signature = evaluation_signature(essay_gen_id, evaluation_template_id, evaluation_model_id, replicate_index)
     else:
-        raise ValueError(f"Unsupported stage '{stage}' for replicate allocation")
+        raise DDError(
+            Err.INVALID_CONFIG,
+            ctx={"reason": "unsupported_replicate_stage", "stage": stage},
+        )
     return compute_deterministic_gen_id(stage_norm, signature)
 
 
-def _existing_evaluations_by_combo(data_root: Path, essay_id: str) -> Dict[tuple[str, str], set[str]]:
-    combos: Dict[tuple[str, str], set[str]] = defaultdict(set)
+def _existing_evaluations_by_template_model(data_root: Path, essay_id: str) -> Dict[tuple[str, str], set[str]]:
+    """Return existing evaluation gen_ids keyed by (template_id, llm_model_id)."""
+
+    existing: Dict[tuple[str, str], set[str]] = defaultdict(set)
     eval_root = data_root / "gens" / "evaluation"
     if not eval_root.exists():
-        return combos
+        return existing
     for gen_dir in eval_root.iterdir():
         if not gen_dir.is_dir():
             continue
@@ -228,8 +268,8 @@ def _existing_evaluations_by_combo(data_root: Path, essay_id: str) -> Dict[tuple
         model = str(meta.get("llm_model_id") or "").strip()
         if not tpl or not model:
             continue
-            combos[(tpl, model)].add(gen_dir.name)
-    return combos
+        existing[(tpl, model)].add(gen_dir.name)
+    return existing
 
 
 def _prepare_curated_entries(data_root: Path, essay_ids: Iterable[str]) -> List[CuratedEssay]:
@@ -239,12 +279,19 @@ def _prepare_curated_entries(data_root: Path, essay_ids: Iterable[str]) -> List[
         if not essay_meta_path.exists():
             draft_meta_path = data_root / "gens" / "draft" / essay_src_id / "metadata.json"
             if draft_meta_path.exists():
-                raise ValueError(
-                    "selected_essays.txt requires essay gen_ids; "
-                    f"'{essay_src_id}' is a draft gen_id."
+                raise DDError(
+                    Err.INVALID_CONFIG,
+                    ctx={
+                        "reason": "curated_essay_is_draft",
+                        "gen_id": essay_src_id,
+                    },
                 )
-            raise ValueError(
-                f"Essay metadata not found for '{essay_src_id}'. Ensure the essay exists before building the cohort."
+            raise DDError(
+                Err.DATA_MISSING,
+                ctx={
+                    "reason": "essay_metadata_missing",
+                    "gen_id": essay_src_id,
+                },
             )
 
         essay_meta = load_generation(data_root / "gens", "essay", essay_src_id).get("metadata") or {}
@@ -252,14 +299,31 @@ def _prepare_curated_entries(data_root: Path, essay_ids: Iterable[str]) -> List[
         essay_llm_model = str(essay_meta.get("llm_model_id") or "").strip()
         draft_parent_src = str(essay_meta.get("parent_gen_id") or "").strip()
         if not essay_tpl:
-            raise ValueError("Selected essay is missing required template_id")
+            raise DDError(
+                Err.INVALID_CONFIG,
+                ctx={
+                    "reason": "essay_missing_template",
+                    "gen_id": essay_src_id,
+                },
+            )
         if not draft_parent_src:
-            raise ValueError("Selected essay is missing parent draft gen id")
+            raise DDError(
+                Err.INVALID_CONFIG,
+                ctx={
+                    "reason": "essay_missing_parent",
+                    "gen_id": essay_src_id,
+                },
+            )
 
         draft_meta_path = data_root / "gens" / "draft" / draft_parent_src / "metadata.json"
         if not draft_meta_path.exists():
-            raise ValueError(
-                f"Draft parent '{draft_parent_src}' metadata not found for essay '{essay_src_id}'."
+            raise DDError(
+                Err.DATA_MISSING,
+                ctx={
+                    "reason": "draft_parent_metadata_missing",
+                    "draft_gen_id": draft_parent_src,
+                    "essay_gen_id": essay_src_id,
+                },
             )
         draft_meta = load_generation(data_root / "gens", "draft", draft_parent_src).get("metadata") or {}
         combo_id = str(draft_meta.get("combo_id") or "").strip()
@@ -275,8 +339,13 @@ def _prepare_curated_entries(data_root: Path, essay_ids: Iterable[str]) -> List[
         if not llm_model_id:
             missing_fields.append("llm_model_id")
         if missing_fields:
-            raise ValueError(
-                f"Missing required metadata to reconstruct tasks: {', '.join(missing_fields)}"
+            raise DDError(
+                Err.INVALID_CONFIG,
+                ctx={
+                    "reason": "missing_metadata_for_tasks",
+                    "missing": missing_fields,
+                    "essay_gen_id": essay_src_id,
+                },
             )
 
         entries.append(
@@ -300,8 +369,12 @@ def _prepare_curated_drafts(data_root: Path, draft_ids: Iterable[str]) -> List[C
     for draft_id in draft_ids:
         meta_path = data_root / "gens" / "draft" / draft_id / "metadata.json"
         if not meta_path.exists():
-            raise ValueError(
-                f"Draft metadata not found for '{draft_id}'. Ensure the draft exists before building the cohort."
+            raise DDError(
+                Err.DATA_MISSING,
+                ctx={
+                    "reason": "draft_metadata_missing",
+                    "draft_gen_id": draft_id,
+                },
             )
         draft_meta = load_generation(data_root / "gens", "draft", draft_id).get("metadata") or {}
         combo_id = str(draft_meta.get("combo_id") or "").strip()
@@ -317,8 +390,13 @@ def _prepare_curated_drafts(data_root: Path, draft_ids: Iterable[str]) -> List[C
         if not llm_model_id:
             missing_fields.append("llm_model_id")
         if missing_fields:
-            raise ValueError(
-                f"Missing required draft metadata for '{draft_id}': {', '.join(missing_fields)}"
+            raise DDError(
+                Err.INVALID_CONFIG,
+                ctx={
+                    "reason": "missing_draft_metadata",
+                    "draft_gen_id": draft_id,
+                    "missing": missing_fields,
+                },
             )
 
         entries.append(
@@ -451,7 +529,7 @@ def _seed_generation_metadata(
         }
         if template_id:
             metadata["template_id"] = template_id
-        if combo_id:
+        if combo_id and stage == "draft":
             metadata["combo_id"] = combo_id
         if parent_gen_id:
             metadata["parent_gen_id"] = parent_gen_id
@@ -516,12 +594,7 @@ def cohort_membership(
     active_essay_templates = read_templates(data_root, "essay", filter_active=True)
 
     # Replication config: required and authoritative
-    rep_cfg = read_replication_config(data_root)
-    if not isinstance(rep_cfg, dict):
-        raise ValueError("replication_config.csv missing or unreadable; expected per-stage 'replicates' values")
-    for _st in ("draft", "essay", "evaluation"):
-        if _st not in rep_cfg or not isinstance(rep_cfg.get(_st), int) or rep_cfg.get(_st, 0) < 1:
-            raise ValueError("replication_config.csv must define integer replicates>=1 for stages: draft, essay, evaluation")
+    rep_cfg = _require_replication_config(data_root)
 
     essay_seed_combo: Dict[str, str] = {}
     existing_eval_cache: Dict[str, Dict[tuple[str, str], set[str]]] = {}
@@ -619,7 +692,7 @@ def cohort_membership(
             essay_llm_model_id = entry.essay_llm_model_id or llm_model_id
             _add_essay_row(entry.essay_gen_id, entry.draft_gen_id, entry.combo_id, entry.essay_template_id, essay_llm_model_id, entry.essay_replicate)
             essay_seed_combo[entry.essay_gen_id] = entry.combo_id
-            existing_eval_cache[entry.essay_gen_id] = _existing_evaluations_by_combo(data_root, entry.essay_gen_id)
+            existing_eval_cache[entry.essay_gen_id] = _existing_evaluations_by_template_model(data_root, entry.essay_gen_id)
 
     def _build_from_drafts_regenerate(entries: List[CuratedDraft]) -> None:
         essay_tpl_ids = active_essay_templates["template_id"].astype(str).tolist()
@@ -721,7 +794,14 @@ def cohort_membership(
         gen_models_df = gen_models_df[gen_models_df["for_generation"] == True]
         # Read selected combo ids from data/2_tasks/selected_combo_mappings.csv (raise on missing)
         sel_path = data_root / "2_tasks" / "selected_combo_mappings.csv"
-        sel_df = pd.read_csv(sel_path)
+        try:
+            sel_df = pd.read_csv(sel_path)
+        except FileNotFoundError as exc:
+            raise DDError(
+                Err.DATA_MISSING,
+                ctx={"reason": "selected_combo_mappings_missing", "path": str(sel_path)},
+                cause=exc,
+            )
         combo_ids: List[str] = []
         if not sel_df.empty and "combo_id" in sel_df.columns:
             combo_ids = sel_df["combo_id"].astype(str).dropna().unique().tolist()
@@ -826,7 +906,22 @@ def cohort_membership(
                         and selection_cfg.fill_up
                     ):
                         current = existing_counts.get((tpl, mid), set())
-                        needed = max(0, eval_reps - len(current))
+                        # Add existing evaluations to membership (up to eval_reps)
+                        existing_to_include = sorted(current)[:eval_reps]
+                        for existing_gen_id in existing_to_include:
+                            rows.append(
+                                {
+                                    "stage": "evaluation",
+                                    "gen_id": existing_gen_id,
+                                    "origin_cohort_id": str(cohort_id),
+                                    "parent_gen_id": essay_gen_id,
+                                    "combo_id": combo_ref or "",
+                                    "template_id": tpl,
+                                    "llm_model_id": mid,
+                                    "replicate": 0,  # Existing evals don't have cohort replicate numbers
+                                }
+                            )
+                        needed = max(0, eval_reps - len(existing_to_include))
                         if needed == 0:
                             continue
                     else:
@@ -902,10 +997,13 @@ def cohort_membership(
                 except Exception:
                     eval_parent_missing.append(pid)
     if essay_parent_missing or eval_parent_missing:
-        raise ValueError(
-            "Cohort membership parent integrity check failed: "
-            f"missing_draft_parents={len(essay_parent_missing)}, "
-            f"missing_essay_parents={len(eval_parent_missing)}"
+        raise DDError(
+            Err.INVALID_CONFIG,
+            ctx={
+                "reason": "cohort_parent_integrity_failed",
+                "missing_draft_parents": essay_parent_missing,
+                "missing_essay_parents": eval_parent_missing,
+            },
         )
 
     # Seed metadata.json for cohort generations before materializing downstream assets
@@ -947,6 +1045,7 @@ def cohort_membership(
     group_name="cohort",
     required_resource_keys={"data_root"},
     io_manager_key="io_manager",
+    deps=["prune_dynamic_partitions"],
 )
 def register_cohort_partitions(context, cohort_membership: pd.DataFrame) -> Dict[str, int]:
     """Register dynamic partitions by gen_id for draft/essay/evaluation (add-only).
@@ -975,6 +1074,7 @@ def register_cohort_partitions(context, cohort_membership: pd.DataFrame) -> Dict
         added_eval = _add_only(
             evaluation_gens_partitions.name, df[df["stage"] == "evaluation"]["gen_id"].astype(str)
         )
+
     context.add_output_metadata(
         {
             "partitions_added_draft": MetadataValue.int(added_draft),
@@ -1012,10 +1112,13 @@ def cohort_id(context, content_combinations: list[ContentCombination]) -> str:
     gen_models = sorted(mdf[mdf["for_generation"] == True]["id"].astype(str).tolist()) if not mdf.empty else []
     eval_models = sorted(mdf[mdf["for_evaluation"] == True]["id"].astype(str).tolist()) if not mdf.empty else []
     combos = sorted([str(c.combo_id) for c in (content_combinations or [])])
+    rep_cfg = _require_replication_config(data_root)
+
     manifest = {
         "combos": combos,
         "templates": {"draft": drafts, "essay": essays, "evaluation": evals},
         "llms": {"generation": gen_models, "evaluation": eval_models},
+        "replication": rep_cfg,
     }
     override = None
     asset_cfg = getattr(context, "asset_config", None)
@@ -1086,7 +1189,14 @@ def content_combinations(context) -> list[ContentCombination]:
     data_root = Paths.from_context(context).data_root
     import pandas as _pd
     selected_path = data_root / "2_tasks" / "selected_combo_mappings.csv"
-    sel = _pd.read_csv(selected_path)
+    try:
+        sel = _pd.read_csv(selected_path)
+    except FileNotFoundError as exc:
+        raise DDError(
+            Err.DATA_MISSING,
+            ctx={"reason": "selected_combo_mappings_missing", "path": str(selected_path)},
+            cause=exc,
+        )
 
     if not sel.empty:
         all_concepts = {c.concept_id: c for c in read_concepts(data_root, filter_active=False)}

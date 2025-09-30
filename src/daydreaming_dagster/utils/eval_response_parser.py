@@ -3,6 +3,8 @@
 import re
 from typing import Literal
 
+from .errors import DDError, Err
+
 ParseStrategy = Literal["in_last_line"]
 
 
@@ -17,15 +19,15 @@ def parse_llm_response(response_text: str, strategy: ParseStrategy) -> dict:
         Dictionary with score (float), reasoning (str), and error (str or None)
 
     Raises:
-        ValueError: If response cannot be parsed or is invalid
+        DDError: If response cannot be parsed or is invalid
     """
     if not response_text or not response_text.strip():
-        raise ValueError("Empty or whitespace-only response")
+        raise DDError(Err.PARSER_FAILURE, ctx={"reason": "empty_response"})
 
     if strategy == "in_last_line":
         return _parse_in_last_line_format(response_text)
     else:
-        raise ValueError(f"Unknown parsing strategy: {strategy}")
+        raise DDError(Err.INVALID_CONFIG, ctx={"strategy": strategy})
 
 
 def _parse_in_last_line_format(response_text: str) -> dict:
@@ -58,14 +60,14 @@ def _parse_in_last_line_format(response_text: str) -> dict:
             _validate_score_range(score)
             return {"score": score, "error": None}
 
-    raise ValueError("No score found in the last 3 lines.")
+    raise DDError(Err.PARSER_FAILURE, ctx={"reason": "no_score_last_lines"})
 
 
 def _extract_last_non_empty_lines(response_text: str, max_lines: int = 3) -> list[str]:
     """Extract the last few non-empty lines from response text."""
     lines = [line.strip() for line in response_text.strip().split('\n') if line.strip()]
     if not lines:
-        raise ValueError("Empty or whitespace-only response")
+        raise DDError(Err.PARSER_FAILURE, ctx={"reason": "empty_response"})
     return lines[-max_lines:]
 
 
@@ -86,7 +88,10 @@ def _try_parse_three_digit_score(text: str) -> float | None:
     normalized_score = raw_score.replace(',', '').replace(' ', '')
 
     if len(normalized_score) != 3:
-        raise ValueError(f"Expected 3 digits in score, found {len(normalized_score)}: {raw_score}")
+        raise DDError(
+            Err.PARSER_FAILURE,
+            ctx={"reason": "invalid_three_digit_score", "value": raw_score},
+        )
 
     # Calculate average of the three digits
     digits = [float(char) for char in normalized_score]
@@ -120,4 +125,4 @@ def _build_score_pattern(value_pattern: str) -> str:
 def _validate_score_range(score: float) -> None:
     """Validate that score is within the valid 0-9 range."""
     if not (0 <= score <= 9):
-        raise ValueError(f"Score {score} is outside valid range 0-9")
+        raise DDError(Err.PARSER_FAILURE, ctx={"reason": "out_of_range", "value": score})

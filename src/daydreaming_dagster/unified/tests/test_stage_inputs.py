@@ -3,12 +3,15 @@ from __future__ import annotations
 import types
 from pathlib import Path
 
+import pytest
+
 import daydreaming_dagster.unified.stage_inputs as stage_inputs
 from daydreaming_dagster.data_layer.gens_data_layer import (
     GensDataLayer,
     resolve_generation_metadata,
 )
 from daydreaming_dagster.data_layer.paths import Paths
+from daydreaming_dagster.utils.errors import DDError, Err
 
 
 def test_stage_input_helper_copy(tmp_path: Path) -> None:
@@ -85,3 +88,44 @@ def test_stage_input_asset_wires_metadata(tmp_path: Path, monkeypatch) -> None:
 
     assert ctx.captured_metadata["mode"].value == "copy"
     assert ctx.captured_metadata["input_length"].value == len("Parent")
+
+
+def test_stage_input_copy_missing_parent(tmp_path: Path) -> None:
+    data_layer = GensDataLayer.from_root(tmp_path)
+    data_layer.write_main_metadata(
+        "essay",
+        "E2",
+        {"template_id": "essay-tpl", "mode": "copy"},
+    )
+
+    with pytest.raises(DDError) as err:
+        stage_inputs._stage_input_asset(
+            data_layer=data_layer,
+            stage="essay",
+            gen_id="E2",
+        )
+
+    assert err.value.code is Err.INVALID_CONFIG
+    assert err.value.ctx.get("reason") == "missing_parent"
+
+
+def test_stage_input_missing_combo(tmp_path: Path, monkeypatch) -> None:
+    data_layer = GensDataLayer.from_root(tmp_path)
+    data_layer.write_main_metadata(
+        "draft",
+        "D2",
+        {"template_id": "draft-tpl", "mode": "llm", "combo_id": "C9"},
+    )
+
+    monkeypatch.setattr(stage_inputs, "render_template", lambda *_args, **_kwargs: "")
+
+    with pytest.raises(DDError) as err:
+        stage_inputs._stage_input_asset(
+            data_layer=data_layer,
+            stage="draft",
+            gen_id="D2",
+            content_combinations=[],
+        )
+
+    assert err.value.code is Err.DATA_MISSING
+    assert err.value.ctx.get("reason") == "combo_not_found"

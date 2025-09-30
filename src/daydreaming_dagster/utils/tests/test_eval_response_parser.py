@@ -2,6 +2,7 @@
 
 import pytest
 
+from daydreaming_dagster.utils.errors import DDError, Err
 from daydreaming_dagster.utils.eval_response_parser import parse_llm_response
 
 pytestmark = [pytest.mark.unit]
@@ -45,17 +46,21 @@ class TestParseLLMResponseInLastLine:
         assert result["score"] == 6.5
 
     def test_missing_score_raises(self):
-        with pytest.raises(ValueError, match="No score found"):
+        with pytest.raises(DDError) as err:
             parse_llm_response("Reasoning only", "in_last_line")
+        assert err.value.code is Err.PARSER_FAILURE
 
     def test_out_of_range_score_raises(self):
-        with pytest.raises(ValueError, match="outside valid range"):
+        with pytest.raises(DDError) as err:
             parse_llm_response("Thoughts\nSCORE: 12", "in_last_line")
+        assert err.value.code is Err.PARSER_FAILURE
 
     def test_empty_response_rejected(self):
-        with pytest.raises(ValueError, match="Empty or whitespace-only response"):
+        with pytest.raises(DDError) as err:
             parse_llm_response("   \n  ", "in_last_line")
+        assert err.value.code is Err.PARSER_FAILURE
 
     def test_unknown_strategy_rejected(self):
-        with pytest.raises(ValueError, match="Unknown parsing strategy"):
+        with pytest.raises(DDError) as err:
             parse_llm_response("SCORE: 5", "unknown")
+        assert err.value.code is Err.INVALID_CONFIG

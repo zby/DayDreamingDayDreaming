@@ -116,8 +116,8 @@ run_with_retry "uvn2tphr3374wd87"
 run_with_retry "zgrg591djc9s7r25"
 run_with_retry "zjr94fjsqpaklhv8"
 
-echo "=== Refreshing aggregated scores and pivots ==="
-uv run dagster asset materialize --select aggregated_scores -f src/daydreaming_dagster/definitions.py
+echo "=== Refreshing cohort aggregated scores and pivots ==="
+uv run dagster asset materialize --select cohort_aggregated_scores -f src/daydreaming_dagster/definitions.py
 .venv/bin/python scripts/build_pivot_tables.py --limit-to-active-templates
 
 echo "Done."

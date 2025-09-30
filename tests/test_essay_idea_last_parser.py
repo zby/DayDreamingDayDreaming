@@ -1,6 +1,7 @@
 import pytest
 
 from daydreaming_dagster.utils.draft_parsers import parse_essay_idea_last
+from daydreaming_dagster.utils.errors import DDError, Err
 
 
 def test_extraction_picks_highest_stage():
@@ -37,5 +38,7 @@ def test_preserves_inner_newlines_verbatim():
 
 def test_raises_when_no_essay_idea_blocks_found():
     content = "No tags here.\n<thinking>but thinking exists</thinking>\n"
-    with pytest.raises(ValueError, match="No <essay-idea> blocks"):
+    with pytest.raises(DDError) as err:
         parse_essay_idea_last(content)
+    assert err.value.code is Err.PARSER_FAILURE
+    assert err.value.ctx.get("reason") == "missing_essay_idea_block"

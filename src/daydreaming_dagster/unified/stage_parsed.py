@@ -6,6 +6,7 @@ from dagster import MetadataValue
 
 from daydreaming_dagster.assets._helpers import get_run_id, build_stage_artifact_metadata
 from daydreaming_dagster.data_layer.gens_data_layer import GensDataLayer, resolve_generation_metadata
+from daydreaming_dagster.utils.errors import DDError, Err
 from .stage_core import Stage, parse_text, resolve_parser_name
 
 
@@ -31,7 +32,14 @@ def _stage_parsed_asset(
     raw_metadata = raw_metadata or {}
 
     if fail_on_truncation and bool(raw_metadata.get("truncated")):
-        raise ValueError("Raw generation was truncated; cannot parse")
+        raise DDError(
+            Err.INVALID_CONFIG,
+            ctx={
+                "stage": stage,
+                "gen_id": gen_id,
+                "reason": "truncated_raw",
+            },
+        )
 
     effective_min_lines = (
         min_lines_override
@@ -42,12 +50,26 @@ def _stage_parsed_asset(
     if isinstance(effective_min_lines, int) and effective_min_lines > 0:
         non_empty = _count_non_empty_lines(raw_text)
         if non_empty < effective_min_lines:
-            raise ValueError(
-                f"Raw generation has only {non_empty} non-empty lines (required {effective_min_lines})"
+            raise DDError(
+                Err.INVALID_CONFIG,
+                ctx={
+                    "stage": stage,
+                    "gen_id": gen_id,
+                    "reason": "min_lines_not_met",
+                    "observed": non_empty,
+                    "required": effective_min_lines,
+                },
             )
 
     if not parser_name:
-        raise ValueError("parser_name is required for parsed generation")
+        raise DDError(
+            Err.INVALID_CONFIG,
+            ctx={
+                "stage": stage,
+                "gen_id": gen_id,
+                "reason": "missing_parser_name",
+            },
+        )
 
     parsed_text = parse_text(stage, raw_text, parser_name)
     if not isinstance(parsed_text, str):
@@ -64,7 +86,16 @@ def _stage_parsed_asset(
         )
         if preview:
             message += f" Last non-empty lines: {preview}"
-        raise ValueError(message)
+        raise DDError(
+            Err.PARSER_FAILURE,
+            ctx={
+                "stage": stage,
+                "gen_id": gen_id,
+                "parser_name": parser_name,
+                "reason": "parse_failed",
+                "preview": preview or None,
+            },
+        )
 
     parsed_metadata: Dict[str, Any] = {
         "stage": str(stage),
@@ -106,8 +137,11 @@ def stage_parsed_asset(
     if raw_metadata is None:
         try:
             raw_metadata = data_layer.read_raw_metadata(stage, gen_id)
-        except FileNotFoundError:
-            raw_metadata = {}
+        except DDError as err:
+            if err.code is Err.DATA_MISSING:
+                raw_metadata = {}
+            else:
+                raise
 
     if parser_name is None:
         parser_name = resolve_parser_name(data_layer.data_root, stage, metadata.template_id, None)

@@ -9,7 +9,7 @@ import numpy as np
     group_name="results_summary",
     io_manager_key="summary_results_io_manager"
 )
-def evaluator_agreement_analysis(context, aggregated_scores: pd.DataFrame) -> pd.DataFrame:
+def evaluator_agreement_analysis(context, cohort_aggregated_scores: pd.DataFrame) -> pd.DataFrame:
     """
     Calculate evaluator agreement metrics for the same generation responses.
     Groups evaluations by essay_task_id to analyze variance across:
@@ -20,7 +20,7 @@ def evaluator_agreement_analysis(context, aggregated_scores: pd.DataFrame) -> pd
     """
     # Filter out rows with errors (no valid scores)
     from ..utils.evaluation_processing import filter_valid_scores
-    valid_scores = filter_valid_scores(aggregated_scores)
+    valid_scores = filter_valid_scores(cohort_aggregated_scores)
     
     if valid_scores.empty:
         context.log.warning("No valid scores found for evaluator agreement analysis")
@@ -114,7 +114,7 @@ def evaluator_agreement_analysis(context, aggregated_scores: pd.DataFrame) -> pd
     group_name="results_summary",
     io_manager_key="summary_results_io_manager"
 )
-def comprehensive_variance_analysis(context, aggregated_scores: pd.DataFrame) -> pd.DataFrame:
+def comprehensive_variance_analysis(context, cohort_aggregated_scores: pd.DataFrame) -> pd.DataFrame:
     """
     Comprehensive variance analysis across all evaluation dimensions:
     1. Template variance: Same model, different evaluation templates
@@ -125,7 +125,7 @@ def comprehensive_variance_analysis(context, aggregated_scores: pd.DataFrame) ->
     """
     # Filter out rows with errors
     from ..utils.evaluation_processing import filter_valid_scores
-    valid_scores = filter_valid_scores(aggregated_scores)
+    valid_scores = filter_valid_scores(cohort_aggregated_scores)
     
     if valid_scores.empty:
         context.log.warning("No valid scores found for comprehensive variance analysis")
@@ -134,10 +134,10 @@ def comprehensive_variance_analysis(context, aggregated_scores: pd.DataFrame) ->
     # Define the columns that identify the same generated response
     generation_group_cols = ['combo_id', 'generation_template', 'generation_model']
     
-    # Map from existing column names (always available in aggregated_scores)
+    # Map from existing column names (always available in cohort_aggregated_scores)
     valid_scores['eval_template'] = valid_scores['evaluation_template']
     if 'evaluation_llm_model' not in valid_scores.columns:
-        context.log.error("aggregated_scores missing 'evaluation_llm_model' column")
+        context.log.error("cohort_aggregated_scores missing 'evaluation_llm_model' column")
         return pd.DataFrame()
     valid_scores['eval_model'] = valid_scores['evaluation_llm_model']
     

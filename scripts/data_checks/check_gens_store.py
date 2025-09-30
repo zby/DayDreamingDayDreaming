@@ -1,13 +1,17 @@
 #!/usr/bin/env python3
-"""Validate gens-store artifacts for all stages and generation ids.
+"""Validate gens-store artifacts and, optionally, prune incomplete runs.
 
-By default the checker prints summary statistics only. Use ``--verbose`` to
-show per-generation details when artifacts are missing.
+By default the checker scans all stages and prints summary statistics. Use
+``--verbose`` for per-generation details, ``--stage`` to scope the scan, and
+``--delete-missing`` to remove incomplete evaluation runs (prompted unless
+``--yes`` is supplied).
 
 Usage:
     python scripts/data_checks/check_gens_store.py [--data-root PATH]
+                                                  [--stage STAGE ...]
                                                   [--strict-prompt]
                                                   [--verbose]
+                                                  [--delete-missing [--yes]]
 """
 
 from __future__ import annotations
@@ -15,6 +19,7 @@ from __future__ import annotations
 import argparse
 import sys
 from collections import Counter
+import shutil
 from pathlib import Path
 from typing import Iterable
 
@@ -58,6 +63,12 @@ def main() -> int:
         help="Data root containing gens/ (default: %(default)s)",
     )
     parser.add_argument(
+        "--stage",
+        action="append",
+        choices=[*STAGES, "all"],
+        help="Limit the scan to one or more stages (default: all stages). Pass multiple times to combine.",
+    )
+    parser.add_argument(
         "--strict-prompt",
         action="store_true",
         help="Treat missing prompt.txt as an error instead of a warning.",
@@ -67,19 +78,40 @@ def main() -> int:
         action="store_true",
         help="Show per-generation details when artifacts are missing.",
     )
+    parser.add_argument(
+        "--delete-missing",
+        action="store_true",
+        help="Delete evaluation runs missing metadata or raw artifacts (prompts before removal).",
+    )
+    parser.add_argument(
+        "--yes",
+        action="store_true",
+        help="Skip confirmation when used with --delete-missing.",
+    )
     args = parser.parse_args()
 
     data_root: Path = args.data_root
     strict_prompt: bool = args.strict_prompt
     verbose: bool = args.verbose
 
+    if args.stage is None or "all" in args.stage:
+        stages = STAGES
+    else:
+        seen = []
+        for item in args.stage:
+            if item not in seen:
+                seen.append(item)
+        stages = tuple(seen)
+
     missing_required_stats: Counter[str] = Counter()
     missing_optional_stats: Counter[str] = Counter()
     prompt_warnings = 0
     missing_stage_dirs: list[str] = []
     inspected = 0
+    missing_metadata_dirs: list[tuple[str, Path]] = []
+    missing_raw_dirs: list[tuple[str, Path]] = []
 
-    for stage, gen_dir in iter_gen_dirs(data_root, STAGES):
+    for stage, gen_dir in iter_gen_dirs(data_root, stages):
         if gen_dir is None:
             missing_stage_dirs.append(stage)
             continue
@@ -90,11 +122,15 @@ def main() -> int:
             if verbose:
                 rel = gen_dir.relative_to(data_root)
                 print(f"ERROR: {rel} missing {', '.join(sorted(missing_required))}")
+            if "metadata.json" in missing_required:
+                missing_metadata_dirs.append((stage, gen_dir))
         if missing_optional:
             missing_optional_stats.update(missing_optional)
             if verbose:
                 rel = gen_dir.relative_to(data_root)
                 print(f"WARN: {rel} missing optional {', '.join(sorted(missing_optional))}")
+            if "raw.txt" in missing_optional:
+                missing_raw_dirs.append((stage, gen_dir))
         if prompt_missing and not strict_prompt:
             prompt_warnings += 1
             if verbose:
@@ -102,7 +138,7 @@ def main() -> int:
                 print(f"WARN: {rel} missing {PROMPT_FILE}")
 
     gens_root = data_root / "gens"
-    print(f"Checked {inspected} generation directories under {gens_root} ({len(STAGES)} stages)")
+    print(f"Checked {inspected} generation directories under {gens_root} ({', '.join(stages)})")
     if missing_stage_dirs:
         print("Missing stage directories:", ", ".join(missing_stage_dirs))
 
@@ -123,12 +159,39 @@ def main() -> int:
     if prompt_warnings and not strict_prompt:
         print(f"Prompts missing (warnings): {prompt_warnings}")
 
+    exit_code = 0
     if missing_required_stats:
         print("FAIL: required artifacts missing")
-        return 1
+        exit_code = 1
+    else:
+        print("OK: all required artifacts present")
 
-    print("OK: all required artifacts present")
-    return 0
+    if args.delete_missing:
+        deletion_candidates = []
+        for stage, path in missing_metadata_dirs + missing_raw_dirs:
+            if stage != "evaluation":
+                continue
+            if path not in deletion_candidates:
+                deletion_candidates.append(path)
+        if not deletion_candidates:
+            print("No evaluation directories eligible for deletion.")
+        else:
+            print("\nEvaluation runs missing required artifacts:")
+            for path in deletion_candidates:
+                print(f"  - {path}")
+            proceed = args.yes
+            if not proceed:
+                resp = input("Delete these directories? [y/N] ").strip().lower()
+                proceed = resp.startswith("y")
+            if proceed:
+                for directory in deletion_candidates:
+                    if directory.exists():
+                        shutil.rmtree(directory)
+                        print(f"Deleted {directory}")
+            else:
+                print("Deletion cancelled.")
+
+    return exit_code
 
 
 if __name__ == "__main__":

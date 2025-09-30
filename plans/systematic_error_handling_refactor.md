@@ -24,6 +24,11 @@ Introduce the shared `utils.errors` layer (Err Enum + DDError) and standardize e
 - `PARSER_FAILURE` – parsing raw outputs failed
 - `UNKNOWN` – fallback for uncategorized exceptions (temporary)
 
+**Note on `Err.UNKNOWN`**
+- Use only as a temporary catch-all when the correct code is unclear during migration.
+- After each phase, run `rg "Err.UNKNOWN" src/daydreaming_dagster` to ensure no new UNKNOWN cases linger unintentionally.
+- Create a follow-up checklist at the end (Phase 6) to either replace UNKNOWN with a concrete `Err` entry or document why the fallback is acceptable.
+
 ## Phased Refactor Plan
 ### Phase 1 – Foundation
 - Add `src/daydreaming_dagster/utils/errors.py` with Err Enum & DDError.
