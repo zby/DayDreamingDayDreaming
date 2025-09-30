@@ -1022,6 +1022,7 @@ def cohort_membership(
     group_name="cohort",
     required_resource_keys={"data_root"},
     io_manager_key="io_manager",
+    deps=["prune_dynamic_partitions"],
 )
 def register_cohort_partitions(context, cohort_membership: pd.DataFrame) -> Dict[str, int]:
     """Register dynamic partitions by gen_id for draft/essay/evaluation (add-only).
