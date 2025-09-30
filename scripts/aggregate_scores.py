@@ -27,9 +27,23 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Set
 import json
 from datetime import datetime
+
+
+def _ensure_src_on_path() -> None:
+    import sys
+
+    repo_root = Path(__file__).resolve().parents[1]
+    src_dir = repo_root / "src"
+    if src_dir.exists():
+        sys.path.insert(0, str(src_dir))
+
+
+_ensure_src_on_path()
+
 from daydreaming_dagster.utils.evaluation_scores import aggregate_evaluation_scores_for_ids
 from daydreaming_dagster.data_layer.paths import Paths
- 
+from daydreaming_dagster.utils.errors import DDError, Err
+
 import pandas as pd
 
 """parsed.txt-only aggregator: no parser maps or raw fallback"""
@@ -332,7 +346,13 @@ def parse_all(
                             if len(present) < len(req):
                                 warnings.append(f"Warning: {meta_fp} missing keys: {sorted(set(req) - set(present))}")
                                 if strict and len(present) == 0:
-                                    raise RuntimeError(f"Strict mode: required metadata keys absent in {meta_fp}")
+                                    raise DDError(
+                                        Err.DATA_MISSING,
+                                        ctx={
+                                            "reason": "evaluation_metadata_missing_keys",
+                                            "path": str(meta_fp),
+                                        },
+                                    )
                 except Exception:
                     pass
                 # Enrich generation-side identifiers from essay/draft metadata when possible
@@ -394,18 +414,24 @@ def parse_all(
             template_id = None
             eval_model = None
             try:
-                if meta_fp.exists():
-                    meta = json.loads(meta_fp.read_text(encoding="utf-8"))
-                    if isinstance(meta, dict):
-                        parent_gen_id = str(meta.get("parent_gen_id") or "")
-                        template_id = meta.get("template_id")
-                        eval_model = meta.get("model_id")
-                        req = ["parent_gen_id", "template_id", "model_id"]
-                        present = [k for k in req if meta.get(k)]
-                        if len(present) < len(req):
-                            warnings.append(f"Warning: {meta_fp} missing keys: {sorted(set(req) - set(present))}")
-                            if strict and len(present) == 0:
-                                raise RuntimeError(f"Strict mode: required metadata keys absent in {meta_fp}")
+                        if meta_fp.exists():
+                            meta = json.loads(meta_fp.read_text(encoding="utf-8"))
+                            if isinstance(meta, dict):
+                                parent_gen_id = str(meta.get("parent_gen_id") or "")
+                                template_id = meta.get("template_id")
+                                eval_model = meta.get("model_id")
+                                req = ["parent_gen_id", "template_id", "model_id"]
+                                present = [k for k in req if meta.get(k)]
+                                if len(present) < len(req):
+                                    warnings.append(f"Warning: {meta_fp} missing keys: {sorted(set(req) - set(present))}")
+                                    if strict and len(present) == 0:
+                                        raise DDError(
+                                            Err.DATA_MISSING,
+                                            ctx={
+                                                "reason": "evaluation_metadata_missing_keys",
+                                                "path": str(meta_fp),
+                                            },
+                                        )
             except Exception:
                 pass
 
@@ -479,7 +505,10 @@ def parse_all(
                 "copied_from": raw_meta.get("copied_from"),
             })
     else:
-        raise FileNotFoundError(f"Docs store not found: {docs_eval}")
+        raise DDError(
+            Err.DATA_MISSING,
+            ctx={"reason": "evaluation_docs_missing", "path": str(docs_eval)},
+        )
 
     df = pd.DataFrame(rows)
 
@@ -602,8 +631,8 @@ def main() -> None:
     output_csv: Path = args.output
     try:
         parse_all(data_root=data_root, output_csv=output_csv, strict=args.strict)
-    except RuntimeError as e:
-        print(str(e))
+    except DDError as err:
+        print(f"ERROR [{err.code.name}]: {err.ctx}")
         raise SystemExit(2)
 
 
