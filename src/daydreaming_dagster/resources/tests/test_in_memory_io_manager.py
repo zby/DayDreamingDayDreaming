@@ -4,6 +4,7 @@ import pytest
 from dagster import AssetKey, build_input_context, build_output_context
 
 from daydreaming_dagster.resources.io_managers import InMemoryIOManager
+from daydreaming_dagster.utils.errors import DDError, Err
 
 
 def _build_contexts(partition_key: str):
@@ -32,5 +33,6 @@ def test_fallback_missing_raises(tmp_path: Path):
     manager = InMemoryIOManager(fallback_data_root=tmp_path)
     _, input_ctx = _build_contexts("gid-missing")
 
-    with pytest.raises(KeyError):
+    with pytest.raises(DDError) as err:
         manager.load_input(input_ctx)
+    assert err.value.code is Err.DATA_MISSING

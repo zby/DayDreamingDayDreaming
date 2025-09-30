@@ -3,6 +3,8 @@ from pathlib import Path
 import pandas as pd
 import os
 
+from ..utils.errors import DDError, Err
+
 # Factory functions removed - use direct class instantiation in definitions.py
 
 class CSVIOManager(IOManager):
@@ -33,7 +35,14 @@ class CSVIOManager(IOManager):
             obj.to_csv(file_path, index=False)
             context.log.info(f"Saved {asset_name} to {file_path}")
         else:
-            raise ValueError(f"Expected pandas DataFrame for CSV saving, got {type(obj)}")
+            raise DDError(
+                Err.INVALID_CONFIG,
+                ctx={
+                    "reason": "csv_io_requires_dataframe",
+                    "type": str(type(obj)),
+                    "asset": asset_name,
+                },
+            )
     
     def load_input(self, context: InputContext):
         """Load DataFrame from CSV file"""
@@ -51,7 +60,14 @@ class CSVIOManager(IOManager):
             except Exception:
                 pass
         if not file_path.exists():
-            raise FileNotFoundError(f"CSV file not found: {file_path}")
+            raise DDError(
+                Err.DATA_MISSING,
+                ctx={
+                    "reason": "csv_file_missing",
+                    "path": str(file_path),
+                    "asset": asset_name,
+                },
+            )
         
         return pd.read_csv(file_path)
 
@@ -88,15 +104,29 @@ class InMemoryIOManager(IOManager):
     def load_input(self, context: InputContext):
         # Avoid deprecated upstream_output.partition_key access — use InputContext.partition_key
         upstream = context.upstream_output
-        key = (tuple(upstream.asset_key.path), context.partition_key)
+        partition_key = context.partition_key
+        stage_asset = upstream.asset_key.path[-1] if upstream.asset_key.path else ""
+        key = (tuple(upstream.asset_key.path), partition_key)
         if key not in self._store:
             if not self._fallback_root:
-                raise KeyError(f"InMemoryIOManager: no object stored for {key}")
+                raise DDError(
+                    Err.DATA_MISSING,
+                    ctx={
+                        "reason": "in_memory_missing",
+                        "asset": stage_asset,
+                        "partition": partition_key,
+                    },
+                )
 
-            stage_asset = upstream.asset_key.path[-1] if upstream.asset_key.path else ""
-            partition_key = context.partition_key
             if not partition_key:
-                raise KeyError(f"InMemoryIOManager: no object stored for {key}")
+                raise DDError(
+                    Err.DATA_MISSING,
+                    ctx={
+                        "reason": "in_memory_missing",
+                        "asset": stage_asset,
+                        "partition": partition_key,
+                    },
+                )
 
             if stage_asset.endswith("_raw"):
                 stage = stage_asset.replace("_raw", "")
@@ -110,6 +140,13 @@ class InMemoryIOManager(IOManager):
                 if raw_path.exists():
                     return raw_path.read_text(encoding="utf-8")
 
-            raise KeyError(f"InMemoryIOManager: no object stored for {key}")
+            raise DDError(
+                Err.DATA_MISSING,
+                ctx={
+                    "reason": "in_memory_missing",
+                    "asset": stage_asset,
+                    "partition": partition_key,
+                },
+            )
 
         return self._store[key]

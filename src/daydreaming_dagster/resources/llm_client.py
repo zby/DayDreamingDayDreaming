@@ -10,6 +10,8 @@ from openai import APIError, OpenAI, RateLimitError
 from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
 from ratelimit import limits, sleep_and_retry
 
+from ..utils.errors import DDError, Err
+
 # HTTP status code constants
 HTTP_SERVER_ERROR_START = 500
 HTTP_SERVER_ERROR_END = 600
@@ -73,8 +75,9 @@ class LLMClientResource(ConfigurableResource):
             # Get API key from config or environment
             effective_api_key = self.api_key or os.getenv("OPENROUTER_API_KEY")
             if not effective_api_key:
-                raise ValueError(
-                    "OpenRouter API key required. Set OPENROUTER_API_KEY environment variable or pass api_key parameter."
+                raise DDError(
+                    Err.INVALID_CONFIG,
+                    ctx={"reason": "missing_openrouter_api_key"},
                 )
 
             self._client = OpenAI(
@@ -99,7 +102,13 @@ class LLMClientResource(ConfigurableResource):
         """
         self._ensure_initialized()
         if not isinstance(max_tokens, int) or max_tokens <= 0:
-            raise ValueError("LLMClientResource.generate_with_info requires an explicit positive max_tokens")
+            raise DDError(
+                Err.INVALID_CONFIG,
+                ctx={
+                    "reason": "invalid_max_tokens",
+                    "value": max_tokens,
+                },
+            )
         # Accept either model_id or provider model string
         resolved_model = self._resolve_model_name(model)
         info = self._make_api_call_info(prompt, resolved_model, temperature, max_tokens)

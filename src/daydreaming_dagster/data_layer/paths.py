@@ -7,6 +7,8 @@ from pathlib import Path
 from typing import Optional
 import os
 
+from ..utils.errors import DDError, Err
+
 # Canonical gens-store filenames (single source of truth)
 PROMPT_FILENAME = "prompt.txt"
 RAW_FILENAME = "raw.txt"
@@ -24,7 +26,10 @@ class Paths:
 
     def __post_init__(self):
         if self.data_root is None or str(self.data_root).strip() == "":
-            raise ValueError("Paths requires a non-empty data_root")
+            raise DDError(
+                Err.INVALID_CONFIG,
+                ctx={"reason": "paths_missing_data_root"},
+            )
         object.__setattr__(self, "data_root", Path(self.data_root))
 
     # --- Core directories ---
@@ -132,7 +137,10 @@ class Paths:
     def from_context(cls, context) -> "Paths":
         resources = getattr(context, "resources", None)
         if resources is None or not hasattr(resources, "data_root"):
-            raise ValueError("Paths.from_context requires context.resources.data_root")
+            raise DDError(
+                Err.INVALID_CONFIG,
+                ctx={"reason": "paths_requires_data_root_resource"},
+            )
         return cls(Path(getattr(resources, "data_root")))
 
     @classmethod

@@ -4,6 +4,7 @@ from itertools import product
 import hashlib
 
 from .concept import Concept
+from ..utils.errors import DDError, Err
 
 
 @dataclass
@@ -112,7 +113,13 @@ class ContentCombination:
                     combo_counter += 1
             return combinations
         else:
-            raise ValueError(f"Unknown level strategy: {level_strategy}")
+            raise DDError(
+                Err.INVALID_CONFIG,
+                ctx={
+                    "reason": "unknown_level_strategy",
+                    "strategy": level_strategy,
+                },
+            )
     
     @staticmethod
     def _resolve_content(concept: Concept, level: str) -> str:

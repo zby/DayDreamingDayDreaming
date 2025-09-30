@@ -5,6 +5,7 @@ from pathlib import Path
 
 from ..constants import STAGES
 from ..data_layer.gens_data_layer import GensDataLayer
+from ..utils.errors import DDError, Err
 
 
 class GensPromptIOManager(IOManager):
@@ -27,7 +28,10 @@ class GensPromptIOManager(IOManager):
         self.gens_root = Path(gens_root)
         stage_str = str(stage)
         if stage_str not in STAGES:
-            raise ValueError(f"Invalid stage '{stage_str}'. Expected one of {STAGES}.")
+            raise DDError(
+                Err.INVALID_CONFIG,
+                ctx={"stage": stage_str, "reason": "invalid_stage_for_prompt_io"},
+            )
         self.stage = stage_str
         data_root = self.gens_root.parent
         self._data_layer = GensDataLayer.from_root(data_root)
@@ -39,7 +43,10 @@ class GensPromptIOManager(IOManager):
     def handle_output(self, context: OutputContext, obj: str):
         pk = context.partition_key
         if not isinstance(obj, str):
-            raise ValueError(f"Expected prompt text (str), got {type(obj)}")
+            raise DDError(
+                Err.INVALID_CONFIG,
+                ctx={"reason": "prompt_io_requires_str", "type": str(type(obj))},
+            )
         gen_id = self._resolve_gen_id(pk)
         self._data_layer.write_input(self.stage, gen_id, obj)
 
