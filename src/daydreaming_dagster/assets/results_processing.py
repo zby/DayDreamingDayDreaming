@@ -6,14 +6,14 @@ import pandas as pd
 from ..utils.evaluation_processing import calculate_evaluation_metadata
 
 
-def aggregated_scores_impl(
+def cohort_aggregated_scores_impl(
     data_root: Path,
     *,
     scores_aggregator,
     membership_service,
     cohort_id: str | None = None,
 ) -> pd.DataFrame:
-    """Pure implementation for aggregated_scores.
+    """Pure implementation for the cohort-scoped aggregated scores.
 
     - Reads the evaluation gen_id list from membership_service
     - Delegates aggregation to scores_aggregator.parse_all_scores
@@ -39,7 +39,7 @@ def aggregated_scores_impl(
     ),
     compute_kind="pandas",
 )
-def aggregated_scores(context, cohort_id: str) -> pd.DataFrame:
+def cohort_aggregated_scores(context, cohort_id: str) -> pd.DataFrame:
     """Aggregate evaluation scores for the current cohort.
 
     Source rows come from scripts.aggregate_scores.parse_all, which:
@@ -50,8 +50,8 @@ def aggregated_scores(context, cohort_id: str) -> pd.DataFrame:
     This asset simply filters that cross-experiment aggregation down to the current cohort.
     """
     data_root = Paths.from_context(context).data_root
-    out_csv = data_root / "5_parsing" / "aggregated_scores.csv"
-    df = aggregated_scores_impl(
+    out_csv = data_root / "5_parsing" / "cohort_aggregated_scores.csv"
+    df = cohort_aggregated_scores_impl(
         data_root,
         scores_aggregator=context.resources.scores_aggregator,
         membership_service=context.resources.membership_service,

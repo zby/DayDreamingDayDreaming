@@ -85,6 +85,8 @@ Cross‑experiment analysis is derived directly from the gens store (data/gens/*
 - Use assets: `filtered_evaluation_results`, `template_version_comparison_pivot`.
 - Use scripts for backfills or one‑off tables under data/7_cross_experiment/ (no auto‑appenders).
 
+The Dagster asset `cohort_aggregated_scores` always writes the cohort-only CSV to `data/5_parsing/cohort_aggregated_scores.csv`; rebuild scripts target the cross-experiment store at `data/7_cross_experiment/aggregated_scores.csv`.
+
 **Initial setup** (populate tables from existing data):
 ```bash
 # 1) Parse evaluation scores from gens store into parsed_scores.csv
@@ -233,7 +235,8 @@ Active draft templates are controlled in `data/1_raw/draft_templates.csv` via th
   - Contains `raw.txt`, `parsed.txt`, optional `prompt.txt`, and `metadata.json`
   - Stages: `draft`, `essay`, `evaluation`
 - **Optional RAW side-writes**: `data/3_generation/*_raw/` (enabled via ExperimentConfig; useful for debugging truncation/parser issues)
-- **Results**: `data/5_parsing/` (processed results) and `data/6_summary/` (summaries)
+- **Cohort Results**: `data/5_parsing/cohort_aggregated_scores.csv` and `data/6_summary/*.csv` (outputs from Dagster assets scoped to the active cohort)
+- **Cross-Experiment Tables**: `data/7_cross_experiment/*.csv` (rebuilt on demand by analysis scripts)
 - **Global Mapping**: `data/combo_mappings.csv` (append-only mapping of stable combo IDs to their concept components)
 
 ### Prompt Persistence (Gens IO)

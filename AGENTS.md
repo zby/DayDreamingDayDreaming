@@ -10,7 +10,7 @@
 
 * `src/daydreaming_dagster/`: Dagster package (`assets/`, `resources/`, `models/`, `utils/`, `definitions.py`)
 * `tests/`: integration tests & fixtures; **unit tests live next to code** in `src/daydreaming_dagster/`
-* `data/`: inputs/outputs (`1_raw/`, `2_tasks/`, `gens/`, `5_parsing/`, `6_summary/`) — **never commit secrets or proprietary outputs**
+* `data/`: inputs/outputs (`1_raw/`, `2_tasks/`, `gens/`, `5_parsing/`, `6_summary/`) — **never commit secrets or proprietary outputs**. Cohort runs write `5_parsing/cohort_aggregated_scores.csv`; cross-experiment rebuilds live under `7_cross_experiment/`.
 * `scripts/`: results and maintenance
 * `docs/`: architecture/notes; see `docs/project_goals.md`
 

@@ -73,7 +73,7 @@ Operational flow
 - Optional curated selection: write essay gen_ids to `data/2_tasks/selected_essays.txt`.
 - Materialize `cohort_id,cohort_membership` to register dynamic partitions by `gen_id`.
 - Materialize per-stage assets by partition key (`gen_id`): drafts, essays, evaluations.
-- Parse and summarize results (`parsed_scores`, `final_results`).
+- Parse and summarize results (`cohort_aggregated_scores`, `final_results`).
 
 Getting partition keys (gen_ids)
 - Drafts: `awk -F',' 'NR==1 || $1=="draft"' data/cohorts/*/membership.csv | cut -d',' -f2 | tail -n +2`
@@ -155,7 +155,7 @@ uv run dagster asset materialize -f src/daydreaming_dagster/definitions.py \
 Parsing and summaries
 ```bash
 uv run dagster asset materialize -f src/daydreaming_dagster/definitions.py \
-  --select parsed_scores,final_results
+  --select cohort_aggregated_scores,final_results
 ```
 
 Environment tip

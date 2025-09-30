@@ -327,9 +327,11 @@ uv run dagster asset materialize -f src/daydreaming_dagster/definitions.py \
     - `draft/<gen_id>/{prompt.txt,raw.txt,parsed.txt,metadata.json}`
     - `essay/<gen_id>/{prompt.txt,raw.txt,parsed.txt,metadata.json}`
     - `evaluation/<gen_id>/{prompt.txt,raw.txt,parsed.txt,metadata.json}`
-  - `data/5_parsing/` - Cohort-scoped parsed evaluation scores (Dagster asset output)
-  - `data/6_summary/` - Final aggregated results
-  - `data/7_cross_experiment/` - Cross-experiment tracking tables and score rebuilds
+  - `data/5_parsing/` - Cohort-scoped parsed evaluation scores (Dagster asset output, e.g. `cohort_aggregated_scores.csv`)
+  - `data/6_summary/` - Final aggregated results for the active cohort
+  - `data/7_cross_experiment/` - Cross-experiment tracking tables and score rebuilds (`aggregated_scores.csv`, pivots, etc.)
+
+  Cohort runs always refresh `data/5_parsing/cohort_aggregated_scores.csv`. Rebuild scripts leave that file alone and instead recreate the shared cross-experiment tables under `data/7_cross_experiment/`.
 
 - If you used a run tag, the tag appears in Dagster's run metadata for filtering
 

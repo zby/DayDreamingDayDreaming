@@ -170,7 +170,7 @@ def rank_parent_essays_by_template(
 ) -> pd.DataFrame:
     """Return ordered aggregate scores per parent essay for the given evaluation template.
 
-    The caller supplies a DataFrame shaped like aggregated_scores.csv. We filter down to
+    The caller supplies a DataFrame shaped like cohort_aggregated_scores.csv. We filter down to
     successful rows (score present, no error), aggregate the best score per evaluation model,
     compute average and max across models, and sort descending.
 

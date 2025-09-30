@@ -1,4 +1,4 @@
-"""Focused unit tests for aggregated_scores using pure-function core.
+"""Focused unit tests for the cohort_aggregated_scores helper.
 
 Ensures:
 - passthrough of enriched columns from aggregator
@@ -6,10 +6,10 @@ Ensures:
 """
 
 import pandas as pd
-from daydreaming_dagster.assets.results_processing import aggregated_scores_impl
+from daydreaming_dagster.assets.results_processing import cohort_aggregated_scores_impl
 
 
-def test_aggregated_scores_filters_and_passthrough(tmp_path):
+def test_cohort_aggregated_scores_filters_and_passthrough(tmp_path):
     # Fake aggregator returns two rows; asset should filter to membership service ids
     class _Agg:
         def parse_all_scores(self, _data_root, gen_ids):
@@ -57,7 +57,7 @@ def test_aggregated_scores_filters_and_passthrough(tmp_path):
             return ["E123"]
 
     membership = _Membership()
-    df = aggregated_scores_impl(
+    df = cohort_aggregated_scores_impl(
         tmp_path,
         scores_aggregator=_Agg(),
         membership_service=membership,

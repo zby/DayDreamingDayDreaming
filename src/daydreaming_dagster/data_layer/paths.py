@@ -129,8 +129,8 @@ class Paths:
 
     # --- Processed outputs ---
     @property
-    def aggregated_scores_csv(self) -> Path:
-        return self.parsing_dir / "aggregated_scores.csv"
+    def cohort_aggregated_scores_csv(self) -> Path:
+        return self.parsing_dir / "cohort_aggregated_scores.csv"
 
     # --- Constructors ---
     @classmethod
