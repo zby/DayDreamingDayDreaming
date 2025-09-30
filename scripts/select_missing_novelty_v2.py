@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """
 Select essays missing novelty-v2 evaluations from the top-N promising essays
-and write them to `data/2_tasks/selected_essays.txt` for evaluation-only cohort.
+and write them to a cohort's selected_essays.txt for evaluation-only mode.
 
 Usage examples:
-  uv run python scripts/select_missing_novelty_v2.py --top-n 30
-  uv run python scripts/select_missing_novelty_v2.py --top-n 50
+  uv run python scripts/select_missing_novelty_v2.py --cohort novelty_v2_backfill --top-n 30
+  uv run python scripts/select_missing_novelty_v2.py --cohort my_cohort --top-n 50
 """
 
 from __future__ import annotations
@@ -19,6 +19,12 @@ import pandas as pd
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
+    p.add_argument(
+        "--cohort",
+        type=str,
+        required=True,
+        help="Cohort name (will create data/cohorts/<cohort>/selected_essays.txt)",
     )
     p.add_argument(
         "--top-n",
@@ -128,9 +134,10 @@ def main() -> int:
         print(f"All top {args.top_n} essays already have {args.target_template} evaluations!")
         return 0
 
-    # Write to selected_essays.txt with evaluation-only mode
-    out_path = Path("data/2_tasks/selected_essays.txt")
-    out_path.parent.mkdir(parents=True, exist_ok=True)
+    # Write to cohort's selected_essays.txt with evaluation-only mode
+    cohort_dir = Path("data/cohorts") / args.cohort
+    cohort_dir.mkdir(parents=True, exist_ok=True)
+    out_path = cohort_dir / "selected_essays.txt"
 
     lines = [
         "# mode: evaluation-only",
@@ -142,6 +149,10 @@ def main() -> int:
 
     print(f"Wrote {len(missing)} essay gen_ids missing {args.target_template} evaluations to {out_path}")
     print(f"Essays: {', '.join(missing[:5])}{'...' if len(missing) > 5 else ''}")
+    print(f"\nTo run this cohort:")
+    print(f"  export DD_COHORT_ID={args.cohort}")
+    print(f"  uv run dagster asset materialize --select 'group:cohort' -f src/daydreaming_dagster/definitions.py")
+    print(f"  uv run dagster asset materialize --select 'group:evaluation' -f src/daydreaming_dagster/definitions.py")
 
     return 0
 
