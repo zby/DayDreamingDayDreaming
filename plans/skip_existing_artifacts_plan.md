@@ -35,21 +35,24 @@ Introduce stage-level guards that reuse previously materialized artifacts by def
    - Add a `reused` boolean in Dagster output metadata to surface skip decisions.
    - Log a warning if `raw_metadata.json` is missing when `raw.txt` is reused (informational only).
 
-5. **Cohort Simplification**
-   - With skip guards in place, review curated mode handling in `group_cohorts.py`:
-     - Remove `mode:` directives that exist solely to avoid re-running evaluations.
-     - Keep replication allocator unchanged (it still ensures new replicates find an unused index).
-   - Update docs describing `selected_essays.txt` to emphasise replication counts over mode flags.
+5. **Cohort Mode Clarification**
+   - **Modes CANNOT be removed** - they serve a different purpose than skip logic:
+     - **Modes** control WHICH gen_ids appear in membership (which stages to materialize)
+     - **Skip logic** controls WHETHER to regenerate artifacts when materializing a gen_id
+   - These are orthogonal concerns:
+     - `mode: evaluation-only` → "Add only evaluation rows to membership for these existing essays"
+     - `force: false` (default) → "When materializing, reuse existing artifacts"
+   - Updated NOTE in `group_cohorts.py` to clarify the distinction.
 
 6. **Testing**
    - Unit tests for `_stage_raw_asset` and `_stage_parsed_asset` verifying skip behaviour (create a temp gens directory with existing files, ensure the LLM/parse functions are not called).
    - Integration tests (Dagster) for running the same partition twice: first run generates, second run reuses without hitting the LLM client mock.
    - Tests for `force=true` to ensure regeneration occurs and metadata marks `reused: false`.
 
-7. **Documentation & Cleanup**
+7. **Documentation**
    - Update operator docs explaining the new default reuse behaviour.
    - Note that replication counts control additional variants; instruct users to bump replicate numbers for deliberate refreshes.
-   - Remove obsolete documentation around `mode: evaluation-only` and `# skip-existing-evaluations` once behaviour is unified.
+   - Clarify that modes (evaluation-only, reuse-drafts, etc.) are still needed and serve a different purpose than skip logic.
 
 ## Resolved Design Decisions
 

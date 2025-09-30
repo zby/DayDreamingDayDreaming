@@ -11,7 +11,7 @@ from collections import defaultdict
 from dataclasses import dataclass
 import json
 from pathlib import Path
-from typing import Dict, Iterable, List, Optional, Tuple
+from typing import Callable, Dict, Iterable, List, Optional, Sequence, Tuple
 
 import pandas as pd
 from dagster import MetadataValue
@@ -80,6 +80,32 @@ class CuratedDraft:
 class ExistingEvaluation:
     gen_id: str
     replicate: int
+
+
+@dataclass(frozen=True)
+class MembershipRow:
+    """Normalized cohort membership row with consistent defaults."""
+
+    stage: str
+    gen_id: str
+    origin_cohort_id: str
+    parent_gen_id: str = ""
+    combo_id: str = ""
+    template_id: str = ""
+    llm_model_id: str = ""
+    replicate: int = 1
+
+    def to_dict(self) -> Dict[str, object]:
+        return {
+            "stage": self.stage,
+            "gen_id": self.gen_id,
+            "origin_cohort_id": self.origin_cohort_id,
+            "parent_gen_id": self.parent_gen_id,
+            "combo_id": self.combo_id,
+            "template_id": self.template_id,
+            "llm_model_id": self.llm_model_id,
+            "replicate": int(self.replicate),
+        }
 
 
 def _require_replication_config(data_root: Path) -> dict[str, int]:
@@ -365,6 +391,251 @@ def _prepare_curated_drafts(data_root: Path, draft_ids: Iterable[str]) -> List[C
     return entries
 
 
+# Builders extracted from cohort_membership for curated selections.
+
+
+def build_curated_entries(
+    entries: Sequence[CuratedEssay],
+    *,
+    data_root: Path,
+    add_draft_row: Callable[[str, str, str, str, int], None],
+    add_essay_row: Callable[[str, str, str, str, str, int], None],
+    essay_seed_combo: Dict[str, str],
+    existing_eval_cache: Dict[str, Dict[tuple[str, str], List[ExistingEvaluation]]],
+    existing_eval_loader: Callable[[Path, str], Dict[tuple[str, str], List[ExistingEvaluation]]] = _existing_evaluations_by_template_model,
+) -> None:
+    """Populate rows for curated essay selections and seed evaluation reuse cache."""
+
+    for entry in entries:
+        llm_model_id = entry.essay_llm_model_id or entry.draft_llm_model_id
+        draft_llm_for_row = entry.draft_llm_model_id or llm_model_id
+
+        add_draft_row(
+            entry.draft_gen_id,
+            entry.combo_id,
+            entry.draft_template_id,
+            draft_llm_for_row,
+            entry.draft_replicate,
+        )
+
+        essay_llm_model_id = entry.essay_llm_model_id or llm_model_id
+        add_essay_row(
+            entry.essay_gen_id,
+            entry.draft_gen_id,
+            entry.combo_id,
+            entry.essay_template_id,
+            essay_llm_model_id,
+            entry.essay_replicate,
+        )
+        essay_seed_combo[entry.essay_gen_id] = entry.combo_id
+
+        existing_eval_cache[entry.essay_gen_id] = existing_eval_loader(data_root, entry.essay_gen_id)
+
+
+def build_from_drafts(
+    entries: Sequence[CuratedDraft],
+    *,
+    essay_template_ids: Sequence[str],
+    essay_rep_count: int,
+    add_draft_row: Callable[[str, str, str, str, int], None],
+    add_essay_row: Callable[[str, str, str, str, str, int], None],
+    allocator: _ReplicateAllocator,
+    cohort_id: str,
+    essay_seed_combo: Dict[str, str],
+    essay_id_factory: Callable[..., str],
+) -> None:
+    """Populate rows for curated draft selections by expanding essays."""
+
+    for entry in entries:
+        add_draft_row(
+            entry.draft_gen_id,
+            entry.combo_id,
+            entry.draft_template_id,
+            entry.draft_llm_model_id,
+            entry.draft_replicate,
+        )
+
+        for essay_tpl in essay_template_ids:
+            essay_base = (entry.draft_gen_id, essay_tpl)
+            for essay_rep in allocator.allocate("essay", essay_base, essay_rep_count):
+                draft_task_id = f"{entry.combo_id}__{entry.draft_template_id}__{entry.draft_llm_model_id}"
+                essay_task_id = f"{draft_task_id}__{essay_tpl}"
+                essay_gen_id = essay_id_factory(
+                    draft_gen_id=entry.draft_gen_id,
+                    essay_template_id=essay_tpl,
+                    replicate_index=int(essay_rep),
+                    cohort_id=cohort_id,
+                    legacy_task_id=essay_task_id,
+                )
+                add_essay_row(
+                    essay_gen_id,
+                    entry.draft_gen_id,
+                    entry.combo_id,
+                    essay_tpl,
+                    entry.draft_llm_model_id,
+                    int(essay_rep),
+                )
+                essay_seed_combo[essay_gen_id] = entry.combo_id
+
+
+def expand_cartesian_drafts(
+    *,
+    cohort_id: str,
+    combo_ids: Sequence[str],
+    draft_template_ids: Sequence[str],
+    generation_model_ids: Sequence[str],
+    draft_rep_count: int,
+    add_draft_row: Callable[[str, str, str, str, int], None],
+    draft_id_factory: Callable[..., str],
+) -> None:
+    """Expand active axes into draft membership rows."""
+
+    for combo_id in combo_ids:
+        for draft_tpl in draft_template_ids:
+            for model_id in generation_model_ids:
+                for replicate_index in range(1, draft_rep_count + 1):
+                    salt = None if replicate_index == 1 else f"rep{replicate_index}"
+                    draft_gen_id = draft_id_factory(
+                        combo_id=combo_id,
+                        draft_template_id=draft_tpl,
+                        generation_model_id=model_id,
+                        replicate_index=replicate_index,
+                        cohort_id=cohort_id,
+                        salt=salt,
+                    )
+                    add_draft_row(
+                        draft_gen_id,
+                        combo_id,
+                        draft_tpl,
+                        model_id,
+                        replicate_index,
+                    )
+
+
+def expand_cartesian_essays(
+    *,
+    cohort_id: str,
+    draft_rows: Sequence[Dict[str, object]],
+    essay_template_ids: Sequence[str],
+    essay_rep_count: int,
+    add_essay_row: Callable[[str, str, str, str, str, int], None],
+    essay_seed_combo: Dict[str, str],
+    essay_id_factory: Callable[..., str],
+    allocator: _ReplicateAllocator,
+) -> None:
+    """Expand essay rows from draft rows using deterministic allocation."""
+
+    for draft in draft_rows:
+        draft_gen_id = str(draft.get("gen_id") or "").strip()
+        if not draft_gen_id:
+            continue
+
+        combo_id = str(draft.get("combo_id") or "").strip()
+        draft_tpl = str(draft.get("template_id") or "").strip()
+        llm_model_id = str(draft.get("llm_model_id") or "").strip()
+        draft_replicate = _normalize_int(draft.get("replicate"), default=1)
+
+        draft_task_id = f"{combo_id}__{draft_tpl}__{llm_model_id}"
+
+        for essay_tpl in essay_template_ids:
+            base_signature = (draft_gen_id, essay_tpl)
+            replicate_indices = allocator.allocate("essay", base_signature, essay_rep_count)
+            for replicate_index in replicate_indices:
+                replicate_index_int = int(replicate_index)
+                essay_task_id = f"{draft_task_id}__{essay_tpl}"
+                salt = None
+                if not (draft_replicate == 1 and replicate_index_int == 1):
+                    salt = f"rep{draft_replicate}-{replicate_index_int}"
+                essay_gen_id = essay_id_factory(
+                    draft_gen_id=draft_gen_id,
+                    essay_template_id=essay_tpl,
+                    replicate_index=replicate_index_int,
+                    cohort_id=cohort_id,
+                    legacy_task_id=essay_task_id,
+                    salt=salt,
+                )
+                add_essay_row(
+                    essay_gen_id,
+                    draft_gen_id,
+                    combo_id,
+                    essay_tpl,
+                    llm_model_id,
+                    replicate_index_int,
+                )
+                essay_seed_combo[essay_gen_id] = combo_id
+
+
+def build_evaluations_for_essay(
+    *,
+    essay_gen_id: str,
+    combo_id: str,
+    evaluation_templates: Sequence[str],
+    evaluation_models: Sequence[str],
+    existing_counts: Dict[tuple[str, str], List[ExistingEvaluation]],
+    evaluation_rep_count: int,
+    cohort_id: str,
+    allocator: _ReplicateAllocator,
+    evaluation_id_factory: Callable[..., str],
+) -> tuple[list[MembershipRow], int]:
+    """Build evaluation rows for a single essay, reusing existing replicates first."""
+
+    rows: list[MembershipRow] = []
+    created_new = 0
+
+    for tpl in evaluation_templates:
+        for model_id in evaluation_models:
+            existing_entries = sorted(
+                existing_counts.get((tpl, model_id), []),
+                key=lambda item: item.replicate,
+            )
+            reuse_entries = existing_entries[:evaluation_rep_count]
+            for reuse in reuse_entries:
+                rows.append(
+                    MembershipRow(
+                        stage="evaluation",
+                        gen_id=reuse.gen_id,
+                        origin_cohort_id=cohort_id,
+                        parent_gen_id=essay_gen_id,
+                        combo_id=combo_id,
+                        template_id=tpl,
+                        llm_model_id=model_id,
+                        replicate=int(reuse.replicate),
+                    )
+                )
+
+            needed = max(0, evaluation_rep_count - len(reuse_entries))
+            if needed <= 0:
+                continue
+
+            replicate_indices = allocator.allocate("evaluation", (essay_gen_id, tpl, model_id), needed)
+            for replicate_index in replicate_indices:
+                replicate_index_int = int(replicate_index)
+                legacy_task_id = f"{essay_gen_id}__{tpl}__{model_id}"
+                eval_gen_id = evaluation_id_factory(
+                    essay_gen_id=essay_gen_id,
+                    evaluation_template_id=tpl,
+                    evaluation_model_id=model_id,
+                    replicate_index=replicate_index_int,
+                    cohort_id=cohort_id,
+                    legacy_task_id=legacy_task_id,
+                )
+                rows.append(
+                    MembershipRow(
+                        stage="evaluation",
+                        gen_id=eval_gen_id,
+                        origin_cohort_id=cohort_id,
+                        parent_gen_id=essay_gen_id,
+                        combo_id=combo_id,
+                        template_id=tpl,
+                        llm_model_id=model_id,
+                        replicate=replicate_index_int,
+                    )
+                )
+                created_new += 1
+
+    return rows, created_new
+
+
 # Model provider name mapping removed from cohort generation to reduce complexity.
 
 
@@ -546,6 +817,11 @@ def cohort_membership(
     }
 
     active_essay_templates = read_templates(data_root, "essay", filter_active=True)
+    essay_template_ids: List[str] = (
+        active_essay_templates["template_id"].astype(str).tolist()
+        if not active_essay_templates.empty
+        else []
+    )
 
     # Replication config: required and authoritative
     rep_cfg = _require_replication_config(data_root)
@@ -556,93 +832,60 @@ def cohort_membership(
     allocator = _ReplicateAllocator(Paths.from_str(data_root).gens_root)
 
     def _add_draft_row(gen_id: str, combo_id: str, template_id: str, llm_model_id: str, replicate: int) -> None:
-        rows.append(
-            {
-                "stage": "draft",
-                "gen_id": gen_id,
-                "origin_cohort_id": str(cohort_id),
-                "parent_gen_id": "",
-                "combo_id": combo_id,
-                "template_id": template_id,
-                "llm_model_id": llm_model_id,
-                "replicate": int(replicate),
-            }
+        row = MembershipRow(
+            stage="draft",
+            gen_id=gen_id,
+            origin_cohort_id=str(cohort_id),
+            combo_id=combo_id,
+            template_id=template_id,
+            llm_model_id=llm_model_id,
+            replicate=replicate,
         )
+        rows.append(row.to_dict())
 
-    def _add_essay_row(gen_id: str, parent_gen_id: str, combo_id: str, template_id: str, llm_model_id: str, replicate: int) -> None:
-        rows.append(
-            {
-                "stage": "essay",
-                "gen_id": gen_id,
-                "origin_cohort_id": str(cohort_id),
-                "parent_gen_id": parent_gen_id,
-                "combo_id": combo_id,
-                "template_id": template_id,
-                "llm_model_id": llm_model_id,
-                "replicate": int(replicate),
-            }
+    def _add_essay_row(
+        gen_id: str,
+        parent_gen_id: str,
+        combo_id: str,
+        template_id: str,
+        llm_model_id: str,
+        replicate: int,
+    ) -> None:
+        row = MembershipRow(
+            stage="essay",
+            gen_id=gen_id,
+            origin_cohort_id=str(cohort_id),
+            parent_gen_id=parent_gen_id,
+            combo_id=combo_id,
+            template_id=template_id,
+            llm_model_id=llm_model_id,
+            replicate=replicate,
         )
-
-    def _build_curated_entries(entries: List[CuratedEssay]) -> None:
-        """Unified builder: Always add draft + essay + eval rows for selected essays."""
-        for entry in entries:
-            llm_model_id = entry.essay_llm_model_id or entry.draft_llm_model_id
-            draft_llm_for_row = entry.draft_llm_model_id or llm_model_id
-
-            # Always add existing draft row to membership
-            _add_draft_row(entry.draft_gen_id, entry.combo_id, entry.draft_template_id, draft_llm_for_row, entry.draft_replicate)
-
-            # Always add existing essay row to membership
-            essay_llm_model_id = entry.essay_llm_model_id or llm_model_id
-            _add_essay_row(entry.essay_gen_id, entry.draft_gen_id, entry.combo_id, entry.essay_template_id, essay_llm_model_id, entry.essay_replicate)
-            essay_seed_combo[entry.essay_gen_id] = entry.combo_id
-
-            # Cache existing evaluations for this essay (will be processed later)
-            existing_eval_cache[entry.essay_gen_id] = _existing_evaluations_by_template_model(data_root, entry.essay_gen_id)
-
-    def _build_from_drafts(entries: List[CuratedDraft]) -> None:
-        """Unified builder: Always add existing draft rows + allocate essay replicates."""
-        essay_tpl_ids = active_essay_templates["template_id"].astype(str).tolist()
-        essay_reps = int(rep_cfg.get("essay"))
-        for entry in entries:
-            # Always add existing draft row to membership
-            _add_draft_row(
-                entry.draft_gen_id,
-                entry.combo_id,
-                entry.draft_template_id,
-                entry.draft_llm_model_id,
-                entry.draft_replicate,
-            )
-
-            # Allocate essay replicates for each active essay template
-            for essay_tpl in essay_tpl_ids:
-                essay_base = (entry.draft_gen_id, essay_tpl)
-                for essay_rep in allocator.allocate("essay", essay_base, essay_reps):
-                    draft_task_id = f"{entry.combo_id}__{entry.draft_template_id}__{entry.draft_llm_model_id}"
-                    essay_task_id = f"{draft_task_id}__{essay_tpl}"
-                    essay_gen_id = _essay_gen_id(
-                        draft_gen_id=entry.draft_gen_id,
-                        essay_template_id=essay_tpl,
-                        replicate_index=int(essay_rep),
-                        cohort_id=str(cohort_id),
-                        legacy_task_id=essay_task_id,
-                    )
-                    _add_essay_row(
-                        essay_gen_id,
-                        entry.draft_gen_id,
-                        entry.combo_id,
-                        essay_tpl,
-                        entry.draft_llm_model_id,
-                        essay_rep,
-                    )
-                    essay_seed_combo[essay_gen_id] = entry.combo_id
+        rows.append(row.to_dict())
 
     if selection_cfg.selection_type == "essay":
         curated_entries = _prepare_curated_entries(data_root, selected_ids)
-        _build_curated_entries(curated_entries)
+        build_curated_entries(
+            curated_entries,
+            data_root=data_root,
+            add_draft_row=_add_draft_row,
+            add_essay_row=_add_essay_row,
+            essay_seed_combo=essay_seed_combo,
+            existing_eval_cache=existing_eval_cache,
+        )
     elif selection_cfg.selection_type == "draft":
         curated_drafts = _prepare_curated_drafts(data_root, selected_ids)
-        _build_from_drafts(curated_drafts)
+        build_from_drafts(
+            curated_drafts,
+            essay_template_ids=essay_template_ids,
+            essay_rep_count=int(rep_cfg.get("essay")),
+            add_draft_row=_add_draft_row,
+            add_essay_row=_add_essay_row,
+            allocator=allocator,
+            cohort_id=str(cohort_id),
+            essay_seed_combo=essay_seed_combo,
+            essay_id_factory=_essay_gen_id,
+        )
 
     else:
         # Cartesian mode — derive from active axes
@@ -663,92 +906,44 @@ def cohort_membership(
         combo_ids: List[str] = []
         if not sel_df.empty and "combo_id" in sel_df.columns:
             combo_ids = sel_df["combo_id"].astype(str).dropna().unique().tolist()
+        draft_template_ids = dtpl_df["template_id"].astype(str).tolist() if not dtpl_df.empty else []
+        generation_model_ids = (
+            gen_models_df["id"].astype(str).tolist() if not gen_models_df.empty else []
+        )
 
-        draft_reps = int(rep_cfg.get("draft"))
-        essay_reps = int(rep_cfg.get("essay"))
-        for combo_id in combo_ids:
-            for _, trow in dtpl_df.iterrows():
-                draft_tpl = str(trow["template_id"])
-                for _, mrow in gen_models_df.iterrows():
-                    mid = str(mrow["id"])
-                    # provider model name omitted
-                    draft_task_id = f"{combo_id}__{draft_tpl}__{mid}"
-                    for dr in range(1, draft_reps + 1):
-                        # Preserve prior unsalted ids for first replicate
-                        salt_d = None if dr == 1 else f"rep{dr}"
-                        draft_cohort_gen = _draft_gen_id(
-                            combo_id=combo_id,
-                            draft_template_id=draft_tpl,
-                            generation_model_id=mid,
-                            replicate_index=dr,
-                            cohort_id=str(cohort_id),
-                            salt=salt_d,
-                        )
-                        rows.append(
-                            {
-                                "stage": "draft",
-                                "gen_id": draft_cohort_gen,
-                                "origin_cohort_id": str(cohort_id),
-                                "parent_gen_id": "",
-                                "combo_id": combo_id,
-                                "template_id": draft_tpl,
-                                "llm_model_id": mid,
-                                "replicate": int(dr),
-                            }
-                        )
+        expand_cartesian_drafts(
+            cohort_id=str(cohort_id),
+            combo_ids=combo_ids,
+            draft_template_ids=draft_template_ids,
+            generation_model_ids=generation_model_ids,
+            draft_rep_count=int(rep_cfg.get("draft")),
+            add_draft_row=_add_draft_row,
+            draft_id_factory=_draft_gen_id,
+        )
 
-        # Essays: drafts × active essay templates
-        essay_tpl_df = active_essay_templates
         draft_rows = [r for r in rows if r.get("stage") == "draft"]
-        for d in draft_rows:
-            draft_cohort_gen = str(d.get("gen_id"))
-            # Normalized membership uses template_id + llm_model_id
-            draft_tpl = str(d.get("template_id"))
-            combo_id = str(d.get("combo_id"))
-            mid = str(d.get("llm_model_id"))
-            # provider model name omitted
-            draft_task_id = f"{combo_id}__{draft_tpl}__{mid}"
-            for _, et in essay_tpl_df.iterrows():
-                essay_tpl = str(et["template_id"])
-                essay_task_id = f"{draft_task_id}__{essay_tpl}"
-                for er in range(1, essay_reps + 1):
-                    # Preserve unsalted id for the primary path (dr==1 and er==1)
-                    if int(d.get("replicate", 1)) == 1 and er == 1:
-                        salt_e = None
-                    else:
-                        salt_e = f"rep{int(d.get('replicate', 1))}-{er}"
-                    essay_cohort_gen = _essay_gen_id(
-                        draft_gen_id=draft_cohort_gen,
-                        essay_template_id=essay_tpl,
-                        replicate_index=er,
-                        cohort_id=str(cohort_id),
-                        legacy_task_id=essay_task_id,
-                        salt=salt_e,
-                    )
-                    rows.append(
-                        {
-                            "stage": "essay",
-                            "gen_id": essay_cohort_gen,
-                            "origin_cohort_id": str(cohort_id),
-                            "parent_gen_id": draft_cohort_gen,
-                            "combo_id": combo_id,
-                            "template_id": essay_tpl,
-                            # default: essay inherits generation model id
-                            "llm_model_id": mid,
-                            "replicate": int(er),
-                        }
-                    )
-                    essay_seed_combo[str(essay_cohort_gen)] = combo_id
+        if draft_rows and essay_template_ids:
+            expand_cartesian_essays(
+                cohort_id=str(cohort_id),
+                draft_rows=draft_rows,
+                essay_template_ids=essay_template_ids,
+                essay_rep_count=int(rep_cfg.get("essay")),
+                add_essay_row=_add_essay_row,
+                essay_seed_combo=essay_seed_combo,
+                essay_id_factory=_essay_gen_id,
+                allocator=allocator,
+            )
 
     # After drafts and essays are built, expand evaluations once using shared helper
     eval_tpl_ids, eval_model_ids = _eval_axes(data_root)
+    fill_up_fully_covered = 0
+    evaluation_fill_added = 0
     if eval_tpl_ids and eval_model_ids:
         essay_ids = list(essay_seed_combo.keys())
         eval_reps = int(rep_cfg.get("evaluation"))
         for essay_gen_id in essay_ids:
-            combo_ref = essay_seed_combo.get(essay_gen_id, "")
+            combo_ref = essay_seed_combo.get(essay_gen_id, "") or ""
 
-            # Always check for existing evaluations
             existing_counts = existing_eval_cache.get(essay_gen_id)
             if existing_counts is None:
                 existing_counts = _existing_evaluations_by_template_model(
@@ -756,59 +951,23 @@ def cohort_membership(
                 )
                 existing_eval_cache[essay_gen_id] = existing_counts
 
-            created_for_essay = 0
-            for tpl in eval_tpl_ids:
-                for mid in eval_model_ids:
-                    # Always include existing evaluations in membership
-                    existing_entries = sorted(
-                        existing_counts.get((tpl, mid), []),
-                        key=lambda item: item.replicate,
-                    )
-                    reuse_entries = existing_entries[:eval_reps]
-                    for existing_entry in reuse_entries:
-                        rows.append(
-                            {
-                                "stage": "evaluation",
-                                "gen_id": existing_entry.gen_id,
-                                "origin_cohort_id": str(cohort_id),
-                                "parent_gen_id": essay_gen_id,
-                                "combo_id": combo_ref or "",
-                                "template_id": tpl,
-                                "llm_model_id": mid,
-                                "replicate": int(existing_entry.replicate),
-                            }
-                        )
+            eval_rows, created_count = build_evaluations_for_essay(
+                essay_gen_id=essay_gen_id,
+                combo_id=combo_ref,
+                evaluation_templates=eval_tpl_ids,
+                evaluation_models=eval_model_ids,
+                existing_counts=existing_counts,
+                evaluation_rep_count=eval_reps,
+                cohort_id=str(cohort_id),
+                allocator=allocator,
+                evaluation_id_factory=_evaluation_gen_id,
+            )
+            rows.extend(row.to_dict() for row in eval_rows)
 
-                    # Allocate only remaining needed evaluations
-                    needed = max(0, eval_reps - len(reuse_entries))
-                    if needed == 0:
-                        continue
-
-                    replicate_indices = allocator.allocate(
-                        "evaluation", (essay_gen_id, tpl, mid), needed
-                    )
-                    for replicate_index in replicate_indices:
-                        legacy_task_id = f"{essay_gen_id}__{tpl}__{mid}"
-                        eval_gen_id = _evaluation_gen_id(
-                            essay_gen_id=essay_gen_id,
-                            evaluation_template_id=tpl,
-                            evaluation_model_id=mid,
-                            replicate_index=int(replicate_index),
-                            cohort_id=str(cohort_id),
-                            legacy_task_id=legacy_task_id,
-                        )
-                        rows.append(
-                            {
-                                "stage": "evaluation",
-                                "gen_id": eval_gen_id,
-                                "origin_cohort_id": str(cohort_id),
-                                "parent_gen_id": essay_gen_id,
-                                "combo_id": combo_ref or "",
-                                "template_id": tpl,
-                                "llm_model_id": mid,
-                                "replicate": int(replicate_index),
-                            }
-                        )
+            if created_count == 0:
+                fill_up_fully_covered += 1
+            else:
+                evaluation_fill_added += created_count
 
     # Deduplicate by (stage, gen_id)
     df = pd.DataFrame(rows)
@@ -873,6 +1032,8 @@ def cohort_membership(
             "evaluations": MetadataValue.int(
                 int((slim_df["stage"] == "evaluation").sum() if not slim_df.empty else 0)
             ),
+            "evaluation_fill_added": MetadataValue.int(int(evaluation_fill_added)),
+            "fill_up_fully_covered": MetadataValue.int(int(fill_up_fully_covered)),
             "origin_cohort_id": MetadataValue.text(str(cohort_id)),
             "membership_path": MetadataValue.path(str(out_path)),
         }

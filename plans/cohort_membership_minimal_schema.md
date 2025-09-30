@@ -12,6 +12,12 @@
 - **Fail Fast:** Surface missing metadata or manifest mismatches at asset materialization time.
 - **Unified Consumption:** Dagster assets and external scripts resolve cohort scope and metadata through the same helper utilities.
 
+### Current Helper Inventory (Jan 2026)
+- `build_curated_entries`, `build_from_drafts` – curated cohort assembly (module-level, unit tested)
+- `expand_cartesian_drafts`, `expand_cartesian_essays` – Cartesian cohort expansion via injected row builders
+- `build_evaluations_for_essay` – evaluation reuse + allocation helper returning `MembershipRow`s
+- `MembershipRow` dataclass – canonical row representation with `to_dict()` bridge for legacy code paths
+
 ## Phase Plan
 
 ### Phase 1 – Manifest & Dual-Read Infrastructure

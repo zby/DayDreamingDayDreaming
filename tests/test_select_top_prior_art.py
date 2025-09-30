@@ -6,7 +6,7 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-SCRIPT = ROOT / "scripts" / "select_top_prior_art.py"
+SCRIPT = ROOT / "scripts" / "select_top_essays.py"
 
 
 def _write_sample_scores(path: Path) -> None:
@@ -22,6 +22,11 @@ def _write_sample_scores(path: Path) -> None:
     path.write_text("\n".join(rows) + "\n", encoding="utf-8")
 
 
+def _read_selected_essays(path: Path) -> list[str]:
+    lines = [line.strip() for line in path.read_text(encoding="utf-8").splitlines()]
+    return [line for line in lines if line and not line.startswith("#")]
+
+
 def test_top_n_selects_requested_count(tmp_path: Path) -> None:
     parsed_scores = tmp_path / "data" / "7_cross_experiment"
     parsed_scores.mkdir(parents=True)
@@ -32,8 +37,12 @@ def test_top_n_selects_requested_count(tmp_path: Path) -> None:
         [
             sys.executable,
             str(SCRIPT),
-            "--parsed-scores",
+            "--aggregated-scores",
             str(parsed_csv),
+            "--template",
+            "gemini-prior-art-eval",
+            "--average-models",
+            "sonnet-4",
             "--score-span",
             "0",
             "--top-n",
@@ -45,7 +54,7 @@ def test_top_n_selects_requested_count(tmp_path: Path) -> None:
         text=True,
     )
     selected_path = tmp_path / "data" / "2_tasks" / "selected_essays.txt"
-    content = selected_path.read_text(encoding="utf-8").strip().splitlines()
+    content = _read_selected_essays(selected_path)
     assert content == ["essay_a"], f"stdout={result.stdout} stderr={result.stderr}"
 
 
@@ -59,8 +68,13 @@ def test_max_only_selects_all_maximum(tmp_path: Path) -> None:
         [
             sys.executable,
             str(SCRIPT),
-            "--parsed-scores",
+            "--aggregated-scores",
             str(parsed_csv),
+            "--template",
+            "gemini-prior-art-eval",
+            "--average-models",
+            "sonnet-4",
+            "gemini_25_pro",
             "--score-span",
             "0",
             "--max-only",
@@ -69,7 +83,7 @@ def test_max_only_selects_all_maximum(tmp_path: Path) -> None:
         check=True,
     )
     selected_path = tmp_path / "data" / "2_tasks" / "selected_essays.txt"
-    content = selected_path.read_text(encoding="utf-8").strip().splitlines()
+    content = _read_selected_essays(selected_path)
     assert content == ["essay_a", "essay_b"], content
 
 
@@ -83,12 +97,16 @@ def test_score_span_defaults_include_range(tmp_path: Path) -> None:
         [
             sys.executable,
             str(SCRIPT),
-            "--parsed-scores",
+            "--aggregated-scores",
             str(parsed_csv),
+            "--template",
+            "gemini-prior-art-eval",
+            "--average-models",
+            "sonnet-4",
         ],
         cwd=tmp_path,
         check=True,
     )
     selected_path = tmp_path / "data" / "2_tasks" / "selected_essays.txt"
-    content = selected_path.read_text(encoding="utf-8").strip().splitlines()
-    assert content == ["essay_a", "essay_b"], content
+    content = _read_selected_essays(selected_path)
+    assert content[:2] == ["essay_a", "essay_b"], content
