@@ -1073,48 +1073,17 @@ def register_cohort_partitions(context, cohort_membership: pd.DataFrame) -> Dict
             evaluation_gens_partitions.name, df[df["stage"] == "evaluation"]["gen_id"].astype(str)
         )
 
-    # Report materializations for existing files (backfill mode support)
-    data_root = Path(context.resources.data_root)
-    gens_root = data_root / "gens"
-    materialized_count = 0
-
-    for _, row in df.iterrows():
-        stage = str(row.get("stage", ""))
-        gen_id = str(row.get("gen_id", ""))
-        if not stage or not gen_id:
-            continue
-
-        # Check if parsed file exists (indicates completion)
-        parsed_path = gens_root / stage / gen_id / "parsed.txt"
-        if parsed_path.exists():
-            try:
-                from dagster import AssetKey, AssetMaterialization
-                asset_key = AssetKey([f"{stage}_parsed"])
-                mat = AssetMaterialization(
-                    asset_key=asset_key,
-                    partition=gen_id,
-                    description=f"Existing {stage} marked as materialized during cohort registration",
-                )
-                instance.report_runless_asset_event(mat)
-                materialized_count += 1
-            except Exception as e:
-                # Best effort - don't fail cohort registration if this fails
-                context.log.warning(f"Failed to mark {stage} {gen_id} as materialized: {e}")
-                pass
-
     context.add_output_metadata(
         {
             "partitions_added_draft": MetadataValue.int(added_draft),
             "partitions_added_essay": MetadataValue.int(added_essay),
             "partitions_added_evaluation": MetadataValue.int(added_eval),
-            "existing_files_marked_materialized": MetadataValue.int(materialized_count),
         }
     )
     return {
         "draft": added_draft,
         "essay": added_essay,
         "evaluation": added_eval,
-        "marked_materialized": materialized_count,
     }
 @asset_with_boundary(
     stage="cohort",
