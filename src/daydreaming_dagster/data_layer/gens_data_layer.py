@@ -120,6 +120,11 @@ class GensDataLayer:
         except OSError as exc:
             raise DDError(Err.IO_ERROR, ctx={"path": str(target)}) from exc
 
+    def parsed_exists(self, stage: str, gen_id: str) -> bool:
+        """Check if parsed.txt exists for the given stage and gen_id."""
+        target = self._paths.parsed_path(stage, gen_id)
+        return target.exists()
+
     def read_raw(self, stage: str, gen_id: str) -> str:
         target = self._paths.raw_path(stage, gen_id)
         if not target.exists():

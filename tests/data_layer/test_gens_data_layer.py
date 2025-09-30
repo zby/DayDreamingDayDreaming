@@ -66,6 +66,18 @@ def test_read_parsed_missing(layer: GensDataLayer) -> None:
     assert err.value.ctx.get("artifact") == "parsed"
 
 
+def test_parsed_exists(layer: GensDataLayer) -> None:
+    stage = "evaluation"
+    gen_id = "V1"
+
+    # Should return False when file doesn't exist
+    assert layer.parsed_exists(stage, gen_id) is False
+
+    # Should return True after file is written
+    layer.write_parsed(stage, gen_id, "parsed content")
+    assert layer.parsed_exists(stage, gen_id) is True
+
+
 def test_read_main_metadata_missing(layer: GensDataLayer) -> None:
     with pytest.raises(DDError) as err:
         layer.read_main_metadata("draft", "missing")
