@@ -1,0 +1,42 @@
+# Simplicity-first refactor contract for DayDreaming Dagster
+
+stability_guarantees:
+  public_apis:
+    description: Preserve signatures and semantics of documented public entry points.
+    includes:
+      - Dagster assets, schedules, sensors, jobs exposed via `definitions.py`.
+      - Functions or classes marked stable in docs or imports consumed by tests.
+  data_contracts:
+    description: Do not change file layouts, schemas, or serialized formats without migration.
+    includes:
+      - Data under `data/` consumed by pipelines.
+      - Model/type definitions shared across modules.
+  error_contracts:
+    description: Maintain `DDError` and `Err` codes/types, along with structured context payloads.
+    includes:
+      - Exception subclasses raised across module boundaries.
+      - Error codes consumed by tests or callers.
+
+allowed_changes:
+  - Adjust or replace error/log messages as long as codes/types stay the same.
+  - Restructure helpers, call graphs, or modules to reduce complexity.
+  - Delete incidental behavior that only preserves legacy prose or unused outputs.
+  - Introduce small helpers to improve readability, provided contracts remain intact.
+
+forbidden_changes:
+  - Breaking stable APIs, error codes, or data schemas without explicit migration plan.
+  - Adding data plumbing solely to reproduce legacy message text.
+  - Introducing new global state or side effects that bypass existing boundaries.
+
+refactor_principles:
+  - Prefer deletion over preservation of low-value logic.
+  - Keep structured errors in deep layers; format/log at a single boundary.
+  - Minimize try/except ladders that re-wrap exceptions without adding context.
+  - Favor pure functions and dependency injection over implicit globals.
+  - Validate inputs early with clear, code-based errors.
+
+success_criteria:
+  - Tests pass (unit + integration relevant to touched modules).
+  - Cyclomatic complexity and LOC trend downward or are justified.
+  - No reliance on string-matching error messages in new or updated tests.
+  - Added `REFactor_NOTES.md` entries when dropping non-contract behavior.
