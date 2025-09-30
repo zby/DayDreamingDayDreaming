@@ -29,6 +29,13 @@ def test_deterministic_gen_id_stable():
     assert gid1 == gid2 and gid1.startswith("d_")
 
 
+def test_compute_deterministic_gen_id_rejects_non_stage():
+    sig = draft_signature("combo", "tpl", "model", 1)
+    with pytest.raises(DDError) as err:
+        compute_deterministic_gen_id("DRAFT", sig)  # type: ignore[arg-type]
+    assert err.value.code is Err.INVALID_CONFIG
+
+
 def test_signature_from_metadata_draft():
     meta = {
         "combo_id": "Combo-1",
@@ -53,7 +60,7 @@ def test_signature_from_metadata_eval():
 
 def test_signature_from_metadata_invalid_stage():
     with pytest.raises(DDError) as err:
-        signature_from_metadata("unknown", {})
+        signature_from_metadata("unknown", {})  # type: ignore[arg-type]
     assert err.value.code is Err.INVALID_CONFIG
 
 

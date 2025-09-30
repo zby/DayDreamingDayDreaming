@@ -8,21 +8,19 @@ import csv
 import json
 from dataclasses import dataclass, asdict
 from pathlib import Path
-from typing import Dict, Iterable, List, Optional
+from typing import Dict, Iterable, List, Optional, cast
 
 from daydreaming_dagster.utils.errors import DDError
 from daydreaming_dagster.utils.ids import (
     compute_deterministic_gen_id,
     signature_from_metadata,
 )
-
-
-STAGES = ("draft", "essay", "evaluation")
+from daydreaming_dagster.types import Stage, STAGES
 
 
 @dataclass
 class IdMismatch:
-    stage: str
+    stage: Stage
     gen_id: str
     metadata_path: str
     deterministic_id: str
@@ -32,7 +30,7 @@ class IdMismatch:
 
 @dataclass
 class IdError:
-    stage: str
+    stage: Stage
     gen_id: str
     metadata_path: str
     error: str
@@ -40,7 +38,7 @@ class IdError:
 
 @dataclass
 class StageReport:
-    stage: str
+    stage: Stage
     total: int
     mismatches: List[IdMismatch]
     errors: List[IdError]
@@ -59,7 +57,7 @@ def _load_metadata(path: Path) -> Optional[dict]:
         return {}
 
 
-def _effect_for_stage(stage: str) -> str:
+def _effect_for_stage(stage: Stage) -> str:
     if stage == "draft":
         return "regen_draft_and_children"
     if stage == "essay":
@@ -69,7 +67,7 @@ def _effect_for_stage(stage: str) -> str:
     return "unknown"
 
 
-def analyze_stage(data_root: Path, stage: str) -> StageReport:
+def analyze_stage(data_root: Path, stage: Stage) -> StageReport:
     stage_dir = data_root / "gens" / stage
     mismatches: List[IdMismatch] = []
     errors: List[IdError] = []
@@ -230,7 +228,11 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    stages = [args.stage] if args.stage else list(STAGES)
+    stages: List[Stage]
+    if args.stage:
+        stages = [cast(Stage, args.stage)]
+    else:
+        stages = list(STAGES)
     data_root = args.data_root.resolve()
 
     reports = [analyze_stage(data_root, stage) for stage in stages]

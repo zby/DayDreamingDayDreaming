@@ -2,9 +2,10 @@ from __future__ import annotations
 
 import hashlib
 from hashlib import blake2b
-from typing import Iterable, Tuple
+from typing import Iterable, Tuple, Dict
 
 from .errors import DDError, Err
+from ..types import Stage
 
 
 DETERMINISTIC_GEN_IDS_ENABLED = True  # BACKCOMPAT: deterministic IDs are always enabled post-migration.
@@ -65,7 +66,7 @@ def reserve_gen_id(stage: str, task_id: str, *, run_id: str | None = None, salt:
 
 # ---------------- Deterministic generation ids ---------------- #
 
-_PREFIX_BY_STAGE = {
+_PREFIX_BY_STAGE: Dict[Stage, str] = {
     "draft": "d_",
     "essay": "e_",
     "evaluation": "v_",
@@ -114,11 +115,11 @@ def evaluation_signature(essay_gen_id: str, evaluation_template_id: str, evaluat
     )
 
 
-def compute_deterministic_gen_id(stage: str, signature: Tuple) -> str:
-    stage_norm = str(stage).lower()
-    prefix = _PREFIX_BY_STAGE.get(stage_norm)
-    if not prefix:
-        raise DDError(Err.INVALID_CONFIG, ctx={"stage": stage})
+def compute_deterministic_gen_id(stage: Stage, signature: Tuple) -> str:
+    try:
+        prefix = _PREFIX_BY_STAGE[stage]
+    except KeyError as exc:
+        raise DDError(Err.INVALID_CONFIG, ctx={"stage": stage}) from exc
     canonical = "|".join(str(part) for part in signature)
     digest = blake2b(canonical.encode("utf-8"), digest_size=10).digest()
     value = int.from_bytes(digest, "big")
@@ -126,8 +127,7 @@ def compute_deterministic_gen_id(stage: str, signature: Tuple) -> str:
     return prefix + b36
 
 
-def signature_from_metadata(stage: str, metadata: dict) -> Tuple:
-    stage_norm = str(stage).lower()
+def signature_from_metadata(stage: Stage, metadata: dict) -> Tuple:
     rep = metadata.get("replicate")
     if rep is None:
         rep = 1
@@ -138,20 +138,20 @@ def signature_from_metadata(stage: str, metadata: dict) -> Tuple:
     else:
         raise DDError(Err.INVALID_CONFIG, ctx={"field": "replicate", "value": rep})
 
-    if stage_norm == "draft":
+    if stage == "draft":
         return draft_signature(
             metadata.get("combo_id"),
             metadata.get("template_id"),
             metadata.get("llm_model_id"),
             rep,
         )
-    if stage_norm == "essay":
+    if stage == "essay":
         return essay_signature(
             metadata.get("parent_gen_id"),
             metadata.get("template_id") or metadata.get("essay_template"),
             rep,
         )
-    if stage_norm == "evaluation":
+    if stage == "evaluation":
         return evaluation_signature(
             metadata.get("parent_gen_id"),
             metadata.get("template_id") or metadata.get("evaluation_template"),
