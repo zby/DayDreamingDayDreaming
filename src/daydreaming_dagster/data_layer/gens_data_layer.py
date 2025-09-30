@@ -125,6 +125,16 @@ class GensDataLayer:
         target = self._paths.parsed_path(stage, gen_id)
         return target.exists()
 
+    def raw_exists(self, stage: str, gen_id: str) -> bool:
+        """Check if raw.txt exists for the given stage and gen_id."""
+        target = self._paths.raw_path(stage, gen_id)
+        return target.exists()
+
+    def raw_metadata_exists(self, stage: str, gen_id: str) -> bool:
+        """Check if raw_metadata.json exists for the given stage and gen_id."""
+        target = self._paths.raw_metadata_path(stage, gen_id)
+        return target.exists()
+
     def read_raw(self, stage: str, gen_id: str) -> str:
         target = self._paths.raw_path(stage, gen_id)
         if not target.exists():

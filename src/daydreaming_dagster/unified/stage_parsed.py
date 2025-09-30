@@ -28,6 +28,36 @@ def _stage_parsed_asset(
 ) -> tuple[str, Dict[str, Any]]:
     data_layer.reserve_generation(stage, gen_id, create=True)
 
+    # Check if we should skip regeneration
+    force = stage_settings.force if stage_settings else False
+    if not force and data_layer.parsed_exists(stage, gen_id):
+        # Reuse existing artifact
+        parsed_text = data_layer.read_parsed(stage, gen_id)
+
+        # Try to read existing metadata, but don't fail if missing
+        try:
+            parsed_metadata = data_layer.read_parsed_metadata(stage, gen_id)
+        except DDError as err:
+            if err.code is Err.DATA_MISSING:
+                # Warn about missing metadata but proceed with reuse
+                import logging
+                logger = logging.getLogger(__name__)
+                logger.warning(
+                    f"Reusing parsed.txt for {stage}/{gen_id} but parsed_metadata.json is missing"
+                )
+                parsed_metadata = {
+                    "function": f"{stage}_parsed",
+                    "stage": str(stage),
+                    "gen_id": str(gen_id),
+                }
+            else:
+                raise
+
+        # Mark as reused
+        parsed_metadata["reused"] = True
+
+        return parsed_text, parsed_metadata
+
     metadata = resolve_generation_metadata(data_layer, stage, gen_id)
     raw_metadata = raw_metadata or {}
 
@@ -104,6 +134,7 @@ def _stage_parsed_asset(
         "parser_name": parser_name,
         "success": True,
         "error": None,
+        "reused": False,
     }
 
     for key in ("input_mode", "copied_from"):

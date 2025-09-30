@@ -179,3 +179,138 @@ def test_stage_raw_copy_marks_input_mode(tmp_path: Path):
             "raw_path": str(raw_path),
         },
     )
+
+
+def test_stage_raw_skips_existing_artifact(tmp_path: Path):
+    """Test that stage_raw reuses existing raw.txt by default."""
+    paths = _prepare_generation(
+        tmp_path,
+        "draft",
+        "D1",
+        {
+            "template_id": "draft-tpl",
+            "mode": "llm",
+            "llm_model_id": "model-x",
+            "origin_cohort_id": "C1",
+        },
+    )
+
+    # Pre-create raw.txt and raw_metadata.json
+    raw_path = paths.raw_path("draft", "D1")
+    raw_path.write_text("EXISTING-RAW", encoding="utf-8")
+
+    existing_metadata = {
+        "function": "draft_raw",
+        "mode": "llm",
+        "stage": "draft",
+        "gen_id": "D1",
+        "llm_model_id": "model-x",
+        "raw_length": 12,
+    }
+    paths.raw_metadata_path("draft", "D1").write_text(
+        json.dumps(existing_metadata), encoding="utf-8"
+    )
+
+    llm = _StubLLM(text="NEW-RAW")
+    ctx = _context(tmp_path, "D1", llm=llm)
+
+    out = stage_raw.stage_raw_asset(ctx, "draft", prompt_text="PROMPT TEXT")
+
+    # Should return existing artifact
+    assert out == "EXISTING-RAW"
+    # LLM should not be called
+    assert llm.calls == []
+
+    # Metadata should mark as reused
+    md = ctx._captured["metadata"]
+    assert md["reused"].value is True
+
+
+def test_stage_raw_force_regenerates(tmp_path: Path):
+    """Test that force=True regenerates even when raw.txt exists."""
+    paths = _prepare_generation(
+        tmp_path,
+        "draft",
+        "D1",
+        {
+            "template_id": "draft-tpl",
+            "mode": "llm",
+            "llm_model_id": "model-x",
+            "origin_cohort_id": "C1",
+        },
+    )
+
+    # Pre-create raw.txt
+    raw_path = paths.raw_path("draft", "D1")
+    raw_path.write_text("EXISTING-RAW", encoding="utf-8")
+
+    llm = _StubLLM(text="NEW-RAW")
+
+    # Create context with force=True
+    experiment_config = ExperimentConfig(
+        stage_config={
+            "draft": StageSettings(generation_max_tokens=256, min_lines=2, force=True),
+        }
+    )
+
+    captured: Dict[str, Any] = {}
+
+    ctx = types.SimpleNamespace(
+        partition_key="D1",
+        resources=types.SimpleNamespace(
+            data_root=str(tmp_path),
+            experiment_config=experiment_config,
+            openrouter_client=llm,
+        ),
+        run=types.SimpleNamespace(run_id="RUN-123"),
+        add_output_metadata=lambda md: captured.update({"metadata": md}),
+        _captured=captured,
+    )
+
+    out = stage_raw.stage_raw_asset(ctx, "draft", prompt_text="PROMPT TEXT")
+
+    # Should generate new artifact
+    assert out == "NEW-RAW"
+    # LLM should be called
+    assert len(llm.calls) == 1
+
+    # Metadata should mark as NOT reused
+    md = ctx._captured["metadata"]
+    assert md["reused"].value is False
+
+
+def test_stage_raw_skips_with_missing_metadata(tmp_path: Path):
+    """Test that stage_raw reuses raw.txt even if raw_metadata.json is missing."""
+    paths = _prepare_generation(
+        tmp_path,
+        "draft",
+        "D1",
+        {
+            "template_id": "draft-tpl",
+            "mode": "llm",
+            "llm_model_id": "model-x",
+            "origin_cohort_id": "C1",
+        },
+    )
+
+    # Pre-create raw.txt but NOT raw_metadata.json
+    raw_path = paths.raw_path("draft", "D1")
+    raw_path.write_text("EXISTING-RAW", encoding="utf-8")
+
+    llm = _StubLLM(text="NEW-RAW")
+    ctx = _context(tmp_path, "D1", llm=llm)
+
+    out = stage_raw.stage_raw_asset(ctx, "draft", prompt_text="PROMPT TEXT")
+
+    # Should return existing artifact
+    assert out == "EXISTING-RAW"
+    # LLM should not be called
+    assert llm.calls == []
+
+    # Metadata should mark as reused with minimal fields
+    md = ctx._captured["metadata"]
+    assert md["reused"].value is True
+    raw_meta = md["raw_metadata"].value
+    assert raw_meta["function"] == "draft_raw"
+    assert raw_meta["stage"] == "draft"
+    assert raw_meta["gen_id"] == "D1"

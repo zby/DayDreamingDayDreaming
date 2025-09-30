@@ -71,6 +71,12 @@ _CURATED_ALLOWED_MODES = {
     CURATED_MODE_REUSE_ESSAYS,
 }
 
+# NOTE: With automatic skip behavior in stage_raw/stage_parsed (see StageSettings.force),
+# mode directives are now less critical for avoiding redundant LLM calls. The modes still
+# control *which stages* get materialized (draft, essay, evaluation), but skipping existing
+# artifacts is handled automatically by default. Future work could simplify or deprecate
+# these modes in favor of simple replication counts + force flags.
+
 
 @dataclass
 class CuratedEssay:
@@ -92,6 +98,12 @@ class CuratedDraft:
     draft_template_id: str
     draft_llm_model_id: str
     draft_replicate: int
+
+
+@dataclass
+class ExistingEvaluation:
+    gen_id: str
+    replicate: int
 
 
 def _require_replication_config(data_root: Path) -> dict[str, int]:
@@ -245,10 +257,12 @@ def _deterministic_id_for_base(stage: str, base_signature: tuple, replicate_inde
     return compute_deterministic_gen_id(stage_norm, signature)
 
 
-def _existing_evaluations_by_template_model(data_root: Path, essay_id: str) -> Dict[tuple[str, str], set[str]]:
+def _existing_evaluations_by_template_model(
+    data_root: Path, essay_id: str
+) -> Dict[tuple[str, str], list[ExistingEvaluation]]:
     """Return existing evaluation gen_ids keyed by (template_id, llm_model_id)."""
 
-    existing: Dict[tuple[str, str], set[str]] = defaultdict(set)
+    existing: Dict[tuple[str, str], list[ExistingEvaluation]] = defaultdict(list)
     eval_root = data_root / "gens" / "evaluation"
     if not eval_root.exists():
         return existing
@@ -268,7 +282,8 @@ def _existing_evaluations_by_template_model(data_root: Path, essay_id: str) -> D
         model = str(meta.get("llm_model_id") or "").strip()
         if not tpl or not model:
             continue
-        existing[(tpl, model)].add(gen_dir.name)
+        replicate = _normalize_int(meta.get("replicate"), default=1)
+        existing[(tpl, model)].append(ExistingEvaluation(gen_dir.name, replicate))
     return existing
 
 
@@ -597,7 +612,7 @@ def cohort_membership(
     rep_cfg = _require_replication_config(data_root)
 
     essay_seed_combo: Dict[str, str] = {}
-    existing_eval_cache: Dict[str, Dict[tuple[str, str], set[str]]] = {}
+    existing_eval_cache: Dict[str, Dict[tuple[str, str], list[ExistingEvaluation]]] = {}
     fill_up_fully_covered: set[str] = set()
     evaluation_fill_added = 0
 
@@ -889,43 +904,46 @@ def cohort_membership(
         eval_reps = int(rep_cfg.get("evaluation"))
         for essay_gen_id in essay_ids:
             combo_ref = essay_seed_combo.get(essay_gen_id, "")
-            existing_counts: Dict[tuple[str, str], set[str]] = {}
-            if (
-                selection_cfg.selection_type == "essay"
-                and selection_cfg.mode == CURATED_MODE_REUSE_ESSAYS
-                and selection_cfg.fill_up
-            ):
-                existing_counts = existing_eval_cache.get(essay_gen_id, {})
+            reuse_existing = (
+                selection_cfg.selection_type is None
+                or (
+                    selection_cfg.selection_type == "essay"
+                    and selection_cfg.mode == CURATED_MODE_REUSE_ESSAYS
+                )
+            )
+            existing_counts: Dict[tuple[str, str], list[ExistingEvaluation]] = {}
+            if reuse_existing:
+                existing_counts = existing_eval_cache.get(essay_gen_id)
+                if existing_counts is None:
+                    existing_counts = _existing_evaluations_by_template_model(
+                        data_root, essay_gen_id
+                    )
+                    existing_eval_cache[essay_gen_id] = existing_counts
 
             created_for_essay = 0
             for tpl in eval_tpl_ids:
                 for mid in eval_model_ids:
-                    if (
-                        selection_cfg.selection_type == "essay"
-                        and selection_cfg.mode == CURATED_MODE_REUSE_ESSAYS
-                        and selection_cfg.fill_up
-                    ):
-                        current = existing_counts.get((tpl, mid), set())
-                        # Add existing evaluations to membership (up to eval_reps)
-                        existing_to_include = sorted(current)[:eval_reps]
-                        for existing_gen_id in existing_to_include:
-                            rows.append(
-                                {
-                                    "stage": "evaluation",
-                                    "gen_id": existing_gen_id,
-                                    "origin_cohort_id": str(cohort_id),
-                                    "parent_gen_id": essay_gen_id,
-                                    "combo_id": combo_ref or "",
-                                    "template_id": tpl,
-                                    "llm_model_id": mid,
-                                    "replicate": 0,  # Existing evals don't have cohort replicate numbers
-                                }
-                            )
-                        needed = max(0, eval_reps - len(existing_to_include))
-                        if needed == 0:
-                            continue
-                    else:
-                        needed = eval_reps
+                    existing_entries = sorted(
+                        existing_counts.get((tpl, mid), []),
+                        key=lambda item: item.replicate,
+                    )
+                    reuse_entries = existing_entries[:eval_reps] if reuse_existing else []
+                    for existing_entry in reuse_entries:
+                        rows.append(
+                            {
+                                "stage": "evaluation",
+                                "gen_id": existing_entry.gen_id,
+                                "origin_cohort_id": str(cohort_id),
+                                "parent_gen_id": essay_gen_id,
+                                "combo_id": combo_ref or "",
+                                "template_id": tpl,
+                                "llm_model_id": mid,
+                                "replicate": int(existing_entry.replicate),
+                            }
+                        )
+                    needed = max(0, eval_reps - len(reuse_entries))
+                    if needed == 0:
+                        continue
 
                     replicate_indices = allocator.allocate(
                         "evaluation", (essay_gen_id, tpl, mid), needed

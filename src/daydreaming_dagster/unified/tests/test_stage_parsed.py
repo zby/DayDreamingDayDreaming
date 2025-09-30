@@ -121,3 +121,135 @@ def test_stage_parsed_asset_wires_metadata(tmp_path: Path, monkeypatch) -> None:
     assert parsed_path.read_text(encoding="utf-8") == "RAW"
     assert ctx.captured["parser_name"].value == "identity"
     assert ctx.captured["parsed_path"].value == str(parsed_path)
+
+
+def test_stage_parsed_skips_existing_artifact(tmp_path: Path, monkeypatch) -> None:
+    """Test that stage_parsed reuses existing parsed.txt by default."""
+    data_layer, paths = _prepare_generation(
+        tmp_path,
+        stage="draft",
+        gen_id="D1",
+        main={"template_id": "tpl", "mode": "llm"},
+        raw_text="RAW",
+    )
+
+    # Pre-create parsed.txt and parsed_metadata.json
+    parsed_path = paths.parsed_path("draft", "D1")
+    parsed_path.write_text("EXISTING-PARSED", encoding="utf-8")
+
+    existing_metadata = {
+        "function": "draft_parsed",
+        "stage": "draft",
+        "gen_id": "D1",
+        "parser_name": "identity",
+        "success": True,
+    }
+    paths.parsed_metadata_path("draft", "D1").write_text(
+        json.dumps(existing_metadata), encoding="utf-8"
+    )
+
+    ctx = types.SimpleNamespace(
+        partition_key="D1",
+        resources=types.SimpleNamespace(
+            data_root=str(tmp_path),
+            experiment_config=ExperimentConfig(
+                stage_config={
+                    "draft": StageSettings(generation_max_tokens=20480, min_lines=1),
+                }
+            ),
+        ),
+        captured=None,
+        add_output_metadata=lambda md: setattr(ctx, "captured", md),
+    )
+
+    monkeypatch.setattr(stage_parsed, "resolve_parser_name", lambda root, stage, tpl, override: "identity")
+
+    out = stage_parsed.stage_parsed_asset(ctx, "draft", raw_text="RAW")
+
+    # Should return existing artifact
+    assert out == "EXISTING-PARSED"
+
+    # Metadata should mark as reused
+    assert ctx.captured["reused"].value is True
+
+
+def test_stage_parsed_force_regenerates(tmp_path: Path, monkeypatch) -> None:
+    """Test that force=True regenerates even when parsed.txt exists."""
+    data_layer, paths = _prepare_generation(
+        tmp_path,
+        stage="draft",
+        gen_id="D1",
+        main={"template_id": "tpl", "mode": "llm"},
+        raw_text="RAW",
+    )
+
+    # Pre-create parsed.txt
+    parsed_path = paths.parsed_path("draft", "D1")
+    parsed_path.write_text("EXISTING-PARSED", encoding="utf-8")
+
+    ctx = types.SimpleNamespace(
+        partition_key="D1",
+        resources=types.SimpleNamespace(
+            data_root=str(tmp_path),
+            experiment_config=ExperimentConfig(
+                stage_config={
+                    "draft": StageSettings(generation_max_tokens=20480, min_lines=1, force=True),
+                }
+            ),
+        ),
+        captured=None,
+        add_output_metadata=lambda md: setattr(ctx, "captured", md),
+    )
+
+    monkeypatch.setattr(stage_parsed, "resolve_parser_name", lambda root, stage, tpl, override: "identity")
+
+    out = stage_parsed.stage_parsed_asset(ctx, "draft", raw_text="RAW")
+
+    # Should generate new artifact
+    assert out == "RAW"
+
+    # Metadata should mark as NOT reused
+    assert ctx.captured["reused"].value is False
+
+
+def test_stage_parsed_skips_with_missing_metadata(tmp_path: Path, monkeypatch) -> None:
+    """Test that stage_parsed reuses parsed.txt even if parsed_metadata.json is missing."""
+    data_layer, paths = _prepare_generation(
+        tmp_path,
+        stage="draft",
+        gen_id="D1",
+        main={"template_id": "tpl", "mode": "llm"},
+        raw_text="RAW",
+    )
+
+    # Pre-create parsed.txt but NOT parsed_metadata.json
+    parsed_path = paths.parsed_path("draft", "D1")
+    parsed_path.write_text("EXISTING-PARSED", encoding="utf-8")
+
+    ctx = types.SimpleNamespace(
+        partition_key="D1",
+        resources=types.SimpleNamespace(
+            data_root=str(tmp_path),
+            experiment_config=ExperimentConfig(
+                stage_config={
+                    "draft": StageSettings(generation_max_tokens=20480, min_lines=1),
+                }
+            ),
+        ),
+        captured=None,
+        add_output_metadata=lambda md: setattr(ctx, "captured", md),
+    )
+
+    monkeypatch.setattr(stage_parsed, "resolve_parser_name", lambda root, stage, tpl, override: "identity")
+
+    out = stage_parsed.stage_parsed_asset(ctx, "draft", raw_text="RAW")
+
+    # Should return existing artifact
+    assert out == "EXISTING-PARSED"
+
+    # Metadata should mark as reused with minimal fields
+    assert ctx.captured["reused"].value is True
+    parsed_meta = ctx.captured["parsed_metadata"].value
+    assert parsed_meta["function"] == "draft_parsed"
+    assert parsed_meta["stage"] == "draft"
+    assert parsed_meta["gen_id"] == "D1"

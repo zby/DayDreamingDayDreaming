@@ -42,18 +42,35 @@ See also
    uv run dagster dev -f src/daydreaming_dagster/definitions.py
    ```
 
-### Controlling Overwrites of Generated Files
+### Artifact Reuse and Regeneration
 
-By default, generated responses (links/essays/evaluations) are write‑once for safety: existing files are not overwritten. To allow overwriting during reruns (useful for experimentation):
+**Default behavior (skip existing artifacts):**
+By default, stages reuse existing `raw.txt` and `parsed.txt` files to avoid redundant LLM calls.
+If you re-materialize an asset and the output file already exists, the stage will read and return
+the existing content without calling the LLM or parser again.
 
-```bash
-# Artifacts are versioned automatically as {id}_vN.txt; no overwrite flag needed
-uv run dagster dev -f src/daydreaming_dagster/definitions.py
-```
+This behavior:
+- Saves API costs and time
+- Allows safe re-runs of downstream assets
+- Emits `reused: true` in Dagster metadata for visibility
 
-Notes:
-- Prompts always overwrite to reflect current templates.
-- CSV outputs (task tables, pivots) are rewritten as part of normal materialization.
+**When artifacts are regenerated:**
+1. **New replicate index**: Incrementing the replicate count in `replication_config.csv` creates
+   a new file path, bypassing the skip logic
+2. **Force flag**: Set `force: true` in `StageSettings` to explicitly regenerate:
+   ```python
+   ExperimentConfig(
+       stage_config={
+           "draft": StageSettings(force=True),  # Always regenerate drafts
+           "essay": StageSettings(force=False), # Reuse essays (default)
+       }
+   )
+   ```
+
+**Best practices:**
+- Use replication counts for deliberate variants (different random seeds, etc.)
+- Use `force=True` sparingly (e.g., when debugging prompt changes)
+- Check `reused` metadata field to verify whether an artifact was regenerated
 
 ### Two-Phase Generation System 🚀
 

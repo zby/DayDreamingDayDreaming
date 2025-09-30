@@ -5,10 +5,19 @@ from pydantic import Field
 
 
 class StageSettings(Config):
-    """Per-stage configuration values."""
+    """Per-stage configuration values.
+
+    Attributes:
+        generation_max_tokens: Maximum tokens for LLM generation (None = no limit)
+        min_lines: Minimum non-empty lines required for parsed output (None = no validation)
+        force: If True, regenerate artifacts even if they already exist (default: False).
+               By default (force=False), stages reuse existing raw.txt/parsed.txt to avoid
+               redundant LLM calls. Set force=True to explicitly regenerate.
+    """
 
     generation_max_tokens: int | None = None
     min_lines: int | None = None
+    force: bool = False
 
 
 class ExperimentConfig(ConfigurableResource):

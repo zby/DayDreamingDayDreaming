@@ -28,6 +28,38 @@ def _stage_raw_asset(
 ) -> Tuple[str, Dict[str, Any]]:
     data_layer.reserve_generation(stage, gen_id, create=True)
 
+    # Check if we should skip regeneration
+    force = stage_settings.force if stage_settings else False
+    if not force and data_layer.raw_exists(stage, gen_id):
+        # Reuse existing artifact
+        raw_text = data_layer.read_raw(stage, gen_id)
+
+        # Try to read existing metadata, but don't fail if missing
+        try:
+            raw_metadata = data_layer.read_raw_metadata(stage, gen_id)
+        except DDError as err:
+            if err.code is Err.DATA_MISSING:
+                # Warn about missing metadata but proceed with reuse
+                import logging
+                logger = logging.getLogger(__name__)
+                logger.warning(
+                    f"Reusing raw.txt for {stage}/{gen_id} but raw_metadata.json is missing"
+                )
+                raw_metadata = {
+                    "function": f"{stage}_raw",
+                    "stage": str(stage),
+                    "gen_id": str(gen_id),
+                }
+            else:
+                raise
+
+        # Mark as reused
+        raw_metadata["reused"] = True
+        if run_id:
+            raw_metadata["run_id"] = run_id
+
+        return raw_text, raw_metadata
+
     metadata = resolve_generation_metadata(data_layer, stage, gen_id)
     main_metadata = data_layer.read_main_metadata(stage, gen_id)
     mode = (metadata.mode or "").strip().lower() or "llm"
@@ -39,6 +71,7 @@ def _stage_raw_asset(
         "mode": mode,
         "stage": str(stage),
         "gen_id": str(gen_id),
+        "reused": False,
     }
     if run_id:
         raw_metadata["run_id"] = run_id
