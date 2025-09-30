@@ -8,6 +8,7 @@ from ..data_layer.paths import Paths
 from .raw_data import EVALUATION_TEMPLATES_KEY
 from ..utils.raw_readers import read_templates
 from ..utils.evaluation_processing import filter_valid_scores
+from ..utils.errors import DDError, Err
 @asset_with_boundary(
     stage="results_summary",
     group_name="results_processing",
@@ -46,8 +47,14 @@ def generation_scores_pivot(context, aggregated_scores: pd.DataFrame) -> pd.Data
         return pd.DataFrame()
 
     # Require evaluator id column and compose combined key (strict)
-    if 'evaluation_llm_model' not in valid_scores.columns:
-        raise ValueError("Missing required column 'evaluation_llm_model' in aggregated_scores")
+    if "evaluation_llm_model" not in valid_scores.columns:
+        raise DDError(
+            Err.INVALID_CONFIG,
+            ctx={
+                "missing": "evaluation_llm_model",
+                "reason": "pivot_requires_evaluator",
+            },
+        )
     # Unified convention: model_template
     valid_scores['eval_model_template'] = (
         valid_scores['evaluation_llm_model'] + '_' + valid_scores['evaluation_template']
@@ -113,13 +120,25 @@ def generation_scores_pivot(context, aggregated_scores: pd.DataFrame) -> pd.Data
         pivot_df['sum_scores'] = 0.0
 
     # Require draft_template in aggregated_scores (added with two-phase architecture)
-    if 'draft_template' not in valid_scores.columns:
-        raise ValueError("Missing required column 'draft_template' in aggregated_scores for two-phase path generation")
+    if "draft_template" not in valid_scores.columns:
+        raise DDError(
+            Err.INVALID_CONFIG,
+            ctx={
+                "missing": "draft_template",
+                "reason": "pivot_requires_draft_template",
+            },
+        )
     # draft_template is now already included in the pivot index, so no need to merge it back
 
     # Attach generation_response_path from aggregated_scores (strict requirement)
-    if 'generation_response_path' not in aggregated_scores.columns:
-        raise ValueError("Missing 'generation_response_path' in aggregated_scores")
+    if "generation_response_path" not in aggregated_scores.columns:
+        raise DDError(
+            Err.DATA_MISSING,
+            ctx={
+                "missing": "generation_response_path",
+                "reason": "pivot_requires_generation_path",
+            },
+        )
     path_map = aggregated_scores[
         ['combo_id', 'draft_template', 'generation_template', 'generation_model', 'generation_response_path']
     ].drop_duplicates()
@@ -331,7 +350,13 @@ def perfect_score_paths(context, aggregated_scores: pd.DataFrame) -> pd.DataFram
     }
     missing = [c for c in required_cols if c not in perfect_scores.columns]
     if missing:
-        raise ValueError(f"aggregated_scores missing required columns: {missing}")
+        raise DDError(
+            Err.INVALID_CONFIG,
+            ctx={
+                "missing": missing,
+                "reason": "perfect_score_columns_missing",
+            },
+        )
 
     result_df = perfect_scores[[
         'combo_id', 'generation_template', 'generation_model',
@@ -393,8 +418,14 @@ def evaluation_model_template_pivot(context, aggregated_scores: pd.DataFrame) ->
         return pd.DataFrame()
     
     # Require evaluator id and create combined key
-    if 'evaluation_llm_model' not in valid_scores.columns:
-        raise ValueError("Missing required column 'evaluation_llm_model' in aggregated_scores")
+    if "evaluation_llm_model" not in valid_scores.columns:
+        raise DDError(
+            Err.INVALID_CONFIG,
+            ctx={
+                "missing": "evaluation_llm_model",
+                "reason": "evaluation_model_template_pivot_requires_column",
+            },
+        )
     valid_scores['eval_model_template'] = (
         valid_scores['evaluation_llm_model'] + '_' + valid_scores['evaluation_template']
     )

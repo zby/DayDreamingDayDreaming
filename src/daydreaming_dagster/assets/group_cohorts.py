@@ -44,6 +44,7 @@ from .partitions import (
     evaluation_gens_partitions,
 )
 from ..utils.generation import load_generation, write_gen_metadata
+from ..utils.errors import DDError, Err
 from ..data_layer.paths import Paths
 
 
@@ -109,7 +110,13 @@ def _parse_selection_file(path: Path) -> tuple[str, List[str], bool, bool]:
                 value = directive.split(":", 1)[1].strip().lower()
                 value = _CURATED_MODE_ALIASES.get(value, value)
                 if value not in _CURATED_ALLOWED_MODES:
-                    raise ValueError(f"Unsupported curated selection mode '{value}'")
+                    raise DDError(
+                        Err.INVALID_CONFIG,
+                        ctx={
+                            "reason": "unsupported_curated_mode",
+                            "mode": value,
+                        },
+                    )
                 mode = value
                 explicit_mode = True
             elif directive in {"skip-existing-evaluations", "fill-up", "fillup"}:
@@ -127,8 +134,9 @@ def _load_curated_selection_config(data_root: Path) -> CuratedSelectionConfig:
     essays_exists = essays_path.exists()
     drafts_exists = drafts_path.exists()
     if essays_exists and drafts_exists:
-        raise ValueError(
-            "Both selected_essays.txt and selected_drafts.txt are present; only one curated input is supported."
+        raise DDError(
+            Err.INVALID_CONFIG,
+            ctx={"reason": "multiple_curated_inputs"},
         )
 
     if essays_exists:
@@ -145,9 +153,15 @@ def _load_curated_selection_config(data_root: Path) -> CuratedSelectionConfig:
         if not explicit_mode and mode == CURATED_MODE_REGENERATE:
             mode = CURATED_MODE_REUSE_DRAFTS
         if mode == CURATED_MODE_REUSE_ESSAYS:
-            raise ValueError("`reuse-essays` mode requires selected essays, not drafts.")
+            raise DDError(
+                Err.INVALID_CONFIG,
+                ctx={"reason": "reuse_essays_requires_selected_essays"},
+            )
         if fill_up:
-            raise ValueError("fill-up is only supported with `reuse-essays` and selected essays.")
+            raise DDError(
+                Err.INVALID_CONFIG,
+                ctx={"reason": "fill_up_requires_selected_essays"},
+            )
         return CuratedSelectionConfig(
             selection_type="draft",
             ids=ids,
@@ -203,7 +217,10 @@ def _deterministic_id_for_base(stage: str, base_signature: tuple, replicate_inde
         essay_gen_id, evaluation_template_id, evaluation_model_id = base_signature
         signature = evaluation_signature(essay_gen_id, evaluation_template_id, evaluation_model_id, replicate_index)
     else:
-        raise ValueError(f"Unsupported stage '{stage}' for replicate allocation")
+        raise DDError(
+            Err.INVALID_CONFIG,
+            ctx={"reason": "unsupported_replicate_stage", "stage": stage},
+        )
     return compute_deterministic_gen_id(stage_norm, signature)
 
 
@@ -239,12 +256,19 @@ def _prepare_curated_entries(data_root: Path, essay_ids: Iterable[str]) -> List[
         if not essay_meta_path.exists():
             draft_meta_path = data_root / "gens" / "draft" / essay_src_id / "metadata.json"
             if draft_meta_path.exists():
-                raise ValueError(
-                    "selected_essays.txt requires essay gen_ids; "
-                    f"'{essay_src_id}' is a draft gen_id."
+                raise DDError(
+                    Err.INVALID_CONFIG,
+                    ctx={
+                        "reason": "curated_essay_is_draft",
+                        "gen_id": essay_src_id,
+                    },
                 )
-            raise ValueError(
-                f"Essay metadata not found for '{essay_src_id}'. Ensure the essay exists before building the cohort."
+            raise DDError(
+                Err.DATA_MISSING,
+                ctx={
+                    "reason": "essay_metadata_missing",
+                    "gen_id": essay_src_id,
+                },
             )
 
         essay_meta = load_generation(data_root / "gens", "essay", essay_src_id).get("metadata") or {}
@@ -252,14 +276,31 @@ def _prepare_curated_entries(data_root: Path, essay_ids: Iterable[str]) -> List[
         essay_llm_model = str(essay_meta.get("llm_model_id") or "").strip()
         draft_parent_src = str(essay_meta.get("parent_gen_id") or "").strip()
         if not essay_tpl:
-            raise ValueError("Selected essay is missing required template_id")
+            raise DDError(
+                Err.INVALID_CONFIG,
+                ctx={
+                    "reason": "essay_missing_template",
+                    "gen_id": essay_src_id,
+                },
+            )
         if not draft_parent_src:
-            raise ValueError("Selected essay is missing parent draft gen id")
+            raise DDError(
+                Err.INVALID_CONFIG,
+                ctx={
+                    "reason": "essay_missing_parent",
+                    "gen_id": essay_src_id,
+                },
+            )
 
         draft_meta_path = data_root / "gens" / "draft" / draft_parent_src / "metadata.json"
         if not draft_meta_path.exists():
-            raise ValueError(
-                f"Draft parent '{draft_parent_src}' metadata not found for essay '{essay_src_id}'."
+            raise DDError(
+                Err.DATA_MISSING,
+                ctx={
+                    "reason": "draft_parent_metadata_missing",
+                    "draft_gen_id": draft_parent_src,
+                    "essay_gen_id": essay_src_id,
+                },
             )
         draft_meta = load_generation(data_root / "gens", "draft", draft_parent_src).get("metadata") or {}
         combo_id = str(draft_meta.get("combo_id") or "").strip()
@@ -275,8 +316,13 @@ def _prepare_curated_entries(data_root: Path, essay_ids: Iterable[str]) -> List[
         if not llm_model_id:
             missing_fields.append("llm_model_id")
         if missing_fields:
-            raise ValueError(
-                f"Missing required metadata to reconstruct tasks: {', '.join(missing_fields)}"
+            raise DDError(
+                Err.INVALID_CONFIG,
+                ctx={
+                    "reason": "missing_metadata_for_tasks",
+                    "missing": missing_fields,
+                    "essay_gen_id": essay_src_id,
+                },
             )
 
         entries.append(
@@ -300,8 +346,12 @@ def _prepare_curated_drafts(data_root: Path, draft_ids: Iterable[str]) -> List[C
     for draft_id in draft_ids:
         meta_path = data_root / "gens" / "draft" / draft_id / "metadata.json"
         if not meta_path.exists():
-            raise ValueError(
-                f"Draft metadata not found for '{draft_id}'. Ensure the draft exists before building the cohort."
+            raise DDError(
+                Err.DATA_MISSING,
+                ctx={
+                    "reason": "draft_metadata_missing",
+                    "draft_gen_id": draft_id,
+                },
             )
         draft_meta = load_generation(data_root / "gens", "draft", draft_id).get("metadata") or {}
         combo_id = str(draft_meta.get("combo_id") or "").strip()
@@ -317,8 +367,13 @@ def _prepare_curated_drafts(data_root: Path, draft_ids: Iterable[str]) -> List[C
         if not llm_model_id:
             missing_fields.append("llm_model_id")
         if missing_fields:
-            raise ValueError(
-                f"Missing required draft metadata for '{draft_id}': {', '.join(missing_fields)}"
+            raise DDError(
+                Err.INVALID_CONFIG,
+                ctx={
+                    "reason": "missing_draft_metadata",
+                    "draft_gen_id": draft_id,
+                    "missing": missing_fields,
+                },
             )
 
         entries.append(
@@ -518,10 +573,20 @@ def cohort_membership(
     # Replication config: required and authoritative
     rep_cfg = read_replication_config(data_root)
     if not isinstance(rep_cfg, dict):
-        raise ValueError("replication_config.csv missing or unreadable; expected per-stage 'replicates' values")
+        raise DDError(
+            Err.DATA_MISSING,
+            ctx={"reason": "replication_config_missing"},
+        )
     for _st in ("draft", "essay", "evaluation"):
         if _st not in rep_cfg or not isinstance(rep_cfg.get(_st), int) or rep_cfg.get(_st, 0) < 1:
-            raise ValueError("replication_config.csv must define integer replicates>=1 for stages: draft, essay, evaluation")
+            raise DDError(
+                Err.INVALID_CONFIG,
+                ctx={
+                    "reason": "invalid_replication_config",
+                    "stage": _st,
+                    "value": rep_cfg.get(_st),
+                },
+            )
 
     essay_seed_combo: Dict[str, str] = {}
     existing_eval_cache: Dict[str, Dict[tuple[str, str], set[str]]] = {}
@@ -902,10 +967,13 @@ def cohort_membership(
                 except Exception:
                     eval_parent_missing.append(pid)
     if essay_parent_missing or eval_parent_missing:
-        raise ValueError(
-            "Cohort membership parent integrity check failed: "
-            f"missing_draft_parents={len(essay_parent_missing)}, "
-            f"missing_essay_parents={len(eval_parent_missing)}"
+        raise DDError(
+            Err.INVALID_CONFIG,
+            ctx={
+                "reason": "cohort_parent_integrity_failed",
+                "missing_draft_parents": essay_parent_missing,
+                "missing_essay_parents": eval_parent_missing,
+            },
         )
 
     # Seed metadata.json for cohort generations before materializing downstream assets

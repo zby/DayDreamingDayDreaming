@@ -18,6 +18,7 @@ from ..unified.stage_core import Stage, resolve_parser_name
 from ..unified.stage_inputs import _stage_input_asset
 from ..unified.stage_raw import _stage_raw_asset
 from ..unified.stage_parsed import _stage_parsed_asset
+from ..utils.errors import DDError, Err
 
 
 ESSAY_STAGE: Stage = "essay"
@@ -109,8 +110,11 @@ def essay_parsed(context) -> str:
     metadata = resolve_generation_metadata(data_layer, ESSAY_STAGE, gen_id)
     try:
         raw_metadata = data_layer.read_raw_metadata(ESSAY_STAGE, gen_id)
-    except FileNotFoundError:
-        raw_metadata = {}
+    except DDError as err:
+        if err.code is Err.DATA_MISSING:
+            raw_metadata = {}
+        else:
+            raise
 
     parser_name = resolve_parser_name(
         data_layer.data_root,
