@@ -7,7 +7,6 @@ Reduce redundancy across the `scripts/data_checks/` utilities while keeping each
 
 1. **Retire `find_missing_parents.py`**
    - Confirm `parent_chain_check.py` covers all checks (metadata presence, missing parent/grandparent) and update docs/help if needed.
-   - Add a note in `parent_chain_check.py` CLI help mentioning that it supersedes the older script.
    - Remove `find_missing_parents.py` after verifying no automation references it.
 
 2. **Merge Draft Template Checks**
@@ -20,16 +19,11 @@ Reduce redundancy across the `scripts/data_checks/` utilities while keeping each
    - Port the deletion logic and output formatting from `clean_incomplete_evaluations.py`.
    - Remove `clean_incomplete_evaluations.py`.
 
-4. **Handle `list_missing_draft_templates.py`**
-   - Verify the script’s docs-store dependency is obsolete.
-   - Either remove it or rewrite it to rely on the gens store (similar to `templates_without_generations.py`). Document the decision.
-
-5. **Document Remaining Scripts**
+4. **Document Remaining Scripts**
    - Add module-level docstrings where missing.
    - Create a brief README (`scripts/data_checks/README.md`) summarizing each script and the scenarios it covers.
 
 ## Validation
-- Run each updated script against a test data root.
+- Run each updated script against data root without using options changing data.
 - Update any CI or instructions referencing the removed scripts.
-- Capture results in changelog or docs if operators rely on them.
 

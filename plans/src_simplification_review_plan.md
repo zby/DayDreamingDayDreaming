@@ -1,78 +1,80 @@
 # src Simplification Review Plan
 
-Goal: produce a prioritized list of refactor recommendations that simplify `src/daydreaming_dagster` without altering published contracts. Record stretch ideas that require breaking APIs/data layouts when they unlock substantial simplification. Maintain a running catalog of confusing constructs (e.g., mixing OO state with `Callable` fields) and store notes in `plans/notes/confusing_constructs.md` to guide readability fixes.
+## Purpose
+- Produce a prioritized list of refactor recommendations that simplify `src/daydreaming_dagster` while preserving published contracts, file schemas, and error codes/types.
+- Capture "stretch" ideas that would require contract updates when they unlock meaningful simplification so they can be evaluated separately.
+- Maintain a running catalog of confusing constructs (e.g., stateful objects with `Callable` fields) to steer future readability improvements.
 
-## 0. Scope & Constraints
-- Include every module under `src/daydreaming_dagster/`; skip `scripts/` for now.
-- Preserve guarantees from `tools/refactor_contract.yaml`, error codes/types, and file schemas.
-- Review outcome: recommendations + supporting observations, not code changes.
+## Scope & Guardrails
+- Examine every module under `src/daydreaming_dagster/`; exclude `scripts/` unless a dependency chain demands it.
+- Honor the constraints in `tools/refactor_contract.yaml`; do not propose changes that alter error codes/types or on-disk data shapes without flagging them as contract-breaking.
+- Outcomes are recommendations, baseline metrics, and supporting notes—no code edits.
 
-## 1. Preparation Pass
-- Read `AGENTS.md`, `tools/refactor_contract.yaml`, and module-level READMEs to confirm expectations.
-- Baseline metrics: `radon cc`, `sloccount`, and current pytest status (unit focus). Capture numbers for later comparison.
-  - Commands: `uv run radon cc src/daydreaming_dagster -s --total-average`, `uv run sloccount src/daydreaming_dagster`, `.venv/bin/pytest src/daydreaming_dagster -q` (or `uv run pytest src/daydreaming_dagster -q`).
-- Inventory existing colocated tests inside each module tree; note any missing coverage hotspots.
+## Working Rhythm
+1. Stay within the testing loop: read colocated unit tests first, keep potential regressions in mind, and log missing coverage candidates.
+2. Treat each review batch as an independent pass and snapshot notes immediately before switching areas.
+3. Prefer deleting incidental behavior over preserving it; focus on structured errors, dependency injection, and minimal boundaries.
 
-## 2. Review Batches (load-limited)
-Process each batch independently; document findings before moving on to keep context snapshots small.
+## Preparation Pass
+- Read `AGENTS.md`, `CLAUDE.md`, `tools/refactor_contract.yaml`, and any module-level READMEs.
+- Capture baseline metrics (store raw outputs in `plans/notes/metrics_baseline.md`):
+  - `uv run radon cc src/daydreaming_dagster -s --total-average`
+  - `uv run sloccount src/daydreaming_dagster`
+  - `.venv/bin/pytest src/daydreaming_dagster -q` (narrower `-k` when needed)
+- Inventory colocated unit tests for each subpackage; note high-risk gaps.
+
+## Review Batches
+Process in order; log findings per batch in `plans/notes/` to keep scope bounded.
 
 ### Batch A — Orchestration Shell
-Targets: `definitions.py`, `config/`, `jobs/`, `schedules/`, `checks/`.
-Focus points:
-- Entry-point wiring clarity; ensure assets/resources registration is minimal.
-- Detect duplicated selection logic, unused schedules, or config indirection.
-- Note opportunities to collapse configuration layers or rename ambiguous identifiers.
-Deliverable: list of simplification candidates (per file) + test impacts.
+**Targets:** `definitions.py`, `config/`, `jobs/`, `schedules/`, `checks/`  
+**Focus:** simplify entry wiring, trim redundant selection logic, remove unused schedules/config hops, clarify naming.  
+**Deliverable:** per-file simplification candidates with expected test impact; store notes in `plans/notes/batch_a_orchestration.md`.
 
 ### Batch B — Assets & Resources Boundary
-Targets: `assets/`, `resources/`.
-Focus points:
-- Asset/resource signatures vs. Dagster IO manager expectations.
-- Repeated try/except ladders; confirm only boundary layers format errors.
-- Confirm any error handling that touches `src/daydreaming_dagster/utils/errors.py` stays aligned with the `DDError` contract (codes + minimal ctx).
-- Opportunities to inject dependencies instead of global lookups.
-Deliverable: recommendations for asset/resource consolidation and clearer dependency flow; flag bold refactors (contract-breaking) separately with migration thoughts. Log any confusing constructs encountered (e.g., callable-typed fields in stateful objects). Review colocated tests alongside code to identify opportunities to simplify or rebalance coverage.
+**Targets:** `assets/`, `resources/`  
+**Focus:** align signatures with Dagster expectations, collapse try/except ladders to a single boundary, ensure `DDError` usage stays structured, highlight dependency-injection opportunities.  
+**Deliverable:** consolidation map + bold (contract-breaking) suggestions; `plans/notes/batch_b_assets_resources.md`.
 
 ### Batch C — Data Layer Foundations
-Targets: `data_layer/` (paths, readers, writers, adapters).
-Focus points:
-- Path helpers vs. direct string concatenations; enforce `Paths` usage.
-- Serialization/deserialization: ensure structured errors, remove incidental logging.
-- Highlight IO primitives that should be pure or memoized.
-Deliverable: prioritized list for data layer cleanup and validation strategy; note any high-impact schema rewrites even if they would break consumers. Capture confusing patterns such as hybrid functional/object APIs. Assess paired tests for duplication or complexity and note simplification ideas.
+**Targets:** `data_layer/` (paths, readers, writers, adapters)  
+**Focus:** enforce `Paths` helpers, tighten serialization/deserialization, flag impure IO primitives, document hybrid functional/object patterns.  
+**Deliverable:** prioritized cleanup list and validation strategy; `plans/notes/batch_c_data_layer.md`.
 
 ### Batch D — Domain Models & Types
-Targets: `models/`, `types.py`, `unified/`.
-Focus points:
-- Validate dataclass/TypedDict usage; merge redundant schema definitions.
-- Check alignment between models and downstream validators/parsers.
-- Flag complicated transformations that could be simplified or split.
-Deliverable: model refactor ideas and notes on schema interactions; capture disruptive schema/API simplifications with clear risk callouts. Document confusing constructs (e.g., Callable-typed dataclass fields) for later cleanup. Evaluate colocated tests for readability and maintenance burdens.
+**Targets:** `models/`, `types.py`, `unified/`  
+**Focus:** merge redundant dataclasses/TypedDicts, align schemas with validators, isolate complex transformations, record callable-typed fields for follow-up.  
+**Deliverable:** model refactor ideas + schema risks; `plans/notes/batch_d_models_types.md`.
 
 ### Batch E — Utilities & Constants
-Targets: `utils/`, `constants.py`.
-Focus points:
-- Identify utilities that should move closer to callers or be deleted.
-- Ensure error helpers follow the structured error pattern.
-- Double-check helpers interacting with `DDError` maintain consistent codes/types and avoid incidental message formatting.
-- Look for reusable pieces that can replace ad-hoc logic uncovered in earlier batches.
-Deliverable: shortlist of utility consolidations and deprecations; include bold removals that would require contract updates. Record confusing helper patterns that impede comprehension. Include test simplification recommendations where helpers have redundant coverage.
+**Targets:** `utils/`, `constants.py`  
+**Focus:** identify helpers to inline or delete, confirm error helpers stick to structured codes, surface reusable primitives, locate redundant tests.  
+**Deliverable:** utilities consolidation/deprecation shortlist; `plans/notes/batch_e_utilities.md`.
 
-## 3. Cross-Cutting Analysis
-- Map error-code usage across batches; confirm no incidental message coupling remains.
-- Aggregate complexity hotspots (functions/classes) for potential extraction or deletion.
-- Note testing gaps that affect multiple batches and propose targeted unit/integration tests.
-- Identify logging boundaries and recommend a single formatting layer where missing.
+## Cross-Cutting Analysis
+- Map `Err`/`DDError` usage and locate places still relying on message text.
+- Summarize complexity hotspots from Radon and batch notes; suggest extractions or deletions.
+- Identify testing debt that spans batches (e.g., missing parser coverage).
+- Review logging boundaries; recommend a single formatting surface when multiple layers emit logs.
+- Document in `plans/notes/cross_cutting_analysis.md` and append confusing constructs to `plans/notes/confusing_constructs.md`.
 
-## 4. Synthesize Recommendations
-- Merge batch findings into a single ordered list (highest leverage first).
-- For each recommendation: include summary, impacted files, risk rating, and test needs.
-- Separate sections for contract-safe recommendations vs. bold breakages (with justification and migration outline).
-- Aggregate the confusing-construct catalog into a dedicated appendix with suggested remediation strategies.
-- Record any `BACKCOMPAT` requirements or open questions for stakeholders.
+## Synthesis & Prioritization
+- Merge batch insights into an ordered recommendation list (highest leverage first) with: summary, impacted files, risk level, required tests.
+- Split into contract-safe vs. contract-breaking tracks; include migration or compatibility notes for the latter.
+- Highlight quick wins (can land in one PR) versus deep refactors (require dedicated spikes).
+- Consolidate into `plans/simplification_review_report.md` and link supporting notes.
 
-## 5. Handoff Package
-- Produce final review report (markdown) summarizing recommendations + metrics deltas.
-- Store supporting notes per batch (optional) in `plans/notes/` for traceability.
-- Call out quick wins vs. deep refactors so implementation can be parallelized.
-- Document any intentional drops in incidental behavior in `REFactor_NOTES.md`, linked from the report when relevant.
+## Handoff Package
+- Deliver `plans/simplification_review_report.md` plus all batch notes.
+- Flag any `BACKCOMPAT:` or `TEMPORARY:` scaffolding that must accompany future implementation.
+- If incidental behavior must be dropped, log rationale in `REFactor_NOTES.md`.
+- Provide next-step checklist: metrics to rerun after refactors, targeted tests to add, and owners for each recommendation.
+
+## Deliverables Checklist
+- [ ] Baseline metrics snapshot (`plans/notes/metrics_baseline.md`)
+- [ ] Batch notes A–E (`plans/notes/batch_*.md`)
+- [ ] Cross-cutting analysis + confusing constructs catalog
+- [ ] Prioritized recommendation list (`plans/simplification_review_report.md`)
+- [ ] Updates to `REFactor_NOTES.md` for any dropped incidental behavior
+
+Stay disciplined on scope; if new complexities emerge mid-review, record them in notes and treat as follow-up rather than expanding this pass.

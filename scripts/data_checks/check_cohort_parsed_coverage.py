@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+"""Summarise parsed.txt coverage for a single cohort membership."""
+
 from __future__ import annotations
 
 import argparse
