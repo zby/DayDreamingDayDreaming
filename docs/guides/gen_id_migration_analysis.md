@@ -136,6 +136,7 @@ To compute deterministic IDs, we need this metadata for each generation:
   "replicate": 1
 }
 ```
+*Note*: The essay metadata no longer carries `combo_id`; derive it from the parent draft during migration.
 
 ### For Evaluations
 ```json
@@ -146,8 +147,11 @@ To compute deterministic IDs, we need this metadata for each generation:
   "replicate": 1
 }
 ```
+*Note*: As with essays, `combo_id` should be fetched from the parent chain when computing deterministic IDs.
 
-**Critical Issue**: Some legacy generations may be missing required metadata fields.
+**Status Check (2025-02-XX)**
+
+We re-ran an exhaustive audit over `data/gens/**/metadata.json` and confirmed that drafts, essays, and evaluations now contain every field required to compute deterministic IDs. Essays no longer persist `combo_id` directly; when needed we derive it from the parent draft during migration/analysis. Evaluations already load their combo from the parent chain as well. No additional backfill is required.
 
 ## Migration Strategy Options
 

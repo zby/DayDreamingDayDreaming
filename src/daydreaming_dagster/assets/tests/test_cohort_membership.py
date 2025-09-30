@@ -280,17 +280,19 @@ def test_cohort_membership_curated_reuse_essays_adds_new_evaluations(base_data_r
     )
 
     for stage, gen_id in (("draft", existing_draft_id), ("essay", existing_essay_id), ("evaluation", existing_eval_id)):
+        metadata = {
+            "stage": stage,
+            "gen_id": gen_id,
+            "parent_gen_id": existing_draft_id if stage != "draft" else "",
+            "template_id": "draft-A" if stage == "draft" else ("essay-X" if stage == "essay" else "eval-1"),
+            "llm_model_id": "gen-model" if stage != "evaluation" else "eval-model",
+            "replicate": 1,
+        }
+        if stage == "draft":
+            metadata["combo_id"] = "combo-1"
         _write_json(
             data_root / "gens" / stage / gen_id / "metadata.json",
-            {
-                "stage": stage,
-                "gen_id": gen_id,
-                "parent_gen_id": existing_draft_id if stage != "draft" else "",
-                "combo_id": "combo-1",
-                "template_id": "draft-A" if stage == "draft" else ("essay-X" if stage == "essay" else "eval-1"),
-                "llm_model_id": "gen-model" if stage != "evaluation" else "eval-model",
-                "replicate": 1,
-            },
+            metadata,
         )
 
     (data_root / "2_tasks" / "selected_essays.txt").write_text(

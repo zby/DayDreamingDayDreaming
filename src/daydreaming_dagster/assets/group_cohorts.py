@@ -529,7 +529,7 @@ def _seed_generation_metadata(
         }
         if template_id:
             metadata["template_id"] = template_id
-        if combo_id:
+        if combo_id and stage == "draft":
             metadata["combo_id"] = combo_id
         if parent_gen_id:
             metadata["parent_gen_id"] = parent_gen_id
