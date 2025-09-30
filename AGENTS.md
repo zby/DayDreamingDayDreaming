@@ -1,83 +1,195 @@
-# AGENTS.md — Quick Guide
+# AGENTS.md — Quick Guide (Simplicity‑First)
 
-Concise, high-signal rules for working in this repo. Keep changes focused, validated early, and aligned with reproducibility.
+**Goal:** Keep changes small, test‑driven, and reproducible. **Preserve contracts; drop incidental behavior.**
 
-## Project Layout
-- `src/daydreaming_dagster/`: Dagster package (`assets/`, `resources/`, `models/`, `utils/`, `definitions.py`).
-- `tests/`: Integration tests and fixtures; unit tests live next to code in `daydreaming_dagster/`.
-- `data/`: Inputs/outputs (`1_raw/`, `2_tasks/`, `gens/`, `5_parsing/`, `6_summary/`). Don’t commit secrets or proprietary outputs.
-- `scripts/`: Results tables and maintenance.
-- `docs/`: Architecture/notes; see `docs/project_goals.md`.
+---
 
-## Setup & Key Commands
-- Install: `uv sync` (dev tools: `uv sync --dev`).
-- Use project venv: prefer `.venv/bin/python` and `.venv/bin/pytest` (or `uv run <cmd>`).
-- Dagster UI (src layout): `export DAGSTER_HOME=$(pwd)/dagster_home && uv run dagster dev -f src/daydreaming_dagster/definitions.py`.
-- Auto-rematerialize on `data/1_raw/**/*` changes: run Dagster with the daemon as above.
-- Seed once: `uv run dagster asset materialize --select "group:cohort" -f src/daydreaming_dagster/definitions.py`.
-- Two‑phase generation (each group materializes prompt/raw/parsed assets):
-  - Drafts: `uv run dagster asset materialize --select "group:generation_draft" --partition <gen_id> -f src/daydreaming_dagster/definitions.py`
-  - Essays: `uv run dagster asset materialize --select "group:generation_essays" --partition <gen_id> -f src/daydreaming_dagster/definitions.py`
-  - Evaluations: `uv run dagster asset materialize --select "group:evaluation" --partition <gen_id> -f src/daydreaming_dagster/definitions.py`
-- Tests (src layout): unit `.venv/bin/pytest src/daydreaming_dagster/`; integration `.venv/bin/pytest tests/`.
-- Tip: For ad‑hoc scripts, use `PYTHONPATH=src` or install the package (`pip install -e .`) so `daydreaming_dagster` is importable.
+## 1) Repo Basics
 
-## Development Conventions
-- Style: Black (88 cols), 4 spaces, UTF‑8; Ruff advisory.
-- Naming: `snake_case` functions/modules; `PascalCase` classes; tests `test_*.py`.
-- Types: add hints; prefer pure functions and dependency injection.
-- Commit hygiene: do not mix formatting/lint with logic. Make functional change first; then `style: format with Black`.
-- Staging: never `git add -A`. Stage only intentional paths (code vs data vs docs).
+**Layout**
 
-## Testing
-- Unit tests (colocated): no file I/O; no network; mock external deps (LLMs, IO, resources). Target <1s per test.
-- Integration tests (`tests/`): may read `data/`; must not hit real APIs; fail if required local data missing.
-- Test early, test often:
-  - Make one focused change → run narrowest relevant test(s).
-  - Prefer fastest checks: specific test node (`-k`/node id), single-partition asset materialize, `ruff`/`black --check` for style-only.
-  - Add an explicit “Run tests for X” step to your plan before moving on.
+* `src/daydreaming_dagster/`: Dagster package (`assets/`, `resources/`, `models/`, `utils/`, `definitions.py`)
+* `tests/`: integration tests & fixtures; **unit tests live next to code** in `src/daydreaming_dagster/`
+* `data/`: inputs/outputs (`1_raw/`, `2_tasks/`, `gens/`, `5_parsing/`, `6_summary/`) — **never commit secrets or proprietary outputs**
+* `scripts/`: results and maintenance
+* `docs/`: architecture/notes; see `docs/project_goals.md`
 
-## Approvals & Sandboxing
-- Interactive modes: propose exact commands; run once approved.
-- Non‑interactive: run the minimal validations proactively.
+**Setup & Key Commands**
 
-## Cleanup, Backcompat, and Tags
-- After larger changes: remove scaffolding, dead code, debug prints. Update docs/comments affected.
-- Backcompat: keep narrow, clearly tagged where declared; plan removal.
-  - `BACKCOMPAT:` rationale + link + target removal.
-  - `TEMPORARY:` scope + removal trigger.
-  - `TODO-REMOVE-BY:` date or milestone.
-- Fallbacks: avoid automatic data fixes at runtime. If required to stay unblocked, keep minimal and tagged:
-  - `FALLBACK(DATA|PARSER|OPS):` why it exists + removal plan.
+* Install deps: `uv sync` (dev tools: `uv sync --dev`)
+* Use venv: prefer `.venv/bin/python`, `.venv/bin/pytest` (or `uv run <cmd>`)
+* Dagster UI (src layout):
+  `export DAGSTER_HOME=$(pwd)/dagster_home && uv run dagster dev -f src/daydreaming_dagster/definitions.py`
+* Seed once:
+  `uv run dagster asset materialize --select "group:cohort" -f src/daydreaming_dagster/definitions.py`
+* Two‑phase generation:
 
-Plans directory policy
-- Do not commit files under `temporary_plans/`. These are working notes and should not be included in functional commits.
+  * Drafts: `uv run dagster asset materialize --select "group:generation_draft" --partition <gen_id> -f src/.../definitions.py`
+  * Essays: `uv run dagster asset materialize --select "group:generation_essays" --partition <gen_id> -f src/.../definitions.py`
+  * Evaluations: `uv run dagster asset materialize --select "group:evaluation" --partition <gen_id> -f src/.../definitions.py`
+* Tests: unit `.venv/bin/pytest src/daydreaming_dagster/`; integration `.venv/bin/pytest tests/`
+* Tip for ad‑hoc scripts: `PYTHONPATH=src` or `pip install -e .`
 
-## Security & Data
-- Never commit secrets/real outputs. Use `.env` and env vars (e.g., `OPENROUTER_API_KEY`, `DAGSTER_HOME`).
-- Set `DAGSTER_HOME` to an absolute path, e.g., `export DAGSTER_HOME=$(pwd)/dagster_home`.
-- Large generated folders under `data/` should be git‑ignored unless explicitly needed for tests/docs.
+---
 
-## ast‑grep (sg) Quick Reference
-- Search snippets: `uv run sg -e '<pattern>' -g 'src/daydreaming_dagster/**/*.py' -n 3`.
-- Structural search: `uv run sg -p "call[name='read_text']" -g 'src/daydreaming_dagster/**/*.py'`.
-- Rewrite (dry‑run): `uv run sg -r rule.yml --rewrite --diff -g 'src/daydreaming_dagster/**/*.py'`.
-- Tips: prefer `-e` for quick greps; use `-p`/rules for precise refactors; always scope with `-g`.
+## 2) Day‑to‑Day Dev Loop
 
-## Design Principles
-- Dependency injection for testability; avoid creating external services internally.
-- Fail early; validate inputs/invariants with clear errors over silent tolerance.
+* **TDD**: write/adjust tests first; run the **narrowest** checks (node ids, `-k`, single partition)
+* **Unit tests** (colocated): no file I/O or network; mock LLMs/IO/resources; target <1s/test
+* **Integration tests** (`tests/`): may read `data/`; must not hit real APIs
+* Prefer pure functions & dependency injection; validate inputs early with clear errors
 
-Storage conventions
-- Single source of truth for storage and path rules: `src/daydreaming_dagster/data_layer/paths.py`. Prefer using `Paths` helpers over string concatenation in code and tests.
+---
 
-## Project Goals (Summary)
-- Purpose: show DayDreaming‑style workflows enable pre‑Jun‑2025 offline LLMs to produce genuinely novel ideas; serves as a falsifiable benchmark while staying target‑neutral.
-- Strategy: existence goal over finite concept‑combination space; fixed inputs remain neutral; derived inputs may include benchmark terms if model‑produced.
-- Success: all novel elements present; coherent causal justification; technically plausible; ≥7.5/10 average evaluations; agreement + binary gates (reinvention yes/no; all novel elements present).
-- Scope: in‑scope generation (drafts → essay), evaluation, minimal bookkeeping; out‑of‑scope ranking heuristics, retrieval/browsing, target‑specific hints.
+## 3) Simplicity‑First Refactor Contract
 
-## Agent Notes
-- Follow TDD: write/adjust tests first; keep unit vs integration boundaries.
-- Prefer explicit plans; use small iterations; validate after each step.
-- For expensive paths, use dry‑runs, single partitions, or filtered tests.
+Keep a one‑page contract at `tools/refactor_contract.yaml`.
+
+**MUST preserve**
+
+* Public APIs declared stable
+* File formats & schemas
+* Error **types/codes** (and exit statuses)
+
+**MAY change**
+
+* Error/log **messages** (wording)
+* Call graph & helper boundaries
+* Private data structures
+
+**SHOULD drop**
+
+* Passing values across layers just to reproduce legacy error strings
+* `try/except` blocks that only add message text
+* Ad‑hoc logging in hot paths (prefer **one boundary** that logs)
+
+**Success**
+
+* Tests pass; complexity trends down (see CI gates)
+* No reliance on string‑matching error messages
+
+---
+
+## 4) Error Handling: Codes over Prose
+
+Deep layers raise structured errors; boundaries format/log.
+
+```python
+# src/daydreaming_dagster/utils/errors.py
+from enum import Enum, auto
+
+class Err(Enum):
+    MISSING_TEMPLATE = auto()
+    INVALID_MEMBERSHIP = auto()
+    UNKNOWN = auto()
+
+class DDError(Exception):
+    def __init__(self, code: Err, *, ctx: dict | None = None, cause: Exception | None = None):
+        self.code, self.ctx = code, (ctx or {})
+        self.__cause__ = cause
+        super().__init__(code.name)
+```
+
+* **Deep layer**: `raise DDError(Err.MISSING_TEMPLATE, ctx={"template_id": tid})`
+* **Boundary**: add cheap context (e.g., `cohort`, `gen_id`), log once, re‑raise
+* Tests assert `err.code is Err.X` (and minimal `ctx`), **not** message text
+* If temporary prose is needed, add a tiny mapper `legacy_message(e)` tagged `BACKCOMPAT:` with a removal date
+
+---
+
+## 5) CI Gates: Complexity Budget
+
+Automate: `radon cc` (cyclomatic), `cloc` (LOC), `ruff`/`black --check`.
+
+**PR fails if** complexity ↑ without stronger tests or an explicit rationale.
+**Guidelines**: aim for −15% LOC / −20% branches on hot paths over time; avoid nested exception ladders.
+
+---
+
+## 6) LLM‑Assisted Refactors (Scaffolding)
+
+**System preamble (paste verbatim)**
+
+```
+You are refactoring for simplicity-first. Preserve only the contract in tools/refactor_contract.yaml.
+Eliminate incidental equivalence. Prefer deleting code to preserving low-value behaviors.
+Never introduce new data plumbing solely to keep old error strings.
+```
+
+**Task trailer**
+
+```
+IMPORTANT:
+- Keep error types/codes stable; messages/logs may change.
+- Move exception handling to a single boundary; deep functions raise DDError(code, ctx).
+- Collapse try/except ladders that only decorate messages.
+- Add a short REFactor_NOTES.md summarizing dropped incidental behavior.
+```
+
+---
+
+## 7) Reviewer Checklist (paste in PR)
+
+* [ ] Any data passed only to reproduce legacy error prose? **Remove it.**
+* [ ] Error **codes/types** unchanged; message text may differ
+* [ ] Deep layers: `DDError(code, ctx)` only (no string formatting)
+* [ ] One boundary formats/logs user‑facing text
+* [ ] Tests assert codes/types (and minimal ctx), not message strings
+* [ ] Complexity budget met (or justified with tests)
+* [ ] Cleanups done (dead code, scaffolding, debug prints); `REFactor_NOTES.md` added if deviating
+
+---
+
+## 8) Conventions & Operational Rules
+
+**Style & structure**
+
+* Black (88 cols), 4 spaces, UTF‑8; Ruff advisory
+* Naming: `snake_case` (fns/modules), `PascalCase` (classes), tests `test_*.py`
+* Commit hygiene: do **not** mix formatting/lint with logic; make the change, then `style: format with Black`
+* Staging: never `git add -A`; stage only intentional paths
+
+**Approvals & sandboxing**
+
+* Interactive modes: propose exact commands and run once approved
+* Non‑interactive: proactively run minimal validations
+
+**Cleanup, backcompat, tags**
+
+* Remove scaffolding & debug prints after larger changes
+* Backcompat is narrow & time‑boxed; tag with:
+
+  * `BACKCOMPAT:` rationale + link + removal target
+  * `TEMPORARY:` scope + removal trigger
+  * `TODO-REMOVE-BY:` date or milestone
+* Fallbacks allowed only to stay unblocked; keep minimal and tag `FALLBACK(DATA|PARSER|OPS): ...`
+* **Plans policy:** do **not** commit files under `temporary_plans/`
+
+**Security & data**
+
+* Never commit secrets or real outputs; use `.env`/env vars (e.g., `OPENROUTER_API_KEY`, `DAGSTER_HOME`)
+* Set `DAGSTER_HOME` to an absolute path (e.g., `export DAGSTER_HOME=$(pwd)/dagster_home`)
+* Large generated folders under `data/` should be git-ignored unless required for tests/docs
+
+**Paths**
+
+* Single source of truth: `src/daydreaming_dagster/data_layer/paths.py` — use `Paths` helpers over string concat
+
+**ast‑grep quick ref**
+
+* Search: `uv run sg -e '<pattern>' -g 'src/daydreaming_dagster/**/*.py' -n 3`
+* Structural: `uv run sg -p "call[name='read_text']" -g 'src/daydreaming_dagster/**/*.py'`
+* Rewrite (dry-run): `uv run sg -r rule.yml --rewrite --diff -g 'src/daydreaming_dagster/**/*.py'`
+
+---
+
+## 9) Project Goals (short)
+
+* **Purpose:** demonstrate DayDreaming‑style workflows enabling pre‑Jun‑2025 offline LLMs to generate novel, falsifiable ideas
+* **Strategy:** existence proof over a finite concept space; fixed inputs remain neutral; derived inputs may include benchmark terms if model-produced
+* **Success:** all novel elements present with causal justification; technically plausible; ≥7.5/10 average evaluations; binary gates (reinvention yes/no; all novel elements present)
+* **Scope:** drafting → essay → evaluation; minimal bookkeeping; out-of-scope: ranking heuristics, retrieval/browsing, target-specific hints
+
+---
+
+**Default posture:** small steps, fast feedback, simpler code. Preserve the **contract**; let the **prose** go.
