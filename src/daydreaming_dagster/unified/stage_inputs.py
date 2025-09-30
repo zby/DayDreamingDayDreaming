@@ -9,6 +9,7 @@ from daydreaming_dagster.data_layer.gens_data_layer import (
     GensDataLayer,
     resolve_generation_metadata,
 )
+from daydreaming_dagster.utils.errors import DDError, Err
 from .stage_core import Stage, render_template, effective_parent_stage
 
 
@@ -55,7 +56,15 @@ def _stage_input_asset(
     if metadata.mode == "copy":
         parent_stage = effective_parent_stage(stage)
         if not metadata.parent_gen_id:
-            raise ValueError("copy mode requires parent_gen_id")
+            raise DDError(
+                Err.INVALID_CONFIG,
+                ctx={
+                    "stage": stage,
+                    "gen_id": gen_id,
+                    "mode": metadata.mode,
+                    "reason": "missing_parent",
+                },
+            )
         input_text = data_layer.read_parsed(parent_stage, metadata.parent_gen_id)
         input_path = data_layer.write_input(stage, gen_id, input_text)
 
@@ -73,23 +82,53 @@ def _stage_input_asset(
         extras["input_mode"] = "prompt"
         if stage == "draft":
             if content_combinations is None:
-                raise ValueError("draft stage_input_asset requires content_combinations")
+                raise DDError(
+                    Err.INVALID_CONFIG,
+                    ctx={
+                        "stage": stage,
+                        "gen_id": gen_id,
+                        "reason": "missing_content_combinations",
+                    },
+                )
             combo_id = (metadata.combo_id or "").strip()
             match = _find_content_combination(content_combinations, combo_id)
             if match is None:
-                raise ValueError(f"content combination '{combo_id}' missing for draft/{gen_id}")
+                raise DDError(
+                    Err.DATA_MISSING,
+                    ctx={
+                        "stage": stage,
+                        "gen_id": gen_id,
+                        "combo_id": combo_id,
+                        "reason": "combo_not_found",
+                    },
+                )
             concepts = getattr(match, "contents", None)
             if concepts is None and isinstance(match, dict):
                 concepts = match.get("contents")
             if concepts is None:
-                raise ValueError("content combination missing 'contents'")
+                raise DDError(
+                    Err.INVALID_CONFIG,
+                    ctx={
+                        "stage": stage,
+                        "gen_id": gen_id,
+                        "combo_id": combo_id,
+                        "reason": "missing_contents",
+                    },
+                )
             template_vars = {"concepts": concepts}
             if metadata.combo_id:
                 extras["combo_id"] = metadata.combo_id
         elif stage == "essay":
             parent_stage = effective_parent_stage(stage)
             if not metadata.parent_gen_id:
-                raise ValueError("essay stage_input_asset requires parent_gen_id")
+                raise DDError(
+                    Err.INVALID_CONFIG,
+                    ctx={
+                        "stage": stage,
+                        "gen_id": gen_id,
+                        "reason": "missing_parent",
+                    },
+                )
             parent_text = data_layer.read_parsed(parent_stage, metadata.parent_gen_id)
             template_vars = {
                 "draft_block": parent_text,
@@ -100,12 +139,22 @@ def _stage_input_asset(
         elif stage == "evaluation":
             parent_stage = effective_parent_stage(stage)
             if not metadata.parent_gen_id:
-                raise ValueError("evaluation stage_input_asset requires parent_gen_id")
+                raise DDError(
+                    Err.INVALID_CONFIG,
+                    ctx={
+                        "stage": stage,
+                        "gen_id": gen_id,
+                        "reason": "missing_parent",
+                    },
+                )
             parent_text = data_layer.read_parsed(parent_stage, metadata.parent_gen_id)
             template_vars = {"response": parent_text}
             info["parent_gen_id"] = metadata.parent_gen_id
         else:
-            raise ValueError(f"Unsupported stage: {stage}")
+            raise DDError(
+                Err.INVALID_CONFIG,
+                ctx={"stage": stage, "reason": "unsupported_stage"},
+            )
 
         input_text = render_template(stage, metadata.template_id, template_vars)
         input_path = data_layer.write_input(stage, gen_id, input_text)

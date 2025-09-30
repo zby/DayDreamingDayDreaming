@@ -9,6 +9,7 @@ from daydreaming_dagster.data_layer.gens_data_layer import (
     GensDataLayer,
     resolve_generation_metadata,
 )
+from daydreaming_dagster.utils.errors import DDError, Err
 
 
 @pytest.fixture
@@ -59,13 +60,17 @@ def test_raw_and_parsed_metadata_round_trip(layer: GensDataLayer) -> None:
 
 
 def test_read_parsed_missing(layer: GensDataLayer) -> None:
-    with pytest.raises(FileNotFoundError):
+    with pytest.raises(DDError) as err:
         layer.read_parsed("essay", "missing")
+    assert err.value.code is Err.DATA_MISSING
+    assert err.value.ctx.get("artifact") == "parsed"
 
 
 def test_read_main_metadata_missing(layer: GensDataLayer) -> None:
-    with pytest.raises(FileNotFoundError):
+    with pytest.raises(DDError) as err:
         layer.read_main_metadata("draft", "missing")
+    assert err.value.code is Err.DATA_MISSING
+    assert err.value.ctx.get("artifact") == "metadata"
 
 
 def test_read_main_metadata_malformed(layer: GensDataLayer) -> None:
@@ -73,8 +78,10 @@ def test_read_main_metadata_malformed(layer: GensDataLayer) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text("not-json", encoding="utf-8")
 
-    with pytest.raises(ValueError):
+    with pytest.raises(DDError) as err:
         layer.read_main_metadata("draft", "bad")
+    assert err.value.code is Err.PARSER_FAILURE
+    assert err.value.ctx.get("artifact") == "metadata"
 
 
 def test_resolve_metadata_copy_requires_parent(layer: GensDataLayer) -> None:
@@ -88,8 +95,10 @@ def test_resolve_metadata_copy_requires_parent(layer: GensDataLayer) -> None:
         },
     )
 
-    with pytest.raises(ValueError):
+    with pytest.raises(DDError) as err:
         resolve_generation_metadata(layer, "draft", "no-parent")
+    assert err.value.code is Err.INVALID_CONFIG
+    assert err.value.ctx.get("reason") == "missing_parent"
 
 
 def test_resolve_metadata_stage_requires_parent(layer: GensDataLayer) -> None:
@@ -103,8 +112,10 @@ def test_resolve_metadata_stage_requires_parent(layer: GensDataLayer) -> None:
         },
     )
 
-    with pytest.raises(ValueError):
+    with pytest.raises(DDError) as err:
         resolve_generation_metadata(layer, "essay", "no-parent")
+    assert err.value.code is Err.INVALID_CONFIG
+    assert err.value.ctx.get("reason") == "missing_parent"
 
 
 def test_resolve_metadata_success(layer: GensDataLayer) -> None:

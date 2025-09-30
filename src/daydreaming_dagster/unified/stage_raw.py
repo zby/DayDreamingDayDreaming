@@ -5,6 +5,7 @@ from typing import Any, Dict, Optional, Tuple
 
 from daydreaming_dagster.assets._helpers import get_run_id, build_stage_artifact_metadata
 from daydreaming_dagster.data_layer.gens_data_layer import GensDataLayer, resolve_generation_metadata
+from daydreaming_dagster.utils.errors import DDError, Err
 from .stage_core import Stage, generate_llm
 
 
@@ -49,7 +50,14 @@ def _stage_raw_asset(
         if llm_model_id:
             raw_metadata["llm_model_id"] = llm_model_id
         if llm_client is None:
-            raise ValueError("openrouter_client resource required for llm mode")
+            raise DDError(
+                Err.INVALID_CONFIG,
+                ctx={
+                    "stage": stage,
+                    "gen_id": gen_id,
+                    "reason": "missing_llm_client",
+                },
+            )
         start = time.time()
         raw_text, info = generate_llm(
             llm_client,
@@ -71,11 +79,26 @@ def _stage_raw_asset(
             raw_metadata["usage"] = usage
     elif mode == "copy":
         if prompt_text is None:
-            raise ValueError("copy mode requires prompt_text")
+            raise DDError(
+                Err.INVALID_CONFIG,
+                ctx={
+                    "stage": stage,
+                    "gen_id": gen_id,
+                    "reason": "missing_prompt_text",
+                },
+            )
         raw_text = prompt_text
         raw_metadata["finish_reason"] = "copy"
     else:
-        raise ValueError(f"Unsupported mode '{mode}' for stage raw")
+        raise DDError(
+            Err.INVALID_CONFIG,
+            ctx={
+                "stage": stage,
+                "gen_id": gen_id,
+                "reason": "unsupported_raw_mode",
+                "value": mode,
+            },
+        )
 
     raw_metadata["input_mode"] = "copy" if mode == "copy" else "prompt"
 

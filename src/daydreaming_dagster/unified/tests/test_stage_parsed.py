@@ -10,6 +10,7 @@ import daydreaming_dagster.unified.stage_parsed as stage_parsed
 from daydreaming_dagster.data_layer.gens_data_layer import GensDataLayer
 from daydreaming_dagster.data_layer.paths import Paths
 from daydreaming_dagster.resources.experiment_config import ExperimentConfig, StageSettings
+from daydreaming_dagster.utils.errors import DDError, Err
 
 
 def _prepare_generation(
@@ -69,7 +70,7 @@ def test_stage_parsed_helper_truncation_guard(tmp_path: Path) -> None:
         gen_id="E1",
         main={"template_id": "tpl", "mode": "copy", "parent_gen_id": "D1"},
     )
-    with pytest.raises(ValueError, match="truncated"):
+    with pytest.raises(DDError) as err:
         stage_parsed._stage_parsed_asset(
             data_layer=data_layer,
             stage="essay",
@@ -81,6 +82,8 @@ def test_stage_parsed_helper_truncation_guard(tmp_path: Path) -> None:
             min_lines_override=None,
             fail_on_truncation=True,
         )
+    assert err.value.code is Err.INVALID_CONFIG
+    assert err.value.ctx.get("reason") == "truncated_raw"
 
 
 def test_stage_parsed_asset_wires_metadata(tmp_path: Path, monkeypatch) -> None:
