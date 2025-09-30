@@ -1,13 +1,191 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterable, Dict, Any, List, Sequence
+from typing import Iterable, Dict, Any, List, Sequence, Callable
 import json
 import pandas as pd
 
 from .errors import DDError, Err
 from .generation import load_generation
 from ..data_layer.paths import Paths
+
+
+@dataclass
+class _EvaluationRecord:
+    gen_id: str
+    metadata: Dict[str, Any]
+    parsed_text: str
+    parsed_path: Path
+
+
+@dataclass
+class _EssayRecord:
+    gen_id: str
+    metadata: Dict[str, Any]
+
+
+@dataclass
+class _DraftRecord:
+    gen_id: str
+    metadata: Dict[str, Any]
+
+
+class _EvaluationScoreAggregator:
+    def __init__(
+        self,
+        *,
+        paths: Paths,
+        load_generation_fn: Callable[[Path, str, str], Dict[str, Any]] = load_generation,
+    ) -> None:
+        self._paths = paths
+        self._load_generation = load_generation_fn
+
+    def collect_rows(self, gen_ids: Iterable[str]) -> List[Dict[str, Any]]:
+        rows: List[Dict[str, Any]] = []
+        for raw_gid in gen_ids:
+            gid = str(raw_gid)
+            if not gid:
+                continue
+            eval_record = self._load_evaluation_record(gid)
+            if eval_record is None:
+                continue
+
+            parent_essay = self._load_parent_essay(eval_record)
+            parent_draft = self._load_parent_draft(parent_essay)
+            parent_essay_id = parent_essay.gen_id if parent_essay else self._safe_str(
+                eval_record.metadata.get("parent_gen_id")
+            )
+
+            score, score_error = self._parse_score(eval_record.parsed_text)
+            combo_id, draft_template, generation_template, generation_model = self._resolve_generation_fields(
+                eval_record.metadata,
+                parent_essay.metadata if parent_essay else {},
+                parent_draft.metadata if parent_draft else {},
+            )
+
+            origin_cohort_id = self._normalize_origin(eval_record.metadata.get("origin_cohort_id"))
+            raw_meta = self._load_raw_metadata(gid)
+
+            rows.append(
+                {
+                    "gen_id": gid,
+                    "parent_gen_id": parent_essay_id,
+                    "evaluation_template": eval_record.metadata.get("template_id"),
+                    "evaluation_llm_model": eval_record.metadata.get("llm_model_id"),
+                    "score": score,
+                    "error": score_error,
+                    "evaluation_response_path": str(eval_record.parsed_path),
+                    "combo_id": combo_id,
+                    "draft_template": draft_template,
+                    "generation_template": generation_template,
+                    "generation_model": generation_model,
+                    "origin_cohort_id": origin_cohort_id,
+                    "generation_response_path": self._essay_parsed_path(parent_essay),
+                    "input_mode": raw_meta.get("input_mode") if raw_meta else None,
+                    "copied_from": raw_meta.get("copied_from") if raw_meta else None,
+                }
+            )
+        return rows
+
+    def _load_evaluation_record(self, gen_id: str) -> _EvaluationRecord | None:
+        doc = self._load_generation(self._paths.gens_root, "evaluation", gen_id)
+        metadata = doc.get("metadata") or {}
+        parsed_text = (doc.get("parsed_text") or "").strip()
+        parsed_path = self._paths.parsed_path("evaluation", gen_id).resolve()
+        return _EvaluationRecord(gen_id=gen_id, metadata=metadata, parsed_text=parsed_text, parsed_path=parsed_path)
+
+    def _load_parent_essay(self, record: _EvaluationRecord) -> _EssayRecord | None:
+        parent_essay_id = self._normalize_str(record.metadata.get("parent_gen_id"))
+        if not parent_essay_id:
+            return None
+        essay_doc = self._load_generation(self._paths.gens_root, "essay", parent_essay_id)
+        metadata = essay_doc.get("metadata") or {}
+        return _EssayRecord(gen_id=parent_essay_id, metadata=metadata)
+
+    def _load_parent_draft(self, essay_record: _EssayRecord | None) -> _DraftRecord | None:
+        if essay_record is None:
+            return None
+        parent_draft_id = self._normalize_str(essay_record.metadata.get("parent_gen_id"))
+        if not parent_draft_id:
+            return None
+        draft_doc = self._load_generation(self._paths.gens_root, "draft", parent_draft_id)
+        metadata = draft_doc.get("metadata") or {}
+        return _DraftRecord(gen_id=parent_draft_id, metadata=metadata)
+
+    def _parse_score(self, parsed_text: str) -> tuple[float | None, str | None]:
+        if not parsed_text:
+            return None, "missing parsed.txt"
+        last_line = parsed_text.splitlines()[-1].strip()
+        try:
+            return float(last_line), None
+        except ValueError as exc:
+            return None, f"Invalid parsed.txt: {exc}"
+
+    def _resolve_generation_fields(
+        self,
+        eval_metadata: Dict[str, Any],
+        essay_metadata: Dict[str, Any],
+        draft_metadata: Dict[str, Any],
+    ) -> tuple[str, str, str, str]:
+        combo_id = self._normalize_str(eval_metadata.get("combo_id")) or ""
+        draft_template = self._normalize_str(eval_metadata.get("draft_template")) or ""
+        generation_template = self._normalize_str(
+            essay_metadata.get("template_id")
+            or essay_metadata.get("essay_template_id")
+        ) or ""
+        generation_model = self._normalize_str(essay_metadata.get("llm_model_id")) or ""
+
+        if draft_metadata:
+            combo_id = self._normalize_str(draft_metadata.get("combo_id")) or combo_id
+            draft_template = self._normalize_str(
+                draft_metadata.get("template_id")
+                or draft_metadata.get("draft_template")
+            ) or draft_template
+            if not generation_model:
+                generation_model = self._normalize_str(draft_metadata.get("llm_model_id")) or ""
+
+        return combo_id, draft_template, generation_template, generation_model
+
+    def _normalize_origin(self, value: object) -> str | None:
+        if value is None:
+            return None
+        try:
+            if pd.isna(value):  # type: ignore[arg-type]
+                return None
+        except Exception:
+            pass
+        text = str(value).strip()
+        return text or None
+
+    def _essay_parsed_path(self, essay_record: _EssayRecord | None) -> str:
+        if essay_record is None:
+            return ""
+        essay_path = self._paths.parsed_path("essay", essay_record.gen_id).resolve()
+        return str(essay_path)
+
+    def _load_raw_metadata(self, gen_id: str) -> Dict[str, Any] | None:
+        raw_meta_path = self._paths.raw_metadata_path("evaluation", gen_id)
+        if not raw_meta_path.exists():
+            return None
+        try:
+            return json.loads(raw_meta_path.read_text(encoding="utf-8")) or {}
+        except OSError as exc:
+            raise DDError(Err.IO_ERROR, ctx={"path": str(raw_meta_path)}) from exc
+        except json.JSONDecodeError as exc:
+            raise DDError(Err.PARSER_FAILURE, ctx={"path": str(raw_meta_path)}) from exc
+
+    @staticmethod
+    def _normalize_str(value: object) -> str | None:
+        if value is None:
+            return None
+        text = str(value).strip()
+        return text or None
+
+    @staticmethod
+    def _safe_str(value: object) -> str:
+        text = _EvaluationScoreAggregator._normalize_str(value)
+        return text or ""
 
 
 def _normalize_parent_id(value: object) -> str | None:
@@ -36,102 +214,13 @@ def aggregate_evaluation_scores_for_ids(data_root: Path, gen_ids: Iterable[str])
     - combo_id, draft_template, generation_template, generation_model
     """
     paths = Paths.from_str(str(data_root))
-    gens_root = paths.gens_root
-    rows: List[Dict[str, Any]] = []
-    for gid in gen_ids:
-        gid = str(gid)
-        eval_doc = load_generation(gens_root, "evaluation", gid)
+    aggregator = _EvaluationScoreAggregator(paths=paths)
+    rows = aggregator.collect_rows(gen_ids)
+    return _rows_to_dataframe(rows)
 
-        md = eval_doc.get("metadata") or {}
-        parent_essay_id = str(md.get("parent_gen_id") or "").strip()
-        eval_template = md.get("template_id")
-        eval_model = md.get("llm_model_id")
-        origin_cohort_id = md.get("origin_cohort_id")
-        eval_parsed = (eval_doc.get("parsed_text") or "").strip()
-        eval_parsed_path = paths.parsed_path("evaluation", gid).resolve()
 
-        score = None
-        error = None
-        if eval_parsed:
-            last_line = eval_parsed.splitlines()[-1].strip()
-            try:
-                score = float(last_line)
-            except ValueError as exc:  # keep row but note failure
-                error = f"Invalid parsed.txt: {exc}"
-        else:
-            error = "missing parsed.txt"
-
-        generation_template = ""
-        generation_model = ""
-        parent_draft_id = ""
-        if parent_essay_id:
-            essay_doc = load_generation(gens_root, "essay", parent_essay_id)
-            essay_md = essay_doc.get("metadata") or {}
-            generation_template = str(
-                essay_md.get("template_id")
-                or essay_md.get("essay_template_id")
-                or ""
-            ).strip()
-            generation_model = str(essay_md.get("llm_model_id") or "").strip()
-            parent_draft_id = str(essay_md.get("parent_gen_id") or "").strip()
-
-        combo_id = str(md.get("combo_id") or "").strip()
-        draft_template = str(md.get("draft_template") or "").strip()
-        if parent_draft_id:
-            draft_doc = load_generation(gens_root, "draft", parent_draft_id)
-            draft_md = draft_doc.get("metadata") or {}
-            combo_id = str(draft_md.get("combo_id") or combo_id or "").strip()
-            draft_template = str(
-                draft_md.get("template_id")
-                or draft_md.get("draft_template")
-                or draft_template
-            ).strip()
-            if not generation_model:
-                generation_model = str(draft_md.get("llm_model_id") or "").strip()
-
-        cohort_value = None
-        if origin_cohort_id is not None and pd.notna(origin_cohort_id):
-            origin_str = str(origin_cohort_id).strip()
-            cohort_value = origin_str or None
-
-        raw_meta_path = paths.raw_metadata_path("evaluation", gid)
-        input_mode = None
-        copied_from = None
-        if raw_meta_path.exists():
-            try:
-                raw_meta = json.loads(raw_meta_path.read_text(encoding="utf-8")) or {}
-            except OSError as exc:
-                raise DDError(Err.IO_ERROR, ctx={"path": str(raw_meta_path)}) from exc
-            except json.JSONDecodeError as exc:
-                raise DDError(Err.PARSER_FAILURE, ctx={"path": str(raw_meta_path)}) from exc
-            input_mode = raw_meta.get("input_mode")
-            copied_from = raw_meta.get("copied_from")
-
-        rows.append(
-            {
-                "gen_id": gid,
-                "parent_gen_id": parent_essay_id,
-                "evaluation_template": eval_template,
-                "evaluation_llm_model": eval_model,
-                "score": score,
-                "error": error,
-                "evaluation_response_path": str(eval_parsed_path),
-                # enrichments
-                "combo_id": combo_id,
-                "draft_template": draft_template,
-                "generation_template": generation_template,
-                "generation_model": generation_model,
-                "origin_cohort_id": cohort_value,
-                "generation_response_path": str(paths.parsed_path("essay", parent_essay_id).resolve())
-                if parent_essay_id
-                else "",
-                "input_mode": input_mode,
-                "copied_from": copied_from,
-            }
-        )
-
+def _rows_to_dataframe(rows: List[Dict[str, Any]]) -> pd.DataFrame:
     df = pd.DataFrame(rows)
-    # Fill missing expected columns with None to stabilize schema
     expected_columns = [
         "gen_id",
         "parent_gen_id",
@@ -140,7 +229,6 @@ def aggregate_evaluation_scores_for_ids(data_root: Path, gen_ids: Iterable[str])
         "score",
         "error",
         "evaluation_response_path",
-        # enrichments
         "combo_id",
         "draft_template",
         "generation_template",
@@ -153,7 +241,6 @@ def aggregate_evaluation_scores_for_ids(data_root: Path, gen_ids: Iterable[str])
     for col in expected_columns:
         if col not in df.columns:
             df[col] = None
-    # Normalize types
     if "score" in df.columns:
         df["score"] = pd.to_numeric(df["score"], errors="coerce")
     return df[expected_columns + [c for c in df.columns if c not in expected_columns]]
