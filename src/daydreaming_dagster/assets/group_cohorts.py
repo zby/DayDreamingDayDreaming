@@ -786,7 +786,14 @@ def cohort_membership(
         gen_models_df = gen_models_df[gen_models_df["for_generation"] == True]
         # Read selected combo ids from data/2_tasks/selected_combo_mappings.csv (raise on missing)
         sel_path = data_root / "2_tasks" / "selected_combo_mappings.csv"
-        sel_df = pd.read_csv(sel_path)
+        try:
+            sel_df = pd.read_csv(sel_path)
+        except FileNotFoundError as exc:
+            raise DDError(
+                Err.DATA_MISSING,
+                ctx={"reason": "selected_combo_mappings_missing", "path": str(sel_path)},
+                cause=exc,
+            )
         combo_ids: List[str] = []
         if not sel_df.empty and "combo_id" in sel_df.columns:
             combo_ids = sel_df["combo_id"].astype(str).dropna().unique().tolist()
@@ -1154,7 +1161,14 @@ def content_combinations(context) -> list[ContentCombination]:
     data_root = Paths.from_context(context).data_root
     import pandas as _pd
     selected_path = data_root / "2_tasks" / "selected_combo_mappings.csv"
-    sel = _pd.read_csv(selected_path)
+    try:
+        sel = _pd.read_csv(selected_path)
+    except FileNotFoundError as exc:
+        raise DDError(
+            Err.DATA_MISSING,
+            ctx={"reason": "selected_combo_mappings_missing", "path": str(selected_path)},
+            cause=exc,
+        )
 
     if not sel.empty:
         all_concepts = {c.concept_id: c for c in read_concepts(data_root, filter_active=False)}
