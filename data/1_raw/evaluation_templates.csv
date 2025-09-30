@@ -1,15 +1,15 @@
 template_id,template_name,description,parser,generator,active
-creativity-metrics-v2,Creativity Metrics V2,Evaluates multi-dimensional creative synthesis with required SCORE line.,in_last_line,llm,True
-daydreaming-verification-v2,Daydreaming Verification V2,Enhanced template with reliable 0-9 scoring and strict SCORE format,in_last_line,llm,True
+creativity-metrics-v2,Creativity Metrics V2,Evaluates multi-dimensional creative synthesis with required SCORE line.,in_last_line,llm,False
+daydreaming-verification-v2,Daydreaming Verification V2,Enhanced template with reliable 0-9 scoring and strict SCORE format,in_last_line,llm,False
 gemini-prior-art-eval,Prior Art gemini, Gemini research based prior art evaluation,in_last_line,llm,False
-gemini-prior-art-eval-v2,Prior Art gemini V2 (terminology-flex),Terminology‑flex prior art evaluation (mechanism priority),in_last_line,llm,True
-interdisciplinary-coherence,Interdisciplinary Coherence,Specialized template for evaluating interdisciplinary work and domain integration,in_last_line,llm,True
-iterative-loops-v2,Iterative Loops V2,Evaluates autonomous iterative refinement systems with SCORE final line.,in_last_line,llm,True
-novel-elements-coverage-v1,Novel Elements Coverage,"Checks coverage of novel elements, mechanism specificity, originality, and leakage (0–9 score)",in_last_line,llm,True
-novelty,Novelty,Binary originality auditor for N1/N2 novel ideas with strict operational requirements,in_last_line,llm,False
+gemini-prior-art-eval-v2,Prior Art gemini V2 (terminology-flex),Terminology‑flex prior art evaluation (mechanism priority),in_last_line,llm,False
+interdisciplinary-coherence,Interdisciplinary Coherence,Specialized template for evaluating interdisciplinary work and domain integration,in_last_line,llm,False
+iterative-loops-v2,Iterative Loops V2,Evaluates autonomous iterative refinement systems with SCORE final line.,in_last_line,llm,False
+novel-elements-coverage-v1,Novel Elements Coverage,"Checks coverage of novel elements, mechanism specificity, originality, and leakage (0–9 score)",in_last_line,llm,False
+novelty,Novelty,Binary originality auditor for N1/N2 novel ideas with strict operational requirements,in_last_line,llm,True
 novelty-v2,Novelty V2,Originality auditor with partial credit for near-miss inventions,in_last_line,llm,True
 o3-prior-art-eval,Prior Art o3, O3 research based prior art evaluation,in_last_line,llm,False
-scientific-rigor-v2,Scientific Rigor V2,Assesses methodological discipline with standardized output format.,in_last_line,llm,True
+scientific-rigor-v2,Scientific Rigor V2,Assesses methodological discipline with standardized output format.,in_last_line,llm,False
 style-coherence,Style Coherence,Evaluates writing coherence and concept integration quality,in_last_line,llm,False
-style-coherence-v2,Style Coherence V2,Enhanced template with detailed scoring rubric and calibration examples,in_last_line,llm,True
-style-coherence-v3,Style Coherence V3,Advanced template with structure-preserving link framework and quality checks,in_last_line,llm,True
+style-coherence-v2,Style Coherence V2,Enhanced template with detailed scoring rubric and calibration examples,in_last_line,llm,False
+style-coherence-v3,Style Coherence V3,Advanced template with structure-preserving link framework and quality checks,in_last_line,llm,False
