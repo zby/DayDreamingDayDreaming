@@ -5,6 +5,8 @@ from dagster import AssetKey, build_input_context, build_output_context
 
 from daydreaming_dagster.resources.io_managers import InMemoryIOManager
 from daydreaming_dagster.utils.errors import DDError, Err
+from daydreaming_dagster.resources.gens_prompt_io_manager import GensPromptIOManager
+from daydreaming_dagster.resources.llm_client import LLMClientResource
 
 
 def _build_contexts(partition_key: str):
@@ -36,3 +38,42 @@ def test_fallback_missing_raises(tmp_path: Path):
     with pytest.raises(DDError) as err:
         manager.load_input(input_ctx)
     assert err.value.code is Err.DATA_MISSING
+
+
+def test_gens_prompt_io_manager_invalid_stage(tmp_path: Path):
+    gens_root = tmp_path / "gens"
+    gens_root.mkdir(parents=True, exist_ok=True)
+
+    with pytest.raises(DDError) as err:
+        GensPromptIOManager(gens_root, stage="invalid")
+    assert err.value.code is Err.INVALID_CONFIG
+
+
+def test_gens_prompt_io_manager_requires_str_output(tmp_path: Path):
+    gens_root = tmp_path / "gens"
+    gens_root.mkdir(parents=True, exist_ok=True)
+    manager = GensPromptIOManager(gens_root, stage="draft")
+
+    ctx = build_output_context(asset_key=AssetKey(["draft_prompt"]), partition_key="G1")
+    with pytest.raises(DDError) as err:
+        manager.handle_output(ctx, 123)
+    assert err.value.code is Err.INVALID_CONFIG
+
+
+def test_llm_client_requires_api_key(tmp_path: Path):
+    client = LLMClientResource(api_key=None, data_root=str(tmp_path))
+
+    with pytest.raises(DDError) as err:
+        client.generate("hi", model="foo", max_tokens=16)
+    assert err.value.code is Err.INVALID_CONFIG
+
+
+def test_llm_client_invalid_max_tokens(tmp_path: Path, monkeypatch):
+    client = LLMClientResource(api_key="dummy", data_root=str(tmp_path))
+
+    # Patch OpenAI to avoid actual instantiation side effects
+    monkeypatch.setattr("daydreaming_dagster.resources.llm_client.OpenAI", lambda **kwargs: object())
+
+    with pytest.raises(DDError) as err:
+        client.generate_with_info("prompt", model="foo", max_tokens=0)
+    assert err.value.code is Err.INVALID_CONFIG
