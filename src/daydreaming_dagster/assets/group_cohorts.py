@@ -1097,8 +1097,9 @@ def register_cohort_partitions(context, cohort_membership: pd.DataFrame) -> Dict
                 )
                 instance.report_runless_asset_event(mat)
                 materialized_count += 1
-            except Exception:
+            except Exception as e:
                 # Best effort - don't fail cohort registration if this fails
+                context.log.warning(f"Failed to mark {stage} {gen_id} as materialized: {e}")
                 pass
 
     context.add_output_metadata(

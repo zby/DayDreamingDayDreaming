@@ -38,6 +38,12 @@ def evaluation_prompt(context) -> str:
     data_layer = GensDataLayer.from_root(context.resources.data_root)
     gen_id = str(context.partition_key)
 
+    # Skip if parsed already exists (backfill mode support)
+    if data_layer.parsed_exists(EVALUATION_STAGE, gen_id):
+        input_text = data_layer.read_input(EVALUATION_STAGE, gen_id)
+        context.log.info(f"Skipping {gen_id}: parsed.txt already exists")
+        return input_text
+
     input_text, info = _stage_input_asset(
         data_layer=data_layer,
         stage=EVALUATION_STAGE,
@@ -66,6 +72,12 @@ def evaluation_raw(context, evaluation_prompt: str) -> str:
     """Execute evaluation raw generation and persist raw assets via the data layer."""
     data_layer = GensDataLayer.from_root(context.resources.data_root)
     gen_id = str(context.partition_key)
+
+    # Skip if parsed already exists (backfill mode support)
+    if data_layer.parsed_exists(EVALUATION_STAGE, gen_id):
+        raw_text = data_layer.read_raw(EVALUATION_STAGE, gen_id)
+        context.log.info(f"Skipping {gen_id}: parsed.txt already exists")
+        return raw_text
 
     experiment_config = getattr(context.resources, "experiment_config", None)
     stage_settings = experiment_config.stage_config.get(EVALUATION_STAGE) if experiment_config else None
@@ -105,6 +117,12 @@ def evaluation_parsed(context) -> str:
     """Parse evaluation raw text into the persisted parsed artifact."""
     data_layer = GensDataLayer.from_root(context.resources.data_root)
     gen_id = str(context.partition_key)
+
+    # Skip if already materialized (backfill mode support)
+    if data_layer.parsed_exists(EVALUATION_STAGE, gen_id):
+        parsed_text = data_layer.read_parsed(EVALUATION_STAGE, gen_id)
+        context.log.info(f"Skipping {gen_id}: parsed.txt already exists")
+        return parsed_text
 
     # Reload persisted raw output to remain compatible with multiprocess execution.
     raw_text = data_layer.read_raw(EVALUATION_STAGE, gen_id)
