@@ -12,6 +12,7 @@ from dataclasses import dataclass
 import json
 from pathlib import Path
 from typing import Callable, Dict, Iterable, List, Optional, Sequence, Tuple
+import functools
 
 import pandas as pd
 from dagster import MetadataValue
@@ -24,6 +25,7 @@ from ..utils.ids import (
     essay_signature,
     evaluation_signature,
     compute_deterministic_gen_id,
+    compute_collision_resolved_gen_id,
 )
 from ..utils.raw_readers import (
     read_concepts,
@@ -829,7 +831,9 @@ def cohort_membership(
     essay_seed_combo: Dict[str, str] = {}
     existing_eval_cache: Dict[str, Dict[tuple[str, str], list[ExistingEvaluation]]] = {}
 
-    allocator = _ReplicateAllocator(Paths.from_str(data_root).gens_root)
+    paths_obj = Paths.from_str(data_root)
+    gens_root = paths_obj.gens_root
+    allocator = _ReplicateAllocator(gens_root)
 
     def _add_draft_row(gen_id: str, combo_id: str, template_id: str, llm_model_id: str, replicate: int) -> None:
         row = MembershipRow(
@@ -884,7 +888,7 @@ def cohort_membership(
             allocator=allocator,
             cohort_id=str(cohort_id),
             essay_seed_combo=essay_seed_combo,
-            essay_id_factory=_essay_gen_id,
+            essay_id_factory=functools.partial(_essay_gen_id, gens_root=gens_root),
         )
 
     else:
@@ -918,7 +922,7 @@ def cohort_membership(
             generation_model_ids=generation_model_ids,
             draft_rep_count=int(rep_cfg.get("draft")),
             add_draft_row=_add_draft_row,
-            draft_id_factory=_draft_gen_id,
+            draft_id_factory=functools.partial(_draft_gen_id, gens_root=gens_root),
         )
 
         draft_rows = [r for r in rows if r.get("stage") == "draft"]
@@ -930,7 +934,7 @@ def cohort_membership(
                 essay_rep_count=int(rep_cfg.get("essay")),
                 add_essay_row=_add_essay_row,
                 essay_seed_combo=essay_seed_combo,
-                essay_id_factory=_essay_gen_id,
+                essay_id_factory=functools.partial(_essay_gen_id, gens_root=gens_root),
                 allocator=allocator,
             )
 
@@ -960,7 +964,9 @@ def cohort_membership(
                 evaluation_rep_count=eval_reps,
                 cohort_id=str(cohort_id),
                 allocator=allocator,
-                evaluation_id_factory=_evaluation_gen_id,
+                evaluation_id_factory=functools.partial(
+                    _evaluation_gen_id, gens_root=gens_root
+                ),
             )
             rows.extend(row.to_dict() for row in eval_rows)
 
@@ -1227,9 +1233,12 @@ def _draft_gen_id(
     replicate_index: int,
     cohort_id: str,
     salt: str | None = None,
+    gens_root: Path | None = None,
 ) -> str:
     if ids_utils.DETERMINISTIC_GEN_IDS_ENABLED:
         signature = draft_signature(combo_id, draft_template_id, generation_model_id, replicate_index)
+        if gens_root is not None:
+            return compute_collision_resolved_gen_id("draft", signature, gens_root)
         return compute_deterministic_gen_id("draft", signature)
     task_id = f"{combo_id}__{draft_template_id}__{generation_model_id}"
     return reserve_gen_id("draft", task_id, run_id=cohort_id, salt=salt)
@@ -1243,9 +1252,12 @@ def _essay_gen_id(
     cohort_id: str,
     legacy_task_id: str,
     salt: str | None = None,
+    gens_root: Path | None = None,
 ) -> str:
     if ids_utils.DETERMINISTIC_GEN_IDS_ENABLED:
         signature = essay_signature(draft_gen_id, essay_template_id, replicate_index)
+        if gens_root is not None:
+            return compute_collision_resolved_gen_id("essay", signature, gens_root)
         return compute_deterministic_gen_id("essay", signature)
     return reserve_gen_id("essay", legacy_task_id, run_id=cohort_id, salt=salt)
 
@@ -1259,8 +1271,11 @@ def _evaluation_gen_id(
     cohort_id: str,
     legacy_task_id: str,
     salt: str | None = None,
+    gens_root: Path | None = None,
 ) -> str:
     if ids_utils.DETERMINISTIC_GEN_IDS_ENABLED:
         signature = evaluation_signature(essay_gen_id, evaluation_template_id, evaluation_model_id, replicate_index)
+        if gens_root is not None:
+            return compute_collision_resolved_gen_id("evaluation", signature, gens_root)
         return compute_deterministic_gen_id("evaluation", signature)
     return reserve_gen_id("evaluation", legacy_task_id, run_id=cohort_id, salt=salt)

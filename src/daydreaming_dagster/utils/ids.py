@@ -2,6 +2,9 @@ from __future__ import annotations
 
 import hashlib
 from hashlib import blake2b
+import json
+import logging
+from pathlib import Path
 from typing import Iterable, Tuple, Dict
 
 from .errors import DDError, Err
@@ -115,16 +118,58 @@ def evaluation_signature(essay_gen_id: str, evaluation_template_id: str, evaluat
     )
 
 
-def compute_deterministic_gen_id(stage: Stage, signature: Tuple) -> str:
+def compute_deterministic_gen_id(stage: Stage, signature: Tuple, *, collision_index: int = 0) -> str:
+    stage_norm = str(stage).lower()
     try:
-        prefix = _PREFIX_BY_STAGE[stage]
+        prefix = _PREFIX_BY_STAGE[stage_norm]
     except KeyError as exc:
         raise DDError(Err.INVALID_CONFIG, ctx={"stage": stage}) from exc
+    if str(stage) != stage_norm:
+        raise DDError(Err.INVALID_CONFIG, ctx={"stage": stage})
     canonical = "|".join(str(part) for part in signature)
+    if collision_index:
+        canonical = f"{canonical}|collision:{collision_index}"
     digest = blake2b(canonical.encode("utf-8"), digest_size=10).digest()
     value = int.from_bytes(digest, "big")
     b36 = _to_base36(value)
-    return prefix + b36
+    base_id = prefix + b36
+    if collision_index:
+        return f"{base_id}-{collision_index}"
+    return base_id
+
+
+def compute_collision_resolved_gen_id(stage: Stage, signature: Tuple, gens_root: Path, *, max_attempts: int = 5) -> str:
+    """Return a deterministic id, appending suffixes if collisions are detected on disk."""
+
+    stage_norm = str(stage).lower()
+    root = Path(gens_root) / stage_norm
+    root.mkdir(parents=True, exist_ok=True)
+
+    for attempt in range(max_attempts):
+        candidate = compute_deterministic_gen_id(stage_norm, signature, collision_index=attempt)
+        meta_path = root / candidate / "metadata.json"
+        if not meta_path.exists():
+            return candidate
+        try:
+            existing = json.loads(meta_path.read_text(encoding="utf-8"))
+            existing_sig = signature_from_metadata(stage_norm, existing)
+        except Exception:
+            existing_sig = None
+
+        if existing_sig == signature:
+            return candidate
+
+        logging.getLogger(__name__).warning(
+            "deterministic id collision detected for %s/%s; attempting suffix %s",
+            stage_norm,
+            candidate,
+            attempt + 1,
+        )
+
+    raise DDError(
+        Err.INVALID_CONFIG,
+        ctx={"stage": stage_norm, "reason": "deterministic_id_collision", "signature": signature},
+    )
 
 
 def signature_from_metadata(stage: Stage, metadata: dict) -> Tuple:

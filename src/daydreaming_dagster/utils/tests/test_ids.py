@@ -1,12 +1,15 @@
 import pytest
 
 from daydreaming_dagster.utils.errors import DDError, Err
+import json
+
 from daydreaming_dagster.utils.ids import (
     reserve_gen_id,
     draft_signature,
     essay_signature,
     evaluation_signature,
     compute_deterministic_gen_id,
+    compute_collision_resolved_gen_id,
     signature_from_metadata,
 )
 
@@ -27,6 +30,14 @@ def test_deterministic_gen_id_stable():
     gid1 = compute_deterministic_gen_id("draft", sig)
     gid2 = compute_deterministic_gen_id("draft", sig)
     assert gid1 == gid2 and gid1.startswith("d_")
+
+
+def test_deterministic_gen_id_collision_suffix():
+    sig = draft_signature("combo", "tpl", "model", 1)
+    base = compute_deterministic_gen_id("draft", sig)
+    suffixed = compute_deterministic_gen_id("draft", sig, collision_index=1)
+    assert suffixed.endswith("-1")
+    assert suffixed != base
 
 
 def test_compute_deterministic_gen_id_rejects_non_stage():
@@ -74,3 +85,51 @@ class TestIDs:
         assert a == b and len(a) == 16
         # run_id or salt perturbs id
         assert a != c and a != d
+
+
+def test_compute_collision_resolved_gen_id_reuses_existing(tmp_path, monkeypatch):
+    from daydreaming_dagster.utils import ids
+
+    def fake_compute(stage, signature, collision_index=0):
+        base = f"{stage[0]}_fixed"
+        return base if collision_index == 0 else f"{base}-{collision_index}"
+
+    monkeypatch.setattr(ids, "compute_deterministic_gen_id", fake_compute)
+
+    stage_root = tmp_path / "draft" / "d_fixed"
+    stage_root.mkdir(parents=True)
+    metadata = {
+        "combo_id": "combo-a",
+        "template_id": "tpl-a",
+        "llm_model_id": "model-a",
+        "replicate": 1,
+    }
+    (stage_root / "metadata.json").write_text(json.dumps(metadata), encoding="utf-8")
+
+    sig = ids.draft_signature("combo-a", "tpl-a", "model-a", 1)
+    result = compute_collision_resolved_gen_id("draft", sig, tmp_path)
+    assert result == "d_fixed"
+
+
+def test_compute_collision_resolved_gen_id_generates_suffix(tmp_path, monkeypatch):
+    from daydreaming_dagster.utils import ids
+
+    def fake_compute(stage, signature, collision_index=0):
+        base = f"{stage[0]}_fixed"
+        return base if collision_index == 0 else f"{base}-{collision_index}"
+
+    monkeypatch.setattr(ids, "compute_deterministic_gen_id", fake_compute)
+
+    occupied = tmp_path / "draft" / "d_fixed"
+    occupied.mkdir(parents=True)
+    metadata = {
+        "combo_id": "combo-existing",
+        "template_id": "tpl-existing",
+        "llm_model_id": "model-existing",
+        "replicate": 1,
+    }
+    (occupied / "metadata.json").write_text(json.dumps(metadata), encoding="utf-8")
+
+    sig = ids.draft_signature("combo-new", "tpl-new", "model-new", 1)
+    result = compute_collision_resolved_gen_id("draft", sig, tmp_path)
+    assert result == "d_fixed-1"
