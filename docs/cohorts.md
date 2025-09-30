@@ -23,8 +23,10 @@ What the assets do
 
 Two ways to build a cohort
 - Curated mode (selection-driven):
-  - Input: write essay `gen_id`s to `data/2_tasks/selected_essays.txt` (one per line).
-  - Behavior: reconstructs draft/essay rows from the gens store metadata for the selected essays, then expands evaluations across the active evaluation axes (templates × models).
+  - Input: write essay `gen_id`s to `data/2_tasks/selected_essays.txt` (one per line), **or** write draft `gen_id`s to `data/2_tasks/selected_drafts.txt`. At most one of these files may exist.
+  - Behavior:
+    - `selected_essays.txt`: reconstructs draft/essay rows from the gens store metadata for the selected essays, then expands evaluations across the active evaluation axes (templates × models).
+    - `selected_drafts.txt`: reuses the supplied deterministic drafts and schedules essays/evaluations over the active templates/models without needing the historical essays.
   - When to use: reproducing or re-evaluating a specific subset of historical essays; migrating legacy outputs; ad‑hoc comparisons.
   - Pros: no Cartesian explosion; exactly the rows you want. Cons: requires existing gens and accurate parent links in metadata.
 - Cartesian mode (active-axes-driven):
@@ -118,6 +120,8 @@ Notes
     `reuse-essays` to only top up missing evaluation replicate slots. Without this directive we
     always schedule the configured number of evaluation replicates per cohort run.
   - The legacy directive `# mode: evaluation-only` is kept as an alias for `reuse-essays` for backward compatibility.
+  - When using `selected_drafts.txt`, the default behaviour is `reuse-drafts` (provide draft IDs and mint new essays/evaluations); specify `# mode: regenerate` explicitly if you want to create fresh draft replicates as well. `reuse-essays` is not valid with draft selections and will raise an error.
+  - If both `selected_essays.txt` and `selected_drafts.txt` are present the cohort build fails fast—pick one curated entry point per run.
 - When pivoting or aggregating parsed results, prefer `parent_gen_id` (the essay `gen_id`) for stable grouping.
 
 Step 2 — Build cohort and register partitions

@@ -213,7 +213,7 @@ Lineage and IDs (gen‑id first)
 - Tasks and assets must pass/require `parent_gen_id` for essays and evaluations (fail fast if missing). This removes all “latest‑by‑task” ambiguity and makes pivots deterministic.
 
 Note on legacy data:
-- If you need to evaluate historical essays not part of the current cohort, write their essay `gen_id`s into `data/2_tasks/selected_essays.txt`, then materialize `cohort_id,cohort_membership` to register evaluation partitions for the active evaluation axes. Use `# mode: reuse-essays` to reuse the original drafts/essays and schedule fresh evaluations. Combine it with `# fill-up` if you only want to top up missing evaluator combinations (instead of creating brand-new replicates).
+- If you need to evaluate historical essays not part of the current cohort, write their essay `gen_id`s into `data/2_tasks/selected_essays.txt`, then materialize `cohort_id,cohort_membership` to register evaluation partitions for the active evaluation axes. Use `# mode: reuse-essays` to reuse the original drafts/essays and schedule fresh evaluations. Combine it with `# fill-up` if you only want to top up missing evaluator combinations (instead of creating brand-new replicates). Alternatively, point `selected_drafts.txt` at deterministic draft IDs to reuse the drafts directly (default mode `reuse-drafts`).
 
 ### Targeted Evaluations (No full cube)
 

@@ -46,6 +46,7 @@ Derive generation IDs deterministically from task parameters so cohorts become p
 - Dagster's partition skipping handles reruns via deterministic IDs; no bespoke reuse logic remains.
 - Legacy `model_id` fields were scrubbed from generation metadata (see `scripts/migrations/remove_model_id_fields.py`); assets now rely solely on `llm_model_id`.
 - Curated cohorts support explicit modes (`regenerate`, `reuse-drafts`, `reuse-essays`) so operators choose whether to mint fresh drafts/essays/evals or only top up evaluations; `replication_config.csv` now applies per cohort build by scanning for the next free deterministic replicate.
+- `selected_drafts.txt` joins `selected_essays.txt` as a curated entry point (mutually exclusive) so reruns can start from deterministic draft IDs without metadata reconstruction; default behaviour for drafts is `reuse-drafts` with new essays/evals across active templates.
 
 ## Phase 5 – Documentation & Guardrails
 - Update architecture docs with the deterministic ID contract, collision handling policy, and migration procedure.
