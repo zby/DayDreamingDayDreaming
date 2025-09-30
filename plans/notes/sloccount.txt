@@ -1,0 +1,57 @@
+Have a non-directory at the top, so creating directory top_dir
+Adding /home/zby/llm/DayDreamingDayDreaming/src/daydreaming_dagster/__init__.py to top_dir
+Creating filelist for __pycache__
+Creating filelist for assets
+Creating filelist for checks
+Creating filelist for config
+Adding /home/zby/llm/DayDreamingDayDreaming/src/daydreaming_dagster/constants.py to top_dir
+Creating filelist for data_layer
+Adding /home/zby/llm/DayDreamingDayDreaming/src/daydreaming_dagster/definitions.py to top_dir
+Creating filelist for jobs
+Creating filelist for models
+Creating filelist for resources
+Creating filelist for schedules
+Adding /home/zby/llm/DayDreamingDayDreaming/src/daydreaming_dagster/types.py to top_dir
+Creating filelist for unified
+Creating filelist for utils
+Categorizing files.
+Finding a working MD5 command....
+Found a working MD5 command.
+Computing results.
+
+
+SLOC	Directory	SLOC-by-Language (Sorted)
+3194    assets          python=3194
+1443    unified         python=1443
+1274    utils           python=1274
+402     resources       python=402
+368     data_layer      python=368
+187     models          python=187
+153     top_dir         python=153
+66      schedules       python=66
+47      checks          python=47
+40      config          python=40
+0       __pycache__     (none)
+0       jobs            (none)
+
+
+Totals grouped by language (dominant language first):
+python:        7174 (100.00%)
+
+
+
+
+Total Physical Source Lines of Code (SLOC)                = 7,174
+Development Effort Estimate, Person-Years (Person-Months) = 1.58 (19.00)
+ (Basic COCOMO model, Person-Months = 2.4 * (KSLOC**1.05))
+Schedule Estimate, Years (Months)                         = 0.64 (7.65)
+ (Basic COCOMO model, Months = 2.5 * (person-months**0.38))
+Estimated Average Number of Developers (Effort/Schedule)  = 2.48
+Total Estimated Cost to Develop                           = $ 213,890
+ (average salary = $56,286/year, overhead = 2.40).
+SLOCCount, Copyright (C) 2001-2004 David A. Wheeler
+SLOCCount is Open Source Software/Free Software, licensed under the GNU GPL.
+SLOCCount comes with ABSOLUTELY NO WARRANTY, and you are welcome to
+redistribute it under certain conditions as specified by the GNU GPL license;
+see the documentation for details.
+Please credit this data as "generated using David A. Wheeler's 'SLOCCount'."
