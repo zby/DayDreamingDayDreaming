@@ -54,7 +54,7 @@ Recommended policy
 CLI examples
 ```bash
 # Curated: write selected essays then build cohort
-uv run python scripts/select_top_prior_art.py --top-n 25 --parsed-scores data/5_parsing/aggregated_scores.csv
+uv run python scripts/select_top_prior_art.py --top-n 25 --parsed-scores data/7_cross_experiment/aggregated_scores.csv
 uv run dagster asset materialize --select "cohort_id,cohort_membership" -f src/daydreaming_dagster/definitions.py
 
 # Cartesian: no selection file; cohort_membership derives from active axes
@@ -92,7 +92,7 @@ This section summarizes the curated workflow previously documented in the select
 Prerequisites
 - Set `DAGSTER_HOME` to a writable directory, e.g. `export DAGSTER_HOME=$(pwd)/dagster_home`.
 - Optional: build cross‑experiment scores if you plan to select by prior‑art top‑N:
-  `uv run python scripts/aggregate_scores.py --output data/5_parsing/aggregated_scores.csv`.
+  `uv run python scripts/aggregate_scores.py --output data/7_cross_experiment/aggregated_scores.csv`.
 - Start Dagster for a richer experience: `uv run dagster dev -f src/daydreaming_dagster/definitions.py`.
 
 Step 1 — Select essay gen_ids
@@ -102,7 +102,7 @@ Example
 ```bash
 uv run python scripts/select_top_prior_art.py \
   --top-n 25 \
-  --parsed-scores data/5_parsing/aggregated_scores.csv \
+  --parsed-scores data/7_cross_experiment/aggregated_scores.csv \
   # optional: --prior-art-templates gemini-prior-art-eval gemini-prior-art-eval-v2
 ```
 

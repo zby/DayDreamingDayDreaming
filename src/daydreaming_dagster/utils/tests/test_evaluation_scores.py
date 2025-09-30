@@ -2,7 +2,13 @@ from __future__ import annotations
 
 import json
 
-from daydreaming_dagster.utils.evaluation_scores import aggregate_evaluation_scores_for_ids
+import pandas as pd
+
+from daydreaming_dagster.utils.evaluation_scores import (
+    aggregate_evaluation_scores_for_ids,
+    parent_ids_missing_template,
+    rank_parent_essays_by_template,
+)
 
 
 def test_aggregate_scores_prefers_llm_ids_and_omits_stage(tmp_path):
@@ -77,3 +83,80 @@ def test_aggregate_scores_prefers_llm_ids_and_omits_stage(tmp_path):
     assert row["copied_from"].endswith("essay/essay-123/parsed.txt")
     assert "stage" not in df.columns
     assert "evaluation_model" not in df.columns
+
+
+def test_rank_parent_essays_by_template_aggregates_max_and_orders():
+    df = pd.DataFrame(
+        [
+            {"parent_gen_id": "e1", "evaluation_template": "novelty", "evaluation_llm_model": "m1", "score": 8.0},
+            {"parent_gen_id": "e1", "evaluation_template": "novelty", "evaluation_llm_model": "m1", "score": 7.5},
+            {"parent_gen_id": "e1", "evaluation_template": "novelty", "evaluation_llm_model": "m2", "score": 7.0},
+            {"parent_gen_id": "e2", "evaluation_template": "novelty", "evaluation_llm_model": "m1", "score": 8.5},
+            {
+                "parent_gen_id": "e2",
+                "evaluation_template": "novelty",
+                "evaluation_llm_model": "m2",
+                "score": 8.0,
+                "error": None,
+            },
+            {"parent_gen_id": "e3", "evaluation_template": "novelty", "evaluation_llm_model": "m1", "score": 6.0},
+            {
+                "parent_gen_id": "e3",
+                "evaluation_template": "novelty",
+                "evaluation_llm_model": "m2",
+                "score": None,
+                "error": "parse failure",
+            },
+        ]
+    )
+
+    ranked = rank_parent_essays_by_template(df, template_id="novelty")
+    assert list(ranked["parent_gen_id"]) == ["e2", "e1", "e3"]
+    # e2 average of (8.5, 8.0) = 8.25; e1 average of (8.0, 7.0) = 7.5; e3 only one model 6.0
+    assert ranked.loc[ranked["parent_gen_id"] == "e2", "avg_score"].iloc[0] == 8.25
+    assert ranked.loc[ranked["parent_gen_id"] == "e1", "avg_score"].iloc[0] == 7.5
+    # Missing/error scores should not count towards coverage
+    assert ranked.loc[ranked["parent_gen_id"] == "e3", "models_covered"].iloc[0] == 1
+    # Per-model columns exist and reflect max per model
+    assert ranked.loc[ranked["parent_gen_id"] == "e2", "score__m1"].iloc[0] == 8.5
+    assert ranked.loc[ranked["parent_gen_id"] == "e1", "score__m1"].iloc[0] == 8.0
+    assert pd.isna(ranked.loc[ranked["parent_gen_id"] == "e3", "score__m2"].iloc[0])
+
+
+def test_rank_parent_essays_by_template_honors_score_span_and_top_n():
+    df = pd.DataFrame(
+        [
+            {"parent_gen_id": "e1", "evaluation_template": "novelty", "evaluation_llm_model": "m1", "score": 8.0},
+            {"parent_gen_id": "e2", "evaluation_template": "novelty", "evaluation_llm_model": "m1", "score": 7.9},
+            {"parent_gen_id": "e3", "evaluation_template": "novelty", "evaluation_llm_model": "m1", "score": 7.7},
+            {"parent_gen_id": "e4", "evaluation_template": "novelty", "evaluation_llm_model": "m1", "score": 6.5},
+        ]
+    )
+
+    ranked = rank_parent_essays_by_template(
+        df,
+        template_id="novelty",
+        score_span=0.25,
+    )
+    assert list(ranked["parent_gen_id"]) == ["e1", "e2"]
+
+    ranked_top1 = rank_parent_essays_by_template(
+        df,
+        template_id="novelty",
+        top_n=1,
+    )
+    assert list(ranked_top1["parent_gen_id"]) == ["e1"]
+
+
+def test_parent_ids_missing_template_highlights_missing_ids():
+    df = pd.DataFrame(
+        [
+            {"parent_gen_id": "e1", "evaluation_template": "novelty-v2", "evaluation_llm_model": "m1", "score": 8.0},
+            {"parent_gen_id": "e2", "evaluation_template": "novelty-v2", "evaluation_llm_model": "m1", "score": None},
+            {"parent_gen_id": "e3", "evaluation_template": "novelty-v2", "evaluation_llm_model": "m1", "score": 7.0},
+            {"parent_gen_id": "e3", "evaluation_template": "novelty-v2", "evaluation_llm_model": "m2", "score": 7.5},
+        ]
+    )
+
+    missing = parent_ids_missing_template(df, ["e1", "e2", "e3", "e4"], template_id="novelty-v2")
+    assert missing == ["e2", "e4"]

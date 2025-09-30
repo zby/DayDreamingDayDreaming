@@ -271,7 +271,7 @@ The Unified Stage Runner (located in `src/daydreaming_dagster/unified/`) is a si
 **Backfills and Tables**:
 - Scripts: `scripts/aggregate_scores.py` (evaluation)
 - Purpose: One‑off rebuilding from the gens store (no auto-appenders)
-- Output: `data/5_parsing/aggregated_scores.csv` (canonical)
+- Output: `data/7_cross_experiment/aggregated_scores.csv` (canonical)
 
 Processing contract for cross‑experiment:
 - Reads numeric scores strictly from `parsed.txt` under `data/gens/evaluation/<gen_id>/`.

@@ -334,8 +334,8 @@ def main() -> None:
     parser.add_argument(
         "--parsed-scores",
         type=Path,
-        default=Path("data/5_parsing/aggregated_scores.csv"),
-        help="Path to aggregated scores CSV (default: data/5_parsing/aggregated_scores.csv)",
+        default=Path("data/7_cross_experiment/aggregated_scores.csv"),
+        help="Path to aggregated scores CSV (default: data/7_cross_experiment/aggregated_scores.csv)",
     )
     parser.add_argument(
         "--out-dir",

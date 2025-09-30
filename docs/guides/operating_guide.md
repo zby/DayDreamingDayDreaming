@@ -235,13 +235,13 @@ For cross-experiment winners, include their essay `gen_id`s in `data/2_tasks/sel
 
 ### Curated Selection Quick Start (Drafts, Essays, Evaluations)
 
-Use the selection script to write a list of essay gen_ids, then let Dagster build the cohort and register partitions (no need to change `k_max`). If `data/5_parsing/aggregated_scores.csv` is missing, build it first:
-`uv run python scripts/aggregate_scores.py --output data/5_parsing/aggregated_scores.csv`.
+Use the selection script to write a list of essay gen_ids, then let Dagster build the cohort and register partitions (no need to change `k_max`). If `data/7_cross_experiment/aggregated_scores.csv` is missing, build it first:
+`uv run python scripts/aggregate_scores.py --output data/7_cross_experiment/aggregated_scores.csv`.
 In all examples below, treat `parent_gen_id` as the canonical key for evaluation pivots and selections.
 
 1) Select top‑N prior‑art winners (editable list)
 ```bash
-uv run python scripts/select_top_prior_art.py --top-n 30 --parsed-scores data/5_parsing/aggregated_scores.csv
+uv run python scripts/select_top_prior_art.py --top-n 30 --parsed-scores data/7_cross_experiment/aggregated_scores.csv
 # Edit data/2_tasks/selected_essays.txt if desired
 ```
 
@@ -327,9 +327,9 @@ uv run dagster asset materialize -f src/daydreaming_dagster/definitions.py \
     - `draft/<gen_id>/{prompt.txt,raw.txt,parsed.txt,metadata.json}`
     - `essay/<gen_id>/{prompt.txt,raw.txt,parsed.txt,metadata.json}`
     - `evaluation/<gen_id>/{prompt.txt,raw.txt,parsed.txt,metadata.json}`
-  - `data/5_parsing/` - Parsed evaluation scores
+  - `data/5_parsing/` - Cohort-scoped parsed evaluation scores (Dagster asset output)
   - `data/6_summary/` - Final aggregated results
-  - `data/7_cross_experiment/` - Cross-experiment tracking tables
+  - `data/7_cross_experiment/` - Cross-experiment tracking tables and score rebuilds
 
 - If you used a run tag, the tag appears in Dagster's run metadata for filtering
 
@@ -339,8 +339,8 @@ For initial setup or when you need to rebuild the cross‑experiment outputs fro
 
 ```bash
 # Build parsed scores and pivot from the gens store
-uv run python scripts/aggregate_scores.py --output data/5_parsing/aggregated_scores.csv
-uv run python scripts/build_pivot_tables.py --parsed-scores data/5_parsing/aggregated_scores.csv
+uv run python scripts/aggregate_scores.py --output data/7_cross_experiment/aggregated_scores.csv
+uv run python scripts/build_pivot_tables.py --parsed-scores data/7_cross_experiment/aggregated_scores.csv
 ```
 
 These scripts scan existing gens and produce canonical outputs under `data/7_cross_experiment/`.
