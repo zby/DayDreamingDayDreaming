@@ -66,6 +66,16 @@ def _effect_for_stage(stage: Stage) -> str:
         return "regen_evaluation"
     return "unknown"
 
+MAX_COLLISION_SUFFIX = 5
+
+
+def _matches_deterministic_id(stage: Stage, signature: tuple, gen_id: str) -> tuple[bool, str]:
+    for attempt in range(MAX_COLLISION_SUFFIX):
+        candidate = compute_deterministic_gen_id(stage, signature, collision_index=attempt)
+        if candidate == gen_id:
+            return True, candidate
+    return False, compute_deterministic_gen_id(stage, signature)
+
 
 def analyze_stage(data_root: Path, stage: Stage) -> StageReport:
     stage_dir = data_root / "gens" / stage
@@ -127,7 +137,7 @@ def analyze_stage(data_root: Path, stage: Stage) -> StageReport:
 
         try:
             signature = signature_from_metadata(stage, metadata)
-            deterministic_id = compute_deterministic_gen_id(stage, signature)
+            matches, candidate = _matches_deterministic_id(stage, signature, gen_id)
         except DDError as exc:
             errors.append(
                 IdError(
@@ -139,13 +149,13 @@ def analyze_stage(data_root: Path, stage: Stage) -> StageReport:
             )
             continue
 
-        if deterministic_id != gen_id:
+        if not matches:
             mismatches.append(
                 IdMismatch(
                     stage=stage,
                     gen_id=gen_id,
                     metadata_path=str(metadata_path),
-                    deterministic_id=deterministic_id,
+                    deterministic_id=candidate,
                     metadata_gen_id=meta_gen_id,
                     effect=_effect_for_stage(stage),
                 )
