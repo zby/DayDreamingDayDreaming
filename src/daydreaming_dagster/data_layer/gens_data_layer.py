@@ -8,12 +8,10 @@ from typing import Any, Dict
 from .paths import Paths
 from daydreaming_dagster.utils.errors import DDError, Err
 from daydreaming_dagster.utils.ids import (
-    DETERMINISTIC_GEN_IDS_ENABLED,
     compute_collision_resolved_gen_id,
     draft_signature,
     evaluation_signature,
     essay_signature,
-    reserve_gen_id,
 )
 
 
@@ -52,13 +50,7 @@ class GensDataLayer:
         """Return a deterministic draft gen_id for the provided combination."""
 
         signature = draft_signature(combo_id, template_id, llm_model_id, replicate)
-        if DETERMINISTIC_GEN_IDS_ENABLED:
-            return compute_collision_resolved_gen_id("draft", signature, self._paths.gens_root)
-
-        replicate_index = signature[3]
-        salt = None if replicate_index == 1 else f"rep{replicate_index}"
-        task_id = f"{combo_id}__{template_id}__{llm_model_id}"
-        return reserve_gen_id("draft", task_id, run_id=cohort_id, salt=salt)
+        return compute_collision_resolved_gen_id("draft", signature, self._paths.gens_root)
 
     def reserve_essay_id(
         self,
@@ -71,13 +63,7 @@ class GensDataLayer:
         """Return a deterministic essay gen_id tied to a parent draft."""
 
         signature = essay_signature(draft_gen_id, template_id, replicate)
-        if DETERMINISTIC_GEN_IDS_ENABLED:
-            return compute_collision_resolved_gen_id("essay", signature, self._paths.gens_root)
-
-        replicate_index = signature[2]
-        salt = None if replicate_index == 1 else f"rep{replicate_index}"
-        task_id = f"{draft_gen_id}__{template_id}"
-        return reserve_gen_id("essay", task_id, run_id=cohort_id, salt=salt)
+        return compute_collision_resolved_gen_id("essay", signature, self._paths.gens_root)
 
     def reserve_evaluation_id(
         self,
@@ -91,15 +77,9 @@ class GensDataLayer:
         """Return a deterministic evaluation gen_id tied to an essay."""
 
         signature = evaluation_signature(essay_gen_id, template_id, llm_model_id, replicate)
-        if DETERMINISTIC_GEN_IDS_ENABLED:
-            return compute_collision_resolved_gen_id(
-                "evaluation", signature, self._paths.gens_root
-            )
-
-        replicate_index = signature[3]
-        salt = None if replicate_index == 1 else f"rep{replicate_index}"
-        task_id = f"{essay_gen_id}__{template_id}__{llm_model_id}"
-        return reserve_gen_id("evaluation", task_id, run_id=cohort_id, salt=salt)
+        return compute_collision_resolved_gen_id(
+            "evaluation", signature, self._paths.gens_root
+        )
 
     def write_input(self, stage: str, gen_id: str, text: str) -> Path:
         target = self._paths.input_path(stage, gen_id)

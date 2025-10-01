@@ -61,29 +61,3 @@ def test_reserve_evaluation_id_collision_yields_suffix(tmp_path) -> None:
     assert resolved != candidate
     assert resolved.startswith("v_")
     assert resolved.endswith("-1")
-
-
-def test_reserve_draft_id_hash_fallback_uses_salt(tmp_path, monkeypatch) -> None:
-    try:
-        import daydreaming_dagster.data_layer.gens_data_layer as layer_module
-    except ImportError:  # pragma: no cover - defensive
-        raise AssertionError("gens_data_layer module missing")
-
-    monkeypatch.setattr(layer_module, "DETERMINISTIC_GEN_IDS_ENABLED", False)
-    monkeypatch.setattr("daydreaming_dagster.utils.ids.DETERMINISTIC_GEN_IDS_ENABLED", False)
-
-    layer = GensDataLayer(tmp_path)
-
-    base_params = {
-        "combo_id": "combo-1",
-        "template_id": "draft-tpl",
-        "llm_model_id": "model-a",
-        "cohort_id": "cohort-x",
-    }
-
-    gen_id_rep1 = layer.reserve_draft_id(replicate=1, **base_params)
-    gen_id_rep2 = layer.reserve_draft_id(replicate=2, **base_params)
-
-    assert not gen_id_rep1.startswith("d_")
-    assert gen_id_rep1 != gen_id_rep2
-    assert len(gen_id_rep1) == len(gen_id_rep2) == 16

@@ -11,9 +11,6 @@ from .errors import DDError, Err
 from ..types import Stage
 
 
-DETERMINISTIC_GEN_IDS_ENABLED = True  # BACKCOMPAT: deterministic IDs are always enabled post-migration.
-
-
 def _hash_bytes(parts: Iterable[str]) -> bytes:
     h = hashlib.sha256()
     for p in parts:
