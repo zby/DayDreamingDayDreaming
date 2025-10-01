@@ -1,280 +1,254 @@
 from __future__ import annotations
 
+import json
+from pathlib import Path
+
+import pandas as pd
+import pytest
+
 from daydreaming_dagster.assets.group_cohorts import (
-    CuratedDraft,
-    CuratedEssay,
-    ExistingEvaluation,
-    build_curated_entries,
-    build_from_drafts,
-    build_evaluations_for_essay,
-    expand_cartesian_drafts,
-    expand_cartesian_essays,
+    CohortBuilder,
+    MEMBERSHIP_COLUMNS,
+    persist_membership_csv,
+    seed_cohort_metadata,
+    validate_cohort_membership,
 )
+from daydreaming_dagster.data_layer.gens_data_layer import GensDataLayer
+from daydreaming_dagster.utils.errors import DDError
 
 
-def test_build_curated_entries_adds_rows_and_caches(tmp_path):
-    entries = [
-        CuratedEssay(
-            essay_gen_id="essay-1",
-            draft_gen_id="draft-1",
-            combo_id="combo-1",
-            draft_template_id="draft-tpl",
-            essay_template_id="essay-tpl",
-            draft_llm_model_id="draft-llm",
-            essay_llm_model_id="essay-llm",
-            draft_replicate=1,
-            essay_replicate=2,
-        )
-    ]
+def _write_metadata(root: Path, stage: str, gen_id: str, payload: dict) -> Path:
+    target = root / "gens" / stage / gen_id / "metadata.json"
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(json.dumps(payload), encoding="utf-8")
+    return target
 
-    calls: list[tuple[str, tuple]] = []
 
-    def add_draft_row(*args):
-        calls.append(("draft", args))
-
-    def add_essay_row(*args):
-        calls.append(("essay", args))
-
-    essay_seed_combo: dict[str, str] = {}
-    existing_eval_cache: dict[str, dict[tuple[str, str], list[ExistingEvaluation]]] = {}
-
-    def fake_loader(data_root, essay_id):
-        assert data_root == tmp_path
-        assert essay_id == "essay-1"
-        return {("eval-tpl", "eval-llm"): [ExistingEvaluation("eval-1", 1)]}
-
-    build_curated_entries(
-        entries,
-        data_root=tmp_path,
-        add_draft_row=add_draft_row,
-        add_essay_row=add_essay_row,
-        essay_seed_combo=essay_seed_combo,
-        existing_eval_cache=existing_eval_cache,
-        existing_eval_loader=fake_loader,
-    )
-
-    assert calls == [
-        ("draft", ("draft-1", "combo-1", "draft-tpl", "draft-llm", 1)),
-        ("essay", ("essay-1", "draft-1", "combo-1", "essay-tpl", "essay-llm", 2)),
-    ]
-    assert essay_seed_combo == {"essay-1": "combo-1"}
-    assert existing_eval_cache == {
-        "essay-1": {("eval-tpl", "eval-llm"): [ExistingEvaluation("eval-1", 1)]}
+def test_cohort_builder_build_from_essays_reads_existing_metadata(tmp_path: Path) -> None:
+    draft_meta = {
+        "combo_id": "combo-1",
+        "template_id": "draft-tpl",
+        "llm_model_id": "draft-llm",
+        "replicate": 1,
+    }
+    essay_meta = {
+        "template_id": "essay-tpl",
+        "parent_gen_id": "draft-1",
+        "llm_model_id": "essay-llm",
+        "replicate": 2,
     }
 
+    _write_metadata(tmp_path, "draft", "draft-1", draft_meta)
+    _write_metadata(tmp_path, "essay", "essay-1", essay_meta)
 
-class _SequentialAllocator:
-    def __init__(self):
-        self.calls: list[tuple[str, tuple, int]] = []
-
-    def allocate(self, stage, base_signature, count):
-        self.calls.append((stage, base_signature, count))
-        return list(range(1, count + 1))
-
-
-def test_build_from_drafts_allocates_and_records_seed():
-    entries = [
-        CuratedDraft(
-            draft_gen_id="draft-1",
-            combo_id="combo-1",
-            draft_template_id="draft-tpl",
-            draft_llm_model_id="draft-llm",
-            draft_replicate=1,
-        )
-    ]
-
-    draft_calls: list[tuple] = []
-    essay_calls: list[tuple] = []
-
-    def add_draft_row(*args):
-        draft_calls.append(args)
-
-    def add_essay_row(*args):
-        essay_calls.append(args)
-
-    def fake_essay_id_factory(**kwargs):
-        return f"essay-{kwargs['replicate_index']}"
-
-    seed: dict[str, str] = {}
-
-    build_from_drafts(
-        entries,
-        essay_template_ids=["essay-tpl"],
-        essay_rep_count=2,
-        add_draft_row=add_draft_row,
-        add_essay_row=add_essay_row,
-        allocator=_SequentialAllocator(),
+    builder = CohortBuilder(
         cohort_id="cohort-1",
-        essay_seed_combo=seed,
-        essay_id_factory=fake_essay_id_factory,
+        data_layer=GensDataLayer(tmp_path),
+        replication_config={"draft": 1, "essay": 1, "evaluation": 1},
     )
 
-    assert draft_calls == [("draft-1", "combo-1", "draft-tpl", "draft-llm", 1)]
-    assert essay_calls == [
-        ("essay-1", "draft-1", "combo-1", "essay-tpl", "draft-llm", 1),
-        ("essay-2", "draft-1", "combo-1", "essay-tpl", "draft-llm", 2),
-    ]
-    assert seed == {"essay-1": "combo-1", "essay-2": "combo-1"}
+    rows = builder.build_from_essays(["essay-1"])
+
+    assert [row.stage for row in rows] == ["draft", "essay"]
+    draft_row, essay_row = rows
+    assert draft_row.combo_id == "combo-1"
+    assert draft_row.template_id == "draft-tpl"
+    assert draft_row.llm_model_id == "draft-llm"
+    assert essay_row.parent_gen_id == "draft-1"
+    assert essay_row.template_id == "essay-tpl"
+    assert essay_row.llm_model_id == "essay-llm"
 
 
-def test_expand_cartesian_drafts_generates_expected_rows():
-    draft_calls: list[tuple] = []
-    captured_kwargs: list[dict] = []
+def test_cohort_builder_build_from_drafts_allocates_new_essays(tmp_path: Path) -> None:
+    draft_meta = {
+        "combo_id": "combo-1",
+        "template_id": "draft-tpl",
+        "llm_model_id": "draft-llm",
+        "replicate": 1,
+    }
+    _write_metadata(tmp_path, "draft", "draft-1", draft_meta)
 
-    def add_draft_row(gen_id, combo_id, template_id, llm_model_id, replicate):
-        draft_calls.append((gen_id, combo_id, template_id, llm_model_id, replicate))
-
-    def fake_draft_id_factory(**kwargs):
-        captured_kwargs.append(kwargs)
-        return f"draft-{kwargs['combo_id']}-{kwargs['replicate_index']}"
-
-    expand_cartesian_drafts(
+    builder = CohortBuilder(
         cohort_id="cohort-1",
+        data_layer=GensDataLayer(tmp_path),
+        replication_config={"draft": 1, "essay": 2, "evaluation": 1},
+    )
+
+    rows = builder.build_from_drafts(
+        ["draft-1"],
+        essay_template_ids=["essay-tpl"],
+    )
+
+    assert len(rows) == 3  # one draft + two essays
+    draft_rows = [row for row in rows if row.stage == "draft"]
+    essay_rows = [row for row in rows if row.stage == "essay"]
+
+    assert draft_rows[0].gen_id == "draft-1"
+    assert {row.parent_gen_id for row in essay_rows} == {"draft-1"}
+    assert {row.template_id for row in essay_rows} == {"essay-tpl"}
+    assert {row.llm_model_id for row in essay_rows} == {"draft-llm"}
+    assert {row.replicate for row in essay_rows} == {1, 2}
+
+
+def test_cohort_builder_build_cartesian_expands_axes(tmp_path: Path) -> None:
+    builder = CohortBuilder(
+        cohort_id="cohort-1",
+        data_layer=GensDataLayer(tmp_path),
+        replication_config={"draft": 2, "essay": 1, "evaluation": 1},
+    )
+
+    rows = builder.build_cartesian(
         combo_ids=["combo-1"],
         draft_template_ids=["draft-tpl"],
-        generation_model_ids=["draft-llm"],
-        draft_rep_count=2,
-        add_draft_row=add_draft_row,
-        draft_id_factory=fake_draft_id_factory,
-    )
-
-    assert draft_calls == [
-        ("draft-combo-1-1", "combo-1", "draft-tpl", "draft-llm", 1),
-        ("draft-combo-1-2", "combo-1", "draft-tpl", "draft-llm", 2),
-    ]
-    assert captured_kwargs[0]["salt"] is None
-    assert captured_kwargs[1]["salt"] == "rep2"
-
-
-def test_expand_cartesian_essays_uses_allocator_and_salting():
-    draft_rows = [
-        {
-            "stage": "draft",
-            "gen_id": "draft-1",
-            "combo_id": "combo-1",
-            "template_id": "draft-tpl",
-            "llm_model_id": "draft-llm",
-            "replicate": 1,
-        }
-    ]
-
-    essay_calls: list[tuple] = []
-    captured_kwargs: list[dict] = []
-    seed: dict[str, str] = {}
-    allocator = _SequentialAllocator()
-
-    def add_essay_row(*args):
-        essay_calls.append(args)
-
-    def fake_essay_id_factory(**kwargs):
-        captured_kwargs.append(kwargs)
-        return f"essay-{kwargs['replicate_index']}"
-
-    expand_cartesian_essays(
-        cohort_id="cohort-1",
-        draft_rows=draft_rows,
         essay_template_ids=["essay-tpl"],
-        essay_rep_count=2,
-        add_essay_row=add_essay_row,
-        essay_seed_combo=seed,
-        essay_id_factory=fake_essay_id_factory,
-        allocator=allocator,
+        generation_model_ids=["draft-llm"],
     )
 
-    assert allocator.calls == [("essay", ("draft-1", "essay-tpl"), 2)]
-    assert essay_calls == [
-        ("essay-1", "draft-1", "combo-1", "essay-tpl", "draft-llm", 1),
-        ("essay-2", "draft-1", "combo-1", "essay-tpl", "draft-llm", 2),
-    ]
-    assert seed == {"essay-1": "combo-1", "essay-2": "combo-1"}
-    assert captured_kwargs[0]["salt"] is None
-    assert captured_kwargs[1]["salt"] == "rep1-2"
+    draft_rows = [row for row in rows if row.stage == "draft"]
+    essay_rows = [row for row in rows if row.stage == "essay"]
+
+    assert len(draft_rows) == 2  # replication config drives count
+    assert len(essay_rows) == 2  # drafts × essay templates × essay reps
+    assert {row.combo_id for row in draft_rows} == {"combo-1"}
+    assert all(row.gen_id.startswith("d_") for row in draft_rows)
+    assert all(row.gen_id.startswith("e_") for row in essay_rows)
 
 
-def test_build_evaluations_for_essay_reuses_existing():
-    existing_counts = {
-        ("eval-tpl", "eval-llm"): [
-            ExistingEvaluation("eval-1", 1),
-            ExistingEvaluation("eval-2", 2),
-        ]
+def test_cohort_builder_build_evaluations_reuses_existing(tmp_path: Path) -> None:
+    draft_meta = {
+        "combo_id": "combo-1",
+        "template_id": "draft-tpl",
+        "llm_model_id": "draft-llm",
+        "replicate": 1,
+    }
+    essay_meta = {
+        "template_id": "essay-tpl",
+        "parent_gen_id": "draft-1",
+        "llm_model_id": "essay-llm",
+        "replicate": 1,
+    }
+    evaluation_meta = {
+        "template_id": "eval-tpl",
+        "parent_gen_id": "essay-1",
+        "llm_model_id": "eval-llm",
+        "replicate": 1,
     }
 
-    allocator = _SequentialAllocator()
+    _write_metadata(tmp_path, "draft", "draft-1", draft_meta)
+    _write_metadata(tmp_path, "essay", "essay-1", essay_meta)
+    _write_metadata(tmp_path, "evaluation", "eval-existing", evaluation_meta)
 
-    rows, created = build_evaluations_for_essay(
-        essay_gen_id="essay-1",
-        combo_id="combo-1",
-        evaluation_templates=["eval-tpl"],
-        evaluation_models=["eval-llm"],
-        existing_counts=existing_counts,
-        evaluation_rep_count=2,
+    builder = CohortBuilder(
         cohort_id="cohort-1",
-        allocator=allocator,
-        evaluation_id_factory=lambda **kwargs: f"eval-{kwargs['replicate_index']}",
+        data_layer=GensDataLayer(tmp_path),
+        replication_config={"draft": 1, "essay": 1, "evaluation": 1},
     )
 
-    assert created == 0
-    assert allocator.calls == []
-    assert [row.to_dict() for row in rows] == [
-        {
-            "stage": "evaluation",
-            "gen_id": "eval-1",
-            "origin_cohort_id": "cohort-1",
-            "parent_gen_id": "essay-1",
-            "combo_id": "combo-1",
-            "template_id": "eval-tpl",
-            "llm_model_id": "eval-llm",
-            "replicate": 1,
-        },
-        {
-            "stage": "evaluation",
-            "gen_id": "eval-2",
-            "origin_cohort_id": "cohort-1",
-            "parent_gen_id": "essay-1",
-            "combo_id": "combo-1",
-            "template_id": "eval-tpl",
-            "llm_model_id": "eval-llm",
-            "replicate": 2,
-        },
-    ]
-
-
-def test_build_evaluations_for_essay_allocates_missing_replicates():
-    allocator = _SequentialAllocator()
-
-    rows, created = build_evaluations_for_essay(
-        essay_gen_id="essay-1",
-        combo_id="combo-1",
+    builder.build_from_essays(["essay-1"])
+    eval_rows, stats = builder.build_evaluations(
         evaluation_templates=["eval-tpl"],
         evaluation_models=["eval-llm"],
-        existing_counts={},
-        evaluation_rep_count=2,
-        cohort_id="cohort-1",
-        allocator=allocator,
-        evaluation_id_factory=lambda **kwargs: f"eval-{kwargs['replicate_index']}",
     )
 
-    assert created == 2
-    assert allocator.calls == [("evaluation", ("essay-1", "eval-tpl", "eval-llm"), 2)]
-    assert [row.to_dict() for row in rows] == [
-        {
-            "stage": "evaluation",
-            "gen_id": "eval-1",
-            "origin_cohort_id": "cohort-1",
-            "parent_gen_id": "essay-1",
-            "combo_id": "combo-1",
-            "template_id": "eval-tpl",
-            "llm_model_id": "eval-llm",
-            "replicate": 1,
-        },
-        {
-            "stage": "evaluation",
-            "gen_id": "eval-2",
-            "origin_cohort_id": "cohort-1",
-            "parent_gen_id": "essay-1",
-            "combo_id": "combo-1",
-            "template_id": "eval-tpl",
-            "llm_model_id": "eval-llm",
-            "replicate": 2,
-        },
-    ]
+    assert stats == {"created": 0, "fully_covered": 1}
+    assert len(eval_rows) == 1
+    assert eval_rows[0].gen_id == "eval-existing"
+    assert eval_rows[0].parent_gen_id == "essay-1"
+
+
+def test_cohort_builder_build_evaluations_allocates_missing(tmp_path: Path) -> None:
+    builder = CohortBuilder(
+        cohort_id="cohort-1",
+        data_layer=GensDataLayer(tmp_path),
+        replication_config={"draft": 1, "essay": 1, "evaluation": 2},
+    )
+
+    # Build essays via cartesian expansion to seed combo map.
+    builder.build_cartesian(
+        combo_ids=["combo-1"],
+        draft_template_ids=["draft-tpl"],
+        essay_template_ids=["essay-tpl"],
+        generation_model_ids=["draft-llm"],
+    )
+
+    eval_rows, stats = builder.build_evaluations(
+        evaluation_templates=["eval-tpl"],
+        evaluation_models=["eval-llm"],
+    )
+
+    assert stats["created"] == 2  # two replicates requested, none existed
+    assert stats["fully_covered"] == 0
+    assert len(eval_rows) == 2
+    assert {row.replicate for row in eval_rows} == {1, 2}
+    assert all(row.gen_id.startswith("v_") for row in eval_rows)
+
+
+def test_validate_cohort_membership_raises_on_missing_parents(tmp_path: Path) -> None:
+    membership = pd.DataFrame(
+        [
+            {
+                "stage": "evaluation",
+                "gen_id": "eval-1",
+                "origin_cohort_id": "cohort-1",
+                "parent_gen_id": "essay-missing",
+            }
+        ],
+        columns=MEMBERSHIP_COLUMNS,
+    )
+
+    with pytest.raises(DDError) as exc_info:
+        validate_cohort_membership(membership, data_root=tmp_path)
+
+    ctx = exc_info.value.ctx
+    assert ctx["reason"] == "cohort_parent_integrity_failed"
+    assert ctx["missing_essay_parents"] == ["essay-missing"]
+
+
+def test_persist_membership_csv_deduplicates_rows(tmp_path: Path) -> None:
+    membership = pd.DataFrame(
+        [
+            {"stage": "draft", "gen_id": "draft-1", "origin_cohort_id": "cohort-1"},
+            {"stage": "draft", "gen_id": "draft-1", "origin_cohort_id": "cohort-1"},
+            {"stage": "essay", "gen_id": "essay-1", "origin_cohort_id": "cohort-1"},
+        ]
+    )
+
+    data_layer = GensDataLayer(tmp_path)
+    slim_df, out_path = persist_membership_csv(
+        cohort_id="cohort-1",
+        membership=membership,
+        data_layer=data_layer,
+    )
+
+    assert len(slim_df) == 2
+    stored = pd.read_csv(out_path)
+    assert stored.equals(slim_df)
+
+
+def test_seed_cohort_metadata_creates_missing_files(tmp_path: Path) -> None:
+    membership = pd.DataFrame(
+        [
+            {
+                "stage": "draft",
+                "gen_id": "draft-1",
+                "origin_cohort_id": "cohort-1",
+                "combo_id": "combo-1",
+                "template_id": "draft-tpl",
+                "llm_model_id": "draft-llm",
+            }
+        ]
+    )
+
+    data_layer = GensDataLayer(tmp_path)
+    seed_cohort_metadata(
+        data_layer=data_layer,
+        cohort_id="cohort-1",
+        membership=membership,
+        template_modes={"draft": {"draft-tpl": "llm"}},
+    )
+
+    meta_path = data_layer.paths.metadata_path("draft", "draft-1")
+    assert meta_path.exists()
+    saved = json.loads(meta_path.read_text(encoding="utf-8"))
+    assert saved["origin_cohort_id"] == "cohort-1"
+    assert saved["template_id"] == "draft-tpl"
