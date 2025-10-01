@@ -5,6 +5,7 @@ These helpers encapsulate the shared wiring logic between Dagster assets and the
 
 from __future__ import annotations
 
+import inspect
 from typing import Callable, Optional, Sequence, Set
 
 from dagster import AssetIn, AssetKey, MetadataValue
@@ -262,11 +263,18 @@ def build_raw_asset(
         )
         return raw_text
 
-    @asset_with_boundary(stage=f"{stage}_raw", **asset_kwargs)
-    def raw_asset(context, **asset_inputs):
-        prompt_value = asset_inputs.get(input_param)
+    def raw_asset_fn(context, prompt_value=None, **asset_inputs):
         return _raw_asset_impl(context, prompt_value, asset_inputs)
 
+    raw_asset_fn.__signature__ = inspect.Signature(
+        parameters=[
+            inspect.Parameter("context", inspect.Parameter.POSITIONAL_OR_KEYWORD),
+            inspect.Parameter(input_param, inspect.Parameter.POSITIONAL_OR_KEYWORD, default=None),
+            inspect.Parameter("asset_inputs", inspect.Parameter.VAR_KEYWORD),
+        ]
+    )
+
+    raw_asset = asset_with_boundary(stage=f"{stage}_raw", **asset_kwargs)(raw_asset_fn)
     raw_asset.__doc__ = docstring
     return raw_asset
 

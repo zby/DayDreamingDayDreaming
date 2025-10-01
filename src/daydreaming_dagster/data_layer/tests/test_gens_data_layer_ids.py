@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import json
 
+import pytest
+
 from daydreaming_dagster.data_layer.gens_data_layer import GensDataLayer
 from daydreaming_dagster.utils.ids import compute_deterministic_gen_id, evaluation_signature
 
@@ -61,3 +63,34 @@ def test_reserve_evaluation_id_collision_yields_suffix(tmp_path) -> None:
     assert resolved != candidate
     assert resolved.startswith("v_")
     assert resolved.endswith("-1")
+
+
+def test_read_write_text_helpers(tmp_path) -> None:
+    layer = GensDataLayer(tmp_path)
+    layer.write_input("draft", "d1", "hello")
+    assert layer.read_input("draft", "d1") == "hello"
+
+    layer.write_raw("draft", "d1", "raw")
+    assert layer.read_raw("draft", "d1") == "raw"
+
+    layer.write_parsed("draft", "d1", "parsed")
+    assert layer.read_parsed("draft", "d1") == "parsed"
+
+
+def test_read_text_missing_raises(tmp_path) -> None:
+    layer = GensDataLayer(tmp_path)
+    with pytest.raises(Exception) as err:
+        layer.read_input("draft", "missing")
+    dd_error = err.value
+    assert getattr(dd_error, "code", None) is not None
+
+
+def test_read_json_parser_error(tmp_path) -> None:
+    layer = GensDataLayer(tmp_path)
+    meta_path = layer.paths.metadata_path("draft", "d1")
+    meta_path.parent.mkdir(parents=True, exist_ok=True)
+    meta_path.write_text("not-json", encoding="utf-8")
+    with pytest.raises(Exception) as err:
+        layer.read_main_metadata("draft", "d1")
+    dd_error = err.value
+    assert getattr(dd_error, "code", None) is not None

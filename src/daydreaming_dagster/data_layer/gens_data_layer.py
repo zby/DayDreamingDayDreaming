@@ -32,6 +32,30 @@ class GensDataLayer:
     def paths(self) -> Paths:
         return self._paths
 
+    def _write_text(self, target: Path, text: str) -> Path:
+        target.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            target.write_text(str(text or ""), encoding="utf-8")
+        except OSError as exc:
+            raise DDError(Err.IO_ERROR, ctx={"path": str(target)}) from exc
+        return target
+
+    def _write_json(self, target: Path, payload: Dict[str, Any]) -> Path:
+        target.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            target.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+        except OSError as exc:
+            raise DDError(Err.IO_ERROR, ctx={"path": str(target)}) from exc
+        return target
+
+    def _read_text(self, target: Path, *, ctx: Dict[str, Any]) -> str:
+        if not target.exists():
+            raise DDError(Err.DATA_MISSING, ctx=ctx)
+        try:
+            return target.read_text(encoding="utf-8")
+        except OSError as exc:
+            raise DDError(Err.IO_ERROR, ctx={"path": str(target)}) from exc
+
     def reserve_generation(self, stage: str, gen_id: str, *, create: bool = True) -> Path:
         target = self._paths.generation_dir(stage, gen_id)
         if create:
@@ -83,91 +107,51 @@ class GensDataLayer:
 
     def write_input(self, stage: str, gen_id: str, text: str) -> Path:
         target = self._paths.input_path(stage, gen_id)
-        target.parent.mkdir(parents=True, exist_ok=True)
-        try:
-            target.write_text(str(text or ""), encoding="utf-8")
-        except OSError as exc:
-            raise DDError(Err.IO_ERROR, ctx={"path": str(target)}) from exc
-        return target
+        return self._write_text(target, text)
 
     def read_input(self, stage: str, gen_id: str) -> str:
         target = self._paths.input_path(stage, gen_id)
-        if not target.exists():
-            raise DDError(
-                Err.DATA_MISSING,
-                ctx={
-                    "stage": stage,
-                    "gen_id": gen_id,
-                    "artifact": "input",
-                    "path": str(target),
-                },
-            )
-        try:
-            return target.read_text(encoding="utf-8")
-        except OSError as exc:
-            raise DDError(Err.IO_ERROR, ctx={"path": str(target)}) from exc
+        return self._read_text(
+            target,
+            ctx={
+                "stage": stage,
+                "gen_id": gen_id,
+                "artifact": "input",
+                "path": str(target),
+            },
+        )
 
     def write_raw(self, stage: str, gen_id: str, text: str) -> Path:
         target = self._paths.raw_path(stage, gen_id)
-        target.parent.mkdir(parents=True, exist_ok=True)
-        try:
-            target.write_text(str(text or ""), encoding="utf-8")
-        except OSError as exc:
-            raise DDError(Err.IO_ERROR, ctx={"path": str(target)}) from exc
-        return target
+        return self._write_text(target, text)
 
     def write_parsed(self, stage: str, gen_id: str, text: str) -> Path:
         target = self._paths.parsed_path(stage, gen_id)
-        target.parent.mkdir(parents=True, exist_ok=True)
-        try:
-            target.write_text(str(text or ""), encoding="utf-8")
-        except OSError as exc:
-            raise DDError(Err.IO_ERROR, ctx={"path": str(target)}) from exc
-        return target
+        return self._write_text(target, text)
 
     def write_main_metadata(self, stage: str, gen_id: str, metadata: Dict[str, Any]) -> Path:
         target = self._paths.metadata_path(stage, gen_id)
-        target.parent.mkdir(parents=True, exist_ok=True)
-        try:
-            target.write_text(json.dumps(metadata, ensure_ascii=False, indent=2), encoding="utf-8")
-        except OSError as exc:
-            raise DDError(Err.IO_ERROR, ctx={"path": str(target)}) from exc
-        return target
+        return self._write_json(target, metadata)
 
     def write_raw_metadata(self, stage: str, gen_id: str, metadata: Dict[str, Any]) -> Path:
         target = self._paths.raw_metadata_path(stage, gen_id)
-        target.parent.mkdir(parents=True, exist_ok=True)
-        try:
-            target.write_text(json.dumps(metadata, ensure_ascii=False, indent=2), encoding="utf-8")
-        except OSError as exc:
-            raise DDError(Err.IO_ERROR, ctx={"path": str(target)}) from exc
-        return target
+        return self._write_json(target, metadata)
 
     def write_parsed_metadata(self, stage: str, gen_id: str, metadata: Dict[str, Any]) -> Path:
         target = self._paths.parsed_metadata_path(stage, gen_id)
-        target.parent.mkdir(parents=True, exist_ok=True)
-        try:
-            target.write_text(json.dumps(metadata, ensure_ascii=False, indent=2), encoding="utf-8")
-        except OSError as exc:
-            raise DDError(Err.IO_ERROR, ctx={"path": str(target)}) from exc
-        return target
+        return self._write_json(target, metadata)
 
     def read_parsed(self, stage: str, gen_id: str) -> str:
         target = self._paths.parsed_path(stage, gen_id)
-        if not target.exists():
-            raise DDError(
-                Err.DATA_MISSING,
-                ctx={
-                    "stage": stage,
-                    "gen_id": gen_id,
-                    "artifact": "parsed",
-                    "path": str(target),
-                },
-            )
-        try:
-            return target.read_text(encoding="utf-8")
-        except OSError as exc:
-            raise DDError(Err.IO_ERROR, ctx={"path": str(target)}) from exc
+        return self._read_text(
+            target,
+            ctx={
+                "stage": stage,
+                "gen_id": gen_id,
+                "artifact": "parsed",
+                "path": str(target),
+            },
+        )
 
     def parsed_exists(self, stage: str, gen_id: str) -> bool:
         """Check if parsed.txt exists for the given stage and gen_id."""
@@ -186,37 +170,29 @@ class GensDataLayer:
 
     def read_raw(self, stage: str, gen_id: str) -> str:
         target = self._paths.raw_path(stage, gen_id)
-        if not target.exists():
-            raise DDError(
-                Err.DATA_MISSING,
-                ctx={
-                    "stage": stage,
-                    "gen_id": gen_id,
-                    "artifact": "raw",
-                    "path": str(target),
-                },
-            )
-        try:
-            return target.read_text(encoding="utf-8")
-        except OSError as exc:
-            raise DDError(Err.IO_ERROR, ctx={"path": str(target)}) from exc
+        return self._read_text(
+            target,
+            ctx={
+                "stage": stage,
+                "gen_id": gen_id,
+                "artifact": "raw",
+                "path": str(target),
+            },
+        )
 
     def read_main_metadata(self, stage: str, gen_id: str) -> Dict[str, Any]:
         target = self._paths.metadata_path(stage, gen_id)
-        if not target.exists():
-            raise DDError(
-                Err.DATA_MISSING,
-                ctx={
-                    "stage": stage,
-                    "gen_id": gen_id,
-                    "artifact": "metadata",
-                    "path": str(target),
-                },
-            )
+        payload = self._read_text(
+            target,
+            ctx={
+                "stage": stage,
+                "gen_id": gen_id,
+                "artifact": "metadata",
+                "path": str(target),
+            },
+        )
         try:
-            return json.loads(target.read_text(encoding="utf-8"))
-        except OSError as exc:
-            raise DDError(Err.IO_ERROR, ctx={"path": str(target)}) from exc
+            return json.loads(payload)
         except json.JSONDecodeError as exc:
             raise DDError(
                 Err.PARSER_FAILURE,
@@ -234,20 +210,17 @@ class GensDataLayer:
 
     def read_raw_metadata(self, stage: str, gen_id: str) -> Dict[str, Any]:
         target = self._paths.raw_metadata_path(stage, gen_id)
-        if not target.exists():
-            raise DDError(
-                Err.DATA_MISSING,
-                ctx={
-                    "stage": stage,
-                    "gen_id": gen_id,
-                    "artifact": "raw_metadata",
-                    "path": str(target),
-                },
-            )
+        payload = self._read_text(
+            target,
+            ctx={
+                "stage": stage,
+                "gen_id": gen_id,
+                "artifact": "raw_metadata",
+                "path": str(target),
+            },
+        )
         try:
-            return json.loads(target.read_text(encoding="utf-8"))
-        except OSError as exc:
-            raise DDError(Err.IO_ERROR, ctx={"path": str(target)}) from exc
+            return json.loads(payload)
         except json.JSONDecodeError as exc:
             raise DDError(
                 Err.PARSER_FAILURE,
@@ -262,20 +235,17 @@ class GensDataLayer:
 
     def read_parsed_metadata(self, stage: str, gen_id: str) -> Dict[str, Any]:
         target = self._paths.parsed_metadata_path(stage, gen_id)
-        if not target.exists():
-            raise DDError(
-                Err.DATA_MISSING,
-                ctx={
-                    "stage": stage,
-                    "gen_id": gen_id,
-                    "artifact": "parsed_metadata",
-                    "path": str(target),
-                },
-            )
+        payload = self._read_text(
+            target,
+            ctx={
+                "stage": stage,
+                "gen_id": gen_id,
+                "artifact": "parsed_metadata",
+                "path": str(target),
+            },
+        )
         try:
-            return json.loads(target.read_text(encoding="utf-8"))
-        except OSError as exc:
-            raise DDError(Err.IO_ERROR, ctx={"path": str(target)}) from exc
+            return json.loads(payload)
         except json.JSONDecodeError as exc:
             raise DDError(
                 Err.PARSER_FAILURE,
