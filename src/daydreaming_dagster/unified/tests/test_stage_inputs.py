@@ -6,10 +6,7 @@ from pathlib import Path
 import pytest
 
 import daydreaming_dagster.unified.stage_inputs as stage_inputs
-from daydreaming_dagster.data_layer.gens_data_layer import (
-    GensDataLayer,
-    resolve_generation_metadata,
-)
+from daydreaming_dagster.data_layer.gens_data_layer import GensDataLayer
 from daydreaming_dagster.data_layer.paths import Paths
 from daydreaming_dagster.utils.errors import DDError, Err
 
@@ -34,7 +31,10 @@ def test_stage_input_helper_copy(tmp_path: Path) -> None:
     assert text == "Copy text"
     assert info["input_mode"] == "copy"
     assert info["copied_from"].endswith("parsed.txt")
-    assert data_layer.paths.input_path("essay", "E1").read_text(encoding="utf-8") == "Copy text"
+    assert (
+        data_layer.paths.input_path("essay", "E1").read_text(encoding="utf-8")
+        == "Copy text"
+    )
 
 
 def test_stage_input_helper_draft(tmp_path: Path, monkeypatch) -> None:
@@ -50,7 +50,7 @@ def test_stage_input_helper_draft(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setattr(
         stage_inputs,
         "render_template",
-        lambda stage, template, values: "rendered",
+        lambda stage, template, values, *, paths: "rendered",
     )
     text, info = stage_inputs._stage_input_asset(
         data_layer=data_layer,
@@ -62,7 +62,10 @@ def test_stage_input_helper_draft(tmp_path: Path, monkeypatch) -> None:
     assert text == "rendered"
     assert info["input_mode"] == "prompt"
     assert info["combo_id"] == "c1"
-    assert data_layer.paths.input_path("draft", "D1").read_text(encoding="utf-8") == "rendered"
+    assert (
+        data_layer.paths.input_path("draft", "D1").read_text(encoding="utf-8")
+        == "rendered"
+    )
 
 
 def test_stage_input_asset_wires_metadata(tmp_path: Path, monkeypatch) -> None:
@@ -129,3 +132,69 @@ def test_stage_input_missing_combo(tmp_path: Path, monkeypatch) -> None:
 
     assert err.value.code is Err.DATA_MISSING
     assert err.value.ctx.get("reason") == "combo_not_found"
+
+
+@pytest.mark.parametrize(
+    "stage, gen_id, template_id, metadata_extras",
+    [
+        (
+            "draft",
+            "D_missing",
+            "draft-missing",
+            {"mode": "llm", "combo_id": "C1"},
+        ),
+        (
+            "essay",
+            "E_missing",
+            "essay-missing",
+            {"mode": "llm", "parent_gen_id": "D_parent"},
+        ),
+        (
+            "evaluation",
+            "V_missing",
+            "eval-missing",
+            {"mode": "llm", "parent_gen_id": "E_parent"},
+        ),
+    ],
+)
+def test_stage_input_missing_template(
+    tmp_path: Path,
+    stage: str,
+    gen_id: str,
+    template_id: str,
+    metadata_extras: dict[str, str],
+) -> None:
+    paths = Paths.from_str(tmp_path)
+    data_layer = GensDataLayer.from_root(tmp_path)
+    data_layer.write_main_metadata(
+        stage,
+        gen_id,
+        {"template_id": template_id, **metadata_extras},
+    )
+
+    combos = None
+    if stage == "draft":
+        combos = [types.SimpleNamespace(combo_id="C1", contents=["idea"])]
+    if stage in {"essay", "evaluation"}:
+        parent_stage = stage_inputs.effective_parent_stage(stage)
+        parent_id = metadata_extras.get("parent_gen_id")
+        assert parent_id is not None
+        parent_dir = paths.generation_dir(parent_stage, parent_id)
+        parent_dir.mkdir(parents=True, exist_ok=True)
+        (parent_dir / "parsed.txt").write_text("Parent text", encoding="utf-8")
+
+    kwargs = {}
+    if combos is not None:
+        kwargs["content_combinations"] = combos
+
+    with pytest.raises(DDError) as err:
+        stage_inputs._stage_input_asset(
+            data_layer=data_layer,
+            stage=stage,
+            gen_id=gen_id,
+            **kwargs,
+        )
+
+    assert err.value.code is Err.MISSING_TEMPLATE
+    assert err.value.ctx.get("template_id") == template_id
+    assert err.value.ctx.get("path") == str(paths.template_file(stage, template_id))

@@ -17,7 +17,9 @@ def _count_non_empty_lines(text: str) -> int:
     return sum(1 for line in text.splitlines() if line.strip())
 
 
-def _find_content_combination(content_combinations: Iterable[Any], combo_id: str) -> Any | None:
+def _find_content_combination(
+    content_combinations: Iterable[Any], combo_id: str
+) -> Any | None:
     for combo in content_combinations:
         candidate = getattr(combo, "combo_id", None)
         if candidate is None and isinstance(combo, dict):
@@ -72,7 +74,9 @@ def _stage_input_asset(
             {
                 "input_mode": "copy",
                 "copied_from": str(
-                    data_layer.parsed_path(parent_stage, metadata.parent_gen_id).resolve()
+                    data_layer.parsed_path(
+                        parent_stage, metadata.parent_gen_id
+                    ).resolve()
                 ),
             }
         )
@@ -156,7 +160,12 @@ def _stage_input_asset(
                 ctx={"stage": stage, "reason": "unsupported_stage"},
             )
 
-        input_text = render_template(stage, metadata.template_id, template_vars)
+        input_text = render_template(
+            stage,
+            metadata.template_id,
+            template_vars,
+            paths=data_layer.paths,
+        )
         input_path = data_layer.write_input(stage, gen_id, input_text)
 
     info["input_path"] = str(input_path)

@@ -45,28 +45,28 @@ def parent_stage_of(stage: Stage) -> Optional[Stage]:
     return _PARENT_STAGE_MAP.get(stage)
 
 
-def _templates_root(default: Optional[Path] = None) -> Path:
-    """Resolve templates root, honoring optional override and GEN_TEMPLATES_ROOT.
-
-    Kept for back-compat; new code should use Paths(...).templates_root().
-    """
-    if default:
-        return Path(default)
-    return Paths.from_str("data").templates_root()
-
-
 def render_template(
     stage: Stage,
     template_id: str,
     values: Dict[str, Any],
     *,
-    templates_root: Optional[Path] = None,
+    paths: Paths,
 ) -> str:
-    base = (_templates_root(templates_root) / stage)
-    path = base / f"{template_id}.txt"
-    if not path.exists():
-        raise FileNotFoundError(f"Template not found: {path}")
-    tpl = _JINJA.from_string(path.read_text(encoding="utf-8"))
+    template_path = paths.template_file(stage, template_id)
+    if not template_path.exists():
+        raise DDError(
+            Err.MISSING_TEMPLATE,
+            ctx={
+                "stage": stage,
+                "template_id": template_id,
+                "path": str(template_path),
+            },
+        )
+    try:
+        template_source = template_path.read_text(encoding="utf-8")
+    except OSError as exc:
+        raise DDError(Err.IO_ERROR, ctx={"path": str(template_path)}) from exc
+    tpl = _JINJA.from_string(template_source)
     return tpl.render(**values)
 
 
@@ -126,7 +126,9 @@ def resolve_generator_mode(
     override_from_prompt: Optional[str] = None,
     filter_active: Optional[bool] = None,
 ) -> Literal["llm", "copy"]:
-    if isinstance(override_from_prompt, str) and override_from_prompt.strip().upper().startswith("COPY_MODE"):
+    if isinstance(
+        override_from_prompt, str
+    ) and override_from_prompt.strip().upper().startswith("COPY_MODE"):
         return "copy"
 
     if filter_active is None:
@@ -141,7 +143,11 @@ def resolve_generator_mode(
     if "generator" not in df.columns:
         raise DDError(
             Err.INVALID_CONFIG,
-            ctx={"stage": kind, "missing": "generator", "reason": "missing_generator_column"},
+            ctx={
+                "stage": kind,
+                "missing": "generator",
+                "reason": "missing_generator_column",
+            },
         )
 
     row = df[df["template_id"].astype(str) == str(template_id)]
@@ -255,7 +261,9 @@ def resolve_parser_name(
         raise
 
 
-def parse_text(stage: Stage, raw_text: str, parser_name: Optional[str]) -> Optional[str]:
+def parse_text(
+    stage: Stage, raw_text: str, parser_name: Optional[str]
+) -> Optional[str]:
     """Parse raw_text using the named parser.
 
     Behavior:
@@ -319,7 +327,9 @@ def execute_llm(
     raw_text, info = generate_llm(llm, prompt_text, model=model, max_tokens=max_tokens)
 
     # Resolve parser name using centralized policy
-    eff_parser_name: Optional[str] = resolve_parser_name(Path(root_dir), stage, template_id, parser_name)
+    eff_parser_name: Optional[str] = resolve_parser_name(
+        Path(root_dir), stage, template_id, parser_name
+    )
 
     parsed = parse_text(stage, raw_text, eff_parser_name)
     if stage == "essay" and not isinstance(parsed, str):
@@ -339,8 +349,12 @@ def execute_llm(
     meta.update(
         {
             "parser_name": eff_parser_name,
-            "finish_reason": (info or {}).get("finish_reason") if isinstance(info, dict) else None,
-            "truncated": bool((info or {}).get("truncated")) if isinstance(info, dict) else False,
+            "finish_reason": (
+                (info or {}).get("finish_reason") if isinstance(info, dict) else None
+            ),
+            "truncated": (
+                bool((info or {}).get("truncated")) if isinstance(info, dict) else False
+            ),
             "usage": (info or {}).get("usage") if isinstance(info, dict) else None,
             "duration_s": round(time.time() - t0, 3),
         }
@@ -361,8 +375,12 @@ def execute_llm(
     # Total tokens if provided by the provider info
     usage = meta.get("usage")
     if isinstance(usage, dict):
-        token_value = usage.get("total_tokens") or usage.get("totalTokens") or usage.get("total")
-        meta["total_tokens"] = int(token_value) if isinstance(token_value, (int, float)) else None
+        token_value = (
+            usage.get("total_tokens") or usage.get("totalTokens") or usage.get("total")
+        )
+        meta["total_tokens"] = (
+            int(token_value) if isinstance(token_value, (int, float)) else None
+        )
     else:
         meta["total_tokens"] = None
     _merge_extras(meta, metadata_extra)
@@ -386,7 +404,13 @@ def execute_llm(
     else:
         write_metadata(gens_root, stage, str(gen_id), meta)
 
-    validate_result(stage, raw_text, info, min_lines=min_lines, fail_on_truncation=bool(fail_on_truncation))
+    validate_result(
+        stage,
+        raw_text,
+        info,
+        min_lines=min_lines,
+        fail_on_truncation=bool(fail_on_truncation),
+    )
 
     if isinstance(parsed, str):
         meta["files"]["parsed"] = str((paths.parsed_path(stage, str(gen_id))).resolve())
@@ -395,7 +419,13 @@ def execute_llm(
         else:
             write_parsed(gens_root, stage, str(gen_id), str(parsed))
 
-    return ExecutionResult(prompt_text=prompt_text, raw_text=raw_text, parsed_text=parsed, info=info, metadata=meta)
+    return ExecutionResult(
+        prompt_text=prompt_text,
+        raw_text=raw_text,
+        parsed_text=parsed,
+        info=info,
+        metadata=meta,
+    )
 
 
 ## write_generation helper removed; explicit write_* calls are used inline
@@ -426,7 +456,9 @@ def _base_meta(
     }
 
 
-def _merge_extras(meta: Dict[str, Any], extras: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+def _merge_extras(
+    meta: Dict[str, Any], extras: Optional[Dict[str, Any]]
+) -> Dict[str, Any]:
     if extras:
         for k, v in extras.items():
             if k not in meta:
@@ -453,7 +485,12 @@ def execute_copy(
     data_layer = GensDataLayer.from_root(data_root)
     data_layer.reserve_generation(stage, gen_id, create=True)
     meta = _base_meta(
-        stage=stage, gen_id=str(gen_id), template_id=template_id, model=None, parent_gen_id=str(parent_gen_id), mode="copy"
+        stage=stage,
+        gen_id=str(gen_id),
+        template_id=template_id,
+        model=None,
+        parent_gen_id=str(parent_gen_id),
+        mode="copy",
     )
     meta["files"] = {"parsed": str(paths.parsed_path(stage, str(gen_id)).resolve())}
     meta["duration_s"] = round(time.time() - t0, 3)
@@ -462,7 +499,9 @@ def execute_copy(
         meta["replicate"] = 1
     data_layer.write_parsed(stage, gen_id, str(parsed))
     data_layer.write_main_metadata(stage, gen_id, meta)
-    return ExecutionResult(prompt_text=None, raw_text=None, parsed_text=parsed, info=None, metadata=meta)
+    return ExecutionResult(
+        prompt_text=None, raw_text=None, parsed_text=parsed, info=None, metadata=meta
+    )
 
 
 __all__ = [

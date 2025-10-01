@@ -16,6 +16,7 @@ from daydreaming_dagster.unified.stage_core import (
 )
 from daydreaming_dagster.utils.errors import DDError, Err
 from daydreaming_dagster.utils.parser_registry import ParserError
+from daydreaming_dagster.data_layer.paths import Paths
 
 
 class _StubLLM:
@@ -30,24 +31,29 @@ class _StubLLM:
 
 
 def test_render_template_happy(tmp_path: Path):
-    root = tmp_path / "1_raw" / "templates" / "draft"
+    paths = Paths.from_str(tmp_path)
+    root = paths.template_dir("draft")
     root.mkdir(parents=True, exist_ok=True)
     (root / "foo.txt").write_text("Hello {{name}}", encoding="utf-8")
-    out = render_template("draft", "foo", {"name": "X"}, templates_root=tmp_path / "1_raw" / "templates")
+    out = render_template("draft", "foo", {"name": "X"}, paths=paths)
     assert out == "Hello X"
 
 
 def test_render_template_missing_file(tmp_path: Path):
-    with pytest.raises(FileNotFoundError):
-        render_template("draft", "missing", {}, templates_root=tmp_path / "1_raw" / "templates")
+    paths = Paths.from_str(tmp_path)
+    with pytest.raises(DDError) as err:
+        render_template("draft", "missing", {}, paths=paths)
+    assert err.value.code is Err.MISSING_TEMPLATE
+    assert err.value.ctx.get("template_id") == "missing"
 
 
 def test_render_template_strict_undefined(tmp_path: Path):
-    root = tmp_path / "1_raw" / "templates" / "draft"
+    paths = Paths.from_str(tmp_path)
+    root = paths.template_dir("draft")
     root.mkdir(parents=True, exist_ok=True)
     (root / "foo.txt").write_text("Hello {{name}}", encoding="utf-8")
     with pytest.raises(Exception):
-        render_template("draft", "foo", {}, templates_root=tmp_path / "1_raw" / "templates")
+        render_template("draft", "foo", {}, paths=paths)
 
 
 def test_generate_llm_normalizes_crlf():
@@ -110,7 +116,10 @@ def test_execute_copy_writes_only_parsed_and_metadata(tmp_path: Path):
 
 
 def test_execute_draft_llm_happy_path(tmp_path: Path):
-    llm = _StubLLM("header\n<essay>Foo</essay>\n", info={"finish_reason": "stop", "truncated": False})
+    llm = _StubLLM(
+        "header\n<essay>Foo</essay>\n",
+        info={"finish_reason": "stop", "truncated": False},
+    )
     res = execute_llm(
         stage="draft",
         llm=llm,
@@ -198,9 +207,6 @@ def test_execute_essay_llm_identity_parse(tmp_path: Path):
     assert res.parsed_text == res.raw_text
 
 
-    
-
-
 def test_metadata_extra_does_not_override(tmp_path: Path):
     llm = _StubLLM("ok")
     res = execute_llm(
@@ -243,7 +249,9 @@ def test_validate_result_min_lines_and_truncation():
     assert err.value.ctx.get("reason") == "truncated_response"
 
     # No failure when truncation disabled
-    validate_result("essay", "line\n", {"truncated": True}, min_lines=None, fail_on_truncation=False)
+    validate_result(
+        "essay", "line\n", {"truncated": True}, min_lines=None, fail_on_truncation=False
+    )
 
 
 def test_execute_llm_io_injection_early_write_order_failure(tmp_path: Path):
