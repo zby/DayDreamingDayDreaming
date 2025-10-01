@@ -3,9 +3,8 @@ from __future__ import annotations
 from dagster import MetadataValue
 from ._decorators import asset_with_boundary
 import pandas as pd
-from pathlib import Path
 import json
-from ..constants import STAGES
+from ..types import STAGES
 from ..data_layer.paths import Paths
 
 

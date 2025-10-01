@@ -16,6 +16,12 @@ PARSED_FILENAME = "parsed.txt"
 METADATA_FILENAME = "metadata.json"
 RAW_METADATA_FILENAME = "raw_metadata.json"
 PARSED_METADATA_FILENAME = "parsed_metadata.json"
+GEN_ARTIFACT_FILENAMES = (
+    PROMPT_FILENAME,
+    RAW_FILENAME,
+    PARSED_FILENAME,
+    METADATA_FILENAME,
+)
 
 
 @dataclass(frozen=True)
@@ -159,4 +165,5 @@ __all__ = [
     "METADATA_FILENAME",
     "RAW_METADATA_FILENAME",
     "PARSED_METADATA_FILENAME",
+    "GEN_ARTIFACT_FILENAMES",
 ]

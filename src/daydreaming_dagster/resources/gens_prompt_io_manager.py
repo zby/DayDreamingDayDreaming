@@ -3,7 +3,7 @@ from __future__ import annotations
 from dagster import IOManager, OutputContext, InputContext
 from pathlib import Path
 
-from ..constants import STAGES
+from ..types import STAGES
 from ..data_layer.gens_data_layer import GensDataLayer
 from ..utils.errors import DDError, Err
 
