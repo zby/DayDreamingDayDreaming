@@ -16,11 +16,12 @@ This directory contains the top 3 essays by average evaluation score after fixin
 - Combo ID: `combo_v1_85128e4e5ef3`
 - Origin cohort: `best_novelty_all_evals`
 
-**Input Concepts:**
+**Input Concepts (5 total):**
 1. Dearth of AI-driven Discoveries
 2. Default Mode Network
-3. Generator-Verifier Gap
-4. Economic Innovation Models
+3. Economic Innovation Models
+4. Economic Moat
+5. Generator-Verifier Gap
 
 **Replication:**
 To reproduce this essay from source materials in the repository:
@@ -42,11 +43,12 @@ To reproduce this essay from source materials in the repository:
 - Combo ID: `combo_v1_f74195c24ea7`
 - Origin cohort: `best_novelty_all_evals`
 
-**Input Concepts:**
+**Input Concepts (5 total):**
 1. Dearth of AI-driven Discoveries
 2. Default Mode Network
 3. Economic Innovation Models
 4. Economic Moat
+5. Flywheel Effect
 
 **Replication:**
 To reproduce this essay from source materials in the repository:
@@ -113,12 +115,9 @@ This resulted in significant score improvements:
 ## Source Materials (in repository)
 
 All inputs needed for replication are in `data/1_raw/`:
-- **Concept definitions:** `data/1_raw/concepts/{concept-id}.txt`
-  - `dearth-ai-discoveries.txt`
-  - `default-mode-network.txt`
-  - `generator-verifier-gap.txt`
-  - `economic-innovation-models.txt`
-  - `economic-moat-v1.txt`
+- **Concept definitions:** `data/1_raw/concepts/descriptions-{level}/{concept-id}.txt`
+  - Concepts are organized by description level (sentence, paragraph, essay)
+  - Used concepts: dearth-ai-discoveries, default-mode-network, economic-innovation-models, economic-moat, flywheel-effect, generator-verifier-gap
 - **Draft templates:** `data/1_raw/templates/draft/{template-id}.txt`
 - **Essay templates:** `data/1_raw/templates/essay/{template-id}.txt`
 - **Evaluation templates:** `data/1_raw/templates/evaluation/{template-id}.txt`
