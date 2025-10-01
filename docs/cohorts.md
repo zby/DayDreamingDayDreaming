@@ -20,6 +20,8 @@ What the assets do
   - Registers dynamic partitions add‑only for draft/essay/evaluation.
   - Enforces parent integrity (essays → drafts; evaluations → essays) within the same cohort.
 
+> **Authoritative source:** `membership.csv` is the only file that defines cohort membership. The `origin_cohort_id` field stored inside `data/gens/**/metadata.json` is **provenance only** – it records the cohort that first produced an artifact and is not updated on refills. Do not infer membership from `origin_cohort_id`; rely on the membership CSV and the deterministic `cohort_id` instead.
+
 Two ways to build a cohort
 - Curated mode (selection-driven):
   - Input: write essay `gen_id`s to `data/2_tasks/selected_essays.txt` (one per line), **or** write draft `gen_id`s to `data/2_tasks/selected_drafts.txt`. At most one of these files may exist.
@@ -41,6 +43,7 @@ Practical tips
 How it propagates
 - Generation/evaluation assets read cohort membership at runtime to resolve templates, models, parents, and combo IDs. Task CSVs are optional curated inputs only.
 - All gens `metadata.json` files include `cohort_id`.
+- `origin_cohort_id` in metadata is informational and may reflect the cohort that originally created an artifact. It is intentionally not used for orchestration decisions.
 
 Overrides
 - Environment: `DD_COHORT` forces an explicit ID (e.g., curated re‑run name).

@@ -150,6 +150,8 @@ for existing_gen_id in existing_to_include:
 
 This ensures that if 50 evaluations exist for an essay+template+model but `replication_config.csv` says `evaluation=4`, only the first 4 (lexicographically sorted by gen_id) are included in the cohort.
 
+> **Reminder:** backfills never rewrite `origin_cohort_id` inside existing `metadata.json` files. That field records the cohort that first produced an artifact and is not used to register partitions. Always rely on the freshly written `data/cohorts/<cohort_id>/membership.csv` (and the `cohort_id` column) to understand which runs belong to the current cohort.
+
 ## Related Files
 
 - `src/daydreaming_dagster/assets/group_evaluation.py` - Skip logic in evaluation assets
