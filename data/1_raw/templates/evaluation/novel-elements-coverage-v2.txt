@@ -1,0 +1,48 @@
+RESPONSE TO EVALUATE:
+{{ response }}
+
+--- EVALUATION INSTRUCTIONS ---
+
+Goal
+Assess whether the text captures the core novel elements and mechanism specificity of the DayDreaming LLMs concept. This evaluation focuses on whether the OUTPUT demonstrates understanding of the mechanism, regardless of how it arrived at that understanding.
+
+Important Context
+- Treat "Daydreaming LLMs" as a mechanism that was novel at the time of training (pre–June 2025).
+- This evaluation assesses the OUTPUT's coverage and clarity, not the process that generated it.
+- Original phrasing is valued, but naming the concept explicitly (e.g., "Daydreaming LLMs") or using similar terminology is acceptable if the mechanism is correctly described.
+
+Checklist A — Coverage of Novel Elements (pass/fail for each)
+Check whether the text clearly covers all of the following elements:
+1) Background novelty generation: A continuous or idle-time process for open-ended idea generation (not just memory consolidation or routine fine-tuning).
+2) Generator–critic (or generator–verifier) dynamic: A component proposes non-obvious connections (often from existing internal knowledge), and a distinct component evaluates them for qualities like novelty/insight/value.
+3) Feedback integration loop: Validated outputs are integrated back into the system's memory/knowledge base to seed further exploration (prospective, compounding knowledge creation).
+4) Strategic/economic rationale: The process is acknowledged as costly but defended as a long-term R&D investment that produces proprietary data and helps overcome finite human-generated data ("data wall"), yielding competitive advantage ("data moat").
+
+Checklist B — Mechanism Specificity (pass/fail for each)
+5) Multi-stage process with state and feedback signals.
+6) Memory/externalization or tool use is described concretely.
+7) Selection/filters for ideas or artifacts are specified.
+8) Termination/roll-over criteria or continuation policy is stated.
+
+Checklist C — Clarity and Coherence (pass/fail for each)
+9) Clear articulation: The mechanism is explained with sufficient detail that a reader could understand the key components and their interactions.
+10) Coherent integration: The elements connect logically; the text demonstrates how the pieces fit together into a complete system.
+
+Scoring (0–9)
+Use a holistic score with these weights as guidance:
+- Coverage of Novel Elements (A): 0–4 points
+- Mechanism Specificity (B): 0–3 points
+- Clarity & Coherence (C): 0–2 points
+
+Guidance
+0–2: Does not capture the core mechanism or purpose; missing most items in A.
+3–4: Captures background novelty generation OR generator–critic, but lacks feedback integration and/or strategic rationale; mechanism is vague.
+5–6: Captures most of A with some of B; may lack clarity on how components integrate; strategy may be thin.
+7–8: Captures all of A and most of B; clear articulation; strong strategic framing.
+9: Satisfies all items in A, B, and C; comprehensive, coherent, and convincingly articulated with strong mechanistic detail.
+
+Output Format
+- Provide a concise analysis referencing each checklist item (A1–A4, B5–B8, C9–C10) as Present/Absent with one short justification each.
+- End with EXACTLY one final line: "SCORE: X" where X is a single digit 0–9.
+
+SCORE: X

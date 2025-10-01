@@ -5,7 +5,8 @@ gemini-prior-art-eval,Prior Art gemini, Gemini research based prior art evaluati
 gemini-prior-art-eval-v2,Prior Art gemini V2 (terminology-flex),Terminology‑flex prior art evaluation (mechanism priority),in_last_line,llm,True
 interdisciplinary-coherence,Interdisciplinary Coherence,Specialized template for evaluating interdisciplinary work and domain integration,in_last_line,llm,True
 iterative-loops-v2,Iterative Loops V2,Evaluates autonomous iterative refinement systems with SCORE final line.,in_last_line,llm,True
-novel-elements-coverage-v1,Novel Elements Coverage,"Checks coverage of novel elements, mechanism specificity, originality, and leakage (0–9 score)",in_last_line,llm,True
+novel-elements-coverage-v1,Novel Elements Coverage,"Checks coverage of novel elements, mechanism specificity, originality, and leakage (0–9 score)",in_last_line,llm,False
+novel-elements-coverage-v2,Novel Elements Coverage V2,"Evaluates coverage of novel elements, mechanism specificity, clarity and coherence without penalizing output terminology (0–9 score)",in_last_line,llm,True
 novelty,Novelty,Binary originality auditor for N1/N2 novel ideas with strict operational requirements,in_last_line,llm,True
 novelty-v2,Novelty V2,Originality auditor with partial credit for near-miss inventions,in_last_line,llm,True
 o3-prior-art-eval,Prior Art o3, O3 research based prior art evaluation,in_last_line,llm,True
