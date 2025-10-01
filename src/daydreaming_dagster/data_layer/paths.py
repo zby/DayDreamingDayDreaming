@@ -132,6 +132,9 @@ class Paths:
     def cohort_aggregated_scores_csv(self) -> Path:
         return self.parsing_dir / "cohort_aggregated_scores.csv"
 
+    def evaluation_scores_normalized_csv(self, cohort_id: str) -> Path:
+        return self.summary_dir / f"{cohort_id}_evaluation_scores.csv"
+
     # --- Constructors ---
     @classmethod
     def from_context(cls, context) -> "Paths":

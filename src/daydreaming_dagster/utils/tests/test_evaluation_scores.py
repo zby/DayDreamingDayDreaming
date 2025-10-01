@@ -4,9 +4,14 @@ import json
 
 import pandas as pd
 
+from daydreaming_dagster.data_layer.evaluation_scores import (
+    read_normalized_evaluation_scores,
+    write_normalized_evaluation_scores,
+)
 from daydreaming_dagster.data_layer.paths import Paths
 
 from daydreaming_dagster.utils.evaluation_scores import (
+    NORMALIZED_EVALUATION_SCORE_COLUMNS,
     aggregate_evaluation_scores_for_ids,
     parent_ids_missing_template,
     rank_parent_essays_by_template,
@@ -101,6 +106,14 @@ def test_aggregate_scores_prefers_llm_ids_and_omits_stage(tmp_path):
     assert row["copied_from"].endswith("essay/essay-123/parsed.txt")
     assert "stage" not in df.columns
     assert "evaluation_model" not in df.columns
+
+    normalized = aggregate_evaluation_scores_for_ids(data_root, [eval_id], normalized=True)
+    assert list(normalized.columns) == NORMALIZED_EVALUATION_SCORE_COLUMNS
+    normalized_row = normalized.iloc[0]
+    assert normalized_row["gen_id"] == eval_id
+    assert normalized_row["generation_template"] == "essay-template"
+    assert normalized_row["draft_template"] == "draft-template"
+    assert normalized_row["evaluation_response_path"].endswith("parsed.txt")
 
 
 def test_rank_parent_essays_by_template_aggregates_max_and_orders():
@@ -223,3 +236,37 @@ def test_rows_to_dataframe_backfills_expected_columns():
         "copied_from",
     }
     assert expected.issubset(set(df.columns))
+    assert len(df) == 0
+
+
+def test_normalized_scores_round_trip(tmp_path):
+    paths = Paths.from_str(str(tmp_path))
+    cohort_id = "cohort-xyz"
+
+    df = pd.DataFrame([
+        {
+            "gen_id": "evaluation-1",
+            "parent_gen_id": "essay-1",
+            "evaluation_template": "novelty",
+            "evaluation_llm_model": "eval-model",
+            "score": 8.2,
+            "error": None,
+            "evaluation_response_path": "/tmp/eval.txt",
+            "combo_id": "combo-1",
+            "draft_template": "draft-template",
+            "generation_template": "essay-template",
+            "generation_model": "essay-llm",
+            "origin_cohort_id": "cohort-xyz",
+            "generation_response_path": "/tmp/essay.txt",
+            "input_mode": "copy",
+            "copied_from": "/tmp/copy.txt",
+        }
+    ])
+
+    path = write_normalized_evaluation_scores(paths, cohort_id, df)
+    assert path.exists()
+
+    loaded = read_normalized_evaluation_scores(paths, cohort_id)
+    assert list(loaded.columns) == NORMALIZED_EVALUATION_SCORE_COLUMNS
+    assert loaded.iloc[0]["score"] == 8.2
+    assert loaded.iloc[0]["evaluation_template"] == "novelty"

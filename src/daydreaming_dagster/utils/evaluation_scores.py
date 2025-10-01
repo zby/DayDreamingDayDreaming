@@ -30,6 +30,25 @@ class _DraftRecord:
     metadata: Dict[str, Any]
 
 
+NORMALIZED_EVALUATION_SCORE_COLUMNS = [
+    "gen_id",
+    "parent_gen_id",
+    "evaluation_template",
+    "evaluation_llm_model",
+    "score",
+    "error",
+    "evaluation_response_path",
+    "combo_id",
+    "draft_template",
+    "generation_template",
+    "generation_model",
+    "origin_cohort_id",
+    "generation_response_path",
+    "input_mode",
+    "copied_from",
+]
+
+
 class _EvaluationScoreAggregator:
     def __init__(
         self,
@@ -233,49 +252,43 @@ def _normalize_parent_id(value: object) -> str | None:
     return text
 
 
-def aggregate_evaluation_scores_for_ids(data_root: Path, gen_ids: Iterable[str]) -> pd.DataFrame:
+def aggregate_evaluation_scores_for_ids(
+    data_root: Path,
+    gen_ids: Iterable[str],
+    *,
+    normalized: bool = False,
+) -> pd.DataFrame:
     """Aggregate evaluation scores for the given evaluation gen_ids.
 
-    For each id under data/gens/evaluation/<gen_id> reads parsed.txt and metadata.json, and
-    enriches with generation-side metadata (essay/draft). Returns a DataFrame with columns:
-
-    - gen_id, parent_gen_id
-    - evaluation_template, evaluation_llm_model
-    - score (float or None), error (str or None)
-    - evaluation_response_path, generation_response_path
-    - combo_id, draft_template, generation_template, generation_model
+    The function always constructs the normalized long-form schema described by
+    ``NORMALIZED_EVALUATION_SCORE_COLUMNS``. Set ``normalized=True`` to receive that
+    long-form DataFrame directly. By default the same normalized frame is returned to
+    preserve the historical API while callers migrate to the explicit flag.
     """
     paths = Paths.from_str(str(data_root))
     aggregator = _EvaluationScoreAggregator(paths=paths)
     rows = aggregator.collect_rows(gen_ids)
-    return _rows_to_dataframe(rows)
+    normalized_df = _rows_to_normalized_dataframe(rows)
+    if normalized:
+        return normalized_df
+    return normalized_df
 
 
 def _rows_to_dataframe(rows: List[Dict[str, Any]]) -> pd.DataFrame:
+    return _rows_to_normalized_dataframe(rows)
+
+
+def _rows_to_normalized_dataframe(rows: List[Dict[str, Any]]) -> pd.DataFrame:
     df = pd.DataFrame(rows)
-    expected_columns = [
-        "gen_id",
-        "parent_gen_id",
-        "evaluation_template",
-        "evaluation_llm_model",
-        "score",
-        "error",
-        "evaluation_response_path",
-        "combo_id",
-        "draft_template",
-        "generation_template",
-        "generation_model",
-        "generation_response_path",
-        "origin_cohort_id",
-        "input_mode",
-        "copied_from",
-    ]
-    for col in expected_columns:
+    for col in NORMALIZED_EVALUATION_SCORE_COLUMNS:
         if col not in df.columns:
             df[col] = None
     if "score" in df.columns:
         df["score"] = pd.to_numeric(df["score"], errors="coerce")
-    return df[expected_columns + [c for c in df.columns if c not in expected_columns]]
+    ordered = NORMALIZED_EVALUATION_SCORE_COLUMNS + [
+        c for c in df.columns if c not in NORMALIZED_EVALUATION_SCORE_COLUMNS
+    ]
+    return df[ordered]
 
 
 def rank_parent_essays_by_template(
