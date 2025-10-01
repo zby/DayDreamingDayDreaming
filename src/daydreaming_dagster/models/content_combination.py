@@ -33,9 +33,14 @@ class ContentCombination:
             contents.append({"name": concept.name, "content": content})
             concept_ids.append(concept.concept_id)
         
-        # Generate combo_id if not provided
         if combo_id is None:
-            combo_id = f"combo_{hash(tuple(concept_ids)) % 100000:05d}"
+            raise DDError(
+                Err.INVALID_CONFIG,
+                ctx={
+                    "reason": "missing_combo_id",
+                    "concept_ids": concept_ids,
+                },
+            )
         
         return cls(
             contents=contents, 
