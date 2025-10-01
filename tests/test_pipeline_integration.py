@@ -315,6 +315,7 @@ class TestPipelineIntegration:
                 # Then materialize the rest (include cohort assets to satisfy dependencies)
                 result = materialize(
                     [
+                        selected_combo_mappings,
                         cohort_id,
                         cohort_membership,
                         content_combinations,
@@ -644,13 +645,17 @@ class TestPipelineIntegration:
                     cohort_id,
                     cohort_membership,
                 )
-                from daydreaming_dagster.resources.io_managers import CSVIOManager
+                from daydreaming_dagster.resources.io_managers import (
+                    CSVIOManager,
+                    InMemoryIOManager,
+                )
                 from daydreaming_dagster.resources.experiment_config import ExperimentConfig
 
                 resources = {
                     "data_root": str(temp_data_dir),
                     "csv_io_manager": CSVIOManager(base_path=temp_data_dir / "2_tasks"),
                     "io_manager": _DictIOManager(),
+                    "in_memory_io_manager": InMemoryIOManager(),
                     "experiment_config": ExperimentConfig(k_max=2, description_level="paragraph"),
                 }
 
@@ -658,11 +663,15 @@ class TestPipelineIntegration:
                 result = materialize([selected_combo_mappings], resources=resources, instance=instance)
                 assert result.success, "selected_combo_mappings materialization should succeed"
 
-                result = materialize([content_combinations], resources=resources, instance=instance)
+                result = materialize(
+                    [selected_combo_mappings, content_combinations],
+                    resources=resources,
+                    instance=instance,
+                )
                 assert result.success, "content_combinations materialization should succeed"
 
                 result = materialize(
-                    [content_combinations, cohort_id, cohort_membership],
+                    [selected_combo_mappings, content_combinations, cohort_id, cohort_membership],
                     resources=resources,
                     instance=instance,
                 )
