@@ -136,7 +136,7 @@ LLM generation/evaluation assets remain manual to avoid surprise API usage/costs
 **Purpose**: Generate experiment structure and authoritative cohort membership
 
 **Data Flow**:
-1. **Concept Combinations**: Generate k_max-sized combinations from concepts or consume a curated `selected_combo_mappings` CSV.
+1. **Concept Combinations**: Generate k_max-sized combinations from concepts in-memory (`selected_combo_mappings`). Legacy curated CSVs can still be managed manually, but the pipeline no longer reads them directly.
 2. **Cohort ID**: Compute deterministic ID from active combos/templates/models and replication targets, then write the manifest.
 3. **Cohort Membership**: Build normalized rows for `draft`, `essay`, and `evaluation` and register dynamic partitions by `gen_id`.
 

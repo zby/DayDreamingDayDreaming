@@ -477,7 +477,10 @@ class TestPipelineIntegration:
                 
                 # Import selection generator and content_combinations (no fallback)
                 from daydreaming_dagster.assets.group_cohorts import selected_combo_mappings, content_combinations
-                from daydreaming_dagster.resources.io_managers import CSVIOManager
+                from daydreaming_dagster.resources.io_managers import (
+                    CSVIOManager,
+                    InMemoryIOManager,
+                )
                 from daydreaming_dagster.resources.experiment_config import ExperimentConfig
                 
                 test_data_root = str(temp_data_dir)
@@ -485,23 +488,17 @@ class TestPipelineIntegration:
                 resources = {
                     "data_root": test_data_root,
                     "csv_io_manager": CSVIOManager(base_path=Path(test_data_root) / "2_tasks"),
-                    "experiment_config": ExperimentConfig(k_max=2, description_level="paragraph")
+                    "in_memory_io_manager": InMemoryIOManager(fallback_data_root=Path(test_data_root)),
+                    "experiment_config": ExperimentConfig(k_max=2, description_level="paragraph"),
                 }
                 
-                # Generate selection first, then combinations
+                # Materialize selection + combinations together so the in-memory output wires correctly
                 result = materialize(
-                    [selected_combo_mappings],
+                    [selected_combo_mappings, content_combinations],
                     resources=resources,
                     instance=instance,
                 )
-                assert result.success, "Selected combo mappings materialization should succeed"
-                
-                result = materialize(
-                    [content_combinations],
-                    resources=resources,
-                    instance=instance,
-                )
-                
+
                 assert result.success, "Content combinations materialization should succeed"
                 
                 # Test the superset mapping file

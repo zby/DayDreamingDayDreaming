@@ -992,6 +992,7 @@ def validate_cohort_membership(
 def cohort_membership(
     context,
     cohort_id: str,
+    selected_combo_mappings: pd.DataFrame,
 ) -> pd.DataFrame:
     """Build the authoritative cohort membership CSV with normalized columns per stage.
 
@@ -1063,21 +1064,11 @@ def cohort_membership(
             else []
         )
 
-        sel_path = data_layer.paths.selected_combo_mappings_csv
-        try:
-            sel_df = pd.read_csv(sel_path)
-        except FileNotFoundError as exc:
-            raise DDError(
-                Err.DATA_MISSING,
-                ctx={"reason": "selected_combo_mappings_missing", "path": str(sel_path)},
-                cause=exc,
-            )
+        sel_df = selected_combo_mappings if isinstance(selected_combo_mappings, pd.DataFrame) else pd.DataFrame()
 
         combo_ids: List[str] = []
         if not sel_df.empty and "combo_id" in sel_df.columns:
-            combo_ids = (
-                sel_df["combo_id"].astype(str).dropna().unique().tolist()
-            )
+            combo_ids = sel_df["combo_id"].astype(str).dropna().unique().tolist()
 
         rows.extend(
             builder.build_cartesian(
@@ -1243,11 +1234,14 @@ def cohort_id(context, content_combinations: list[ContentCombination]) -> str:
 @asset_with_boundary(
     stage="cohort",
     group_name="cohort",
-    io_manager_key="csv_io_manager",
+    io_manager_key="in_memory_io_manager",
     required_resource_keys={"experiment_config", "data_root"},
 )
 def selected_combo_mappings(context) -> pd.DataFrame:
-    """Regenerate selected combo mappings from active concepts (deterministic ID)."""
+    """Regenerate selected combo mappings from active concepts (deterministic ID).
+
+    Output is kept in-memory via the in-memory IO manager; no CSV is written to disk.
+    """
     from ..utils.combo_ids import ComboIDManager
     data_root = Paths.from_context(context).data_root
     cfg = context.resources.experiment_config
@@ -1282,34 +1276,39 @@ def selected_combo_mappings(context) -> pd.DataFrame:
     io_manager_key="io_manager",
     required_resource_keys={"experiment_config", "data_root"},
 )
-def content_combinations(context) -> list[ContentCombination]:
-    """Build combinations for generation. Preferred source: selected_combo_mappings.csv.
+def content_combinations(
+    context,
+    selected_combo_mappings: pd.DataFrame,
+) -> list[ContentCombination]:
+    """Build combinations for generation using in-memory selected_combo_mappings data.
 
-    Raises on missing/unreadable selected_combo_mappings.csv (let pandas exceptions bubble up).
-    If the file is readable but yields no valid combos, fall back to one combo from active concepts.
+    If the provided DataFrame is empty or lacks valid combos, fall back to deriving a single
+    combination from the active concepts.
     """
     data_root = Paths.from_context(context).data_root
-    import pandas as _pd
-    selected_path = data_root / "2_tasks" / "selected_combo_mappings.csv"
-    try:
-        sel = _pd.read_csv(selected_path)
-    except FileNotFoundError as exc:
-        raise DDError(
-            Err.DATA_MISSING,
-            ctx={"reason": "selected_combo_mappings_missing", "path": str(selected_path)},
-            cause=exc,
-        )
+
+    sel = selected_combo_mappings if isinstance(selected_combo_mappings, pd.DataFrame) else pd.DataFrame()
 
     if not sel.empty:
         all_concepts = {c.concept_id: c for c in read_concepts(data_root, filter_active=False)}
         combos: list[ContentCombination] = []
         for combo_id, group in sel.groupby("combo_id"):
-            level = str(group.iloc[0]["description_level"]) if "description_level" in group.columns else "paragraph"
+            level = (
+                str(group.iloc[0]["description_level"])
+                if "description_level" in group.columns
+                else "paragraph"
+            )
             concept_ids = [str(cid) for cid in group["concept_id"].astype(str).tolist()]
             concepts = [all_concepts[cid] for cid in concept_ids if cid in all_concepts]
             if len(concepts) != len(concept_ids):
                 continue
-            combos.append(ContentCombination.from_concepts(concepts, level=level, combo_id=str(combo_id)))
+            combos.append(
+                ContentCombination.from_concepts(
+                    concepts,
+                    level=level,
+                    combo_id=str(combo_id),
+                )
+            )
         if combos:
             return combos
     # Fallback: derive from active concepts using description_level/k_max

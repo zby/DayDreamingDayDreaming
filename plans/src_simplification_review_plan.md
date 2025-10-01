@@ -3,9 +3,9 @@
 Goal: produce a prioritized list of refactor recommendations that simplify `src/daydreaming_dagster` without altering published contracts. Record stretch ideas that require breaking APIs/data layouts when they unlock substantial simplification.
 
 ## 0. Scope & Constraints
-- Include every module under `src/daydreaming_dagster/`; skip `scripts/` for now.
-- Preserve guarantees from `tools/refactor_contract.yaml`, error codes/types, and file schemas.
-- Review outcome: recommendations + supporting observations, not code changes.
+- Cover every module under `src/daydreaming_dagster/` (assets, data_layer, unified, utils, etc.); defer `scripts/` unless a recommendation needs confirmation of downstream usage.
+- Preserve guarantees from `tools/refactor_contract.yaml`, error codes/types, and file schemas produced by the Dagster assets (e.g., cohort membership CSVs, normalized evaluation scores CSVs).
+- Review outcome: prioritized recommendations + supporting observations, not code edits.
 
 ## 1. Preparation Pass
 - Read `AGENTS.md`, `tools/refactor_contract.yaml`, and module-level READMEs to confirm expectations.
@@ -28,42 +28,42 @@ Focus points:
 Deliverable: list of simplification candidates (per file) + test impacts.
 
 ### Batch B — Assets & Resources Boundary
-Targets: `assets/`, `resources/`.
+Targets: `assets/`, `resources/`, shared asset helpers (`assets/stage_asset_helpers.py`, `assets/_error_boundary.py`).
 Focus points:
 - Asset/resource signatures vs. Dagster IO manager expectations.
 - Repeated try/except ladders; confirm only boundary layers format errors.
-- Opportunities to inject dependencies instead of global lookups.
+- Opportunities to inject dependencies instead of global lookups; confirm skip/resume metadata is centralized via `resume_notice`.
 Deliverable: recommendations for asset/resource consolidation and clearer dependency flow; flag bold refactors (contract-breaking) separately with migration thoughts.
 
 ### Batch C — Data Layer Foundations
-Targets: `data_layer/` (paths, readers, writers, adapters).
+Targets: `data_layer/` (paths, gens data layer, evaluation_scores, parsers).
 Focus points:
 - Path helpers vs. direct string concatenations; enforce `Paths` usage.
-- Serialization/deserialization: ensure structured errors, remove incidental logging.
-- Highlight IO primitives that should be pure or memoized.
-Deliverable: prioritized list for data layer cleanup and validation strategy; note any high-impact schema rewrites even if they would break consumers.
+- Serialization/deserialization: ensure structured errors, remove incidental logging; validate new normalized evaluation score tables and any other cohort outputs.
+- Highlight IO primitives that should be pure or memoized; check for duplication with `GensDataLayer` now that legacy utils are gone.
+Deliverable: prioritized list for data layer cleanup and validation strategy; note any high-impact schema rewrites (e.g., alternate normalization formats) even if they would break consumers.
 
-### Batch D — Domain Models & Types
-Targets: `models/`, `types.py`, `unified/`.
+### Batch D — Domain Models & Unified Stage Helpers
+Targets: `models/`, `types.py`, `unified/` (stage input/raw/parsed, parser registry).
 Focus points:
 - Validate dataclass/TypedDict usage; merge redundant schema definitions.
 - Check alignment between models and downstream validators/parsers.
 - Flag complicated transformations that could be simplified or split.
 Deliverable: model refactor ideas and notes on schema interactions; capture disruptive schema/API simplifications with clear risk callouts.
 
-### Batch E — Utilities & Constants
-Targets: `utils/`, `constants.py`.
+### Batch E — Utilities & Cross-Cutting Helpers
+Targets: `utils/` (evaluation_scores, evaluation_processing, ids, errors, raw readers).
 Focus points:
-- Identify utilities that should move closer to callers or be deleted.
+- Identify utilities that should move closer to callers or be deleted (e.g., legacy shims now covered by data_layer).
 - Ensure error helpers follow the structured error pattern.
-- Look for reusable pieces that can replace ad-hoc logic uncovered in earlier batches.
+- Look for reusable pieces that can replace ad-hoc logic uncovered in earlier batches; confirm evaluation ranking still separates aggregation from presentation.
 Deliverable: shortlist of utility consolidations and deprecations; include bold removals that would require contract updates.
 
 ## 3. Cross-Cutting Analysis
-- Map error-code usage across batches; confirm no incidental message coupling remains.
-- Aggregate complexity hotspots (functions/classes) for potential extraction or deletion.
-- Note testing gaps that affect multiple batches and propose targeted unit/integration tests.
-- Identify logging boundaries and recommend a single formatting layer where missing.
+- Map error-code usage across batches; confirm no incidental message coupling remains and that `Err` codes surface through the new data-layer helpers.
+- Aggregate complexity hotspots (functions/classes) for potential extraction or deletion; include updated Radon snapshots (e.g., `seed_cohort_metadata`, `_prepare_curated_entries`).
+- Note testing gaps that affect multiple batches and propose targeted unit/integration tests (e.g., normalized evaluation scores round trip).
+- Identify logging/resume boundaries and recommend a single formatting layer where missing.
 - Highlight deterministic-ID touchpoints to ensure new recommendations stay inside the simplification contract.
 
 ## 4. Synthesize Recommendations

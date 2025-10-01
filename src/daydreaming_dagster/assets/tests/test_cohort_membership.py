@@ -126,7 +126,11 @@ def test_cohort_membership_curated_includes_all_stages(base_data_root: Path) -> 
     )
 
     context = build_asset_context(resources={"data_root": str(data_root)})
-    df = cohort_membership(context, cohort_id=cohort_id)
+    df = cohort_membership(
+        context,
+        cohort_id=cohort_id,
+        selected_combo_mappings=pd.DataFrame(),
+    )
 
     # Unified behavior: membership includes existing draft + essay + existing eval
     assert set(df["stage"]) == {"draft", "essay", "evaluation"}
@@ -178,17 +182,26 @@ def test_cohort_membership_cartesian_multiple_replicates(tmp_path: Path) -> None
             {"id": "eval-model", "for_generation": False, "for_evaluation": True},
         ],
     )
-    _write_csv(
-        data_root / "2_tasks" / "selected_combo_mappings.csv",
-        [{"combo_id": "combo-1", "concept_id": "c1"}],
-    )
-
     (data_root / "gens" / "draft").mkdir(parents=True, exist_ok=True)
     (data_root / "gens" / "essay").mkdir(parents=True, exist_ok=True)
     (data_root / "gens" / "evaluation").mkdir(parents=True, exist_ok=True)
 
     context = build_asset_context(resources={"data_root": str(data_root)})
-    df = cohort_membership(context, cohort_id="cohort-cart")
+    selected_df = pd.DataFrame(
+        [
+            {
+                "combo_id": "combo-1",
+                "concept_id": "c1",
+                "description_level": "paragraph",
+                "k_max": 2,
+            }
+        ]
+    )
+    df = cohort_membership(
+        context,
+        cohort_id="cohort-cart",
+        selected_combo_mappings=selected_df,
+    )
 
     drafts = df[df["stage"] == "draft"]["gen_id"].tolist()
     essays = df[df["stage"] == "essay"]["gen_id"].tolist()
@@ -233,7 +246,11 @@ def test_curfated_selection_conflict_raises(base_data_root: Path) -> None:
 
     context = build_asset_context(resources={"data_root": str(data_root)})
     with pytest.raises(Failure) as err:
-        cohort_membership(context, cohort_id="cohort-conflict")
+        cohort_membership(
+            context,
+            cohort_id="cohort-conflict",
+            selected_combo_mappings=pd.DataFrame(),
+        )
     failure = err.value
     assert failure.metadata["error_code"].value == "INVALID_CONFIG"
     ctx = failure.metadata.get("error_ctx")
@@ -283,7 +300,11 @@ def test_curated_with_comments(base_data_root: Path) -> None:
     )
 
     context = build_asset_context(resources={"data_root": str(data_root)})
-    df = cohort_membership(context, cohort_id="cohort-with-comments")
+    df = cohort_membership(
+        context,
+        cohort_id="cohort-with-comments",
+        selected_combo_mappings=pd.DataFrame(),
+    )
 
     # Should succeed and include all stages
     assert set(df["stage"]) == {"draft", "essay", "evaluation"}

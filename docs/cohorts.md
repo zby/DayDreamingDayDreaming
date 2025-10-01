@@ -31,7 +31,7 @@ Two ways to build a cohort
   - When to use: reproducing or re-evaluating a specific subset of historical essays; migrating legacy outputs; ad‑hoc comparisons.
   - Pros: no Cartesian explosion; exactly the rows you want. Cons: requires existing gens and accurate parent links in metadata.
 - Cartesian mode (active-axes-driven):
-  - Input: no `selected_essays.txt`. Cohort derives from active rows in `data/1_raw/*.csv` and the curated `selected_combo_mappings.csv`.
+  - Input: no `selected_essays.txt`. Cohort derives from active rows in `data/1_raw/*.csv`; `selected_combo_mappings` now computes the combination set in-memory from those actives.
   - Behavior: builds drafts from `content_combinations × draft_templates × generation_models`, essays from `drafts × essay_templates`, and evaluations from `essays × evaluation_templates × evaluation_models`.
   - When to use: fresh experiments over a controlled search space (explicit “cube”). Pros: reproducible full-factor run. Cons: can get large quickly; you must manage which templates/models are marked `active=true`.
 

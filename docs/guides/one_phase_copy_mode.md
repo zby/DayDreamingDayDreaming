@@ -16,7 +16,7 @@ Setup
    - Edit `data/1_raw/essay_templates.csv` and set one row to `active=true` and `generator=copy` (e.g., `parsed-from-links-v1`).
    - Optional: deactivate `llm` essay templates to avoid mixing modes in Cartesian cohorts.
 2) Build cohort
-   - Cartesian: select combos (via `selected_combo_mappings.csv`) and ensure desired draft templates/models are active; then:
+   - Cartesian: rely on `selected_combo_mappings` to generate combos from the active concept set and ensure desired draft templates/models are active; then:
      - `uv run dagster asset materialize --select "cohort_id,cohort_membership" -f src/daydreaming_dagster/definitions.py`
    - Curated: create `data/2_tasks/selected_essays.txt` with essay `gen_id`s from prior runs; then materialize the two assets as above.
 3) Materialize partitions

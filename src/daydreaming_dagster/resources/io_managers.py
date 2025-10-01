@@ -98,13 +98,14 @@ class InMemoryIOManager(IOManager):
         self._fallback_root = Path(fallback_data_root) if fallback_data_root else None
 
     def handle_output(self, context: OutputContext, obj):
-        key = (tuple(context.asset_key.path), context.partition_key)
+        partition_key = context.partition_key if context.has_partition_key else None
+        key = (tuple(context.asset_key.path), partition_key)
         self._store[key] = obj
 
     def load_input(self, context: InputContext):
         # Avoid deprecated upstream_output.partition_key access — use InputContext.partition_key
         upstream = context.upstream_output
-        partition_key = context.partition_key
+        partition_key = context.partition_key if context.has_partition_key else None
         stage_asset = upstream.asset_key.path[-1] if upstream.asset_key.path else ""
         key = (tuple(upstream.asset_key.path), partition_key)
         if key not in self._store:
