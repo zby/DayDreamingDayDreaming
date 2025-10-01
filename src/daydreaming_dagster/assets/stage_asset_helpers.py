@@ -5,7 +5,7 @@ These helpers encapsulate the shared wiring logic between Dagster assets and the
 
 from __future__ import annotations
 
-from typing import Optional, Sequence, Set
+from typing import Callable, Optional, Sequence, Set
 
 from dagster import AssetIn, AssetKey, MetadataValue
 
@@ -29,6 +29,36 @@ def _resolve_stage_settings(context, stage: Stage):
     if experiment_config is None:
         return None
     return experiment_config.stage_config.get(stage)
+
+
+def _return_cached_artifact(
+    *,
+    skip_if_parsed_exists: bool,
+    context,
+    data_layer: GensDataLayer,
+    stage: Stage,
+    gen_id: str,
+    artifact: str,
+    reader: Callable[[Stage, str], str],
+):
+    if not skip_if_parsed_exists:
+        return None
+    if not data_layer.parsed_exists(stage, gen_id):
+        return None
+    cached_value = reader(stage, gen_id)
+    context.add_output_metadata(
+        {
+            "resume": MetadataValue.json(
+                resume_notice(
+                    stage=str(stage),
+                    gen_id=gen_id,
+                    artifact=artifact,
+                    reason="parsed_exists",
+                )
+            )
+        }
+    )
+    return cached_value
 
 
 def build_prompt_asset(
@@ -62,21 +92,17 @@ def build_prompt_asset(
             data_layer = GensDataLayer.from_root(context.resources.data_root)
             gen_id = str(context.partition_key)
 
-            if skip_if_parsed_exists and data_layer.parsed_exists(stage, gen_id):
-                input_text = data_layer.read_input(stage, gen_id)
-                context.add_output_metadata(
-                    {
-                        "resume": MetadataValue.json(
-                            resume_notice(
-                                stage=str(stage),
-                                gen_id=gen_id,
-                                artifact="prompt",
-                                reason="parsed_exists",
-                            )
-                        )
-                    }
-                )
-                return input_text
+            cached = _return_cached_artifact(
+                skip_if_parsed_exists=skip_if_parsed_exists,
+                context=context,
+                data_layer=data_layer,
+                stage=stage,
+                gen_id=gen_id,
+                artifact="prompt",
+                reader=data_layer.read_input,
+            )
+            if cached is not None:
+                return cached
 
             input_text, info = _stage_input_asset(
                 data_layer=data_layer,
@@ -102,21 +128,17 @@ def build_prompt_asset(
             data_layer = GensDataLayer.from_root(context.resources.data_root)
             gen_id = str(context.partition_key)
 
-            if skip_if_parsed_exists and data_layer.parsed_exists(stage, gen_id):
-                input_text = data_layer.read_input(stage, gen_id)
-                context.add_output_metadata(
-                    {
-                        "resume": MetadataValue.json(
-                            resume_notice(
-                                stage=str(stage),
-                                gen_id=gen_id,
-                                artifact="prompt",
-                                reason="parsed_exists",
-                            )
-                        )
-                    }
-                )
-                return input_text
+            cached = _return_cached_artifact(
+                skip_if_parsed_exists=skip_if_parsed_exists,
+                context=context,
+                data_layer=data_layer,
+                stage=stage,
+                gen_id=gen_id,
+                artifact="prompt",
+                reader=data_layer.read_input,
+            )
+            if cached is not None:
+                return cached
 
             input_text, info = _stage_input_asset(
                 data_layer=data_layer,
@@ -173,21 +195,17 @@ def build_raw_asset(
         data_layer = GensDataLayer.from_root(context.resources.data_root)
         gen_id = str(context.partition_key)
 
-        if skip_if_parsed_exists and data_layer.parsed_exists(stage, gen_id):
-            raw_text = data_layer.read_raw(stage, gen_id)
-            context.add_output_metadata(
-                {
-                    "resume": MetadataValue.json(
-                        resume_notice(
-                            stage=str(stage),
-                            gen_id=gen_id,
-                            artifact="raw",
-                            reason="parsed_exists",
-                        )
-                    )
-                }
-            )
-            return raw_text
+        cached = _return_cached_artifact(
+            skip_if_parsed_exists=skip_if_parsed_exists,
+            context=context,
+            data_layer=data_layer,
+            stage=stage,
+            gen_id=gen_id,
+            artifact="raw",
+            reader=data_layer.read_raw,
+        )
+        if cached is not None:
+            return cached
 
         prompt_text = prompt_value
         if prompt_text is None:
@@ -244,15 +262,11 @@ def build_raw_asset(
         )
         return raw_text
 
-    namespace: dict[str, object] = {"_raw_asset_impl": _raw_asset_impl}
-    exec(
-        "def _generated_raw_asset(context, {param}=None, **asset_inputs):\n"
-        "    return _raw_asset_impl(context, {param}, asset_inputs)\n".format(param=input_param),
-        namespace,
-    )
-    raw_fn = namespace["_generated_raw_asset"]
+    @asset_with_boundary(stage=f"{stage}_raw", **asset_kwargs)
+    def raw_asset(context, **asset_inputs):
+        prompt_value = asset_inputs.get(input_param)
+        return _raw_asset_impl(context, prompt_value, asset_inputs)
 
-    raw_asset = asset_with_boundary(stage=f"{stage}_raw", **asset_kwargs)(raw_fn)
     raw_asset.__doc__ = docstring
     return raw_asset
 
@@ -286,21 +300,17 @@ def build_parsed_asset(
         data_layer = GensDataLayer.from_root(context.resources.data_root)
         gen_id = str(context.partition_key)
 
-        if skip_if_parsed_exists and data_layer.parsed_exists(stage, gen_id):
-            parsed_text = data_layer.read_parsed(stage, gen_id)
-            context.add_output_metadata(
-                {
-                    "resume": MetadataValue.json(
-                        resume_notice(
-                            stage=str(stage),
-                            gen_id=gen_id,
-                            artifact="parsed",
-                            reason="parsed_exists",
-                        )
-                    )
-                }
-            )
-            return parsed_text
+        cached = _return_cached_artifact(
+            skip_if_parsed_exists=skip_if_parsed_exists,
+            context=context,
+            data_layer=data_layer,
+            stage=stage,
+            gen_id=gen_id,
+            artifact="parsed",
+            reader=data_layer.read_parsed,
+        )
+        if cached is not None:
+            return cached
 
         raw_text = data_layer.read_raw(stage, gen_id)
 

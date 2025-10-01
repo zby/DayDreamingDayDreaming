@@ -123,28 +123,55 @@ def test_stage_assets_share_expected_metadata(case: _StageAssetExpectation) -> N
     assert case.asset_def.asset_deps[asset_key] == case.deps
 
 
-def test_evaluation_assets_skip_when_parsed_exists(tmp_path) -> None:
-    gen_id = "G-001"
+@dataclass(frozen=True)
+class _ResumeCase:
+    stage: str
+    prompt_asset: object
+    raw_asset: object
+    parsed_asset: object
+    prompt_kwargs: dict[str, object]
+    raw_kwargs: dict[str, object]
+
+
+_RESUME_CASES = [
+    _ResumeCase(
+        stage="evaluation",
+        prompt_asset=evaluation_prompt,
+        raw_asset=evaluation_raw,
+        parsed_asset=evaluation_parsed,
+        prompt_kwargs={},
+        raw_kwargs={"evaluation_prompt": "cached-input"},
+    ),
+]
+
+
+@pytest.mark.parametrize("case", _RESUME_CASES)
+def test_stage_assets_skip_when_parsed_exists(case: _ResumeCase, tmp_path) -> None:
+    gen_id = f"G-{case.stage}-001"
     data_layer = GensDataLayer.from_root(tmp_path)
-    data_layer.reserve_generation("evaluation", gen_id, create=True)
-    data_layer.write_input("evaluation", gen_id, "cached-input")
-    data_layer.write_raw("evaluation", gen_id, "cached-raw")
-    data_layer.write_parsed("evaluation", gen_id, "cached-parsed")
+    data_layer.reserve_generation(case.stage, gen_id, create=True)
+    data_layer.write_input(case.stage, gen_id, "cached-input")
+    data_layer.write_raw(case.stage, gen_id, "cached-raw")
+    data_layer.write_parsed(case.stage, gen_id, "cached-parsed")
 
     @dataclass
     class _ExperimentConfig:
         stage_config: dict[str, object] = None
 
-    def _context():
-        return build_asset_context(
-            partition_key=gen_id,
-            resources={
-                "data_root": str(tmp_path),
-                "experiment_config": _ExperimentConfig(stage_config={}),
-                "openrouter_client": object(),
-            },
-        )
+    resources = {
+        "data_root": str(tmp_path),
+        "experiment_config": _ExperimentConfig(stage_config={}),
+        "openrouter_client": object(),
+    }
 
-    assert evaluation_prompt(_context()) == "cached-input"
-    assert evaluation_raw(_context(), evaluation_prompt="cached-input") == "cached-raw"
-    assert evaluation_parsed(_context()) == "cached-parsed"
+    def _context():
+        return build_asset_context(partition_key=gen_id, resources=resources)
+
+    prompt_result = case.prompt_asset(_context(), **case.prompt_kwargs)
+    assert prompt_result == "cached-input"
+
+    raw_result = case.raw_asset(_context(), **case.raw_kwargs)
+    assert raw_result == "cached-raw"
+
+    parsed_result = case.parsed_asset(_context())
+    assert parsed_result == "cached-parsed"
