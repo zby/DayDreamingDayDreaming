@@ -30,6 +30,10 @@ def write_spec(tmp_path: Path) -> Path:
                         }
                     }
                 ],
+                "output": {
+                    "keep_pair_axis": True,
+                    "field_order": ["draft_template", "essay_template", "draft_essay"],
+                },
             }
         ),
         encoding="utf-8",
@@ -56,7 +60,7 @@ def test_cli_writes_csv(tmp_path: Path) -> None:
     assert exit_code == 0
     content = out_path.read_text(encoding="utf-8").splitlines()
     header = content[0].split(",")
-    assert set(header) == {"draft_template", "essay_template"}
+    assert header == ["draft_template", "essay_template", "draft_essay"]
 
 
 def test_cli_writes_jsonl(tmp_path: Path) -> None:
@@ -79,6 +83,7 @@ def test_cli_writes_jsonl(tmp_path: Path) -> None:
     lines = out_path.read_text(encoding="utf-8").strip().splitlines()
     payload = json.loads(lines[0])
     assert payload["draft_template"] == "draft-A"
+    assert list(payload.keys()) == ["draft_template", "essay_template", "draft_essay"]
 
 
 def test_cli_catalog_csv_support(tmp_path: Path) -> None:

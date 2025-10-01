@@ -5,7 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 from pathlib import Path
-from typing import Iterable
+from typing import Iterable, Mapping
 
 from daydreaming_dagster.data_layer.paths import Paths
 from daydreaming_dagster.spec_dsl import compile_design, load_spec
@@ -50,7 +50,8 @@ def main(argv: Iterable[str] | None = None) -> int:
     if args.out:
         out_path = Path(args.out)
         fmt = args.format or out_path.suffix.lstrip(".") or "csv"
-        _write_rows(rows, out_path, fmt)
+        field_order = spec.output.get("field_order") if isinstance(spec.output, Mapping) else None
+        _write_rows(rows, out_path, fmt, field_order=field_order)
     else:
         limit = args.limit or len(rows)
         for row in rows[:limit]:
@@ -61,7 +62,7 @@ def main(argv: Iterable[str] | None = None) -> int:
     return 0
 
 
-def _write_rows(rows, out: Path, fmt: str) -> None:
+def _write_rows(rows, out: Path, fmt: str, field_order: list[str] | None = None) -> None:
     if fmt == "jsonl":
         import json
 
@@ -73,7 +74,22 @@ def _write_rows(rows, out: Path, fmt: str) -> None:
     if fmt == "csv":
         import csv
 
-        fieldnames = sorted({field for row in rows for field in row.keys()})
+        if rows:
+            fieldnames: list[str] = []
+            seen: set[str] = set()
+            if isinstance(field_order, list):
+                for field in field_order:
+                    if any(field in row for row in rows) and field not in seen:
+                        fieldnames.append(field)
+                        seen.add(field)
+            for row in rows:
+                for key in row.keys():
+                    if key not in seen:
+                        fieldnames.append(key)
+                        seen.add(key)
+        else:
+            fieldnames = list(field_order or [])
+
         with out.open("w", newline="", encoding="utf-8") as fh:
             writer = csv.DictWriter(fh, fieldnames=fieldnames)
             writer.writeheader()
