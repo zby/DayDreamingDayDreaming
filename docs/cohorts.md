@@ -3,8 +3,7 @@
 Cohorts are explicit, reproducible identifiers that bind a complete run of the pipeline (task set and generated artifacts) to a single ID.
 
 See also
-- Curated Runs Quickstart: docs/guides/selection_and_cube.md
-  (this content has been merged below; see Curated Selection Quickstart)
+- Curated Selection Quickstart (below) for step-by-step instructions.
 
 What the assets do
 - Asset `cohort_id` (group `cohort`) computes a deterministic ID from a manifest of:
@@ -56,7 +55,7 @@ Recommended policy
 CLI examples
 ```bash
 # Curated: write selected essays then build cohort
-uv run python scripts/select_top_prior_art.py --top-n 25 --parsed-scores data/7_cross_experiment/aggregated_scores.csv
+uv run python scripts/select_top_essays.py --template gemini-prior-art-eval --top-n 25
 uv run dagster asset materialize --select "cohort_id,cohort_membership" -f src/daydreaming_dagster/definitions.py
 
 # Cartesian: no selection file; cohort_membership derives from active axes
@@ -98,15 +97,17 @@ Prerequisites
 - Start Dagster for a richer experience: `uv run dagster dev -f src/daydreaming_dagster/definitions.py`.
 
 Step 1 — Select essay gen_ids
-- Use `scripts/select_top_prior_art.py` to pick top‑N by prior‑art scores. The script writes `data/2_tasks/selected_essays.txt` with one essay `gen_id` per line.
+- Use `scripts/select_top_essays.py` to pick top‑N essays by evaluation score (template + averaging strategy). The script writes `data/2_tasks/selected_essays.txt` with one essay `gen_id` per line.
 
 Example
 ```bash
-uv run python scripts/select_top_prior_art.py \
+uv run python scripts/select_top_essays.py \
+  --template gemini-prior-art-eval \
   --top-n 25 \
-  --parsed-scores data/7_cross_experiment/aggregated_scores.csv \
-  # optional: --prior-art-templates gemini-prior-art-eval gemini-prior-art-eval-v2
+  --aggregated-scores data/7_cross_experiment/aggregated_scores.csv
 ```
+
+The selection script defaults to `data/7_cross_experiment/aggregated_scores.csv`; override `--aggregated-scores` if you are testing a different export.
 
 Notes
 - `selected_essays.txt` is the input signal for curated cohort builds. When present, the cohort

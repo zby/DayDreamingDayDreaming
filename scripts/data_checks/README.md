@@ -7,6 +7,7 @@ Small utilities for auditing the gens store and raw configuration files.
 - `find_duplicate_generations.py`: hash `raw.txt` payloads to highlight duplicate generations by stage.
 - `find_missing_combo_concepts.py`: cross-check `combo_mappings.csv` against `concepts_metadata.csv` to spot missing concept rows.
 - `parent_chain_check.py`: ensure essay/evaluation parents (and grandparent drafts) exist with readable metadata.
+- `report_gen_id_lengths.py`: summarize generation ID length distribution per stage (helps track migration progress).
 - `recompute_gen_ids.py`: recompute deterministic IDs from metadata and surface mismatches or signature errors.
 - `templates_without_generations.py`: list templates with zero gens-store usage (supports stage filters and draft-only listings).
 - `validate_template_csvs.py`: enforce schema expectations for the template CSVs under `data/1_raw/`.

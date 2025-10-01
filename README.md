@@ -66,17 +66,21 @@ print(paths.parsed_path("essay", "<gen_id>"))  # data/gens/essay/<gen_id>/parsed
 - Storage conventions (single source of truth): `src/daydreaming_dagster/data_layer/paths.py`
 
 ---
-For curated selection, cohorts, and advanced workflows, see:
-- docs/cohorts.md
-- docs/guides/selection_and_cube.md
-export DAGSTER_HOME="$(pwd)/dagster_home"
+For curated selection, cohorts, and advanced workflows, start with docs/cohorts.md (especially the curated selection quickstart). Typical flow:
+```bash
+export DAGSTER_HOME=$(pwd)/dagster_home
+
+# 1) Pick essays worth rerunning (writes data/2_tasks/selected_essays.txt)
+uv run python scripts/select_top_essays.py --template gemini-prior-art-eval --top-n 25
+
+# 2) Register cohort membership and dynamic partitions by gen_id
 uv run dagster asset materialize --select "cohort_id,cohort_membership" -f src/daydreaming_dagster/definitions.py
 
 # 3) Materialize drafts → essays → evaluations using the registered partitions
 uv run dagster asset materialize --select "group:cohort" -f src/daydreaming_dagster/definitions.py
 ```
 
-The membership asset writes `data/cohorts/<cohort_id>/membership.csv` (wide rows by stage) and registers dynamic partitions add‑only. Task assets project their tables from membership; generation/evaluation assets run as before.
+The membership asset writes `data/cohorts/<cohort_id>/membership.csv` (one row per stage/gen_id) and registers dynamic partitions add‑only. Task assets project their tables from membership; generation/evaluation assets run as before.
 
 ### Cross‑Experiment Views
 
@@ -133,6 +137,7 @@ uv run pytest --cov=daydreaming_dagster
 
 - `OPENROUTER_API_KEY`: OpenRouter API key for LLM access
 - `DAGSTER_HOME`: Dagster metadata storage (set to absolute path of `dagster_home/` directory)
+- `DAYDREAMING_DATA_ROOT`: Override the default `data/` root when running against alternate storage mounts
 - Gens store layout: Draft/essay/evaluation prompts and responses are stored under `data/gens/<stage>/<gen_id>` as `prompt.txt`, `raw.txt`, `parsed.txt`, and `metadata.json`.
 
 ### Cohorts (deterministic run IDs)

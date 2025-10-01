@@ -16,12 +16,12 @@
 - 219 deterministic (18 chars)
 - **15% legacy IDs**
 
-**Evaluations** (4154 total):
+**Evaluations** (4790 total):
 - 1 legacy (15 chars)
-- 18 legacy (16 chars)
-- 754 legacy (17 chars)
-- 3381 deterministic (18 chars)
-- **19% legacy IDs**
+- 22 legacy (16 chars)
+- 866 legacy (17 chars)
+- 3901 deterministic (18 chars)
+- **18.6% legacy IDs**
 
 ### ID Format
 
@@ -146,9 +146,9 @@ To compute deterministic IDs, we need this metadata for each generation:
 }
 ```
 
-**Status Check (2025-02-XX)**
+**Status Check (2025-03-18)**
 
-We re-ran an exhaustive audit over `data/gens/**/metadata.json` and confirmed that drafts, essays, and evaluations now contain every field required to compute deterministic IDs. Essays no longer persist `combo_id` directly; when needed we derive it from the parent draft during migration/analysis. Evaluations already load their combo from the parent chain as well. No additional backfill is required.
+Run `scripts/data_checks/report_gen_id_lengths.py` to refresh the length distribution above. For deterministic ID validation, pair it with `scripts/data_checks/recompute_gen_ids.py`. We re-ran both checks on 2025-03-18 and confirmed that drafts, essays, and evaluations now contain every field required to compute deterministic IDs. Essays no longer persist `combo_id` directly; when needed we derive it from the parent draft during migration/analysis. Evaluations already load their combo from the parent chain as well. No additional backfill is required.
 
 ## Migration Strategy Options
 

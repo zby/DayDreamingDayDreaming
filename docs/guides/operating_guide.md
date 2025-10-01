@@ -4,7 +4,7 @@ This comprehensive guide covers everything you need to know to set up, run, and 
 
 See also
 - Documentation Index: docs/index.md
-- Curated Runs Quickstart: docs/guides/selection_and_cube.md
+- Curated Runs Quickstart: docs/cohorts.md#curated-selection-quickstart
 - Cohorts & membership: docs/cohorts.md
 
 ## Table of Contents
@@ -34,7 +34,9 @@ See also
 2. **Set environment variables:**
    ```bash
    export OPENROUTER_API_KEY="your_api_key_here"
-  export DAGSTER_HOME="$(pwd)/dagster_home"
+   export DAGSTER_HOME="$(pwd)/dagster_home"
+   # Optional: point the pipeline at an alternate gens store
+   export DAYDREAMING_DATA_ROOT="/abs/path/to/data"
    ```
 
 3. **Verify configuration:**
@@ -256,10 +258,11 @@ Use the selection script to write a list of essay gen_ids, then let Dagster buil
 `uv run python scripts/aggregate_scores.py --output data/7_cross_experiment/aggregated_scores.csv`.
 In all examples below, treat `parent_gen_id` as the canonical key for evaluation pivots and selections.
 
-1) Select top‑N prior‑art winners (editable list)
+1) Select top‑N evaluation winners (editable list)
 ```bash
-uv run python scripts/select_top_prior_art.py --top-n 30 --parsed-scores data/7_cross_experiment/aggregated_scores.csv
+uv run python scripts/select_top_essays.py --template gemini-prior-art-eval --top-n 30
 # Edit data/2_tasks/selected_essays.txt if desired
+# The script defaults to data/7_cross_experiment/aggregated_scores.csv; override via --aggregated-scores if needed
 ```
 
 2) Build cohort membership and register partitions (inside Dagster)
@@ -385,8 +388,8 @@ Missing parent essay parsed.txt for evaluation gen_id '<EVAL_GEN_ID>' (parent_ge
 - FK relationship is shown in error details
 
 **Root Causes:**
-- Referenced `generation_response` partition was never materialized
-- `generation_response` partition failed and needs to be re-run
+- The parent essay `essay_parsed` partition was never materialized
+- The `essay_parsed` partition failed and needs to be re-run
 - File was deleted or moved outside of Dagster
 
 **Diagnostic Steps:**
@@ -515,7 +518,7 @@ Expected path: /path/to/data/gens/essay/<ESSAY_GEN_ID>/parsed.txt
 
 **Root Causes:**
 - Data directories not created by pipeline
-- Incorrect `data_root` configuration in resources
+- Incorrect `data_root` configuration in resources (check `DAYDREAMING_DATA_ROOT` overrides)
 - Permission issues or disk space problems
 
 **Diagnostic Steps:**
@@ -527,8 +530,8 @@ Expected path: /path/to/data/gens/essay/<ESSAY_GEN_ID>/parsed.txt
 
 2. Verify IO manager configuration:
    ```bash
-   # Check the definitions.py for correct paths
-   grep "generation_response_io_manager" src/daydreaming_dagster/definitions.py
+   # Check the definitions.py for stage-specific IO managers
+   rg "_response_io_manager" src/daydreaming_dagster/definitions.py
    ```
 
 3. Check permissions and disk space:
@@ -556,7 +559,10 @@ Add temporary debug logging to assets:
 ```python
 context.log.info(f"Available partitions: {available_partitions}")
 context.log.info(f"Current working directory: {os.getcwd()}")
-context.log.info(f"IO manager path: {gen_response_io_manager.base_path}")
+context.log.info(
+    "Draft IO manager base path: %s",
+    context.resources.draft_response_io_manager.base_path,
+)
 ```
 
 #### Check Asset Dependencies

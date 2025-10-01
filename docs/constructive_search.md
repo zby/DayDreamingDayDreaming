@@ -9,7 +9,7 @@
   row order in `data/1_raw/concepts_metadata.csv` after applying the
   `active` filter. Templates receive concepts in exactly this order, ensuring
   deterministic rendering across runs.
-- Fixed, parseable grammar via `rolling-summary-v1` (quick Q1→Q5 probing with exactly one enforced link type per step and a rolling “Idea So Far — i”) constrains outputs and reduces degeneracy.
+- Fixed, parseable grammar via `rolling-summary-v1` (quick Q1→Q5 probing with exactly one enforced link type per step and a rolling “Idea So Far — i”) constrains outputs and reduces degeneracy. The template is defined in `data/1_raw/draft_templates.csv` and rendered via the draft-stage runner.
 
 **Why This Template Helps**
 - Single‑link decision with enforced link types and stop‑at‑first‑yes keeps branching low and attachments causal.

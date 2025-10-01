@@ -18,27 +18,31 @@ The DayDreaming pipeline is built on **Dagster**, a modern data orchestration pl
 
 ```
 ┌──────────────┐
-│ Raw (01_raw) │  concepts, templates, models
+│ Raw (data/1) │ concepts, templates, models
 └──────┬───────┘
        │
        ▼
-┌──────────────────────────────────────────────────────────────┐
-│ Cohorts (cohort_id + membership)                              │
-│ • cohort_id = deterministic manifest (combos, templates, llms, replication)│
-│ • cohort_membership = normalized rows + partition registration│
-└───────────────┬───────────────────────────────┬───────────────┘
-                │                               │
-                ▼                               ▼
-┌───────────────────────────────┐        ┌───────────────────────────────┐
-│ Generation (03_generation)    │ ─────► │ Evaluation (04_evaluation)    │
-│ generation_prompt → response  │        │ evaluation_prompt → response  │
-└──────────────┬────────────────┘        └──────────────┬────────────────┘
-               │                                        ▲
-               └─ parent links via gens store ──────────┘
+┌─────────────────────────────────────────────────────────────┐
+│ Cohorts (cohort_id + membership)                             │
+│ • Deterministic manifest (combos, templates, llms, replication)
+│ • Normalized rows + dynamic partition registration            │
+└───────────────┬──────────────────────────────┬───────────────┘
+                │                              │
+                ▼                              ▼
+┌─────────────────────────────┐         ┌─────────────────────────────┐
+│ Draft Stage (data/gens/draft)│ ─────► │ Essay Stage (data/gens/essay)│
+│ prompt → raw → parsed        │         │ prompt → raw → parsed        │
+└──────────────┬──────────────┘         └──────────────┬──────────────┘
+               │                                         ▲
+               ▼                                         │
+          ┌─────────────────────────────┐                │
+          │ Evaluation (data/gens/eval) │ ───────────────┘
+          │ prompt → raw → parsed       │
+          └─────────────────────────────┘
 
-┌───────────────────────────────┐
-│ Parsing & Summary (05, 06)    │  score parsing, aggregation
-└───────────────────────────────┘
+┌─────────────────────────────┐
+│ Parsing & Summary (data/5,6)│ score parsing, aggregation
+└─────────────────────────────┘
 ```
 
 Dimensionality (axes)
@@ -101,6 +105,25 @@ Assets are organized into logical groups for easy selection and understanding:
 | **`results_summary`** | final_results, perfect_score_paths, generation_scores_pivot, evaluation_model_template_pivot | Final aggregated results |
 | **`results_analysis`** | evaluator_agreement_analysis, comprehensive_variance_analysis | Statistical analysis |
 | **`cross_experiment`** | filtered_evaluation_results, template_version_comparison_pivot | Cross-experiment analysis |
+
+### Stage Registry & IO Managers
+
+`definitions.py` centralizes stage wiring through a `STAGES` registry. Each entry lists the
+stage's Dagster assets and constructs the prompt/response IO managers that point at the gens
+store:
+
+- Draft: `draft_prompt_io_manager`, `draft_response_io_manager`
+- Essay: `essay_prompt_io_manager`, `essay_response_io_manager`
+- Evaluation: `evaluation_prompt_io_manager`, `evaluation_response_io_manager`
+
+The registry feeds both the asset list and the stage-specific resource map so that adding a new
+stage only requires updating the registry. Shared resources (experiment config, CSV IO managers,
+membership service) come from `_shared_resources`, while `_stage_resources` walks the registry and
+merges the stage IO managers into the Definitions object.
+
+Storage paths flow through `Paths` (see `daydreaming_dagster/data_layer/paths.py`). By default the
+project reads/writes under `data/`, but setting `DAYDREAMING_DATA_ROOT=/abs/path` overrides the
+root for all stage IO managers, CSV outputs, and summary assets.
 
 ## Data Flow Architecture
 
@@ -475,7 +498,7 @@ The evaluation flow is cohort- and gen-id–centric with explicit parent links:
 
 ### Legacy Inputs
 
-- Historical artifacts under `data/3_generation/generation_responses/` are not auto-discovered. To evaluate historical essays, write their `gen_id`s to `data/2_tasks/selected_essays.txt` and materialize `cohort_id,cohort_membership` to register evaluation partitions for the active evaluation axes.
+- Legacy Kedro-era artifacts under `data/3_generation/generation_responses/` are not auto-discovered. The Dagster pipeline reads from `data/gens/essay/<essay_gen_id>/parsed.txt`. To evaluate historical essays, migrate them into the gens store (see `scripts/copy_essays_with_drafts.py`) or write their `gen_id`s to `data/2_tasks/selected_essays.txt` and materialize `cohort_id,cohort_membership` so the registry points at the migrated files.
 
 ## Migration Benefits from Kedro
 
