@@ -12,6 +12,10 @@ Highlights:
 - Replication configuration that appends deterministic `replicate` indices without manual duplication.
 - CLI (`scripts/compile_experiment_design.py`) for producing CSV/JSONL output with catalog data sourced from JSON/CSV files.
 
+### Why this design?
+
+The cohort planner operates over a large, full-factorial search space (templates × models × evaluation settings). We rarely want the raw Cartesian product—most experiments depend on structured couplings (e.g., draft template ↔ essay template, essay template ↔ evaluation template). The DSL encodes those couplings explicitly while keeping the generative space deterministic: every combination we intend to compare appears exactly once, every replicate is numbered, and stats across draft/essay/evaluation axes remain balanced. This structure lets us run consistent comparisons across inputs regardless of how many axes we add in the future.
+
 ## 2. Spec Structure
 
 Top-level keys supported by `load_spec` / CLI:

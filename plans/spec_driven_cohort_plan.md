@@ -19,43 +19,23 @@
 ## 3. Target Architecture
 
 ### 3.1 Cohort Spec Layout
-- Spec lives under `data/cohorts/<cohort_id>/spec/` as a directory of simple files (no single monolithic YAML).
-- Required files (first iteration):
-  - `config.yaml`: top-level metadata, including `cohort_id`, per-stage replication counts, and per-stage LLM IDs (e.g., `draft_llms`, `essay_llms`, `evaluation_llms`).
-  - `stage_axes/combos.txt`: newline-delimited combo IDs to include for the draft stage.
-  - `stage_axes/draft/templates.txt`, `stage_axes/essay/templates.txt`, `stage_axes/evaluation/templates.txt`: newline-delimited template IDs per stage.
-  - `stage_axes/pairings.yaml`: declarative mapping describing how draft templates connect to essay templates (copy vs LLM) and how essays connect to evaluation templates. Example:
-    ```yaml
-    draft_to_essay:
-      - draft_template: draft-A
-        essay_templates:
-          - id: essay-A-copy
-            mode: copy
-          - id: essay-A-llm
-            mode: llm
-    essay_to_evaluation:
-      - essay_template: essay-A-llm
-        evaluation_templates: [eval-1, eval-2]
-    ```
-  - `selection.txt`: newline-delimited curated gen IDs stored at the spec root (empty file if not used; planner treats empty as “no curated selection”).
-- Planner treats every file as authoritative; no optional sections in v1 (all must exist, even if empty) to keep behavior predictable.
-- Validation ensures referenced IDs exist in the global catalogs and required files are present.
+- Spec lives under `data/cohorts/<cohort_id>/spec/` as a DSL bundle (see `docs/spec_dsl.md`).
+  - `config.yaml` expresses axes, rules, replicates, and output options using the DSL vocabulary. Longer lists or tuple bundles can live adjacent to the config and be referenced with `@file:`.
+  - Optional helper folders (`axes/`, `rules/`, `items/`) just feed additional fragments—the compiler consumes the combined DSL document.
+  - Curated flows emit tuple bundles (essay template + essay LLM + evaluation template + evaluation LLM) instead of legacy `gen_id`s.
+- Validation is delegated to the DSL compiler: catalog lookups, rule intersections, and replication metadata are verified before the planner runs.
 
 ### 3.2 Materialization Flow
-- `cohort_plan` asset loads `spec/config.yaml` plus the files under `spec/stage_axes/` and validates each entry against the global catalogs (`combo_mappings.csv`, template/model CSVs).
-- Planner walks the stage axes explicitly:
-  - Uses combos list for the draft stage.
-  - For each draft template, consults `pairings.yaml` to determine permitted essay templates and associated behavior (copy vs two-phase).
-  - Applies the same pattern for essay→evaluation transitions, honoring any LLM overrides in `config.yaml`.
-  - Applies replication counts and other metadata from `config.yaml`.
-- Planned spec compiler should delegate tuple/pair/subset/tie logic to the shared DSL module once it lands, reducing duplicated combinatorics.
-- Planner assembles a deterministic `CohortPlan` describing the allowed edges (no implicit Cartesian expansion).
-- `materialize_cohort` asset consumes the plan to produce `membership.csv`, manifest, and seeded metadata.
+- `cohort_plan` asset loads the DSL spec, compiles it with the shared module, and receives deterministic rows describing every draft/essay/evaluation combination plus replicate indices.
+- Planner groups rows by stage: drafts use `(draft_template, draft_llm, draft_replicate)`, essays use the tuple-expanded essay columns, evaluations use `(evaluation_template, evaluation_llm)`.
+- No implicit Cartesian logic remains in the planner—the DSL already captures structured couplings and eliminates unintended combinations.
+- `materialize_cohort` consumes the grouped rows to produce `membership.csv`, manifest, and seeded metadata.
 - Spec directory is the sole configuration surface; catalogs remain immutable references.
 
 ### 3.3 Global Catalog Behavior
 - `data/1_raw/*.csv` keep all entries; `active` column removed.
-- `combo_mappings.csv` remains append-only; spec list files reference IDs directly.
+- Catalog data is surfaced through the DSL via `catalog_lookup` and CLI flags (`--catalog`, `--catalog-csv`, `--data-root`).
+- `combo_mappings.csv` remains append-only; specs reference IDs directly.
 - Users maintain specs per cohort; catalogs stay global references.
 
 ## 4. Migration Strategy
@@ -109,7 +89,6 @@
 - **Catalog Changes**: document requirement that adding new combos/templates requires updating spec as well; consider helper scripts.
 
 ## 8. Deliverables
-- Spec schema and planner module.
-- Updated Dagster assets using spec-driven plan.
+- DSL-backed cohort planner (load spec → DSL compile → Dagster plan).
 - Migration tooling and documentation.
 - Updated tests ensuring spec-driven flow is the default.
