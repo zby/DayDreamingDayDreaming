@@ -64,7 +64,7 @@
   - Runs after pair. All listed axes must exist at this point. Each tuple in `items` must match the axis count; values must belong to the current domains of the referenced axes. We construct a synthetic axis whose levels are the provided tuples (deduped order). Unless `expand` is false, the compiler expands the tuple during row emission and restores the original axis columns post-product. Setting `expand` false keeps only the tuple axis in the output.
 - **Cartesian product and emission**:
   - After rules, compute the product over remaining axes. Output options allow field ordering, tuple/pair expansion, and optional structured columns. Reconstructed fields rely on the recorded tie/pair/tuple metadata.
-- **Error policy**: raise `DDError(Err.INVALID_SPEC, ctx={...})` for all validation failures. Include axis names, tuple widths, or offending values in `ctx` for observability.
+- **Boundary wrapper**: Dagster-facing call sites wrap `SpecDslErrorCode.INVALID_SPEC` into `DDError(Err.INVALID_SPEC, ctx=...)` once we extend the global contract during cohort integration.
 - **Error policy**: raise `SpecDslError(SpecDslErrorCode.INVALID_SPEC, ctx={...})` for all validation failures. Include axis names, tuple widths, or offending values in `ctx` for observability. Cohort/Dagster integration can up-convert to `DDError` when wiring the boundary.
 
 ## 4. Implementation Steps
