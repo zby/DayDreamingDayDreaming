@@ -38,32 +38,37 @@
 - `combo_mappings.csv` remains append-only; specs reference IDs directly.
 - Users maintain specs per cohort; catalogs stay global references.
 
+### 3.4 DSL Touchpoints (current API)
+- `daydreaming_dagster.spec_dsl.load_spec(path)` loads either a single config file or a directory bundle, returning an `ExperimentSpec` with ordered axes, rule list, replicate config, and output hints.
+- `daydreaming_dagster.spec_dsl.compile_design(spec, *, catalogs=None, seed=None)` produces `list[OrderedDict]` rows while enforcing catalog lookups via optional `catalogs` mapping. Rows are already expanded for ties/pairs/tuples and include replicate columns when configured.
+- `scripts/compile_experiment_design.py` wraps the same API; exposes `--catalog`, `--catalog-csv`, and `--data-root` flags that we can reuse for planner tooling and validation CLIs.
+- Planner work should stay inside this public surface (no private helpers) so future packaging remains straightforward.
+
 ## 4. Migration Strategy
 1. **Schema & Planner Introduction**
    - Define Pydantic models for the spec; add new planner module (e.g., `cohorts/spec_planner.py`).
-   - Support both legacy (active-based) and spec-based flows behind feature flag `DD_SPEC_COHORTS`.
 2. **Spec Generation Tool**
    - Create CLI (`scripts/migrations/generate_cohort_spec.py`) to read legacy cohorts + active flags and emit spec directories with the required list files.
    - Tool validates files against catalogs and writes them under `cohorts/<id>/spec/`.
 3. **Dual-Mode Operation**
-   - When flag disabled: legacy path unchanged.
-   - When enabled: planner reads spec, ignores `active` columns.
-   - Integration tests compare outputs for both modes to ensure parity.
+   - Planner reads spec inputs directly (`load_spec` → `compile_design`), while the legacy active-based path continues to run in the same codebase until we finish backfilling specs.
+   - Integration tests compare outputs for both modes to ensure parity during the overlap period.
 4. **Remove Active Columns**
    - After specs are adopted, migrate catalogs by dropping `active` column; update loaders to stop expecting it.
    - Provide script to strip columns and warn users if spec refers to nonexistent IDs.
 5. **Default Flip & Cleanup**
-   - Flip feature flag default to spec-driven, keep legacy path behind opt-in for one release cycle.
-   - Eventually remove legacy code, the flag, and documentation references to `active` toggles.
+   - Make spec-driven planner the only code path once parity tests pass.
+   - Remove legacy code and documentation references to `active` toggles.
 
 ## 5. Implementation Steps (High-Level)
 1. **PR1 – Spec Schema & Planner Skeleton**
-   - Add spec models, validation, and planner that reads spec + catalogs and returns structured plan (no Dagster integration yet).
-   - Unit tests for spec validation and catalog lookups.
-2. **PR2 – Dagster Integration with Feature Flag**
-   - Refactor `cohort_membership` flow into planner + materializer assets.
-   - Add feature flag to switch between legacy and spec-based plan builders.
-   - Extend tests to run both paths.
+   - Introduce `cohorts/spec_planner.py` with thin orchestrator calling `load_spec()` and `compile_design()` from `daydreaming_dagster.spec_dsl`.
+   - Build light Pydantic/attrs models for planner inputs/outputs (e.g., `CohortPlanRow`, `StageBundle`).
+   - Unit-test catalog validation by passing explicit dicts to `compile_design`.
+2. **PR2 – Dagster Integration (dual execution)**
+   - Refactor `cohort_membership` into loader (`load_spec` fallback to legacy) + planner (`compile_design`) + materializer.
+   - Ensure both spec and legacy planners can return `CohortPlan` objects; gate selection by presence of spec directory.
+   - Extend Dagster tests to exercise both paths using fixtures under `tests/fixtures/spec_dsl/`.
 3. **PR3 – Spec Generation & Catalog Tooling**
    - Implement CLI to generate specs from existing cohorts.
    - Document migration steps.
