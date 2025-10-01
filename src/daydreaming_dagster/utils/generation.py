@@ -1,85 +1,106 @@
 from __future__ import annotations
 
+"""BACKCOMPAT: legacy generation helpers forwarding to :class:`GensDataLayer`."""
+
 from pathlib import Path
-import json
-from typing import Optional, Dict, Any
+from typing import Any, Callable, Dict, Optional
 
-from .errors import DDError, Err
-from .ids import gen_dir as build_gen_dir
-from ..data_layer.paths import RAW_FILENAME, PARSED_FILENAME, PROMPT_FILENAME, METADATA_FILENAME
+from daydreaming_dagster.data_layer.gens_data_layer import GensDataLayer
+from daydreaming_dagster.utils.errors import DDError, Err
+
+__all__ = [
+    "write_gen_raw",
+    "write_gen_parsed",
+    "write_gen_prompt",
+    "write_gen_metadata",
+    "load_generation",
+    "GensDataLayer",
+]
 
 
-def _write_atomic(path: Path, data: str) -> None:
-    tmp = path.with_suffix(path.suffix + ".tmp")
-    try:
-        tmp.write_text(data, encoding="utf-8")
-        tmp.replace(path)
-    except OSError as exc:  # pragma: no cover - filesystem errors rare in tests
-        raise DDError(Err.IO_ERROR, ctx={"path": str(path)}) from exc
+def _infer_data_root(gens_root: Path | str) -> Path:
+    root = Path(gens_root)
+    if root.name == "gens":
+        parent = root.parent
+        return parent if str(parent) != "" else root
+    return root
 
-def _ensure_dir(gens_root: Path, stage: str, gen_id: str) -> Path:
-    base = build_gen_dir(Path(gens_root), stage, gen_id)
-    base.mkdir(parents=True, exist_ok=True)
-    return base
+
+def _layer_for(gens_root: Path | str) -> GensDataLayer:
+    return GensDataLayer.from_root(_infer_data_root(gens_root))
+
+
+def _generation_dir(layer: GensDataLayer, stage: str, gen_id: str) -> Path:
+    path = layer.paths.generation_dir(stage, gen_id)
+    path.mkdir(parents=True, exist_ok=True)
+    return path
 
 
 def write_gen_raw(gens_root: Path, stage: str, gen_id: str, text: str) -> Path:
-    """Write raw.txt for a generation, creating the directory if needed."""
-    base = _ensure_dir(gens_root, stage, gen_id)
-    _write_atomic(base / RAW_FILENAME, str(text or ""))
-    return base
+    """Write raw.txt for a generation, returning the generation directory."""
+
+    layer = _layer_for(gens_root)
+    layer.write_raw(stage, gen_id, text)
+    return _generation_dir(layer, stage, gen_id)
 
 
 def write_gen_parsed(gens_root: Path, stage: str, gen_id: str, text: str) -> Path:
-    """Write parsed.txt for a generation, creating the directory if needed."""
-    base = _ensure_dir(gens_root, stage, gen_id)
-    _write_atomic(base / PARSED_FILENAME, str(text))
-    return base
+    """Write parsed.txt for a generation, returning the generation directory."""
+
+    layer = _layer_for(gens_root)
+    layer.write_parsed(stage, gen_id, text)
+    return _generation_dir(layer, stage, gen_id)
 
 
 def write_gen_prompt(gens_root: Path, stage: str, gen_id: str, text: str) -> Path:
-    """Write prompt.txt for a generation, creating the directory if needed."""
-    base = _ensure_dir(gens_root, stage, gen_id)
-    _write_atomic(base / PROMPT_FILENAME, str(text))
-    return base
+    """Write prompt.txt for a generation, returning the generation directory."""
+
+    layer = _layer_for(gens_root)
+    layer.write_input(stage, gen_id, text)
+    return _generation_dir(layer, stage, gen_id)
 
 
 def write_gen_metadata(gens_root: Path, stage: str, gen_id: str, metadata: Dict[str, Any]) -> Path:
-    """Write metadata.json for a generation, creating the directory if needed."""
-    base = _ensure_dir(gens_root, stage, gen_id)
-    _write_atomic(base / METADATA_FILENAME, json.dumps(metadata, ensure_ascii=False, indent=2))
-    return base
+    """Write metadata.json for a generation, returning the generation directory."""
+
+    layer = _layer_for(gens_root)
+    layer.write_main_metadata(stage, gen_id, metadata)
+    return _generation_dir(layer, stage, gen_id)
+
+
+def _read_optional(callable_: Callable[[str, str], Any], stage: str, gen_id: str) -> Optional[Any]:
+    try:
+        return callable_(stage, gen_id)
+    except DDError as err:
+        if err.code is Err.DATA_MISSING:
+            return None
+        raise
 
 
 def load_generation(gens_root: Path, stage: str, gen_id: str) -> Dict[str, Any]:
-    """Best-effort read of an existing generation from disk into a dict.
+    """Best-effort read of an existing generation into a dict of artifacts."""
 
-    Keys: stage, gen_id, parent_gen_id (from metadata), raw_text, parsed_text, prompt_text, metadata
-    """
-    base = build_gen_dir(Path(gens_root), stage, gen_id)
-    def _read(name: str) -> Optional[str]:
-        p = base / name
-        if not p.exists():
-            return None
-        try:
-            return p.read_text(encoding="utf-8")
-        except OSError as exc:
-            raise DDError(Err.IO_ERROR, ctx={"path": str(p)}) from exc
-    md: Optional[Dict[str, Any]] = None
-    mpath = base / METADATA_FILENAME
-    if mpath.exists():
-        try:
-            md = json.loads(mpath.read_text(encoding="utf-8"))
-        except OSError as exc:
-            raise DDError(Err.IO_ERROR, ctx={"path": str(mpath)}) from exc
-        except json.JSONDecodeError as exc:
-            raise DDError(Err.PARSER_FAILURE, ctx={"path": str(mpath)}) from exc
+    layer = _layer_for(gens_root)
+
+    metadata: Optional[Dict[str, Any]]
+    try:
+        metadata = layer.read_main_metadata(stage, gen_id)
+    except DDError as err:
+        if err.code is Err.DATA_MISSING:
+            metadata = None
+        else:
+            raise
+
+    raw_text = _read_optional(layer.read_raw, stage, gen_id) or ""
+    parsed_text = _read_optional(layer.read_parsed, stage, gen_id)
+    prompt_text = _read_optional(layer.read_input, stage, gen_id)
+
     return {
         "stage": str(stage),
         "gen_id": str(gen_id),
-        "parent_gen_id": (md or {}).get("parent_gen_id"),
-        "raw_text": _read(RAW_FILENAME) or "",
-        "parsed_text": _read(PARSED_FILENAME),
-        "prompt_text": _read(PROMPT_FILENAME),
-        "metadata": md,
+        "parent_gen_id": (metadata or {}).get("parent_gen_id"),
+        "raw_text": raw_text,
+        "parsed_text": parsed_text,
+        "prompt_text": prompt_text,
+        "metadata": metadata,
     }
