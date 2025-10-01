@@ -24,8 +24,13 @@
   - `loader.py`: utilities to load YAML/TOML/JSON specs, resolve `@file:` references, and read catalog CSVs through `Paths` helpers.
   - `compiler.py`: core engine applying rules in fixed order (`subset → tie → pair → tuple → product → expand`).
   - `emitter.py`: CSV/JSONL writers and deterministic shuffler.
-  - `errors.py`: domain exceptions with `DDError` codes (likely new `Err.INVALID_SPEC`).
+  - `errors.py`: module-local `Enum` + exception that surfaces structured validation failures without extending the global `Err` registry yet (bridge to `DDError` when we integrate with Dagster).
 - Keep external surface minimal: expose a small public API (e.g., `compile_design`, `load_spec`, CLI entry) so the module can be extracted into a package later without refactoring internals.
+- **Python API proposal**: 
+  - `load_spec(path: Path | str) -> ExperimentSpec`: load + validate a directory/file bundle into in-memory models.
+  - `compile_design(spec: ExperimentSpec, *, catalogs: CatalogIndex | None = None, seed: int | None = None) -> list[OrderedDict[str, Any]]`: accepts the parsed spec and optional catalog lookup helpers, returns a deterministic list of ordered row mappings (preserving axis expansion order). `CatalogIndex` is a thin protocol exposing `lookup(axis_name: str, value: str) -> CatalogEntry`; tests may pass simple dicts.
+  - `compile_to_file(spec: ExperimentSpec, out: Path, fmt: Literal["csv", "jsonl"] = "csv", *, seed: int | None = None) -> CompileArtifact`: helper bundling the rows and emitted path metadata for callers that need side effects.
+- **Error surface**: all validation failures raise `SpecDslError(code: SpecDslErrorCode.INVALID_SPEC, ctx: dict)`. Dagster-facing call sites can catch and wrap with `DDError` later; tests assert on the module-local error code.
 - Spec format:
   - `axes`: mapping from axis name to `levels` (list) or `source` (`@file:...`). Support optional `catalog_lookup` metadata for validating IDs.
   - `rules`: sequence; each rule includes inline values or file references.
@@ -60,6 +65,7 @@
 - **Cartesian product and emission**:
   - After rules, compute the product over remaining axes. Output options allow field ordering, tuple/pair expansion, and optional structured columns. Reconstructed fields rely on the recorded tie/pair/tuple metadata.
 - **Error policy**: raise `DDError(Err.INVALID_SPEC, ctx={...})` for all validation failures. Include axis names, tuple widths, or offending values in `ctx` for observability.
+- **Error policy**: raise `SpecDslError(SpecDslErrorCode.INVALID_SPEC, ctx={...})` for all validation failures. Include axis names, tuple widths, or offending values in `ctx` for observability. Cohort/Dagster integration can up-convert to `DDError` when wiring the boundary.
 
 ## 4. Implementation Steps
 1. **Scaffold & Schema**
@@ -71,6 +77,7 @@
    - Provide `compile_design(spec, catalogs, *, seed=None)` returning ordered dict rows plus metadata (log of transformations).
 3. **Emission & CLI**
    - Build CLI (`scripts/compile_experiment_design.py`) that runs compiler on a spec directory, writes outputs under `data/2_tasks/designs/` (path configurable).
+   - CLI delegates into `daydreaming_dagster.spec_dsl` functions (no standalone logic) and is exposed via Poetry/uv entry point once ready.
    - Include dry-run mode printing row counts and sample rows.
 4. **Testing**
    - Unit tests for loader (file references), each rule, tuple expansion, error cases, and deterministic ordering.
