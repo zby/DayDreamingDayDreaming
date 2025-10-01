@@ -4,6 +4,7 @@ from typing import Any, Dict, Optional
 
 from dagster import MetadataValue
 
+from daydreaming_dagster.assets._error_boundary import resume_notice
 from daydreaming_dagster.assets._helpers import get_run_id, build_stage_artifact_metadata
 from daydreaming_dagster.data_layer.gens_data_layer import GensDataLayer, resolve_generation_metadata
 from daydreaming_dagster.utils.errors import DDError, Err
@@ -39,17 +40,21 @@ def _stage_parsed_asset(
             parsed_metadata = data_layer.read_parsed_metadata(stage, gen_id)
         except DDError as err:
             if err.code is Err.DATA_MISSING:
-                # Warn about missing metadata but proceed with reuse
-                import logging
-                logger = logging.getLogger(__name__)
-                logger.warning(
-                    f"Reusing parsed.txt for {stage}/{gen_id} but parsed_metadata.json is missing"
-                )
                 parsed_metadata = {
                     "function": f"{stage}_parsed",
                     "stage": str(stage),
                     "gen_id": str(gen_id),
                 }
+                parsed_metadata.update(
+                    resume_notice(
+                        stage=str(stage),
+                        gen_id=gen_id,
+                        artifact="parsed",
+                        reason="missing_parsed_metadata",
+                        emit_log=True,
+                        log_level="warning",
+                    )
+                )
             else:
                 raise
 

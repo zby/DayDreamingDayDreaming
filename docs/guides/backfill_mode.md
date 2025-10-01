@@ -33,6 +33,9 @@ instance.report_runless_asset_event(mat)
 Instead of trying to manipulate Dagster's materialization tracking, we check for existing work at the start of each stage asset:
 
 ```python
+from dagster import MetadataValue
+from daydreaming_dagster.assets._error_boundary import resume_notice
+
 def evaluation_prompt(context) -> str:
     data_layer = GensDataLayer.from_root(context.resources.data_root)
     gen_id = str(context.partition_key)
@@ -40,7 +43,18 @@ def evaluation_prompt(context) -> str:
     # Skip if parsed already exists (backfill mode support)
     if data_layer.parsed_exists(EVALUATION_STAGE, gen_id):
         input_text = data_layer.read_input(EVALUATION_STAGE, gen_id)
-        context.log.info(f"Skipping {gen_id}: parsed.txt already exists")
+        context.add_output_metadata(
+            {
+                "resume": MetadataValue.json(
+                    resume_notice(
+                        stage="evaluation",
+                        gen_id=gen_id,
+                        artifact="prompt",
+                        reason="parsed_exists",
+                    )
+                )
+            }
+        )
         return input_text
 
     # ... normal processing
@@ -114,7 +128,7 @@ def parsed_exists(self, stage: str, gen_id: str) -> bool:
 5. **Run evaluation backfill:**
    - Select all three evaluation assets or use the `evaluation` asset group
    - Launch backfill for all partitions
-   - Existing evaluations will log: `Skipping {gen_id}: parsed.txt already exists`
+   - Existing evaluations record resume metadata for the partition (reason `parsed_exists`)
    - Only missing evaluations will call the LLM
 
 ### Checking Skip Behavior
@@ -123,7 +137,7 @@ def parsed_exists(self, stage: str, gen_id: str) -> bool:
 1. Go to the backfill run
 2. Click on a partition that should be skipped (one with existing `parsed.txt`)
 3. View logs for `evaluation_prompt` asset
-4. Look for: `Skipping {gen_id}: parsed.txt already exists`
+4. Look for: a `resume` metadata entry containing the partition id and reason
 
 **From command line:**
 ```bash

@@ -3,6 +3,7 @@ from __future__ import annotations
 import time
 from typing import Any, Dict, Optional, Tuple
 
+from daydreaming_dagster.assets._error_boundary import resume_notice
 from daydreaming_dagster.assets._helpers import get_run_id, build_stage_artifact_metadata
 from daydreaming_dagster.data_layer.gens_data_layer import GensDataLayer, resolve_generation_metadata
 from daydreaming_dagster.utils.errors import DDError, Err
@@ -39,17 +40,21 @@ def _stage_raw_asset(
             raw_metadata = data_layer.read_raw_metadata(stage, gen_id)
         except DDError as err:
             if err.code is Err.DATA_MISSING:
-                # Warn about missing metadata but proceed with reuse
-                import logging
-                logger = logging.getLogger(__name__)
-                logger.warning(
-                    f"Reusing raw.txt for {stage}/{gen_id} but raw_metadata.json is missing"
-                )
                 raw_metadata = {
                     "function": f"{stage}_raw",
                     "stage": str(stage),
                     "gen_id": str(gen_id),
                 }
+                raw_metadata.update(
+                    resume_notice(
+                        stage=str(stage),
+                        gen_id=gen_id,
+                        artifact="raw",
+                        reason="missing_raw_metadata",
+                        emit_log=True,
+                        log_level="warning",
+                    )
+                )
             else:
                 raise
 

@@ -7,9 +7,10 @@ from __future__ import annotations
 
 from typing import Optional, Sequence, Set
 
-from dagster import AssetIn, AssetKey
+from dagster import AssetIn, AssetKey, MetadataValue
 
 from ._decorators import asset_with_boundary
+from ._error_boundary import resume_notice
 from ._helpers import build_stage_artifact_metadata, get_run_id
 from ..data_layer.gens_data_layer import GensDataLayer, resolve_generation_metadata
 from ..unified.stage_core import Stage, resolve_parser_name
@@ -17,9 +18,6 @@ from ..unified.stage_inputs import _stage_input_asset
 from ..unified.stage_raw import _stage_raw_asset
 from ..unified.stage_parsed import _stage_parsed_asset
 from ..utils.errors import DDError, Err
-
-
-_SKIP_LOG_MESSAGE = "Skipping {gen_id}: parsed.txt already exists"
 
 
 def _ensure_deps(deps: Optional[Sequence[AssetKey]]) -> dict:
@@ -31,10 +29,6 @@ def _resolve_stage_settings(context, stage: Stage):
     if experiment_config is None:
         return None
     return experiment_config.stage_config.get(stage)
-
-
-def _maybe_log_skip(context, gen_id: str) -> None:
-    context.log.info(_SKIP_LOG_MESSAGE.format(gen_id=gen_id))
 
 
 def build_prompt_asset(
@@ -70,7 +64,18 @@ def build_prompt_asset(
 
             if skip_if_parsed_exists and data_layer.parsed_exists(stage, gen_id):
                 input_text = data_layer.read_input(stage, gen_id)
-                _maybe_log_skip(context, gen_id)
+                context.add_output_metadata(
+                    {
+                        "resume": MetadataValue.json(
+                            resume_notice(
+                                stage=str(stage),
+                                gen_id=gen_id,
+                                artifact="prompt",
+                                reason="parsed_exists",
+                            )
+                        )
+                    }
+                )
                 return input_text
 
             input_text, info = _stage_input_asset(
@@ -99,7 +104,18 @@ def build_prompt_asset(
 
             if skip_if_parsed_exists and data_layer.parsed_exists(stage, gen_id):
                 input_text = data_layer.read_input(stage, gen_id)
-                _maybe_log_skip(context, gen_id)
+                context.add_output_metadata(
+                    {
+                        "resume": MetadataValue.json(
+                            resume_notice(
+                                stage=str(stage),
+                                gen_id=gen_id,
+                                artifact="prompt",
+                                reason="parsed_exists",
+                            )
+                        )
+                    }
+                )
                 return input_text
 
             input_text, info = _stage_input_asset(
@@ -159,7 +175,18 @@ def build_raw_asset(
 
         if skip_if_parsed_exists and data_layer.parsed_exists(stage, gen_id):
             raw_text = data_layer.read_raw(stage, gen_id)
-            _maybe_log_skip(context, gen_id)
+            context.add_output_metadata(
+                {
+                    "resume": MetadataValue.json(
+                        resume_notice(
+                            stage=str(stage),
+                            gen_id=gen_id,
+                            artifact="raw",
+                            reason="parsed_exists",
+                        )
+                    )
+                }
+            )
             return raw_text
 
         prompt_text = prompt_value
@@ -261,7 +288,18 @@ def build_parsed_asset(
 
         if skip_if_parsed_exists and data_layer.parsed_exists(stage, gen_id):
             parsed_text = data_layer.read_parsed(stage, gen_id)
-            _maybe_log_skip(context, gen_id)
+            context.add_output_metadata(
+                {
+                    "resume": MetadataValue.json(
+                        resume_notice(
+                            stage=str(stage),
+                            gen_id=gen_id,
+                            artifact="parsed",
+                            reason="parsed_exists",
+                        )
+                    )
+                }
+            )
             return parsed_text
 
         raw_text = data_layer.read_raw(stage, gen_id)
