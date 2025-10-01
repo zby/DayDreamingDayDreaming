@@ -42,7 +42,6 @@ from .partitions import (
     essay_gens_partitions,
     evaluation_gens_partitions,
 )
-from ..utils.generation import load_generation, write_gen_metadata
 from ..utils.errors import DDError, Err
 from ..data_layer.paths import Paths
 
@@ -610,10 +609,12 @@ def _existing_evaluations_by_template_model(
 
 def _prepare_curated_entries(data_root: Path, essay_ids: Iterable[str]) -> List[CuratedEssay]:
     entries: List[CuratedEssay] = []
+    data_layer = GensDataLayer.from_root(data_root)
+    paths = data_layer.paths
     for essay_src_id in essay_ids:
-        essay_meta_path = data_root / "gens" / "essay" / essay_src_id / "metadata.json"
+        essay_meta_path = paths.metadata_path("essay", essay_src_id)
         if not essay_meta_path.exists():
-            draft_meta_path = data_root / "gens" / "draft" / essay_src_id / "metadata.json"
+            draft_meta_path = paths.metadata_path("draft", essay_src_id)
             if draft_meta_path.exists():
                 raise DDError(
                     Err.INVALID_CONFIG,
@@ -630,7 +631,7 @@ def _prepare_curated_entries(data_root: Path, essay_ids: Iterable[str]) -> List[
                 },
             )
 
-        essay_meta = load_generation(data_root / "gens", "essay", essay_src_id).get("metadata") or {}
+        essay_meta = data_layer.read_main_metadata("essay", essay_src_id)
         essay_tpl = str(essay_meta.get("template_id") or essay_meta.get("essay_template") or "").strip()
         essay_llm_model = str(essay_meta.get("llm_model_id") or "").strip()
         draft_parent_src = str(essay_meta.get("parent_gen_id") or "").strip()
@@ -651,7 +652,7 @@ def _prepare_curated_entries(data_root: Path, essay_ids: Iterable[str]) -> List[
                 },
             )
 
-        draft_meta_path = data_root / "gens" / "draft" / draft_parent_src / "metadata.json"
+        draft_meta_path = paths.metadata_path("draft", draft_parent_src)
         if not draft_meta_path.exists():
             raise DDError(
                 Err.DATA_MISSING,
@@ -661,7 +662,7 @@ def _prepare_curated_entries(data_root: Path, essay_ids: Iterable[str]) -> List[
                     "essay_gen_id": essay_src_id,
                 },
             )
-        draft_meta = load_generation(data_root / "gens", "draft", draft_parent_src).get("metadata") or {}
+        draft_meta = data_layer.read_main_metadata("draft", draft_parent_src)
         combo_id = str(draft_meta.get("combo_id") or "").strip()
         draft_tpl = str(draft_meta.get("template_id") or draft_meta.get("draft_template") or "").strip()
         draft_llm_model = str(draft_meta.get("llm_model_id") or "").strip()
@@ -702,8 +703,10 @@ def _prepare_curated_entries(data_root: Path, essay_ids: Iterable[str]) -> List[
 
 def _prepare_curated_drafts(data_root: Path, draft_ids: Iterable[str]) -> List[CuratedDraft]:
     entries: List[CuratedDraft] = []
+    data_layer = GensDataLayer.from_root(data_root)
+    paths = data_layer.paths
     for draft_id in draft_ids:
-        meta_path = data_root / "gens" / "draft" / draft_id / "metadata.json"
+        meta_path = paths.metadata_path("draft", draft_id)
         if not meta_path.exists():
             raise DDError(
                 Err.DATA_MISSING,
@@ -712,7 +715,7 @@ def _prepare_curated_drafts(data_root: Path, draft_ids: Iterable[str]) -> List[C
                     "draft_gen_id": draft_id,
                 },
             )
-        draft_meta = load_generation(data_root / "gens", "draft", draft_id).get("metadata") or {}
+        draft_meta = data_layer.read_main_metadata("draft", draft_id)
         combo_id = str(draft_meta.get("combo_id") or "").strip()
         draft_tpl = str(draft_meta.get("template_id") or draft_meta.get("draft_template") or "").strip()
         llm_model_id = str(draft_meta.get("llm_model_id") or "").strip()
@@ -836,7 +839,6 @@ def seed_cohort_metadata(
         return
 
     paths = data_layer.paths
-    gens_root = paths.gens_root
 
     for _, row in membership.iterrows():
         stage = _normalize_str(row.get("stage"))
@@ -844,8 +846,7 @@ def seed_cohort_metadata(
         if stage not in {"draft", "essay", "evaluation"} or not gen_id:
             continue
 
-        target_dir = gens_root / stage / gen_id
-        meta_path = target_dir / "metadata.json"
+        meta_path = data_layer.paths.metadata_path(stage, gen_id)
         if meta_path.exists():
             continue
 
@@ -882,7 +883,7 @@ def seed_cohort_metadata(
         replicate = _normalize_int(replicate_val, default=1)
         metadata["replicate"] = replicate
 
-        write_gen_metadata(gens_root, stage, gen_id, metadata)
+        data_layer.write_main_metadata(stage, gen_id, metadata)
 
 
 def persist_membership_csv(
@@ -939,6 +940,7 @@ def validate_cohort_membership(
 
     essay_parent_missing: List[str] = []
     eval_parent_missing: List[str] = []
+    data_layer = GensDataLayer.from_root(data_root)
 
     if "parent_gen_id" in membership.columns:
         essay_parents = (
@@ -961,14 +963,12 @@ def validate_cohort_membership(
             if pid in essays:
                 continue
             try:
-                record = load_generation(data_root / "gens", "essay", pid)
-            except Exception:
+                data_layer.read_main_metadata("essay", pid)
+            except DDError as err:
+                if err.code is not Err.DATA_MISSING:
+                    raise
                 eval_parent_missing.append(pid)
                 continue
-
-            metadata = record.get("metadata") if isinstance(record, dict) else None
-            if not metadata:
-                eval_parent_missing.append(pid)
 
     if not strict:
         return

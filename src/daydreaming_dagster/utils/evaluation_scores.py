@@ -2,12 +2,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterable, Dict, Any, List, Sequence, Callable
-import json
+from typing import Iterable, Dict, Any, List, Sequence, Callable, Optional
 import pandas as pd
 
 from .errors import DDError, Err
-from .generation import load_generation
+from ..data_layer.gens_data_layer import GensDataLayer
 from ..data_layer.paths import Paths
 
 
@@ -36,10 +35,14 @@ class _EvaluationScoreAggregator:
         self,
         *,
         paths: Paths,
-        load_generation_fn: Callable[[Path, str, str], Dict[str, Any]] = load_generation,
+        load_generation_fn: Optional[Callable[[Path, str, str], Dict[str, Any]]] = None,
     ) -> None:
         self._paths = paths
-        self._load_generation = load_generation_fn
+        self._layer = GensDataLayer.from_root(paths.data_root)
+        if load_generation_fn is None:
+            self._load_generation = self._load_via_data_layer
+        else:
+            self._load_generation = load_generation_fn
 
     def collect_rows(self, gen_ids: Iterable[str]) -> List[Dict[str, Any]]:
         rows: List[Dict[str, Any]] = []
@@ -113,6 +116,38 @@ class _EvaluationScoreAggregator:
         metadata = draft_doc.get("metadata") or {}
         return _DraftRecord(gen_id=parent_draft_id, metadata=metadata)
 
+    def _load_via_data_layer(self, _root: Path, stage: str, gen_id: str) -> Dict[str, Any]:
+        metadata: Optional[Dict[str, Any]]
+        try:
+            metadata = self._layer.read_main_metadata(stage, gen_id)
+        except DDError as err:
+            if err.code is Err.DATA_MISSING:
+                metadata = None
+            else:
+                raise
+
+        def _read_text(reader: Callable[[str, str], str]) -> Optional[str]:
+            try:
+                return reader(stage, gen_id)
+            except DDError as err:
+                if err.code is Err.DATA_MISSING:
+                    return None
+                raise
+
+        raw_text = _read_text(self._layer.read_raw) or ""
+        parsed_text = _read_text(self._layer.read_parsed)
+        prompt_text = _read_text(self._layer.read_input)
+
+        return {
+            "stage": stage,
+            "gen_id": gen_id,
+            "metadata": metadata,
+            "parent_gen_id": (metadata or {}).get("parent_gen_id"),
+            "raw_text": raw_text,
+            "parsed_text": parsed_text,
+            "prompt_text": prompt_text,
+        }
+
     def _parse_score(self, parsed_text: str) -> tuple[float | None, str | None]:
         if not parsed_text:
             return None, "missing parsed.txt"
@@ -165,15 +200,12 @@ class _EvaluationScoreAggregator:
         return str(essay_path)
 
     def _load_raw_metadata(self, gen_id: str) -> Dict[str, Any] | None:
-        raw_meta_path = self._paths.raw_metadata_path("evaluation", gen_id)
-        if not raw_meta_path.exists():
-            return None
         try:
-            return json.loads(raw_meta_path.read_text(encoding="utf-8")) or {}
-        except OSError as exc:
-            raise DDError(Err.IO_ERROR, ctx={"path": str(raw_meta_path)}) from exc
-        except json.JSONDecodeError as exc:
-            raise DDError(Err.PARSER_FAILURE, ctx={"path": str(raw_meta_path)}) from exc
+            return self._layer.read_raw_metadata("evaluation", gen_id)
+        except DDError as err:
+            if err.code is Err.DATA_MISSING:
+                return None
+            raise
 
     @staticmethod
     def _normalize_str(value: object) -> str | None:
