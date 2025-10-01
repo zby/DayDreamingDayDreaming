@@ -1,0 +1,29 @@
+axes:
+  draft_template:
+    levels: [creative-synthesis-v2, application-implementation-v2, gwern_original]
+    catalog_lookup: {catalog: drafts}
+  essay_template:
+    levels: [parsed-from-links-v1]
+    catalog_lookup: {catalog: essay_templates}
+  evaluation_template:
+    levels: [creativity-metrics-v2, daydreaming-verification-v3]
+    catalog_lookup: {catalog: evaluation_templates}
+  evaluation_llm:
+    levels: [sonnet-4, gemini_25_pro]
+    catalog_lookup: {catalog: evaluation_llms}
+rules:
+  - pair:
+      left: evaluation_template
+      right: evaluation_llm
+      name: evaluation_bundle
+      allowed:
+        - [creativity-metrics-v2, sonnet-4]
+        - [creativity-metrics-v2, gemini_25_pro]
+        - [daydreaming-verification-v3, sonnet-4]
+        - [daydreaming-verification-v3, gemini_25_pro]
+output:
+  field_order:
+    - draft_template
+    - essay_template
+    - evaluation_template
+    - evaluation_llm

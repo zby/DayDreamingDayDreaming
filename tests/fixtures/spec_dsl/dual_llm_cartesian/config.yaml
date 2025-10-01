@@ -1,0 +1,45 @@
+axes:
+  draft_template:
+    levels: [creative-synthesis-v2, application-implementation-v2]
+    catalog_lookup: {catalog: drafts}
+  draft_llm:
+    levels: [gemini_25_pro]
+  essay_template:
+    levels: [essay-copy-v1, essay-llm-v1]
+    catalog_lookup: {catalog: essay_templates}
+  essay_llm:
+    levels: [sonnet-4]
+    catalog_lookup: {catalog: essay_llms}
+  evaluation_template:
+    levels: [verification-eval-v1]
+    catalog_lookup: {catalog: evaluation_templates}
+  evaluation_llm:
+    levels: [sonnet-4]
+    catalog_lookup: {catalog: evaluation_llms}
+rules:
+  - tuple:
+      name: essay_bundle
+      axes: [essay_template, essay_llm]
+      items:
+        - [essay-copy-v1, sonnet-4]
+        - [essay-llm-v1, sonnet-4]
+  - pair:
+      left: draft_template
+      right: essay_bundle
+      name: draft_essay_pair
+      allowed:
+        - [creative-synthesis-v2, [essay-llm-v1, sonnet-4]]
+        - [application-implementation-v2, [essay-copy-v1, sonnet-4]]
+replicates:
+  draft_template:
+    count: 2
+    column: draft_replicate
+output:
+  field_order:
+    - draft_template
+    - draft_llm
+    - essay_template
+    - essay_llm
+    - evaluation_template
+    - evaluation_llm
+    - draft_replicate

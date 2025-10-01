@@ -1,0 +1,34 @@
+"""Data structures backing the experiment DSL."""
+
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+from typing import Any, Mapping, Sequence
+
+
+@dataclass(frozen=True)
+class AxisSpec:
+    """Declarative axis listing the raw levels prior to rule transforms."""
+
+    name: str
+    levels: Sequence[Any]
+    catalog_lookup: Mapping[str, Any] | None = None
+
+
+@dataclass(frozen=True)
+class ReplicateSpec:
+    """Replication configuration for a given axis."""
+
+    axis: str
+    count: int
+    column: str
+
+
+@dataclass(frozen=True)
+class ExperimentSpec:
+    """Top-level spec bundle loaded from disk."""
+
+    axes: Mapping[str, AxisSpec]
+    rules: Sequence[Mapping[str, Any]]
+    output: Mapping[str, Any] = field(default_factory=dict)
+    replicates: Mapping[str, ReplicateSpec] = field(default_factory=dict)

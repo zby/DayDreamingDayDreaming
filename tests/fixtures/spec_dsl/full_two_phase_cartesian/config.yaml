@@ -1,0 +1,57 @@
+axes:
+  draft_template:
+    levels: [creative-synthesis-v2, application-implementation-v2]
+    catalog_lookup: {catalog: drafts}
+  draft_llm:
+    levels: [gemini_25_pro, sonnet-4]
+  essay_template:
+    levels: [essay-theme-v16, essay-theme-v17]
+    catalog_lookup: {catalog: essay_templates}
+  essay_llm:
+    levels: [gemini_25_pro, sonnet-4]
+    catalog_lookup: {catalog: essay_llms}
+  evaluation_template:
+    levels: [creativity-metrics-v2, daydreaming-verification-v3]
+    catalog_lookup: {catalog: evaluation_templates}
+  evaluation_llm:
+    levels: [gemini_25_pro, sonnet-4]
+    catalog_lookup: {catalog: evaluation_llms}
+rules:
+  - tuple:
+      name: essay_bundle
+      axes: [essay_template, essay_llm]
+      items:
+        - [essay-theme-v16, gemini_25_pro]
+        - [essay-theme-v16, sonnet-4]
+        - [essay-theme-v17, gemini_25_pro]
+        - [essay-theme-v17, sonnet-4]
+  - pair:
+      left: draft_template
+      right: essay_bundle
+      name: draft_essay_pair
+      allowed:
+        - [creative-synthesis-v2, [essay-theme-v16, gemini_25_pro]]
+        - [creative-synthesis-v2, [essay-theme-v16, sonnet-4]]
+        - [creative-synthesis-v2, [essay-theme-v17, gemini_25_pro]]
+        - [creative-synthesis-v2, [essay-theme-v17, sonnet-4]]
+        - [application-implementation-v2, [essay-theme-v16, gemini_25_pro]]
+        - [application-implementation-v2, [essay-theme-v16, sonnet-4]]
+        - [application-implementation-v2, [essay-theme-v17, gemini_25_pro]]
+        - [application-implementation-v2, [essay-theme-v17, sonnet-4]]
+  - pair:
+      left: evaluation_template
+      right: evaluation_llm
+      name: evaluation_bundle
+      allowed:
+        - [creativity-metrics-v2, gemini_25_pro]
+        - [creativity-metrics-v2, sonnet-4]
+        - [daydreaming-verification-v3, gemini_25_pro]
+        - [daydreaming-verification-v3, sonnet-4]
+output:
+  field_order:
+    - draft_template
+    - draft_llm
+    - essay_template
+    - essay_llm
+    - evaluation_template
+    - evaluation_llm

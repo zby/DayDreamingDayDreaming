@@ -35,6 +35,7 @@
   - `axes`: mapping from axis name to `levels` (list) or `source` (`@file:...`). Support optional `catalog_lookup` metadata for validating IDs.
   - `rules`: sequence; each rule includes inline values or file references.
   - `output`: ordering, expand flags (`expand_pairs`, `expand_tuples`, `keep_tuple_axis`, seed for shuffling).
+  - `replicates`: optional mapping from axis or synthetic axis name to `{count: int, column: str?}` for deterministic row duplication.
 - `tuple` rule contract:
   ```yaml
   - tuple:
@@ -62,6 +63,9 @@
 - **Tuple (new)**:
   - Syntax: `tuple: {name: <new_axis>, axes: [a, b, ...], items: [[...], ...] | @file:..., expand: bool?}`.
   - Runs after pair. All listed axes must exist at this point. Each tuple in `items` must match the axis count; values must belong to the current domains of the referenced axes. We construct a synthetic axis whose levels are the provided tuples (deduped order). Unless `expand` is false, the compiler expands the tuple during row emission and restores the original axis columns post-product. Setting `expand` false keeps only the tuple axis in the output.
+- **Replicates (new)**:
+  - Defined outside the `rules` list via `replicates: {axis_name: {count: <int>, column: optional}}`.
+  - After rule application the compiler multiplies each row for the referenced axis by `count`, appending a deterministic replicate index column (default `<axis_name>_replicate`). All references must use count >= 1.
 - **Cartesian product and emission**:
   - After rules, compute the product over remaining axes. Output options allow field ordering, tuple/pair expansion, and optional structured columns. Reconstructed fields rely on the recorded tie/pair/tuple metadata.
 - **Boundary wrapper**: Dagster-facing call sites wrap `SpecDslErrorCode.INVALID_SPEC` into `DDError(Err.INVALID_SPEC, ctx=...)` once we extend the global contract during cohort integration.
@@ -78,6 +82,7 @@
 3. **Emission & CLI**
    - Build CLI (`scripts/compile_experiment_design.py`) that runs compiler on a spec directory, writes outputs under `data/2_tasks/designs/` (path configurable).
    - CLI delegates into `daydreaming_dagster.spec_dsl` functions (no standalone logic) and is exposed via Poetry/uv entry point once ready.
+   - CLI accepts JSON and CSV catalog inputs (`--catalog`, `--catalog-csv`, optional `--data-root` to resolve `Paths` shortcuts).
    - Include dry-run mode printing row counts and sample rows.
 4. **Testing**
    - Unit tests for loader (file references), each rule, tuple expansion, error cases, and deterministic ordering.
