@@ -1,3 +1,7 @@
+from collections.abc import Callable, Mapping
+from dataclasses import dataclass
+from typing import Any
+
 from dagster import Definitions, multiprocess_executor, in_process_executor
 import os
 from daydreaming_dagster.assets.group_draft import (
@@ -64,11 +68,60 @@ from daydreaming_dagster.resources.io_managers import (
 from daydreaming_dagster.resources.gens_prompt_io_manager import GensPromptIOManager
 from daydreaming_dagster.resources.scores_aggregator import ScoresAggregatorResource
 from daydreaming_dagster.resources.membership_service import MembershipServiceResource
-from pathlib import Path
-from daydreaming_dagster.types import Stage
+from daydreaming_dagster.data_layer.paths import Paths
+from daydreaming_dagster.types import Stage, STAGES as STAGE_ORDER
+
+
+@dataclass(frozen=True)
+class StageEntry:
+    """Stage registry entry describing canonical assets and resource factories."""
+
+    assets: tuple[Any, ...]
+    resource_factories: Mapping[str, Callable[[Paths], Any]]
+
+    def build_resources(self, paths: Paths) -> dict[str, Any]:
+        return {key: factory(paths) for key, factory in self.resource_factories.items()}
 
 
 # Responses and prompts are versioned; overwrite flags are not used.
+
+
+def _build_stage_registry() -> dict[Stage, StageEntry]:
+    """Construct the canonical stage registry used to wire assets and resources."""
+
+    def prompt_manager(stage: Stage) -> Callable[[Paths], Any]:
+        return lambda paths: GensPromptIOManager(gens_root=paths.gens_root, stage=stage)
+
+    def response_manager() -> Callable[[Paths], Any]:
+        return lambda paths: InMemoryIOManager(fallback_data_root=paths.data_root)
+
+    return {
+        "draft": StageEntry(
+            assets=(draft_prompt, draft_raw, draft_parsed),
+            resource_factories={
+                "draft_prompt_io_manager": prompt_manager("draft"),
+                "draft_response_io_manager": response_manager(),
+            },
+        ),
+        "essay": StageEntry(
+            assets=(essay_prompt, essay_raw, essay_parsed),
+            resource_factories={
+                "essay_prompt_io_manager": prompt_manager("essay"),
+                "essay_response_io_manager": response_manager(),
+            },
+        ),
+        "evaluation": StageEntry(
+            assets=(evaluation_prompt, evaluation_raw, evaluation_parsed),
+            resource_factories={
+                "evaluation_prompt_io_manager": prompt_manager("evaluation"),
+                "evaluation_response_io_manager": response_manager(),
+            },
+        ),
+    }
+
+
+STAGES: dict[Stage, StageEntry] = _build_stage_registry()
+
 
 # Use in-process executor when DD_IN_PROCESS=1 (helpful for CI/restricted envs).
 EXECUTOR = (
@@ -77,88 +130,95 @@ EXECUTOR = (
     else multiprocess_executor.configured({"max_concurrent": 10})
 )
 
-defs = Definitions(
-    assets=[
-        # Core processing assets
-        cohort_id,
-        cohort_membership,
-        register_cohort_partitions,
-        selected_combo_mappings,
-        content_combinations,
-        
-        # Two-phase generation assets
-        draft_prompt,
-        draft_raw,
-        draft_parsed,
 
-        essay_prompt,
-        essay_raw,
-        essay_parsed,
+def _stage_assets() -> list:
+    assets: list[Any] = []
+    for stage in STAGE_ORDER:
+        assets.extend(STAGES[stage].assets)
+    return assets
 
-        evaluation_prompt,
-        evaluation_raw,
-        evaluation_parsed,
-        
-        # Results processing assets
-        cohort_aggregated_scores,
-        evaluator_agreement_analysis,
-        comprehensive_variance_analysis,
-        generation_scores_pivot,
-        evaluation_model_template_pivot,
-        final_results,
-        perfect_score_paths,
-        
-        # Cross-experiment analysis assets (derive views on demand; no auto-appenders)
-        filtered_evaluation_results,
-        template_version_comparison_pivot,
-        documents_latest_report,
-        documents_consistency_report,
-        prune_dynamic_partitions,
-        # Source assets (CSV-only)
-        *RAW_SOURCE_ASSETS,
-    ],
-    asset_checks=[
-        draft_files_exist_check,
-        essay_files_exist_check,
-        evaluation_files_exist_check,
-    ],
-    schedules=[raw_schedule],
-    resources={
+
+CORE_ASSETS = (
+    cohort_id,
+    cohort_membership,
+    register_cohort_partitions,
+    selected_combo_mappings,
+    content_combinations,
+)
+
+RESULT_ASSETS = (
+    cohort_aggregated_scores,
+    evaluator_agreement_analysis,
+    comprehensive_variance_analysis,
+    generation_scores_pivot,
+    evaluation_model_template_pivot,
+    final_results,
+    perfect_score_paths,
+    filtered_evaluation_results,
+    template_version_comparison_pivot,
+    documents_latest_report,
+    documents_consistency_report,
+    prune_dynamic_partitions,
+)
+
+
+def _default_paths() -> Paths:
+    data_root = os.environ.get("DAYDREAMING_DATA_ROOT", "data")
+    return Paths.from_str(data_root)
+
+
+def _shared_resources(paths: Paths) -> dict[str, Any]:
+    data_root_path = paths.data_root
+    return {
         "openrouter_client": LLMClientResource(),
         "experiment_config": ExperimentConfig(),
-        
-        # Infrastructure configuration
-        "data_root": "data",
-        
-        # IO managers
-        "csv_io_manager": CSVIOManager(base_path=Path("data") / "2_tasks"),
-        "in_memory_io_manager": InMemoryIOManager(fallback_data_root=Path("data")),
-        # Prompts persist to gens store; responses are written to gens store by assets
-        "draft_prompt_io_manager": GensPromptIOManager(
-            gens_root=Path("data") / "gens",
-            stage="draft",
+        "data_root": str(data_root_path),
+        "csv_io_manager": CSVIOManager(base_path=paths.tasks_dir),
+        "in_memory_io_manager": InMemoryIOManager(fallback_data_root=data_root_path),
+        "error_log_io_manager": CSVIOManager(base_path=data_root_path / "7_reporting"),
+        "parsing_results_io_manager": CSVIOManager(base_path=paths.parsing_dir),
+        "summary_results_io_manager": CSVIOManager(base_path=paths.summary_dir),
+        "cross_experiment_io_manager": CSVIOManager(
+            base_path=paths.cross_experiment_dir
         ),
-        "essay_prompt_io_manager": GensPromptIOManager(
-            gens_root=Path("data") / "gens",
-            stage="essay",
-        ),
-        "evaluation_prompt_io_manager": GensPromptIOManager(
-            gens_root=Path("data") / "gens",
-            stage="evaluation",
-        ),
-        # Responses: no need to persist via IO manager — assets write to the gens store
-        # Use in-memory manager only if downstream assets in-process; tests may override
-        "draft_response_io_manager": InMemoryIOManager(fallback_data_root=Path("data")),
-        "essay_response_io_manager": InMemoryIOManager(fallback_data_root=Path("data")),
-        "evaluation_response_io_manager": InMemoryIOManager(fallback_data_root=Path("data")),
-        "error_log_io_manager": CSVIOManager(base_path=Path("data") / "7_reporting"),
-        "parsing_results_io_manager": CSVIOManager(base_path=Path("data") / "5_parsing"),
-        "summary_results_io_manager": CSVIOManager(base_path=Path("data") / "6_summary"),
-        "cross_experiment_io_manager": CSVIOManager(base_path=Path("data") / "7_cross_experiment"),
-        # Services for results processing (dependency-injected for testability)
         "scores_aggregator": ScoresAggregatorResource(),
         "membership_service": MembershipServiceResource(),
-    },
-    executor=EXECUTOR
-    # Note: Pool concurrency is configured via dagster_home/dagster.yaml
-)
+    }
+
+
+def _stage_resources(paths: Paths) -> dict[str, Any]:
+    resources: dict[str, Any] = {}
+    for stage in STAGE_ORDER:
+        resources.update(STAGES[stage].build_resources(paths))
+    return resources
+
+
+def build_definitions(*, paths: Paths | None = None) -> Definitions:
+    resolved_paths = paths or _default_paths()
+
+    assets = [
+        *CORE_ASSETS,
+        *_stage_assets(),
+        *RESULT_ASSETS,
+        *RAW_SOURCE_ASSETS,
+    ]
+
+    resources = {
+        **_shared_resources(resolved_paths),
+        **_stage_resources(resolved_paths),
+    }
+
+    return Definitions(
+        assets=assets,
+        asset_checks=[
+            draft_files_exist_check,
+            essay_files_exist_check,
+            evaluation_files_exist_check,
+        ],
+        schedules=[raw_schedule],
+        resources=resources,
+        executor=EXECUTOR,
+    )
+
+
+defs = build_definitions()

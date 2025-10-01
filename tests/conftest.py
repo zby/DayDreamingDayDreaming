@@ -159,6 +159,48 @@ def small_test_data():
     }
 
 
+@pytest.fixture
+def definitions_with_paths(tmp_path):
+    """Build Definitions bound to a temporary data root and validate path wiring."""
+
+    def _build():
+        from daydreaming_dagster.data_layer.paths import Paths
+        from daydreaming_dagster.definitions import STAGES, build_definitions
+
+        data_root = tmp_path / "data"
+        data_root.mkdir(parents=True, exist_ok=True)
+        paths = Paths.from_str(data_root)
+        defs = build_definitions(paths=paths)
+
+        assert defs.resources["data_root"] == str(paths.data_root)
+
+        csv_expectations = {
+            "csv_io_manager": paths.tasks_dir,
+            "parsing_results_io_manager": paths.parsing_dir,
+            "summary_results_io_manager": paths.summary_dir,
+            "cross_experiment_io_manager": paths.cross_experiment_dir,
+            "error_log_io_manager": paths.data_root / "7_reporting",
+        }
+        for key, expected in csv_expectations.items():
+            manager = defs.resources[key]
+            assert getattr(manager, "base_path") == expected
+
+        in_memory_manager = defs.resources["in_memory_io_manager"]
+        assert getattr(in_memory_manager, "_fallback_root") == paths.data_root
+
+        for entry in STAGES.values():
+            for resource_key in entry.resource_factories:
+                resource = defs.resources[resource_key]
+                if resource_key.endswith("prompt_io_manager"):
+                    assert getattr(resource, "gens_root") == paths.gens_root
+                else:
+                    assert getattr(resource, "_fallback_root", None) == paths.data_root
+
+        return defs, paths
+
+    return _build
+
+
 # ------------------------------
 
 @pytest.fixture
