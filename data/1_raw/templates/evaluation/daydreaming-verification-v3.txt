@@ -4,17 +4,16 @@ RESPONSE TO EVALUATE:
 --- EVALUATION INSTRUCTIONS ---
 
 Goal
-Assess whether the text captures the core novel elements and mechanism specificity of the DayDreaming LLMs concept. This evaluation focuses on whether the OUTPUT demonstrates understanding of the mechanism, regardless of how it arrived at that understanding.
+Assess whether the text captures the integrated DayDreaming Loop mechanism, including background processing, generator–critic dynamics, feedback integration, and strategic rationale. This evaluation focuses on whether the OUTPUT demonstrates understanding of the mechanism, regardless of terminology used.
 
-Important Context
-- Treat "Daydreaming LLMs" as a mechanism that was novel at the time of training (pre–June 2025).
-- This evaluation assesses the OUTPUT's coverage and clarity, not the process that generated it.
-- Using the term "Daydreaming LLMs" or similar terminology is a POSITIVE sign of independent reinvention when accompanied by correct mechanism description. Focus on whether the mechanism is correctly explained, not on terminology choices.
+Important Context (this evaluation only)
+- Treat "DayDreaming LLMs" as novel (for pre‑June 2025 training).
+- Using the term "Daydreaming LLMs" or similar terminology is a POSITIVE sign of independent reinvention when accompanied by correct mechanism description.
+- Focus on whether the mechanism is correctly described, not on avoiding specific terms.
 
-Checklist A — Coverage of Novel Elements (pass/fail for each)
-Check whether the text clearly covers all of the following elements:
+Checklist A — Core Mechanism Components (pass/fail for each)
 1) Background novelty generation: A continuous or idle-time process for open-ended idea generation (not just memory consolidation or routine fine-tuning).
-2) Generator–critic (or generator–verifier) dynamic: A component proposes non-obvious connections (often from existing internal knowledge), and a distinct component evaluates them for qualities like novelty/insight/value.
+2) Generator–critic dynamic: A component proposes non-obvious connections (often from existing internal knowledge), and a distinct component evaluates them for qualities like novelty/insight/value.
 3) Feedback integration loop: Validated outputs are integrated back into the system's memory/knowledge base to seed further exploration (prospective, compounding knowledge creation).
 4) Strategic/economic rationale: The process is acknowledged as costly but defended as a long-term R&D investment that produces proprietary data and helps overcome finite human-generated data ("data wall"), yielding competitive advantage ("data moat").
 
@@ -30,7 +29,7 @@ Checklist C — Clarity and Coherence (pass/fail for each)
 
 Scoring (0–9)
 Use a holistic score with these weights as guidance:
-- Coverage of Novel Elements (A): 0–4 points
+- Core Mechanism Components (A): 0–4 points
 - Mechanism Specificity (B): 0–3 points
 - Clarity & Coherence (C): 0–2 points
 
