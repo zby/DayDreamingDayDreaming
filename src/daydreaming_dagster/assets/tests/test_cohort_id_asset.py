@@ -43,6 +43,7 @@ def test_cohort_id_deterministic_and_manifest_written(tmp_path, monkeypatch):
     import daydreaming_dagster.assets.group_cohorts as module
 
     _stub_tables(monkeypatch, module)
+    monkeypatch.delenv("DD_COHORT", raising=False)
 
     context = build_asset_context(resources={"data_root": str(tmp_path)}, asset_config={})
     combos = [

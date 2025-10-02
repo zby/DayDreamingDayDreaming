@@ -1,13 +1,31 @@
-from dagster import MetadataValue
+from dagster import AssetKey, MetadataValue
 from ._decorators import asset_with_boundary
 import pandas as pd
 import numpy as np
+from ..data_layer.paths import Paths, COHORT_REPORT_ASSET_TARGETS
+from ..utils.errors import DDError, Err
+from .partitions import cohort_reports_partitions
+
+
+def _require_cohort_partition(context, asset_name: str) -> str:
+    partition_key = getattr(context, "partition_key", None)
+    if not partition_key:
+        raise DDError(
+            Err.INVALID_CONFIG,
+            ctx={
+                "reason": "cohort_partition_required",
+                "asset": asset_name,
+            },
+        )
+    return str(partition_key)
 
 
 @asset_with_boundary(
     stage="results_summary",
     group_name="results_summary",
-    io_manager_key="summary_results_io_manager"
+    io_manager_key="summary_results_io_manager",
+    deps={AssetKey("cohort_id")},
+    partitions_def=cohort_reports_partitions,
 )
 def evaluator_agreement_analysis(context, cohort_aggregated_scores: pd.DataFrame) -> pd.DataFrame:
     """
@@ -18,12 +36,23 @@ def evaluator_agreement_analysis(context, cohort_aggregated_scores: pd.DataFrame
     
     This provides a comprehensive view of evaluation stability across both dimensions.
     """
+    cohort_id = _require_cohort_partition(context, "evaluator_agreement_analysis")
+    paths = Paths.from_context(context)
+
     # Filter out rows with errors (no valid scores)
     from ..utils.evaluation_processing import filter_valid_scores
     valid_scores = filter_valid_scores(cohort_aggregated_scores)
     
     if valid_scores.empty:
         context.log.warning("No valid scores found for evaluator agreement analysis")
+        _, filename = COHORT_REPORT_ASSET_TARGETS["evaluator_agreement_analysis"]
+        context.add_output_metadata({
+            "responses_analyzed": MetadataValue.int(0),
+            "total_valid_scores": MetadataValue.int(0),
+            "multi_evaluator_cases": MetadataValue.int(0),
+            "cohort_id": MetadataValue.text(cohort_id),
+            "output": MetadataValue.path(str(paths.cohort_analysis_csv(cohort_id, filename))),
+        })
         return pd.DataFrame()
     
     # Group by the combination that identifies the same generated response
@@ -43,6 +72,14 @@ def evaluator_agreement_analysis(context, cohort_aggregated_scores: pd.DataFrame
     
     if multi_evaluator.empty:
         context.log.warning("No generation responses found with multiple evaluators")
+        _, filename = COHORT_REPORT_ASSET_TARGETS["evaluator_agreement_analysis"]
+        context.add_output_metadata({
+            "responses_analyzed": MetadataValue.int(0),
+            "total_valid_scores": MetadataValue.int(len(valid_scores)),
+            "multi_evaluator_cases": MetadataValue.int(0),
+            "cohort_id": MetadataValue.text(cohort_id),
+            "output": MetadataValue.path(str(paths.cohort_analysis_csv(cohort_id, filename))),
+        })
         return pd.DataFrame()
     
     # Calculate agreement metrics
@@ -95,6 +132,7 @@ def evaluator_agreement_analysis(context, cohort_aggregated_scores: pd.DataFrame
     # Add output metadata
     agreement_counts = multi_evaluator['agreement_classification'].value_counts().to_dict() if not multi_evaluator.empty else {}
     
+    _, filename = COHORT_REPORT_ASSET_TARGETS["evaluator_agreement_analysis"]
     context.add_output_metadata({
         "responses_analyzed": MetadataValue.int(len(multi_evaluator)),
         "total_valid_scores": MetadataValue.int(len(valid_scores)),
@@ -103,7 +141,9 @@ def evaluator_agreement_analysis(context, cohort_aggregated_scores: pd.DataFrame
         "moderate_agreement": MetadataValue.int(agreement_counts.get('moderate_agreement', 0)),
         "low_agreement": MetadataValue.int(agreement_counts.get('low_agreement', 0)),
         "poor_agreement": MetadataValue.int(agreement_counts.get('poor_agreement', 0)),
-        "median_score_range": MetadataValue.float(round(float(multi_evaluator['score_range'].median()), 2) if not multi_evaluator.empty and not pd.isna(multi_evaluator['score_range'].median()) else 0.0)
+        "median_score_range": MetadataValue.float(round(float(multi_evaluator['score_range'].median()), 2) if not multi_evaluator.empty and not pd.isna(multi_evaluator['score_range'].median()) else 0.0),
+        "cohort_id": MetadataValue.text(cohort_id),
+        "output": MetadataValue.path(str(paths.cohort_analysis_csv(cohort_id, filename))),
     })
     
     return multi_evaluator
@@ -112,7 +152,9 @@ def evaluator_agreement_analysis(context, cohort_aggregated_scores: pd.DataFrame
 @asset_with_boundary(
     stage="results_summary",
     group_name="results_summary",
-    io_manager_key="summary_results_io_manager"
+    io_manager_key="summary_results_io_manager",
+    deps={AssetKey("cohort_id")},
+    partitions_def=cohort_reports_partitions,
 )
 def comprehensive_variance_analysis(context, cohort_aggregated_scores: pd.DataFrame) -> pd.DataFrame:
     """
@@ -123,12 +165,21 @@ def comprehensive_variance_analysis(context, cohort_aggregated_scores: pd.DataFr
     
     This creates a detailed breakdown of where evaluation instability comes from.
     """
+    cohort_id = _require_cohort_partition(context, "comprehensive_variance_analysis")
+    paths = Paths.from_context(context)
+
     # Filter out rows with errors
     from ..utils.evaluation_processing import filter_valid_scores
     valid_scores = filter_valid_scores(cohort_aggregated_scores)
     
     if valid_scores.empty:
         context.log.warning("No valid scores found for comprehensive variance analysis")
+        _, filename = COHORT_REPORT_ASSET_TARGETS["comprehensive_variance_analysis"]
+        context.add_output_metadata({
+            "sections": MetadataValue.int(0),
+            "cohort_id": MetadataValue.text(cohort_id),
+            "output": MetadataValue.path(str(paths.cohort_analysis_csv(cohort_id, filename))),
+        })
         return pd.DataFrame()
     
     # Define the columns that identify the same generated response
@@ -138,6 +189,12 @@ def comprehensive_variance_analysis(context, cohort_aggregated_scores: pd.DataFr
     valid_scores['eval_template'] = valid_scores['evaluation_template']
     if 'evaluation_llm_model' not in valid_scores.columns:
         context.log.error("cohort_aggregated_scores missing 'evaluation_llm_model' column")
+        _, filename = COHORT_REPORT_ASSET_TARGETS["comprehensive_variance_analysis"]
+        context.add_output_metadata({
+            "sections": MetadataValue.int(0),
+            "cohort_id": MetadataValue.text(cohort_id),
+            "output": MetadataValue.path(str(paths.cohort_analysis_csv(cohort_id, filename))),
+        })
         return pd.DataFrame()
     valid_scores['eval_model'] = valid_scores['evaluation_llm_model']
     
@@ -262,6 +319,7 @@ def comprehensive_variance_analysis(context, cohort_aggregated_scores: pd.DataFr
         analysis_type_counts = combined_analysis['analysis_type'].value_counts().to_dict()
         stability_counts = combined_analysis['stability_classification'].value_counts().to_dict()
         
+        _, filename = COHORT_REPORT_ASSET_TARGETS["comprehensive_variance_analysis"]
         context.add_output_metadata({
             "variance_measurements": MetadataValue.int(len(combined_analysis)),
             "overall_variance": MetadataValue.int(analysis_type_counts.get('overall_variance', 0)),
@@ -271,18 +329,23 @@ def comprehensive_variance_analysis(context, cohort_aggregated_scores: pd.DataFr
             "moderate_agreement": MetadataValue.int(stability_counts.get('moderate_agreement', 0)),
             "low_agreement": MetadataValue.int(stability_counts.get('low_agreement', 0)),
             "poor_agreement": MetadataValue.int(stability_counts.get('poor_agreement', 0)),
-            "median_score_range": MetadataValue.float(round(float(combined_analysis['score_range'].median()), 2) if not combined_analysis.empty and not pd.isna(combined_analysis['score_range'].median()) else 0.0)
+            "median_score_range": MetadataValue.float(round(float(combined_analysis['score_range'].median()), 2) if not combined_analysis.empty and not pd.isna(combined_analysis['score_range'].median()) else 0.0),
+            "cohort_id": MetadataValue.text(cohort_id),
+            "output": MetadataValue.path(str(paths.cohort_analysis_csv(cohort_id, filename))),
         })
-        
+
         return combined_analysis
     else:
         context.log.warning("No variance patterns found - all evaluations appear to be single instances")
         
         # Add output metadata for empty result
+        _, filename = COHORT_REPORT_ASSET_TARGETS["comprehensive_variance_analysis"]
         context.add_output_metadata({
             "variance_measurements": MetadataValue.int(0),
             "source_evaluations": MetadataValue.int(len(valid_scores)),
-            "analysis_result": MetadataValue.text("No multi-evaluator patterns found")
+            "analysis_result": MetadataValue.text("No multi-evaluator patterns found"),
+            "cohort_id": MetadataValue.text(cohort_id),
+            "output": MetadataValue.path(str(paths.cohort_analysis_csv(cohort_id, filename))),
         })
-        
+
         return pd.DataFrame()

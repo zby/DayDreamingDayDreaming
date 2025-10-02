@@ -4,3 +4,6 @@ from dagster import DynamicPartitionsDefinition
 draft_gens_partitions = DynamicPartitionsDefinition(name="draft_gens")
 essay_gens_partitions = DynamicPartitionsDefinition(name="essay_gens")
 evaluation_gens_partitions = DynamicPartitionsDefinition(name="evaluation_gens")
+
+# Cohort-scoped report partitions (one per cohort)
+cohort_reports_partitions = DynamicPartitionsDefinition(name="cohort_reports")

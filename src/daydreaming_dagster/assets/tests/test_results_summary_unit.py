@@ -60,7 +60,7 @@ def test_generation_scores_pivot_smoke(monkeypatch, tmp_path):
         ),
     )
 
-    ctx = build_asset_context(resources={"data_root": str(tmp_path)})
+    ctx = build_asset_context(resources={"data_root": str(tmp_path)}, partition_key="cohort-test")
     parsed = _make_parsed_scores()
     pivot = rs.generation_scores_pivot(ctx, parsed)
 
@@ -94,7 +94,7 @@ def test_generation_scores_pivot_missing_evaluations_fill_counts(monkeypatch, tm
         ),
     )
 
-    ctx = build_asset_context(resources={"data_root": str(tmp_path)})
+    ctx = build_asset_context(resources={"data_root": str(tmp_path)}, partition_key="cohort-test")
     parsed = pd.DataFrame(
         [
             {
@@ -161,7 +161,7 @@ def test_generation_scores_pivot_missing_evaluations_fill_counts(monkeypatch, tm
 
 
 def test_final_results_overall_and_by_template(tmp_path):
-    ctx = build_asset_context(resources={"data_root": str(tmp_path)})
+    ctx = build_asset_context(resources={"data_root": str(tmp_path)}, partition_key="cohort-test")
     parsed = _make_parsed_scores()
     out = rs.final_results(ctx, parsed)
 
@@ -174,7 +174,7 @@ def test_final_results_overall_and_by_template(tmp_path):
 
 
 def test_evaluation_model_template_pivot(tmp_path):
-    ctx = build_asset_context(resources={"data_root": str(tmp_path)})
+    ctx = build_asset_context(resources={"data_root": str(tmp_path)}, partition_key="cohort-test")
     parsed = _make_parsed_scores()
     pivot = rs.evaluation_model_template_pivot(ctx, parsed)
 

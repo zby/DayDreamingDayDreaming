@@ -42,8 +42,7 @@ def pipeline_data_root_prepared():
     (pipeline_data_root / "2_tasks").mkdir(parents=True)
     # Gen store (prompts/responses live under data/gens/<stage>/<gen_id>/)
     (pipeline_data_root / "gens").mkdir(parents=True)
-    (pipeline_data_root / "5_parsing").mkdir(parents=True)
-    (pipeline_data_root / "6_summary").mkdir(parents=True)
+    (pipeline_data_root / "cohorts").mkdir(parents=True)
     (pipeline_data_root / "7_reporting").mkdir(parents=True)
 
     # Copy live 1_raw
@@ -213,15 +212,19 @@ class TestPipelineIntegration:
         else:
             print("⚠ Evaluation files not generated (expected - cross-partition complexity)")
         
-        # Results files (5_parsing/ & 6_summary/) - these may not exist if not enough evaluation data
-        parsing_file = test_directory / "5_parsing" / "parsed_scores.csv"
-        summary_file = test_directory / "6_summary" / "final_results.csv"
-        
-        results_exist = parsing_file.exists() or summary_file.exists()
-        if results_exist:
-            print("✓ Results processing files created")
+        cohort_reports_dirs = list((test_directory / "cohorts").glob("*/reports"))
+        if cohort_reports_dirs:
+            reports_root = cohort_reports_dirs[0]
+            parsing_file = reports_root / "parsing" / "aggregated_scores.csv"
+            summary_files = list((reports_root / "summary").glob("*.csv"))
+            analysis_files = list((reports_root / "analysis").glob("*.csv"))
+            results_exist = parsing_file.exists() or bool(summary_files) or bool(analysis_files)
+            if results_exist:
+                print("✓ Cohort reports generated")
+            else:
+                print("⚠ Cohort reports not generated (expected - needs more evaluation data)")
         else:
-            print("⚠ Results processing skipped (expected - needs more evaluation data)")
+            print("⚠ No cohort reports directory found (expected if cohort assets skipped)")
         
         # Print summary
         all_files = list(test_directory.rglob("*"))
@@ -271,9 +274,16 @@ class TestPipelineIntegration:
                     evaluation_prompt,
                     evaluation_parsed,
                 )
-                from daydreaming_dagster.resources.io_managers import CSVIOManager, InMemoryIOManager
+                from daydreaming_dagster.resources.io_managers import (
+                    CohortCSVIOManager,
+                    CSVIOManager,
+                    InMemoryIOManager,
+                )
                 from daydreaming_dagster.resources.gens_prompt_io_manager import GensPromptIOManager
                 from daydreaming_dagster.resources.experiment_config import ExperimentConfig
+                from daydreaming_dagster.data_layer.paths import Paths, COHORT_REPORT_ASSET_TARGETS
+
+                paths = Paths.from_str(pipeline_data_root)
 
                 resources = {
                     "data_root": str(pipeline_data_root),
@@ -297,8 +307,16 @@ class TestPipelineIntegration:
                     ),
                     "evaluation_response_io_manager": InMemoryIOManager(),
                     "in_memory_io_manager": InMemoryIOManager(),
-                    "parsing_results_io_manager": CSVIOManager(base_path=pipeline_data_root / "5_parsing"),
-                    "summary_results_io_manager": CSVIOManager(base_path=pipeline_data_root / "6_summary"),
+                    "parsing_results_io_manager": CohortCSVIOManager(
+                        paths,
+                        default_category="parsing",
+                        asset_map=COHORT_REPORT_ASSET_TARGETS,
+                    ),
+                    "summary_results_io_manager": CohortCSVIOManager(
+                        paths,
+                        default_category="summary",
+                        asset_map=COHORT_REPORT_ASSET_TARGETS,
+                    ),
                     "error_log_io_manager": CSVIOManager(base_path=pipeline_data_root / "7_reporting"),
                     "experiment_config": ExperimentConfig(k_max=2, description_level="paragraph"),
                 }
@@ -539,8 +557,7 @@ class TestPipelineIntegration:
             (temp_data_dir / "1_raw").mkdir()
             (temp_data_dir / "2_tasks").mkdir()
             (temp_data_dir / "gens").mkdir()
-            (temp_data_dir / "5_parsing").mkdir()
-            (temp_data_dir / "6_summary").mkdir()
+            (temp_data_dir / "cohorts").mkdir()
             (temp_data_dir / "7_reporting").mkdir()
 
             raw_data = temp_data_dir / "1_raw"

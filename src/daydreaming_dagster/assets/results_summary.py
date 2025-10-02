@@ -1,20 +1,33 @@
-from dagster import MetadataValue
-from ._decorators import asset_with_boundary
+from dagster import AssetKey, MetadataValue
 from ._decorators import asset_with_boundary
 import pandas as pd
 import numpy as np
-from pathlib import Path
-from ..data_layer.paths import Paths
+from ..data_layer.paths import Paths, COHORT_REPORT_ASSET_TARGETS
 from .raw_data import EVALUATION_TEMPLATES_KEY
 from ..utils.raw_readers import read_templates
 from ..utils.evaluation_processing import filter_valid_scores
 from ..utils.errors import DDError, Err
+from .partitions import cohort_reports_partitions
+
+
+def _require_cohort_partition(context, asset_name: str) -> str:
+    partition_key = getattr(context, "partition_key", None)
+    if not partition_key:
+        raise DDError(
+            Err.INVALID_CONFIG,
+            ctx={
+                "reason": "cohort_partition_required",
+                "asset": asset_name,
+            },
+        )
+    return str(partition_key)
 @asset_with_boundary(
     stage="results_summary",
     group_name="results_processing",
     io_manager_key="summary_results_io_manager",
     required_resource_keys={"data_root"},
-    deps={EVALUATION_TEMPLATES_KEY},
+    deps={EVALUATION_TEMPLATES_KEY, AssetKey("cohort_id")},
+    partitions_def=cohort_reports_partitions,
 )
 def generation_scores_pivot(context, cohort_aggregated_scores: pd.DataFrame) -> pd.DataFrame:
     """
@@ -25,7 +38,10 @@ def generation_scores_pivot(context, cohort_aggregated_scores: pd.DataFrame) -> 
     Values: Individual score for that specific evaluator combination (no averaging)
     """
     # Load evaluation templates CSV and extract active templates
-    eval_df = read_templates(Paths.from_context(context).data_root, "evaluation", filter_active=True)
+    cohort_id = _require_cohort_partition(context, "generation_scores_pivot")
+    paths = Paths.from_context(context)
+
+    eval_df = read_templates(paths.data_root, "evaluation", filter_active=True)
     if eval_df is None or eval_df.empty:
         context.log.warning("No evaluation templates CSV found or empty; returning empty pivot")
         return pd.DataFrame()
@@ -155,12 +171,15 @@ def generation_scores_pivot(context, cohort_aggregated_scores: pd.DataFrame) -> 
     pivot_df = pivot_df[ordered_cols]
 
     # Metadata
+    _, filename = COHORT_REPORT_ASSET_TARGETS["generation_scores_pivot"]
     context.add_output_metadata({
         "rows": MetadataValue.int(len(pivot_df)),
         "unique_generations": MetadataValue.int(pivot_df[['combo_id', 'draft_template', 'generation_template', 'generation_model']].drop_duplicates().shape[0]),
         "evaluation_combinations": MetadataValue.int(len(eval_columns)),
         "total_active_templates": MetadataValue.int(len(active_templates)),
-        "evaluation_columns": MetadataValue.text(", ".join(eval_columns))
+        "evaluation_columns": MetadataValue.text(", ".join(eval_columns)),
+        "cohort_id": MetadataValue.text(cohort_id),
+        "output": MetadataValue.path(str(paths.cohort_summary_csv(cohort_id, filename))),
     })
 
     return pivot_df
@@ -168,13 +187,18 @@ def generation_scores_pivot(context, cohort_aggregated_scores: pd.DataFrame) -> 
 @asset_with_boundary(
     stage="results_summary",
     group_name="results_summary", 
-    io_manager_key="summary_results_io_manager"
+    io_manager_key="summary_results_io_manager",
+    deps={AssetKey("cohort_id")},
+    partitions_def=cohort_reports_partitions,
 )
 def final_results(context, cohort_aggregated_scores: pd.DataFrame) -> pd.DataFrame:
     """
     Create comprehensive pivot table summaries with statistics.
     Includes average scores, perfect scores count, and standard deviation.
     """
+    cohort_id = _require_cohort_partition(context, "final_results")
+    paths = Paths.from_context(context)
+
     # Filter out rows with errors (no valid scores)
     valid_scores = filter_valid_scores(cohort_aggregated_scores)
     score_col = 'score'
@@ -296,6 +320,7 @@ def final_results(context, cohort_aggregated_scores: pd.DataFrame) -> pd.DataFra
         # Add output metadata
         analysis_type_counts = final_summary['analysis_type'].value_counts().to_dict() if 'analysis_type' in final_summary.columns else {}
         
+        _, filename = COHORT_REPORT_ASSET_TARGETS["final_results"]
         context.add_output_metadata({
             "summary_rows": MetadataValue.int(len(final_summary)),
             "source_evaluations": MetadataValue.int(len(valid_scores)),
@@ -304,39 +329,55 @@ def final_results(context, cohort_aggregated_scores: pd.DataFrame) -> pd.DataFra
             "by_model": MetadataValue.int(analysis_type_counts.get('by_generation_model', 0)),
             "by_combo": MetadataValue.int(analysis_type_counts.get('by_combo_id', 0)),
             "overall_stats": MetadataValue.int(analysis_type_counts.get('overall_statistics', 0)),
-            "columns_included": MetadataValue.text(", ".join(existing_columns))
+            "columns_included": MetadataValue.text(", ".join(existing_columns)),
+            "cohort_id": MetadataValue.text(cohort_id),
+            "output": MetadataValue.path(str(paths.cohort_summary_csv(cohort_id, filename))),
         })
-        
+
         return final_summary
     else:
         context.log.warning("No valid scores found for analysis")
         
         # Add output metadata for empty result
+        _, filename = COHORT_REPORT_ASSET_TARGETS["final_results"]
         context.add_output_metadata({
             "summary_rows": MetadataValue.int(0),
             "source_evaluations": MetadataValue.int(0),
-            "analysis_result": MetadataValue.text("No valid scores found for analysis")
+            "analysis_result": MetadataValue.text("No valid scores found for analysis"),
+            "cohort_id": MetadataValue.text(cohort_id),
+            "output": MetadataValue.path(str(paths.cohort_summary_csv(cohort_id, filename))),
         })
-        
+
         return pd.DataFrame()
 
 
 @asset_with_boundary(
     stage="results_summary",
     group_name="results_summary", 
-    io_manager_key="summary_results_io_manager"
+    io_manager_key="summary_results_io_manager",
+    deps={AssetKey("cohort_id")},
+    partitions_def=cohort_reports_partitions,
 )
 def perfect_score_paths(context, cohort_aggregated_scores: pd.DataFrame) -> pd.DataFrame:
     """
     Generate a file with paths to all responses that received perfect scores (10.0).
     Includes both generation and evaluation response paths for analysis.
     """
+    cohort_id = _require_cohort_partition(context, "perfect_score_paths")
+    paths = Paths.from_context(context)
+
     # Filter for perfect scores only (use centralized filter first)
     valid = filter_valid_scores(cohort_aggregated_scores)
     perfect_scores = valid[valid['score'] == 10.0].copy()
     
     if perfect_scores.empty:
         context.log.warning("No perfect scores found")
+        _, filename = COHORT_REPORT_ASSET_TARGETS["perfect_score_paths"]
+        context.add_output_metadata({
+            "perfect_scores": MetadataValue.int(0),
+            "cohort_id": MetadataValue.text(cohort_id),
+            "output": MetadataValue.path(str(paths.cohort_summary_csv(cohort_id, filename))),
+        })
         return pd.DataFrame(columns=[
             'combo_id', 'generation_template', 'generation_model', 
             'evaluation_llm_model', 'score',
@@ -376,6 +417,7 @@ def perfect_score_paths(context, cohort_aggregated_scores: pd.DataFrame) -> pd.D
     evaluator_counts = perfect_scores['evaluation_llm_model'].value_counts().to_dict() if not perfect_scores.empty else {}
     template_counts = perfect_scores['generation_template'].value_counts().to_dict() if not perfect_scores.empty else {}
     
+    _, filename = COHORT_REPORT_ASSET_TARGETS["perfect_score_paths"]
     context.add_output_metadata({
         "perfect_scores": MetadataValue.int(len(result_df)),
         "unique_combinations": MetadataValue.int(result_df['combo_id'].nunique() if 'combo_id' in result_df.columns else 0),
@@ -384,16 +426,20 @@ def perfect_score_paths(context, cohort_aggregated_scores: pd.DataFrame) -> pd.D
         "deepseek_perfect": MetadataValue.int(evaluator_counts.get('deepseek', 0)),
         "qwen_perfect": MetadataValue.int(evaluator_counts.get('qwen', 0)),
         "google_perfect": MetadataValue.int(evaluator_counts.get('google', 0)),
-        "top_template": MetadataValue.text(max(template_counts.keys(), key=template_counts.get) if template_counts else "None")
+        "top_template": MetadataValue.text(max(template_counts.keys(), key=template_counts.get) if template_counts else "None"),
+        "cohort_id": MetadataValue.text(cohort_id),
+        "output": MetadataValue.path(str(paths.cohort_summary_csv(cohort_id, filename))),
     })
-    
+
     return result_df
 
 
 @asset_with_boundary(
     stage="results_summary", 
     group_name="results_summary", 
-    io_manager_key="summary_results_io_manager"
+    io_manager_key="summary_results_io_manager",
+    deps={AssetKey("cohort_id")},
+    partitions_def=cohort_reports_partitions,
 )
 def evaluation_model_template_pivot(context, cohort_aggregated_scores: pd.DataFrame) -> pd.DataFrame:
     """
@@ -406,8 +452,21 @@ def evaluation_model_template_pivot(context, cohort_aggregated_scores: pd.DataFr
     This table enables easy comparison of how different evaluation approaches
     score the same generation responses.
     """
+    cohort_id = _require_cohort_partition(context, "evaluation_model_template_pivot")
+    paths = Paths.from_context(context)
+
     if cohort_aggregated_scores is None or cohort_aggregated_scores.empty:
         context.log.warning("No cohort aggregated scores provided; returning empty pivot")
+        _, filename = COHORT_REPORT_ASSET_TARGETS["evaluation_model_template_pivot"]
+        context.add_output_metadata({
+            "total_generation_responses": MetadataValue.int(0),
+            "evaluation_combinations": MetadataValue.int(0),
+            "unique_combos": MetadataValue.int(0),
+            "unique_generation_templates": MetadataValue.int(0),
+            "unique_generation_models": MetadataValue.int(0),
+            "cohort_id": MetadataValue.text(cohort_id),
+            "output": MetadataValue.path(str(paths.cohort_summary_csv(cohort_id, filename))),
+        })
         return pd.DataFrame()
 
     # Filter to valid scored rows
@@ -415,6 +474,16 @@ def evaluation_model_template_pivot(context, cohort_aggregated_scores: pd.DataFr
     
     if valid_scores.empty:
         context.log.warning("No valid scores found; returning empty pivot")
+        _, filename = COHORT_REPORT_ASSET_TARGETS["evaluation_model_template_pivot"]
+        context.add_output_metadata({
+            "total_generation_responses": MetadataValue.int(0),
+            "evaluation_combinations": MetadataValue.int(0),
+            "unique_combos": MetadataValue.int(0),
+            "unique_generation_templates": MetadataValue.int(0),
+            "unique_generation_models": MetadataValue.int(0),
+            "cohort_id": MetadataValue.text(cohort_id),
+            "output": MetadataValue.path(str(paths.cohort_summary_csv(cohort_id, filename))),
+        })
         return pd.DataFrame()
     
     # Require evaluator id and create combined key
@@ -460,13 +529,16 @@ def evaluation_model_template_pivot(context, cohort_aggregated_scores: pd.DataFr
     context.log.info(f"Evaluation combinations: {len(eval_columns)}")
     
     # Add metadata
+    _, filename = COHORT_REPORT_ASSET_TARGETS["evaluation_model_template_pivot"]
     context.add_output_metadata({
         "total_generation_responses": MetadataValue.int(total_generations),
         "evaluation_combinations": MetadataValue.int(len(eval_columns)),
         "unique_combos": MetadataValue.int(pivot_df['combo_id'].nunique()),
         "unique_generation_templates": MetadataValue.int(pivot_df['generation_template'].nunique()), 
         "unique_generation_models": MetadataValue.int(pivot_df['generation_model'].nunique()),
-        "evaluation_coverage": MetadataValue.json(coverage_stats)
+        "evaluation_coverage": MetadataValue.json(coverage_stats),
+        "cohort_id": MetadataValue.text(cohort_id),
+        "output": MetadataValue.path(str(paths.cohort_summary_csv(cohort_id, filename))),
     })
-    
+
     return pivot_df

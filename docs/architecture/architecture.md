@@ -412,7 +412,8 @@ data/
 ├── 3_generation/               # Legacy only (not used by current pipeline)
 ├── 5_parsing/                  # Parsed evaluation scores
 │   └── parsed_scores.csv
-├── 6_summary/                  # Final aggregated results
+├── cohorts/
+│   └── <cohort_id>/reports/    # Cohort-scoped parsing/summary/analysis outputs
 │   └── final_results.csv
 └── combo_mappings.csv          # Mapping of stable combo IDs to concept components
 ```

@@ -8,7 +8,7 @@ and optionally writes the merged results to a CSV for downstream use.
 
 Example usage:
   uv run python scripts/report_promising_essays.py --top-n 20 --score-span 0.5 \
-      --output-csv data/6_summary/promising_essays_novelty.csv
+      --cohort-id cohort-abc --output-csv data/cohorts/cohort-abc/reports/summary/promising_essays_novelty.csv
 """
 
 from __future__ import annotations
@@ -19,6 +19,8 @@ import sys
 from typing import Iterable
 
 import pandas as pd
+
+from daydreaming_dagster.data_layer.paths import Paths, COHORT_REPORT_ASSET_TARGETS
 
 from daydreaming_dagster.utils.evaluation_scores import (
     parent_ids_missing_template,
@@ -33,6 +35,12 @@ def parse_args() -> argparse.Namespace:
         type=Path,
         default=Path("data/7_cross_experiment/aggregated_scores.csv"),
         help="Path to aggregated_scores.csv (defaults to data/7_cross_experiment/aggregated_scores.csv)",
+    )
+    parser.add_argument(
+        "--cohort-id",
+        type=str,
+        default=None,
+        help="If provided, read aggregated scores from data/cohorts/<id>/reports/parsing/aggregated_scores.csv",
     )
     parser.add_argument(
         "--baseline-template",
@@ -91,8 +99,18 @@ def _load_scores(path: Path) -> pd.DataFrame:
 def main() -> int:
     args = parse_args()
 
+    aggregated_path = args.aggregated_scores
+    if args.cohort_id:
+        cohort_id = args.cohort_id.strip()
+        if not cohort_id:
+            print("ERROR: --cohort-id requires a non-empty value", file=sys.stderr)
+            return 2
+        paths = Paths.from_str("data")
+        _, filename = COHORT_REPORT_ASSET_TARGETS["cohort_aggregated_scores"]
+        aggregated_path = paths.cohort_parsing_csv(cohort_id, filename)
+
     try:
-        df = _load_scores(args.aggregated_scores)
+        df = _load_scores(aggregated_path)
     except FileNotFoundError as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
         return 2

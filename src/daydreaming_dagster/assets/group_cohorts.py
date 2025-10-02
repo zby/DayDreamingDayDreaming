@@ -42,6 +42,7 @@ from .partitions import (
     draft_gens_partitions,
     essay_gens_partitions,
     evaluation_gens_partitions,
+    cohort_reports_partitions,
 )
 from ..utils.errors import DDError, Err
 from ..data_layer.paths import Paths
@@ -1413,9 +1414,20 @@ def cohort_id(context, content_combinations: list[ContentCombination]) -> str:
     env_override = get_env_cohort_id()
     cid = compute_cohort_id("cohort", manifest, explicit=(override or env_override))
     write_manifest(str(data_root), cid, manifest)
+    instance = context.instance
+    has_dynamic_partition = getattr(instance, "has_dynamic_partition", None)
+    if callable(has_dynamic_partition):
+        already_registered = has_dynamic_partition(cohort_reports_partitions.name, cid)
+    else:
+        existing = set(instance.get_dynamic_partitions(cohort_reports_partitions.name))
+        already_registered = cid in existing
+    if not already_registered:
+        instance.add_dynamic_partitions(cohort_reports_partitions.name, [cid])
+
     context.add_output_metadata({
         "origin_cohort_id": MetadataValue.text(cid),
         "manifest_path": MetadataValue.path(str((data_root / "cohorts" / cid / "manifest.json").resolve())),
+        "partition_registered": MetadataValue.bool(True),
     })
     return cid
 

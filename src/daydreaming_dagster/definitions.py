@@ -63,12 +63,13 @@ from daydreaming_dagster.resources.llm_client import LLMClientResource
 from daydreaming_dagster.resources.experiment_config import ExperimentConfig
 from daydreaming_dagster.resources.io_managers import (
     CSVIOManager,
+    CohortCSVIOManager,
     InMemoryIOManager,
 )
 from daydreaming_dagster.resources.gens_prompt_io_manager import GensPromptIOManager
 from daydreaming_dagster.resources.scores_aggregator import ScoresAggregatorResource
 from daydreaming_dagster.resources.membership_service import MembershipServiceResource
-from daydreaming_dagster.data_layer.paths import Paths
+from daydreaming_dagster.data_layer.paths import Paths, COHORT_REPORT_ASSET_TARGETS
 from daydreaming_dagster.types import Stage, STAGES as STAGE_ORDER
 
 
@@ -176,8 +177,16 @@ def _shared_resources(paths: Paths) -> dict[str, Any]:
         "csv_io_manager": CSVIOManager(base_path=paths.tasks_dir),
         "in_memory_io_manager": InMemoryIOManager(fallback_data_root=data_root_path),
         "error_log_io_manager": CSVIOManager(base_path=data_root_path / "7_reporting"),
-        "parsing_results_io_manager": CSVIOManager(base_path=paths.parsing_dir),
-        "summary_results_io_manager": CSVIOManager(base_path=paths.summary_dir),
+        "parsing_results_io_manager": CohortCSVIOManager(
+            paths,
+            default_category="parsing",
+            asset_map=COHORT_REPORT_ASSET_TARGETS,
+        ),
+        "summary_results_io_manager": CohortCSVIOManager(
+            paths,
+            default_category="summary",
+            asset_map=COHORT_REPORT_ASSET_TARGETS,
+        ),
         "cross_experiment_io_manager": CSVIOManager(
             base_path=paths.cross_experiment_dir
         ),

@@ -176,14 +176,21 @@ def definitions_with_paths(tmp_path):
 
         csv_expectations = {
             "csv_io_manager": paths.tasks_dir,
-            "parsing_results_io_manager": paths.parsing_dir,
-            "summary_results_io_manager": paths.summary_dir,
             "cross_experiment_io_manager": paths.cross_experiment_dir,
             "error_log_io_manager": paths.data_root / "7_reporting",
         }
         for key, expected in csv_expectations.items():
             manager = defs.resources[key]
             assert getattr(manager, "base_path") == expected
+
+        from daydreaming_dagster.resources.io_managers import CohortCSVIOManager
+
+        parsing_mgr = defs.resources["parsing_results_io_manager"]
+        summary_mgr = defs.resources["summary_results_io_manager"]
+        for mgr, category in ((parsing_mgr, "parsing"), (summary_mgr, "summary")):
+            assert isinstance(mgr, CohortCSVIOManager)
+            assert mgr._paths == paths
+            assert mgr._default_category == category
 
         in_memory_manager = defs.resources["in_memory_io_manager"]
         assert getattr(in_memory_manager, "_fallback_root") == paths.data_root

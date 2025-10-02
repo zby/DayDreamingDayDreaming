@@ -34,6 +34,7 @@ def _ensure_src_on_path() -> None:
 _ensure_src_on_path()
 
 from daydreaming_dagster.utils.errors import DDError, Err
+from daydreaming_dagster.data_layer.paths import Paths
 
 
 def _compose_essay_task_id(df: pd.DataFrame) -> pd.Series:
@@ -362,6 +363,12 @@ def main() -> None:
         help="Project data root containing gens metadata (default: data)",
     )
     parser.add_argument(
+        "--cohort-id",
+        type=str,
+        default=None,
+        help="If provided, derive parsed scores and output directory from data/cohorts/<id>/reports",
+    )
+    parser.add_argument(
         "--limit-to-active",
         action="store_true",
         help=(
@@ -370,9 +377,24 @@ def main() -> None:
     )
     args = parser.parse_args()
 
+    paths = Paths.from_str(args.data_root)
+
+    parsed_scores_path = args.parsed_scores
+    output_dir = args.out_dir
+
+    if args.cohort_id:
+        cohort_id = args.cohort_id.strip()
+        if not cohort_id:
+            raise DDError(
+                Err.INVALID_CONFIG,
+                ctx={"reason": "invalid_cohort_id", "value": args.cohort_id},
+            )
+        parsed_scores_path = paths.cohort_parsing_csv(cohort_id, "aggregated_scores.csv")
+        output_dir = paths.cohort_report_root(cohort_id) / "summary"
+
     build_pivot(
-        parsed_scores=args.parsed_scores,
-        out_dir=args.out_dir,
+        parsed_scores=parsed_scores_path,
+        out_dir=output_dir,
         limit_to_active=args.limit_to_active,
         evaluation_templates_path=args.evaluation_templates,
         llm_models_path=args.llm_models,

@@ -1,9 +1,11 @@
 from dagster import IOManager, InputContext, OutputContext
 from pathlib import Path
+from typing import Mapping
 import pandas as pd
 import os
 
 from ..utils.errors import DDError, Err
+from ..data_layer.paths import Paths
 
 # Factory functions removed - use direct class instantiation in definitions.py
 
@@ -81,6 +83,90 @@ class CSVIOManager(IOManager):
 
 # VersionedTextIOManager removed. For persistence, assets write to the gens store
 # (data/gens/<stage>/<gen_id>) and scripts read from the filesystem directly.
+
+
+class CohortCSVIOManager(IOManager):
+    """Cohort-scoped CSV manager that routes writes based on the partition key."""
+
+    def __init__(
+        self,
+        paths: Paths,
+        *,
+        default_category: str,
+        asset_map: Mapping[str, tuple[str, str]] | None = None,
+    ) -> None:
+        self._paths = paths
+        self._default_category = default_category
+        self._asset_map = {
+            key: (value[0], value[1])
+            for key, value in (asset_map or {}).items()
+        }
+
+    def _resolve_target(self, asset_name: str) -> tuple[str, str]:
+        category, filename = self._asset_map.get(
+            asset_name,
+            (self._default_category, f"{asset_name}.csv"),
+        )
+        return category, filename
+
+    def _require_partition_key(self, context) -> str:
+        partition_key = None
+        if getattr(context, "has_partition_key", False):
+            partition_key = context.partition_key
+        if not partition_key and hasattr(context, "asset_partition_key"):
+            partition_key = context.asset_partition_key
+        if not partition_key:
+            raise DDError(
+                Err.INVALID_CONFIG,
+                ctx={
+                    "reason": "cohort_partition_required",
+                    "asset": ".".join(context.asset_key.path) if context.asset_key else None,
+                },
+            )
+        return str(partition_key)
+
+    def handle_output(self, context: OutputContext, obj):
+        if obj is None or (hasattr(obj, "empty") and getattr(obj, "empty")):
+            context.log.info(f"Skipping output for {context.asset_key} as it is empty")
+            return
+
+        cohort_id = self._require_partition_key(context)
+        asset_name = context.asset_key.path[-1] if context.asset_key.path else "asset"
+        category, filename = self._resolve_target(asset_name)
+        file_path = self._paths.cohort_report_path(cohort_id, category, filename)
+        file_path.parent.mkdir(parents=True, exist_ok=True)
+
+        if hasattr(obj, "to_csv"):
+            obj.to_csv(file_path, index=False)
+            context.log.info(f"Saved {asset_name} to {file_path}")
+        else:
+            raise DDError(
+                Err.INVALID_CONFIG,
+                ctx={
+                    "reason": "csv_io_requires_dataframe",
+                    "type": str(type(obj)),
+                    "asset": asset_name,
+                },
+            )
+
+    def load_input(self, context: InputContext):
+        cohort_id = self._require_partition_key(context)
+        asset_name = context.asset_key.path[-1] if context.asset_key.path else "asset"
+        category, filename = self._resolve_target(asset_name)
+        file_path = self._paths.cohort_report_path(cohort_id, category, filename)
+
+        if not file_path.exists():
+            raise DDError(
+                Err.DATA_MISSING,
+                ctx={
+                    "reason": "csv_file_missing",
+                    "path": str(file_path),
+                    "asset": asset_name,
+                    "cohort_id": cohort_id,
+                },
+            )
+
+        return pd.read_csv(file_path)
 
 
 class InMemoryIOManager(IOManager):

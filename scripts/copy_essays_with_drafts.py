@@ -19,7 +19,7 @@ Examples:
     python scripts/copy_essays_with_drafts.py --use-all-generations  # all current files
 
 What it does:
-1) Reads `data/6_summary/generation_scores_pivot.csv`
+1) Reads `data/cohorts/<cohort>/reports/summary/generation_scores.csv`
 2) Sorts by `sum_scores` and selects top N
 3) Copies to `to_analyse/`:
    - Essay responses from `data/3_generation/essay_responses/`
@@ -43,6 +43,19 @@ import pandas as pd
 from pathlib import Path
 from typing import List, Tuple
 import argparse
+
+
+def _ensure_src_on_path() -> None:
+    repo_root = Path(__file__).resolve().parents[1]
+    src_dir = repo_root / "src"
+    if src_dir.exists():
+        sys.path.insert(0, str(src_dir))
+
+
+_ensure_src_on_path()
+
+from daydreaming_dagster.data_layer.paths import Paths, COHORT_REPORT_ASSET_TARGETS
+from daydreaming_dagster.utils.errors import DDError, Err
 
 
 def find_common_prefix(filenames: List[str]) -> str:
@@ -112,7 +125,7 @@ def remove_common_prefix(filename: str, common_prefix: str) -> str:
     return filename
 
 
-def get_top_scoring_generations(n: int = 5, scores_csv: str = "data/6_summary/generation_scores_pivot.csv") -> Tuple[List[str], List[dict]]:
+def get_top_scoring_generations(n: int = 5, scores_csv: str | None = None) -> Tuple[List[str], List[dict]]:
     """
     Get the top N scoring generations from the generation_scores_pivot.csv file.
     
@@ -123,6 +136,11 @@ def get_top_scoring_generations(n: int = 5, scores_csv: str = "data/6_summary/ge
     Returns:
         Tuple of (essay_filenames, generation_info) where generation_info contains score details
     """
+    if not scores_csv:
+        raise DDError(
+            Err.INVALID_CONFIG,
+            ctx={"reason": "scores_csv_required"},
+        )
     if not os.path.exists(scores_csv):
         raise FileNotFoundError(f"Scores CSV file not found: {scores_csv}")
     
@@ -561,7 +579,7 @@ def main():
     parser.add_argument("--n", type=int, default=None, help="Top N to copy (overrides positional, ignored with --use-all-generations)")
     parser.add_argument("--use-big-pivot", action="store_true", help="Use cross-experiment pivot (eval axes inferred from evaluation_templates.csv × llm_models.csv unless overridden)")
     parser.add_argument("--use-all-generations", action="store_true", help="Copy all current generation files (ignores N and pivot tables)")
-    parser.add_argument("--scores-csv", type=str, default="data/6_summary/generation_scores_pivot.csv", help="Path to experiment pivot (default mode)")
+    parser.add_argument("--scores-csv", type=str, default=None, help="Path to experiment pivot (default mode)")
     parser.add_argument("--big-pivot", type=str, default="data/7_cross_experiment/evaluation_scores_by_template_model.csv", help="Path to cross-experiment pivot table")
     parser.add_argument("--evaluation-tasks", type=str, default=None, help="Optional: path to curated evaluation_tasks.csv to select eval template+model columns; defaults to active evaluation_templates × llm_models")
     parser.add_argument("--essay-responses-dir", type=str, default="data/3_generation/essay_responses", help="Directory containing essay response files")
@@ -576,6 +594,7 @@ def main():
     parser.add_argument("--draft-templates", type=str, default="data/1_raw/draft_templates.csv", help="Path to draft templates CSV")
     # Back-compat (deprecated): allow --link-templates to override if provided
     parser.add_argument("--link-templates", type=str, default=None, help="[Deprecated] Path to legacy link templates CSV")
+    parser.add_argument("--cohort-id", type=str, default=None, help="If set, load scores from data/cohorts/<id>/reports/summary/")
     args = parser.parse_args()
 
     # Handle conflicting options
@@ -610,7 +629,7 @@ def main():
                     n=n, pivot_csv=args.big_pivot, evaluation_tasks_csv=args.evaluation_tasks or ""
                 )
             else:
-                essay_filenames, generation_info = get_top_scoring_generations(n=n, scores_csv=args.scores_csv)
+                essay_filenames, generation_info = get_top_scoring_generations(n=n, scores_csv=scores_csv)
     except Exception as e:
         print(f"Error getting generation files: {e}")
         sys.exit(1)
@@ -626,7 +645,10 @@ def main():
             print("    uv run python scripts/build_pivot_tables.py --parsed-scores data/7_cross_experiment/parsed_scores.csv")
             print("- Confirm evaluation_templates.csv and llm_models.csv have active evaluation axes; or pass --evaluation-tasks to override.")
         else:
-            print("No generations found in scores CSV (data/6_summary/generation_scores_pivot.csv)")
+            if scores_csv:
+                print(f"No generations found in scores CSV ({scores_csv})")
+            else:
+                print("No generations found; provide --cohort-id or --scores-csv to locate pivot data")
         sys.exit(1)
     
     if args.use_all_generations:
@@ -653,3 +675,12 @@ def main():
 
 if __name__ == "__main__":
     main()
+    scores_csv = args.scores_csv
+    if args.cohort_id:
+        cohort_id = args.cohort_id.strip()
+        if not cohort_id:
+            print("Error: --cohort-id requires a non-empty value")
+            sys.exit(1)
+        paths = Paths.from_str("data")
+        _, filename = COHORT_REPORT_ASSET_TARGETS["generation_scores_pivot"]
+        scores_csv = str(paths.cohort_summary_csv(cohort_id, filename))

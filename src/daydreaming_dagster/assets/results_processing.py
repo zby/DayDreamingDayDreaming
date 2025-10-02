@@ -1,9 +1,11 @@
-from dagster import MetadataValue
+from dagster import AssetKey, MetadataValue
 from ._decorators import asset_with_boundary
 from pathlib import Path
 from ..data_layer.paths import Paths
+from ..utils.errors import DDError, Err
 import pandas as pd
 from ..utils.evaluation_processing import calculate_evaluation_metadata
+from .partitions import cohort_reports_partitions
 
 
 def cohort_aggregated_scores_impl(
@@ -38,8 +40,10 @@ def cohort_aggregated_scores_impl(
         "Requires parsed.txt; rows without it are included with error=missing parsed.txt."
     ),
     compute_kind="pandas",
+    partitions_def=cohort_reports_partitions,
+    deps={AssetKey("cohort_id")},
 )
-def cohort_aggregated_scores(context, cohort_id: str) -> pd.DataFrame:
+def cohort_aggregated_scores(context) -> pd.DataFrame:
     """Aggregate evaluation scores for the current cohort.
 
     Source rows come from scripts.aggregate_scores.parse_all, which:
@@ -49,8 +53,16 @@ def cohort_aggregated_scores(context, cohort_id: str) -> pd.DataFrame:
       generation_model, generation_response_path, evaluation_llm_model, origin_cohort_id).
     This asset simply filters that cross-experiment aggregation down to the current cohort.
     """
-    data_root = Paths.from_context(context).data_root
-    out_csv = data_root / "5_parsing" / "cohort_aggregated_scores.csv"
+    cohort_id = context.partition_key
+    if not cohort_id:
+        raise DDError(
+            Err.INVALID_CONFIG,
+            ctx={"reason": "cohort_partition_required", "asset": "cohort_aggregated_scores"},
+        )
+
+    paths = Paths.from_context(context)
+    data_root = paths.data_root
+    out_csv = paths.cohort_parsing_csv(cohort_id, "aggregated_scores.csv")
     df = cohort_aggregated_scores_impl(
         data_root,
         scores_aggregator=context.resources.scores_aggregator,
@@ -62,6 +74,7 @@ def cohort_aggregated_scores(context, cohort_id: str) -> pd.DataFrame:
     md.update({
         "output": MetadataValue.path(str(out_csv)),
         "enriched": MetadataValue.bool(False),
+        "cohort_id": MetadataValue.text(str(cohort_id)),
     })
     context.add_output_metadata(md)
     return df

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional
+from typing import Dict, Optional, Tuple
 import os
 
 from ..utils.errors import DDError, Err
@@ -66,6 +66,57 @@ class Paths:
     @property
     def cohorts_dir(self) -> Path:
         return self.data_root / "cohorts"
+
+    # --- Cohort reports helpers ---
+    def _normalize_cohort_id(self, cohort_id: str) -> str:
+        if cohort_id is None:
+            raise DDError(
+                Err.INVALID_CONFIG,
+                ctx={"reason": "paths_missing_cohort_id"},
+            )
+        cid = str(cohort_id).strip()
+        if not cid:
+            raise DDError(
+                Err.INVALID_CONFIG,
+                ctx={"reason": "paths_missing_cohort_id"},
+            )
+        return cid
+
+    def cohort_report_root(self, cohort_id: str) -> Path:
+        return self.cohort_dir(self._normalize_cohort_id(cohort_id)) / "reports"
+
+    def _cohort_report_category_dir(self, cohort_id: str, category: str) -> Path:
+        cid = self._normalize_cohort_id(cohort_id)
+        normalized = str(category).strip().lower()
+        if normalized not in {"parsing", "summary", "analysis"}:
+            raise DDError(
+                Err.INVALID_CONFIG,
+                ctx={
+                    "reason": "paths_invalid_cohort_report_category",
+                    "category": category,
+                },
+            )
+        return self.cohort_report_root(cid) / normalized
+
+    def cohort_report_path(self, cohort_id: str, category: str, name: str) -> Path:
+        if not name or str(name).strip() == "":
+            raise DDError(
+                Err.INVALID_CONFIG,
+                ctx={
+                    "reason": "paths_missing_cohort_report_name",
+                    "category": category,
+                },
+            )
+        return self._cohort_report_category_dir(cohort_id, category) / str(name)
+
+    def cohort_parsing_csv(self, cohort_id: str, filename: str) -> Path:
+        return self.cohort_report_path(cohort_id, "parsing", filename)
+
+    def cohort_summary_csv(self, cohort_id: str, filename: str) -> Path:
+        return self.cohort_report_path(cohort_id, "summary", filename)
+
+    def cohort_analysis_csv(self, cohort_id: str, filename: str) -> Path:
+        return self.cohort_report_path(cohort_id, "analysis", filename)
 
     @property
     def combo_mappings_csv(self) -> Path:
@@ -134,12 +185,8 @@ class Paths:
         return self.cohort_dir(cohort_id) / "manifest.json"
 
     # --- Processed outputs ---
-    @property
-    def cohort_aggregated_scores_csv(self) -> Path:
-        return self.parsing_dir / "cohort_aggregated_scores.csv"
-
     def evaluation_scores_normalized_csv(self, cohort_id: str) -> Path:
-        return self.summary_dir / f"{cohort_id}_evaluation_scores.csv"
+        return self.cohort_summary_csv(cohort_id, "evaluation_scores.csv")
 
     # --- Constructors ---
     @classmethod
@@ -157,6 +204,17 @@ class Paths:
         return cls(Path(data_root))
 
 
+COHORT_REPORT_ASSET_TARGETS: Dict[str, Tuple[str, str]] = {
+    "cohort_aggregated_scores": ("parsing", "aggregated_scores.csv"),
+    "generation_scores_pivot": ("summary", "generation_scores.csv"),
+    "final_results": ("summary", "final_results.csv"),
+    "perfect_score_paths": ("summary", "perfect_score_paths.csv"),
+    "evaluation_model_template_pivot": ("summary", "evaluation_model_template_pivot.csv"),
+    "evaluator_agreement_analysis": ("analysis", "evaluator_agreement.csv"),
+    "comprehensive_variance_analysis": ("analysis", "variance_analysis.csv"),
+}
+
+
 __all__ = [
     "Paths",
     "PROMPT_FILENAME",
@@ -166,4 +224,5 @@ __all__ = [
     "RAW_METADATA_FILENAME",
     "PARSED_METADATA_FILENAME",
     "GEN_ARTIFACT_FILENAMES",
+    "COHORT_REPORT_ASSET_TARGETS",
 ]

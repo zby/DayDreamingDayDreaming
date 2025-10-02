@@ -47,7 +47,7 @@ Note: prefer `.venv/bin/pytest` instead of `uv run pytest` — uv may attempt to
 
 - `src/daydreaming_dagster/`: Main package (`assets/`, `resources/`, `models/`, `utils/`, `definitions.py`)
 - `tests/`: Integration tests & fixtures; **unit tests live next to code** in `src/daydreaming_dagster/`
-- `data/`: Pipeline inputs/outputs (`1_raw/`, `2_tasks/`, `gens/`, `5_parsing/`, `6_summary/`)
+- `data/`: Pipeline inputs/outputs (`1_raw/`, `2_tasks/`, `gens/`, `cohorts/`, `7_cross_experiment/`)
 - `scripts/`: Results analysis and maintenance scripts
 - `docs/`: Architecture documentation (see `docs/project_goals.md`)
 
