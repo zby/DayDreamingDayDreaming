@@ -15,13 +15,13 @@ A systematic pipeline for:
 
 ### Top 3 Essays (Full Details in README.md)
 
-| Rank | Essay ID | Avg Score | Model | Template |
-|------|----------|-----------|-------|----------|
-| #1 | e_sq5klak2lljyyom | 8.77/9 | gemini_25_pro | creative-synthesis-v10 |
-| #2 | e_1cx6440bb5zj9466 | 8.75/9 | gemini_25_pro | creative-synthesis-v10 |
-| #3 | e_4nqjjtqtnpxlljlz | 8.52/9 | deepseek_r1_p | parsed-from-links-v1 |
+| Rank | Essay ID | Avg Score | Draft Template | Essay Template | Model |
+|------|----------|-----------|----------------|----------------|-------|
+| #1 | e_sq5klak2lljyyom | 8.77/9 | creative-synthesis-v10 | creative-synthesis-v10 | gemini_25_pro |
+| #2 | e_1cx6440bb5zj9466 | 8.75/9 | creative-synthesis-v10 | creative-synthesis-v10 | gemini_25_pro |
+| #3 | e_4nqjjtqtnpxlljlz | 8.52/9 | creative-synthesis-v7 | parsed-from-links-v1 | deepseek_r1_p |
 
-**Overall cohort average: 8.29/9** across mechanism understanding, novelty, coherence, and scientific rigor dimensions.
+**Overall cohort average: 8.29/9** across mechanism understanding, novelty, coherence, and scientific rigor dimensions. Draft template choice dominates stylistic framing—note how the top two essays share the same draft prompt despite diverging essay templates.
 
 ### What the Essays Demonstrate
 
