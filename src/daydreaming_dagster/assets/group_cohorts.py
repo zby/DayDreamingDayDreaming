@@ -29,6 +29,7 @@ from ..utils.raw_readers import (
     read_llm_models,
     read_replication_config,
 )
+from ..cohorts import CohortPlan, load_cohort_plan
 from ..models import ContentCombination
 from daydreaming_dagster.models.content_combination import generate_combo_id
 from ..data_layer.gens_data_layer import GensDataLayer
@@ -116,6 +117,82 @@ MEMBERSHIP_COLUMNS = [
     "llm_model_id",
     "replicate",
 ]
+
+
+def _build_spec_catalogs(
+    data_root: Path,
+    selected_combo_mappings: pd.DataFrame,
+) -> dict[str, list[str]]:
+    catalogs: dict[str, list[str]] = {}
+
+    def _template_ids(kind: str) -> list[str]:
+        df = read_templates(data_root, kind, filter_active=False)
+        if df.empty:
+            return []
+        values = {
+            str(value).strip()
+            for value in df["template_id"].dropna().tolist()
+            if str(value).strip()
+        }
+        return sorted(values)
+
+    drafts = _template_ids("draft")
+    if drafts:
+        catalogs["draft_templates"] = drafts
+
+    essays = _template_ids("essay")
+    if essays:
+        catalogs["essay_templates"] = essays
+
+    evaluations = _template_ids("evaluation")
+    if evaluations:
+        catalogs["evaluation_templates"] = evaluations
+
+    llm_df = read_llm_models(data_root)
+    if not llm_df.empty:
+        generation_llms = {
+            str(value).strip()
+            for value in llm_df[llm_df["for_generation"] == True]["id"].dropna().tolist()
+            if str(value).strip()
+        }
+        evaluation_llms = {
+            str(value).strip()
+            for value in llm_df[llm_df["for_evaluation"] == True]["id"].dropna().tolist()
+            if str(value).strip()
+        }
+        if generation_llms:
+            sorted_generation = sorted(generation_llms)
+            catalogs["generation_llms"] = sorted_generation
+            catalogs.setdefault("draft_llms", sorted_generation)
+            catalogs.setdefault("essay_llms", sorted_generation)
+        if evaluation_llms:
+            catalogs["evaluation_llms"] = sorted(evaluation_llms)
+
+    combos: set[str] = set()
+    if isinstance(selected_combo_mappings, pd.DataFrame) and not selected_combo_mappings.empty:
+        combos.update(
+            str(value).strip()
+            for value in selected_combo_mappings.get("combo_id", pd.Series(dtype=str)).dropna().tolist()
+            if str(value).strip()
+        )
+
+    combo_path = data_root / "combo_mappings.csv"
+    if combo_path.exists():
+        try:
+            combo_df = pd.read_csv(combo_path, usecols=["combo_id"])
+        except Exception:  # pragma: no cover - best-effort catalog hydration
+            combo_df = pd.DataFrame()
+        if not combo_df.empty:
+            combos.update(
+                str(value).strip()
+                for value in combo_df["combo_id"].dropna().tolist()
+                if str(value).strip()
+            )
+
+    if combos:
+        catalogs["combos"] = sorted(combos)
+
+    return catalogs
 
 
 class CohortBuilder:
@@ -385,6 +462,98 @@ class CohortBuilder:
                             replicate=int(replicate_index),
                         )
                     )
+
+        return rows
+
+    def build_from_spec_plan(self, plan: CohortPlan) -> List[MembershipRow]:
+        if not plan:
+            return []
+
+        rows: List[MembershipRow] = []
+        draft_ids: Dict[tuple[str, str, str, int], str] = {}
+
+        for draft_entry in plan.drafts:
+            draft_key = draft_entry.key()
+            gen_id = self._data_layer.reserve_draft_id(
+                combo_id=draft_entry.combo_id,
+                template_id=draft_entry.template_id,
+                llm_model_id=draft_entry.llm_model_id,
+                cohort_id=self._cohort_id,
+                replicate=draft_entry.replicate,
+            )
+            draft_ids[draft_key] = gen_id
+            rows.append(
+                self._draft_row(
+                    gen_id=gen_id,
+                    combo_id=draft_entry.combo_id,
+                    template_id=draft_entry.template_id,
+                    llm_model_id=draft_entry.llm_model_id,
+                    replicate=draft_entry.replicate,
+                )
+            )
+
+        essay_ids: Dict[tuple[tuple[str, str, str, int], str, str, int], str] = {}
+
+        for essay_entry in plan.essays:
+            draft_key = essay_entry.draft.key()
+            if draft_key not in draft_ids:
+                raise DDError(
+                    Err.INVALID_CONFIG,
+                    ctx={
+                        "reason": "missing_draft_for_essay",
+                        "draft": draft_key,
+                        "essay_template": essay_entry.template_id,
+                    },
+                )
+
+            draft_gen_id = draft_ids[draft_key]
+            essay_gen_id = self._data_layer.reserve_essay_id(
+                draft_gen_id=draft_gen_id,
+                template_id=essay_entry.template_id,
+                cohort_id=self._cohort_id,
+                replicate=essay_entry.replicate,
+            )
+            essay_ids[essay_entry.key()] = essay_gen_id
+            rows.append(
+                self._essay_row(
+                    gen_id=essay_gen_id,
+                    parent_gen_id=draft_gen_id,
+                    combo_id=essay_entry.draft.combo_id,
+                    template_id=essay_entry.template_id,
+                    llm_model_id=essay_entry.llm_model_id,
+                    replicate=essay_entry.replicate,
+                )
+            )
+
+        for evaluation_entry in plan.evaluations:
+            essay_key = evaluation_entry.essay.key()
+            if essay_key not in essay_ids:
+                raise DDError(
+                    Err.INVALID_CONFIG,
+                    ctx={
+                        "reason": "missing_essay_for_evaluation",
+                        "evaluation_template": evaluation_entry.template_id,
+                    },
+                )
+
+            essay_gen_id = essay_ids[essay_key]
+            evaluation_gen_id = self._data_layer.reserve_evaluation_id(
+                essay_gen_id=essay_gen_id,
+                template_id=evaluation_entry.template_id,
+                llm_model_id=evaluation_entry.llm_model_id,
+                cohort_id=self._cohort_id,
+                replicate=evaluation_entry.replicate,
+            )
+            rows.append(
+                self._evaluation_row(
+                    gen_id=evaluation_gen_id,
+                    parent_gen_id=essay_gen_id,
+                    combo_id=evaluation_entry.essay.draft.combo_id,
+                    template_id=evaluation_entry.template_id,
+                    llm_model_id=evaluation_entry.llm_model_id,
+                    replicate=evaluation_entry.replicate,
+                )
+            )
 
         return rows
 
@@ -1039,52 +1208,72 @@ def cohort_membership(
         replication_config=replication_cfg,
     )
 
-    rows: List[MembershipRow] = []
+    rows: List[MembershipRow]
+    eval_stats: Dict[str, int]
 
-    if selection_cfg.selection_type == "essay":
-        rows.extend(builder.build_from_essays(selected_ids))
-    elif selection_cfg.selection_type == "draft":
-        rows.extend(
-            builder.build_from_drafts(
-                selected_ids,
-                essay_template_ids=essay_template_ids,
-            )
-        )
+    spec_dir = data_root / "cohorts" / str(cohort_id) / "spec"
+    if spec_dir.exists():
+        catalogs = _build_spec_catalogs(data_root, selected_combo_mappings)
+        spec_plan = load_cohort_plan(spec_dir, catalogs=catalogs)
+        rows = builder.build_from_spec_plan(spec_plan)
+        unique_essays = {
+            evaluation.essay.key() for evaluation in spec_plan.evaluations
+        }
+        eval_stats = {
+            "created": len(spec_plan.evaluations),
+            "fully_covered": len(unique_essays),
+        }
     else:
-        draft_df = read_templates(data_root, "draft", filter_active=True)
-        draft_template_ids = (
-            draft_df["template_id"].astype(str).tolist() if not draft_df.empty else []
-        )
+        rows = []
 
-        gen_models_df = read_llm_models(data_root)
-        generation_models = gen_models_df[gen_models_df["for_generation"] == True]
-        generation_model_ids = (
-            generation_models["id"].astype(str).tolist()
-            if not generation_models.empty
-            else []
-        )
-
-        sel_df = selected_combo_mappings if isinstance(selected_combo_mappings, pd.DataFrame) else pd.DataFrame()
-
-        combo_ids: List[str] = []
-        if not sel_df.empty and "combo_id" in sel_df.columns:
-            combo_ids = sel_df["combo_id"].astype(str).dropna().unique().tolist()
-
-        rows.extend(
-            builder.build_cartesian(
-                combo_ids=combo_ids,
-                draft_template_ids=draft_template_ids,
-                essay_template_ids=essay_template_ids,
-                generation_model_ids=generation_model_ids,
+        if selection_cfg.selection_type == "essay":
+            rows.extend(builder.build_from_essays(selected_ids))
+        elif selection_cfg.selection_type == "draft":
+            rows.extend(
+                builder.build_from_drafts(
+                    selected_ids,
+                    essay_template_ids=essay_template_ids,
+                )
             )
-        )
+        else:
+            draft_df = read_templates(data_root, "draft", filter_active=True)
+            draft_template_ids = (
+                draft_df["template_id"].astype(str).tolist() if not draft_df.empty else []
+            )
 
-    eval_tpl_ids, eval_model_ids = _eval_axes(data_root)
-    eval_rows, eval_stats = builder.build_evaluations(
-        evaluation_templates=eval_tpl_ids,
-        evaluation_models=eval_model_ids,
-    )
-    rows.extend(eval_rows)
+            gen_models_df = read_llm_models(data_root)
+            generation_models = gen_models_df[gen_models_df["for_generation"] == True]
+            generation_model_ids = (
+                generation_models["id"].astype(str).tolist()
+                if not generation_models.empty
+                else []
+            )
+
+            sel_df = (
+                selected_combo_mappings
+                if isinstance(selected_combo_mappings, pd.DataFrame)
+                else pd.DataFrame()
+            )
+
+            combo_ids: List[str] = []
+            if not sel_df.empty and "combo_id" in sel_df.columns:
+                combo_ids = sel_df["combo_id"].astype(str).dropna().unique().tolist()
+
+            rows.extend(
+                builder.build_cartesian(
+                    combo_ids=combo_ids,
+                    draft_template_ids=draft_template_ids,
+                    essay_template_ids=essay_template_ids,
+                    generation_model_ids=generation_model_ids,
+                )
+            )
+
+        eval_tpl_ids, eval_model_ids = _eval_axes(data_root)
+        eval_rows, eval_stats = builder.build_evaluations(
+            evaluation_templates=eval_tpl_ids,
+            evaluation_models=eval_model_ids,
+        )
+        rows.extend(eval_rows)
 
     row_dicts = [row.to_dict() for row in rows]
     if row_dicts:

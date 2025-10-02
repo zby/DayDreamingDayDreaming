@@ -11,6 +11,7 @@ Highlights:
 - Rule pipeline (`subset → tie → pair → tuple`) to bound Cartesian growth.
 - Replication configuration that appends deterministic `replicate` indices without manual duplication.
 - CLI (`scripts/compile_experiment_design.py`) for producing CSV/JSONL output with catalog data sourced from JSON/CSV files.
+- Cohort integration: `cohort_membership` loads spec bundles via `daydreaming_dagster.cohorts.load_cohort_plan` when `data/cohorts/<cohort_id>/spec/` is present, ensuring spec + catalogs fully determine cohort rows.
 
 ### Why this design?
 

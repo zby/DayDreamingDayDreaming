@@ -1,20 +1,22 @@
 # Plan: Spec-Driven Cohort Materialization (Inputs embedded in spec)
 
 ## 1. Current State Inventory (as of 2025-02-14)
-- Cohort materialization (`src/daydreaming_dagster/assets/group_cohorts.py::cohort_membership`) reads:
+- Cohort materialization (`src/daydreaming_dagster/assets/group_cohorts.py::cohort_membership`) still consumes:
   - Global CSVs under `data/1_raw/` (concepts, templates, models) and respects their `active` columns.
   - Optional curated files (`data/2_tasks/selected_essays.txt`, `selected_drafts.txt`, `selected_combo_mappings.csv`).
   - `selected_combo_mappings` asset (now in-memory) for Cartesian mode combos.
-- Outputs: `data/cohorts/<cohort_id>/manifest.json`, `membership.csv`, gens metadata seeded via `seed_cohort_metadata`.
-- Cohort definition is implicit—no single spec file; configuration spread across CSV toggles and curated lists.
-- Tests: `src/daydreaming_dagster/assets/tests/test_cohort_membership.py`, integration suites, rely on `active` semantics.
+- Outputs remain `data/cohorts/<cohort_id>/manifest.json`, `membership.csv`, and gens metadata seeded via `seed_cohort_metadata`.
+- Tuple-capable DSL module (`src/daydreaming_dagster/spec_dsl/`) is implemented with loader, compiler, CLI (`scripts/compile_experiment_design.py`), and documented in `docs/spec_dsl.md`; tests live under `src/daydreaming_dagster/spec_dsl/tests/` and `tests/spec_dsl/`.
+- DSL already verified against two cohorts: `data/cohorts/best_novelty_all_evals-v3/membership.csv` (parity confirmed) and a scratch `novelty_v2_backfill` spec compiled under `/tmp/novelty_v2_backfill_spec/` (not yet committed).
+- Cohort definition is still implicit in production—no committed spec bundles yet—so Dagster assets depend on `active` semantics and curated lists for now.
+- Tests (`src/daydreaming_dagster/assets/tests/test_cohort_membership.py` plus integration suites) continue to enforce the legacy `active` behavior.
 
 ## 2. Goals
 - Replace scattered configuration with a single declarative cohort spec file (YAML/JSON) containing explicit combo/template/model IDs and per-stage settings.
 - Remove `active` columns from global CSVs; treat them as immutable catalogs.
 - Materialization uses the spec to pull the exact rows it needs from the catalogs, producing `membership.csv`, manifest, and metadata under `cohorts/<id>/`.
 - Ensure reproducibility: spec + catalogs → deterministic cohort outputs; no cross-cohort overwrites.
-- Align cohort planning with the tuple-capable experiment DSL (see `plans/tuple_design_dsl_plan.md`) so both specs share rule semantics and compiler.
+- Align cohort planning with the tuple-capable experiment DSL (documented in `docs/spec_dsl.md`) so both specs share rule semantics and compiler.
 
 ## 3. Target Architecture
 
@@ -39,9 +41,9 @@
 - Users maintain specs per cohort; catalogs stay global references.
 
 ### 3.4 DSL Touchpoints (current API)
-- `daydreaming_dagster.spec_dsl.load_spec(path)` loads either a single config file or a directory bundle, returning an `ExperimentSpec` with ordered axes, rule list, replicate config, and output hints.
+- `daydreaming_dagster.spec_dsl.load_spec(path)` loads either a single config file or a directory bundle, returning an `ExperimentSpec` with ordered axes, rule list, replicate config, and output hints (documented in `docs/spec_dsl.md`).
 - `daydreaming_dagster.spec_dsl.compile_design(spec, *, catalogs=None, seed=None)` produces `list[OrderedDict]` rows while enforcing catalog lookups via optional `catalogs` mapping. Rows are already expanded for ties/pairs/tuples and include replicate columns when configured.
-- `scripts/compile_experiment_design.py` wraps the same API; exposes `--catalog`, `--catalog-csv`, and `--data-root` flags that we can reuse for planner tooling and validation CLIs.
+- `scripts/compile_experiment_design.py` wraps the same API; exposes `--catalog`, `--catalog-csv`, and `--data-root` flags that we can reuse for planner tooling and validation CLIs. Existing CLI tests assert CSV field-order stability (`tests/spec_dsl/test_cli.py`).
 - Planner work should stay inside this public surface (no private helpers) so future packaging remains straightforward.
 
 ## 4. Migration Strategy
@@ -49,10 +51,10 @@
    - Define Pydantic models for the spec; add new planner module (e.g., `cohorts/spec_planner.py`).
 2. **Spec Generation Tool**
    - Create CLI (`scripts/migrations/generate_cohort_spec.py`) to read legacy cohorts + active flags and emit spec directories with the required list files.
-   - Tool validates files against catalogs and writes them under `cohorts/<id>/spec/`.
+   - Tool validates files against catalogs and writes them under `cohorts/<id>/spec/`. Seed the initial specs from the validated `best_novelty_all_evals-v3` and `novelty_v2_backfill` bundles (regenerate if needed to land them in-repo).
 3. **Dual-Mode Operation**
    - Planner reads spec inputs directly (`load_spec` → `compile_design`), while the legacy active-based path continues to run in the same codebase until we finish backfilling specs.
-   - Integration tests compare outputs for both modes to ensure parity during the overlap period.
+   - Integration tests compare outputs for both modes to ensure parity during the overlap period. Reuse the existing DSL fixtures to assert row-count and membership parity.
 4. **Remove Active Columns**
    - After specs are adopted, migrate catalogs by dropping `active` column; update loaders to stop expecting it.
    - Provide script to strip columns and warn users if spec refers to nonexistent IDs.
@@ -83,15 +85,16 @@
 
 ## 6. Testing & Validation
 - Unit tests for spec parsing, error handling (missing IDs, invalid combinations).
-- Integration tests verifying cohorts built from specs match legacy outputs (during dual-mode phase).
+- Integration tests verifying cohorts built from specs match legacy outputs (during dual-mode phase), using the parity-confirmed DSL specs as fixtures.
 - Regression tests: curated essays/drafts, evaluation parsing behaviors.
-- CLI migration tests to ensure generated spec round-trips produce identical membership.
+- CLI migration tests to ensure generated spec round-trips produce identical membership; leverage `scripts/compile_experiment_design.py` and the CSV field-order assertions already in place.
 
 ## 7. Risks & Mitigations
-- **Spec Drift**: enforce schema version and validation, add linting/CI check to validate specs.
-- **Missing IDs**: planner should error clearly if spec references catalog entries that don’t exist; provide migration diff output.
-- **User Adoption**: supply examples and automation to scaffold specs; degrade gracefully if spec missing (legacy fallback during transition).
-- **Catalog Changes**: document requirement that adding new combos/templates requires updating spec as well; consider helper scripts.
+- **Spec Drift**: enforce schema version and validation, add linting/CI check to validate specs, and run DSL compiler in CI against committed bundles.
+- **Missing IDs**: planner should error clearly if spec references catalog entries that don’t exist; provide migration diff output and reuse existing CLI catalog validation.
+- **User Adoption**: supply examples and automation to scaffold specs; degrade gracefully if spec missing (legacy fallback during transition) and document workflow in `docs/spec_dsl.md` and cohort docs.
+- **Catalog Changes**: document requirement that adding new combos/templates requires updating spec as well; consider helper scripts and spec tests that diff against catalogs.
+- **Output Regression**: maintain parity tests comparing `membership.csv` rows against legacy cohorts and keep CSV field-order assertions to protect downstream ID generation.
 
 ## 8. Deliverables
 - DSL-backed cohort planner (load spec → DSL compile → Dagster plan).

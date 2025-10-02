@@ -370,7 +370,7 @@ asset returns successfully, so they cannot provide this early‑write behavior.
 
 The pipeline uses Dagster's dynamic partitions keyed by `gen_id` for each stage (`draft`, `essay`, `evaluation`).
 
-- Registration: the `cohort_membership` asset writes `data/cohorts/<cohort_id>/membership.csv` and registers each `gen_id` as a dynamic partition for the appropriate stage. It prunes stale partitions for the same cohort before re-registering to remain idempotent.
+- Registration: the `cohort_membership` asset writes `data/cohorts/<cohort_id>/membership.csv` and registers each `gen_id` as a dynamic partition for the appropriate stage. When a cohort spec exists under `data/cohorts/<cohort_id>/spec/`, the DSL compiler provides the authoritative rows; otherwise curated selections or active axes drive the plan. It prunes stale partitions for the same cohort before re-registering to remain idempotent.
 - Execution: partitioned assets read `context.partition_key` (a `gen_id`) and resolve metadata (template/model/parents) via cohort membership and the gens store.
 
 ### Benefits of This Architecture

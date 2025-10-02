@@ -2,10 +2,13 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+import shutil
 
 import pandas as pd
 import pytest
 from dagster import Failure, build_asset_context
+
+SPEC_FIXTURES = Path(__file__).resolve().parents[4] / "tests" / "fixtures" / "spec_dsl"
 
 from daydreaming_dagster.assets.group_cohorts import cohort_membership
 from daydreaming_dagster.utils.ids import (
@@ -235,6 +238,95 @@ def test_cohort_membership_cartesian_multiple_replicates(tmp_path: Path) -> None
             (data_root / "gens" / "evaluation" / eval_id / "metadata.json").read_text(encoding="utf-8")
         )
         assert meta.get("parent_gen_id") in essay_set
+
+
+def test_cohort_membership_uses_spec_plan(tmp_path: Path) -> None:
+    data_root = tmp_path
+    raw = data_root / "1_raw"
+    raw.mkdir(parents=True, exist_ok=True)
+
+    _write_csv(
+        raw / "replication_config.csv",
+        [
+            {"stage": "draft", "replicates": 2},
+            {"stage": "essay", "replicates": 2},
+            {"stage": "evaluation", "replicates": 1},
+        ],
+    )
+    _write_csv(
+        raw / "draft_templates.csv",
+        [{"template_id": "draft-A", "active": True, "generator": "llm"}],
+    )
+    _write_csv(
+        raw / "essay_templates.csv",
+        [
+            {"template_id": "essay-X", "active": True, "generator": "llm"},
+            {"template_id": "essay-Y", "active": True, "generator": "llm"},
+        ],
+    )
+    _write_csv(
+        raw / "evaluation_templates.csv",
+        [{"template_id": "eval-1", "active": True, "generator": "llm"}],
+    )
+    _write_csv(
+        raw / "llm_models.csv",
+        [
+            {"id": "draft-llm", "for_generation": True, "for_evaluation": False},
+            {"id": "essay-llm", "for_generation": True, "for_evaluation": False},
+            {"id": "eval-llm", "for_generation": False, "for_evaluation": True},
+        ],
+    )
+
+    (data_root / "gens" / "draft").mkdir(parents=True, exist_ok=True)
+    (data_root / "gens" / "essay").mkdir(parents=True, exist_ok=True)
+    (data_root / "gens" / "evaluation").mkdir(parents=True, exist_ok=True)
+
+    _write_csv(
+        data_root / "combo_mappings.csv",
+        [
+            {
+                "combo_id": "combo-1",
+                "version": "v1",
+                "concept_id": "concept-a",
+                "description_level": "paragraph",
+                "k_max": 2,
+                "created_at": "",
+            }
+        ],
+    )
+
+    spec_target = data_root / "cohorts" / "spec-cohort" / "spec"
+    shutil.copytree(SPEC_FIXTURES / "cohort_cartesian", spec_target)
+
+    context = build_asset_context(resources={"data_root": str(data_root)})
+    selected_df = pd.DataFrame({"combo_id": ["combo-1"]})
+
+    df = cohort_membership(
+        context,
+        cohort_id="spec-cohort",
+        selected_combo_mappings=selected_df,
+    )
+
+    assert set(df["stage"].unique()) == {"draft", "essay", "evaluation"}
+
+    draft_rows = df[df["stage"] == "draft"].copy()
+    assert len(draft_rows) == 2
+    assert set(draft_rows["replicate"].astype(int)) == {1, 2}
+    assert set(draft_rows["llm_model_id"]) == {"draft-llm"}
+
+    essay_rows = df[df["stage"] == "essay"].copy()
+    assert len(essay_rows) == 8
+    assert set(essay_rows["template_id"]) == {"essay-X", "essay-Y"}
+    assert set(essay_rows["replicate"].astype(int)) == {1, 2}
+    assert set(essay_rows["llm_model_id"]) == {"essay-llm"}
+
+    evaluation_rows = df[df["stage"] == "evaluation"].copy()
+    assert len(evaluation_rows) == 8
+    assert set(evaluation_rows["template_id"]) == {"eval-1"}
+    assert set(evaluation_rows["llm_model_id"]) == {"eval-llm"}
+    assert set(evaluation_rows["replicate"].astype(int)) == {1}
+
+    assert set(df["combo_id"].unique()) == {"combo-1"}
 
 
 def test_curfated_selection_conflict_raises(base_data_root: Path) -> None:
