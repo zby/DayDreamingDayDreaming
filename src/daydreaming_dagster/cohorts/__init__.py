@@ -8,6 +8,7 @@ from .spec_planner import (
     compile_cohort_plan,
     load_cohort_plan,
 )
+from .spec_migration import generate_spec_bundle, SpecGenerationError
 
 __all__ = [
     "CohortPlan",
@@ -16,4 +17,6 @@ __all__ = [
     "EvaluationPlanEntry",
     "compile_cohort_plan",
     "load_cohort_plan",
+    "generate_spec_bundle",
+    "SpecGenerationError",
 ]

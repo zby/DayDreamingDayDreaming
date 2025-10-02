@@ -12,6 +12,7 @@ Highlights:
 - Replication configuration that appends deterministic `replicate` indices without manual duplication.
 - CLI (`scripts/compile_experiment_design.py`) for producing CSV/JSONL output with catalog data sourced from JSON/CSV files.
 - Cohort integration: `cohort_membership` loads spec bundles via `daydreaming_dagster.cohorts.load_cohort_plan` when `data/cohorts/<cohort_id>/spec/` is present, ensuring spec + catalogs fully determine cohort rows.
+- Migration helper (`scripts/migrations/generate_cohort_spec.py`) snapshotting existing cohorts into spec bundles so legacy runs can adopt the DSL without manual transcription.
 
 ### Why this design?
 

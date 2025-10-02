@@ -27,6 +27,7 @@ Two ways to build a cohort
   - Input: create `data/cohorts/<cohort_id>/spec/` with a DSL config (`config.yaml` + optional `@file` helpers). Specs enumerate combo IDs, templates, models, and replication targets explicitly. The compiler produces the tuple-expanded rows that feed deterministic ID reservation.
   - Behavior: `cohort_membership` compiles the spec into stage bundles, reuses the data layer to reserve gen_ids, and records the same membership schema as the legacy pipeline without inspecting `active` flags. Any curated history (`selected_essays.txt`, etc.) is ignored once a spec exists.
   - When to use: baseline experiments, backfills, or cohorts that need reproducible tuple logic (paired copy vs LLM templates, coupled evaluation settings) without flipping `active` bits. Pros: manifests the full-factor search space with explicit couplings while keeping downstream stats correct. Cons: requires maintaining spec files alongside catalog updates.
+  - Migration tip: run `uv run python scripts/migrations/generate_cohort_spec.py <cohort_id>` to snapshot an existing cohort’s membership into a spec bundle. The CLI regenerates `config.yaml` + `items/cohort_rows.yaml` based on the gens metadata and validates that recompiling the spec reproduces the current `membership.csv`.
 - Curated mode (selection-driven):
   - Input: write essay `gen_id`s to `data/2_tasks/selected_essays.txt` (one per line), **or** write draft `gen_id`s to `data/2_tasks/selected_drafts.txt`. At most one of these files may exist.
   - Behavior:
