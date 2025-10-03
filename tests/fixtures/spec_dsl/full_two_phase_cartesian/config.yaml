@@ -1,7 +1,7 @@
 axes:
   draft_template:
     levels: [creative-synthesis-v2, application-implementation-v2]
-    catalog_lookup: {catalog: drafts}
+    catalog_lookup: {catalog: draft_templates}
   draft_llm:
     levels: [gemini_25_pro, sonnet-4]
   essay_template:

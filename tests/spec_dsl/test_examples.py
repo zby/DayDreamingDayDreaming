@@ -9,7 +9,7 @@ from daydreaming_dagster.spec_dsl import compile_design, load_spec
 FIXTURES = Path(__file__).parent.parent / "fixtures" / "spec_dsl"
 
 CATALOGS = {
-    "drafts": [
+    "draft_templates": [
         "creative-synthesis-v2",
         "application-implementation-v2",
         "gwern_original",

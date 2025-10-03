@@ -1,7 +1,7 @@
 axes:
   draft_template:
     levels: [creative-synthesis-v2, application-implementation-v2, gwern_original]
-    catalog_lookup: {catalog: drafts}
+    catalog_lookup: {catalog: draft_templates}
   essay_template:
     levels: [parsed-from-links-v1]
     catalog_lookup: {catalog: essay_templates}

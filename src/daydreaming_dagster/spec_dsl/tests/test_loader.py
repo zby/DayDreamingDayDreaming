@@ -22,7 +22,7 @@ def test_load_spec_round_trip(tmp_path: Path) -> None:
             "axes": {
                 "draft_template": {
                     "levels": ["draft-A", "draft-B"],
-                    "catalog_lookup": {"catalog": "drafts"},
+                "catalog_lookup": {"catalog": "draft_templates"},
                 },
                 "essay_model": ["llm-1"],
             },
@@ -38,7 +38,7 @@ def test_load_spec_round_trip(tmp_path: Path) -> None:
 
     assert list(spec.axes.keys()) == ["draft_template", "essay_model"]
     assert spec.axes["draft_template"].levels == ("draft-A", "draft-B")
-    assert spec.axes["draft_template"].catalog_lookup == {"catalog": "drafts"}
+    assert spec.axes["draft_template"].catalog_lookup == {"catalog": "draft_templates"}
     assert spec.rules == ({"subset": {"axis": "draft_template", "keep": ["draft-A"]}},)
     assert spec.output == {"expand_pairs": False}
     assert spec.replicates["draft_template"].count == 2

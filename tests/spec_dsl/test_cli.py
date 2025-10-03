@@ -16,7 +16,7 @@ def write_spec(tmp_path: Path) -> Path:
                 "axes": {
                     "draft_template": {
                         "levels": ["draft-A"],
-                        "catalog_lookup": {"catalog": "drafts"},
+                        "catalog_lookup": {"catalog": "draft_templates"},
                     },
                     "essay_template": ["essay-A"],
                 },
@@ -45,7 +45,7 @@ def test_cli_writes_csv(tmp_path: Path) -> None:
     spec_path = write_spec(tmp_path)
     out_path = tmp_path / "rows.csv"
     catalog_path = tmp_path / "catalog.json"
-    catalog_path.write_text(json.dumps({"drafts": ["draft-A"]}), encoding="utf-8")
+    catalog_path.write_text(json.dumps({"draft_templates": ["draft-A"]}), encoding="utf-8")
 
     exit_code = main([
         str(spec_path),
@@ -67,7 +67,7 @@ def test_cli_writes_jsonl(tmp_path: Path) -> None:
     spec_path = write_spec(tmp_path)
     out_path = tmp_path / "rows.jsonl"
     catalog_path = tmp_path / "catalog.json"
-    catalog_path.write_text(json.dumps({"drafts": ["draft-A"]}), encoding="utf-8")
+    catalog_path.write_text(json.dumps({"draft_templates": ["draft-A"]}), encoding="utf-8")
 
     exit_code = main([
         str(spec_path),
@@ -88,7 +88,7 @@ def test_cli_writes_jsonl(tmp_path: Path) -> None:
 
 def test_cli_catalog_csv_support(tmp_path: Path) -> None:
     spec_path = write_spec(tmp_path)
-    csv_path = tmp_path / "drafts.csv"
+    csv_path = tmp_path / "draft_templates.csv"
     csv_path.write_text("id\ndraft-A\n", encoding="utf-8")
 
     exit_code = main([
@@ -98,7 +98,7 @@ def test_cli_catalog_csv_support(tmp_path: Path) -> None:
         "--format",
         "csv",
         "--catalog-csv",
-        f"drafts={csv_path}:id",
+        f"draft_templates={csv_path}:id",
     ])
 
     assert exit_code == 0

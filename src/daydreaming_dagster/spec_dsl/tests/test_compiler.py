@@ -14,14 +14,14 @@ def make_spec(**kwargs):
 def test_compile_design_cartesian_product() -> None:
     spec = make_spec(
         axes={
-            "draft_template": AxisSpec("draft_template", ("draft-A", "draft-A"), {"catalog": "drafts"}),
+            "draft_template": AxisSpec("draft_template", ("draft-A", "draft-A"), {"catalog": "draft_templates"}),
             "essay_model": AxisSpec("essay_model", ("llm-1", "llm-2")),
         },
         rules=(),
         output={},
     )
 
-    rows = compile_design(spec, catalogs={"drafts": {"draft-A"}})
+    rows = compile_design(spec, catalogs={"draft_templates": {"draft-A"}})
 
     assert rows == [
         OrderedDict([("draft_template", "draft-A"), ("essay_model", "llm-1")]),
@@ -83,7 +83,7 @@ def test_compile_design_catalog_validation() -> None:
             "draft_template": AxisSpec(
                 "draft_template",
                 ("draft-A", "draft-B"),
-                {"catalog": "drafts"},
+                {"catalog": "draft_templates"},
             )
         },
         rules=(),
@@ -91,7 +91,7 @@ def test_compile_design_catalog_validation() -> None:
     )
 
     with pytest.raises(SpecDslError) as exc:
-        compile_design(spec, catalogs={"drafts": {"draft-A"}})
+        compile_design(spec, catalogs={"draft_templates": {"draft-A"}})
 
     assert exc.value.code is SpecDslErrorCode.INVALID_SPEC
     assert exc.value.ctx["missing"] == ("draft-B",)
@@ -176,7 +176,7 @@ def test_compile_design_tie_empty_intersection_errors() -> None:
 def test_compile_design_pair_replaces_axes_with_pairs() -> None:
     spec = make_spec(
         axes={
-            "draft_template": AxisSpec("draft_template", ("d1", "d2"), {"catalog": "drafts"}),
+            "draft_template": AxisSpec("draft_template", ("d1", "d2"), {"catalog": "draft_templates"}),
             "essay_template": AxisSpec("essay_template", ("e1", "e2")),
         },
         rules=(
@@ -192,7 +192,7 @@ def test_compile_design_pair_replaces_axes_with_pairs() -> None:
         output={},
     )
 
-    rows = compile_design(spec, catalogs={"drafts": {"d1", "d2"}})
+    rows = compile_design(spec, catalogs={"draft_templates": {"d1", "d2"}})
 
     assert rows == [
         OrderedDict([("draft_template", "d1"), ("essay_template", "e1")]),
@@ -203,7 +203,7 @@ def test_compile_design_pair_replaces_axes_with_pairs() -> None:
 def test_compile_design_pair_validates_balance_and_domains() -> None:
     spec = make_spec(
         axes={
-            "draft_template": AxisSpec("draft_template", ("d1", "d2"), {"catalog": "drafts"}),
+            "draft_template": AxisSpec("draft_template", ("d1", "d2"), {"catalog": "draft_templates"}),
             "essay_template": AxisSpec("essay_template", ("e1", "e2")),
         },
         rules=(
@@ -221,7 +221,7 @@ def test_compile_design_pair_validates_balance_and_domains() -> None:
     )
 
     with pytest.raises(SpecDslError) as exc:
-        compile_design(spec, catalogs={"drafts": {"d1", "d2"}})
+        compile_design(spec, catalogs={"draft_templates": {"d1", "d2"}})
 
     assert exc.value.code is SpecDslErrorCode.INVALID_SPEC
     assert exc.value.ctx and "imbalance" in exc.value.ctx["error"]
@@ -230,7 +230,7 @@ def test_compile_design_pair_validates_balance_and_domains() -> None:
 def test_compile_design_pair_can_keep_pair_axis() -> None:
     spec = make_spec(
         axes={
-            "draft_template": AxisSpec("draft_template", ("d1",), {"catalog": "drafts"}),
+            "draft_template": AxisSpec("draft_template", ("d1",), {"catalog": "draft_templates"}),
             "essay_template": AxisSpec("essay_template", ("e1",)),
         },
         rules=({
@@ -244,7 +244,7 @@ def test_compile_design_pair_can_keep_pair_axis() -> None:
         output={"keep_pair_axis": True},
     )
 
-    rows = compile_design(spec, catalogs={"drafts": {"d1"}})
+    rows = compile_design(spec, catalogs={"draft_templates": {"d1"}})
 
     assert rows == [
         OrderedDict([
@@ -258,7 +258,7 @@ def test_compile_design_pair_can_keep_pair_axis() -> None:
 def test_compile_design_pair_without_expand_pairs() -> None:
     spec = make_spec(
         axes={
-            "draft_template": AxisSpec("draft_template", ("d1",), {"catalog": "drafts"}),
+            "draft_template": AxisSpec("draft_template", ("d1",), {"catalog": "draft_templates"}),
             "essay_template": AxisSpec("essay_template", ("e1",)),
         },
         rules=({
@@ -272,7 +272,7 @@ def test_compile_design_pair_without_expand_pairs() -> None:
         output={"expand_pairs": False, "keep_pair_axis": True},
     )
 
-    rows = compile_design(spec, catalogs={"drafts": {"d1"}})
+    rows = compile_design(spec, catalogs={"draft_templates": {"d1"}})
 
     assert rows == [OrderedDict([("draft_essay", ("d1", "e1"))])]
 
@@ -280,7 +280,7 @@ def test_compile_design_pair_without_expand_pairs() -> None:
 def test_compile_design_pair_after_tie_resolves_axis_names() -> None:
     spec = make_spec(
         axes={
-            "draft_template": AxisSpec("draft_template", ("d1", "d2"), {"catalog": "drafts"}),
+            "draft_template": AxisSpec("draft_template", ("d1", "d2"), {"catalog": "draft_templates"}),
             "essay_template": AxisSpec("essay_template", ("d1", "d2")),
             "eval_template": AxisSpec("eval_template", ("e1", "e2")),
         },
@@ -298,7 +298,7 @@ def test_compile_design_pair_after_tie_resolves_axis_names() -> None:
         output={},
     )
 
-    rows = compile_design(spec, catalogs={"drafts": {"d1", "d2"}})
+    rows = compile_design(spec, catalogs={"draft_templates": {"d1", "d2"}})
 
     assert rows == [
         OrderedDict([("draft_template", "d1"), ("eval_template", "e1")]),
@@ -309,7 +309,7 @@ def test_compile_design_pair_after_tie_resolves_axis_names() -> None:
 def test_compile_design_pair_validation_errors() -> None:
     spec = make_spec(
         axes={
-            "draft_template": AxisSpec("draft_template", ("d1",), {"catalog": "drafts"}),
+            "draft_template": AxisSpec("draft_template", ("d1",), {"catalog": "draft_templates"}),
             "essay_template": AxisSpec("essay_template", ("e1",)),
         },
         rules=(
@@ -326,7 +326,7 @@ def test_compile_design_pair_validation_errors() -> None:
     )
 
     with pytest.raises(SpecDslError) as exc:
-        compile_design(spec, catalogs={"drafts": {"d1"}})
+        compile_design(spec, catalogs={"draft_templates": {"d1"}})
 
     assert exc.value.code is SpecDslErrorCode.INVALID_SPEC
     assert exc.value.ctx and exc.value.ctx["pair"] == ("d1", "missing")
