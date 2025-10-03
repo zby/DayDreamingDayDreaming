@@ -168,6 +168,11 @@ def _build_spec_catalogs(
         if evaluation_llms:
             catalogs["evaluation_llm"] = sorted(evaluation_llms)
 
+    if "essay_llm" in catalogs:
+        values = set(catalogs["essay_llm"])
+        values.add("None")
+        catalogs["essay_llm"] = sorted(values)
+
     combos: set[str] = set()
     if isinstance(selected_combo_mappings, pd.DataFrame) and not selected_combo_mappings.empty:
         combos.update(

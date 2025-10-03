@@ -2,8 +2,7 @@
 """Validate that an evaluation generation references a known template.
 
 Exit codes:
-0  -> template found and active (prints template_id)
-5  -> template found but inactive (prints template_id)
+0  -> template found (prints template_id)
 1  -> metadata.json missing
 2  -> metadata.json unreadable
 3  -> template_id missing in metadata
@@ -44,10 +43,8 @@ def main(gen_id: str) -> int:
         reader = csv.DictReader(handle)
         for row in reader:
             if str(row.get("template_id") or "").strip() == template_id:
-                active_field = row.get("active")
-                is_active = True if active_field is None else str(active_field).strip().lower() == "true"
                 print(template_id)
-                return 0 if is_active else 5
+                return 0
 
     return 6
 

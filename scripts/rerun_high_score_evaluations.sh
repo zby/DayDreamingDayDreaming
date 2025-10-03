@@ -1,10 +1,12 @@
 #!/usr/bin/env bash
-# Re-run evaluation assets for the legacy evaluations whose scores previously exceeded 9.
+# Re-run evaluation assets for legacy generations whose scores previously exceeded 9.
 #
 # Prerequisites:
 #   * Run `python scripts/migrate_evaluation_scores_max9.py` (without --dry-run) first
 #     to switch metadata to LLM mode and clear stale artifacts.
 #   * Ensure `DAGSTER_HOME` points at the desired instance root before invoking this script.
+#   * Set `DD_COHORT` (or configure `asset_config.override`) so Dagster resolves the
+#     spec bundle that defines the cohort membership.
 #   * Requires `uv` (or adjust calls to use `.venv/bin/dagster`).
 
 set -u -o pipefail
@@ -39,10 +41,6 @@ check_template_status() {
     0)
       echo "Using template ${output}"
       return 0
-      ;;
-    5)
-      echo "Template ${output} is inactive; skipping ${gen_id}."
-      return 1
       ;;
     1)
       echo "metadata.json missing for ${gen_id}; skipping."

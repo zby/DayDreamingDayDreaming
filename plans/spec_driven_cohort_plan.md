@@ -16,10 +16,10 @@ _Last updated: 2025-02-14_
 - **Outputs**: `membership.csv`, cohort manifest, and seeded `gens/` metadata remain the contract; they are deterministic from spec+catalogs.
 
 ## 3. Remaining Follow-Up
-- 📌 Backfill committed specs for all production cohorts (track in ops board).
-- 📌 Update or retire ancillary scripts (`check_evaluation_template.py`, `rerun_high_score_evaluations.sh`) that still reference `active` semantics.
-- 📌 Add a CI check that validates every committed spec (`load_spec` + `compile_design`) against the latest catalogs.
-- 📌 Rewrite `docs/cohorts.md` to reflect spec-driven workflow (details in §5).
+- ✅ Backfill committed specs for all production cohorts (track in ops board).
+- ✅ Update or retire ancillary scripts (`check_evaluation_template.py`, `rerun_high_score_evaluations.sh`) that still reference `active` semantics.
+- ✅ Add a CI check that validates every committed spec (`load_spec` + `compile_design`) against the latest catalogs.
+- ✅ Rewrite `docs/cohorts.md` to reflect spec-driven workflow (details in §5).
 
 ## 4. References
 - Implementation: `src/daydreaming_dagster/cohorts/spec_planner.py`, `src/daydreaming_dagster/assets/group_cohorts.py`
@@ -27,12 +27,11 @@ _Last updated: 2025-02-14_
 - Spec fixtures: `tests/fixtures/spec_dsl/`
 - Migration tooling: `scripts/migrations/generate_cohort_spec.py`
 
-## 5. Cohorts Doc Rewrite Outline
+## 5. Cohorts Doc Rewrite Notes
 - ✅ Current behavior: Specs are required for cohort materialization; curated selections only refine spec-defined populations.
-- 🎯 Goal: Eliminate remaining references to legacy fallback paths (`active` column, ad-hoc filters) and make the spec the canonical entry point.
-- ✍️ Planned edits:
-  - Remove "What assets do" and "Two ways to build a cohort" sections; replace with a single "Spec-Driven Workflow" narrative.
-  - Emphasize the required layout under `data/cohorts/<cohort_id>/spec/` and show how curated CSVs plug into the spec via `@file:`.
-  - Clarify curated selections as optional filters layered on top of the spec; add examples sourced from current fixtures.
-  - Update migration guidance to point to `scripts/migrations/generate_cohort_spec.py` and the ops checklist.
-- 🧪 Validation: rebuild doc examples from a real spec (`tests/fixtures/spec_dsl/basic/config.yaml`) and run `.venv/bin/pytest tests/cohorts` to ensure referenced workflows stay green.
+- ✅ Edits landed:
+  - Replaced legacy sections with a single "Spec-Driven Workflow" narrative anchored on the spec bundle.
+  - Documented the required `data/cohorts/<cohort_id>/spec/` layout and how curated CSVs integrate via `@file:`.
+  - Clarified curated selections as optional filters on top of the spec with examples drawn from fixtures.
+  - Updated migration guidance to point to `scripts/migrations/generate_cohort_spec.py` and the ops checklist.
+- ✅ Validation: `.venv/bin/pytest tests/cohorts/test_spec_bundles.py` confirms checked-in specs compile against current catalogs.

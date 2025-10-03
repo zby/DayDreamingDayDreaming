@@ -1,181 +1,103 @@
 # Cohorts
 
-Cohorts are explicit, reproducible identifiers that bind a complete run of the pipeline (task set and generated artifacts) to a single ID.
+Cohorts are spec-defined, reproducible experiment manifests. Every cohort ID maps to a
+`data/cohorts/<cohort_id>/spec/` bundle, and Dagster materializes membership exclusively from that
+spec. Curated selections refine (but never replace) the spec-defined rows.
 
 See also
-- Curated Selection Quickstart (below) for step-by-step instructions.
+- `docs/spec_dsl.md` for the DSL vocabulary and schema.
+- `scripts/migrations/generate_cohort_spec.py` for migrating legacy cohorts into specs.
 
-What the assets do
-- Asset `cohort_id` (group `cohort`) computes a deterministic ID from a manifest of:
-  - combo IDs (from `content_combinations`)
-  - draft/essay/evaluation templates referenced by the cohort spec (or catalog defaults when no spec is present)
-  - generation/evaluation model IDs referenced by the cohort spec (or catalog defaults)
-  - per-stage replication targets (from `data/1_raw/replication_config.csv`)
-  - Writes the manifest to `data/cohorts/<cohort_id>/manifest.json` and returns the cohort ID.
-- Asset `cohort_membership` (group `cohort`) builds an authoritative membership file and registers dynamic partitions:
-  - If a DSL spec bundle exists under `data/cohorts/<cohort_id>/spec/`, the asset loads it via `daydreaming_dagster.cohorts.load_cohort_plan`, validates catalog references, and materializes the deterministic rows produced by the DSL compiler. See `docs/spec_dsl.md` for the spec vocabulary.
-  - If no spec is present: reads `data/2_tasks/selected_essays.txt` or `selected_drafts.txt` (one gen_id per line) when present; otherwise uses the catalog axes (Cartesian).
-  - Builds an internal DataFrame with normalized rows (`stage`, `gen_id`, `parent_gen_id`, `combo_id`, `template_id`, `llm_model_id`, `replicate`, `origin_cohort_id`) to seed metadata deterministically.
-  - Persists a slim `data/cohorts/<cohort_id>/membership.csv` containing the authoritative `(stage, gen_id)` pairs. Downstream assets rely on the deterministic `gen_id` to recover the rest of the metadata.
-  - Registers dynamic partitions add‑only for draft/essay/evaluation.
-  - Enforces parent integrity (essays → drafts; evaluations → essays) within the same cohort.
+> `membership.csv` is the only authoritative source of cohort members. The
+> `origin_cohort_id` stored in gens metadata is provenance only.
 
-> **Authoritative source:** `membership.csv` is the only file that defines cohort membership. The `origin_cohort_id` field stored inside `data/gens/**/metadata.json` is **provenance only** – it records the cohort that first produced an artifact and is not updated on refills. Do not infer membership from `origin_cohort_id`; rely on the membership CSV and the deterministic `cohort_id` instead.
+## Spec-Driven Workflow
 
-Two ways to build a cohort
-- Spec-driven (recommended for new cohorts):
-  - Input: create `data/cohorts/<cohort_id>/spec/` with a DSL config (`config.yaml` + optional `@file` helpers). Specs enumerate combo IDs, templates, models, and replication targets explicitly. The compiler produces the tuple-expanded rows that feed deterministic ID reservation.
-  - Behavior: `cohort_membership` compiles the spec into stage bundles, reuses the data layer to reserve gen_ids, and records the same membership schema as the legacy pipeline without consulting CSV-level toggles. Any curated history (`selected_essays.txt`, etc.) is ignored once a spec exists.
-  - When to use: baseline experiments, backfills, or cohorts that need reproducible tuple logic (paired copy vs LLM templates, coupled evaluation settings) without hand-editing catalogs. Pros: manifests the full-factor search space with explicit couplings while keeping downstream stats correct. Cons: requires maintaining spec files alongside catalog updates.
-  - Migration tip: run `uv run python scripts/migrations/generate_cohort_spec.py <cohort_id>` to snapshot an existing cohort’s membership into a spec bundle. The CLI regenerates `config.yaml` + `items/cohort_rows.yaml` based on the gens metadata and validates that recompiling the spec reproduces the current `membership.csv`.
-  - Quick clone: `uv run python scripts/migrations/spec_wizard.py --list` shows existing cohorts with specs. `uv run python scripts/migrations/spec_wizard.py --cohort-id <new_id> --template <existing_id>` copies the spec into `data/cohorts/<new_id>/spec/` so you can tweak it in-place.
-- Curated mode (selection-driven):
-  - Input: write essay `gen_id`s to `data/2_tasks/selected_essays.txt` (one per line), **or** write draft `gen_id`s to `data/2_tasks/selected_drafts.txt`. At most one of these files may exist.
-  - Behavior:
-    - `selected_essays.txt`: reconstructs draft/essay rows from the gens store metadata for the selected essays, then expands evaluations across the catalog evaluation axes (templates × models).
-    - `selected_drafts.txt`: reuses the supplied deterministic drafts and schedules essays/evaluations over the catalog templates/models without needing the historical essays.
-  - When to use: reproducing or re-evaluating a specific subset of historical essays; migrating legacy outputs; ad‑hoc comparisons.
-  - Pros: no Cartesian explosion; exactly the rows you want. Cons: requires existing gens and accurate parent links in metadata.
-- Catalog mode (full-axis-driven):
-  - Input: no spec and no curated lists. Cohort derives from the catalog rows in `data/1_raw/*.csv`; `selected_combo_mappings` computes the combination set in-memory from those entries.
-  - Behavior: builds drafts from `content_combinations × draft_templates × generation_models`, essays from `drafts × essay_templates`, and evaluations from `essays × evaluation_templates × evaluation_models`.
-  - When to use: fresh experiments over a controlled search space (explicit “cube”). Pros: reproducible full-factor run. Cons: can get large quickly; prefer using a cohort spec to make selections explicit.
+1. **Author or migrate a spec bundle.**
+   - Create `data/cohorts/<cohort_id>/spec/config.yaml` and supporting CSV files referenced via
+     `@file:` (see _Spec bundle layout_ below).
+   - To migrate an existing cohort, run
+     ```bash
+     uv run python scripts/migrations/generate_cohort_spec.py <cohort_id>
+     ```
+     This snapshots the current membership into a spec bundle and verifies round-trip stability.
 
-Practical tips
-- Always start Dagster with the daemon so `cohort_membership` can register dynamic partitions automatically when `data/1_raw/**/*` changes.
-- Use `DD_COHORT` to separate curated reruns from baseline cohorts and avoid partition churn across contexts.
-- For tight, reproducible subsets, prefer curated mode with `selected_essays.txt` or restrict the cohort spec to the desired entries.
+2. **Materialize the cohort assets.**
+   - Set `DD_COHORT=<cohort_id>` (or pass `asset_config.override`) so the Dagster run targets the
+     intended spec.
+   - Build the manifest and membership:
+     ```bash
+     uv run dagster asset materialize -f src/daydreaming_dagster/definitions.py \
+       --select "cohort_id,cohort_membership"
+     ```
+   - The run validates catalog references, enforces parent integrity, writes
+     `data/cohorts/<cohort_id>/manifest.json` and
+     `data/cohorts/<cohort_id>/membership.csv`, and registers dynamic partitions add-only for the
+     generated `gen_id`s.
 
-How it propagates
-- Generation/evaluation assets read cohort membership at runtime to resolve templates, models, parents, and combo IDs. Task CSVs are optional curated inputs only.
-- All gens `metadata.json` files include `cohort_id`.
-- `origin_cohort_id` in metadata is informational and may reflect the cohort that originally created an artifact. It is intentionally not used for orchestration decisions.
+3. **Materialize downstream assets.**
+   - Use the registered `gen_id` partitions to run draft/essay/evaluation assets or aggregated
+     reports as needed:
+     ```bash
+     uv run dagster asset materialize -f src/daydreaming_dagster/definitions.py \
+       --select "draft_prompt,draft_raw,draft_parsed" --partition "<draft_gen_id>"
+     ```
+     Duplicate the command for essays (`essay_*`) and evaluations (`evaluation_*`) or run aggregate
+     assets such as `cohort_aggregated_scores` and `final_results`.
 
-Overrides
-- Environment: `DD_COHORT` forces an explicit ID (e.g., curated re‑run name).
-- Config: set `ops.cohort_id.config.override` to replace the computed ID in the UI or run config.
+## Spec Bundle Layout
 
-Recommended policy
-- Deterministic (default) for “full cube/baseline” runs: ensures idempotent re‑runs when the manifest doesn’t change. All draft/essay/evaluation IDs are derived from their stage signature (combo/template/model/replicate) so rerunning with the same manifest simply reuses the existing directories.
-- Explicit/timestamped IDs for curated or ad‑hoc re‑runs to avoid overwrites and keep histories separate.
-
-CLI examples
-```bash
-# Curated: write selected essays then build cohort
-uv run python scripts/select_top_essays.py --template gemini-prior-art-eval --top-n 25
-uv run dagster asset materialize --select "cohort_id,cohort_membership" -f src/daydreaming_dagster/definitions.py
-
-# Catalog mode: no selection file or spec; cohort_membership derives from catalog axes
-uv run dagster asset materialize --select "cohort_id,cohort_membership" -f src/daydreaming_dagster/definitions.py
+```
+data/
+  cohorts/
+    <cohort_id>/
+      spec/
+        config.yaml
+        items/
+          *.csv
 ```
 
-Implementation notes
-- If a subset materialization runs without `cohort_id`, assets still resolve membership via the latest cohort files unless `DD_COHORT` pins an explicit ID.
-- The deterministic ID changes when any manifest component changes (combos/templates/models, or a pipeline version constant for material changes).
-- Generation/evaluation assets consult membership.csv directly and keep narrow CSV fallbacks for back‑compat only.
-- Metadata now relies solely on `llm_model_id`; the legacy `model_id` field was removed via `scripts/migrations/remove_model_id_fields.py`.
-- Replicate numbers for curated reruns are chosen by scanning deterministic IDs until an unused slot is found; avoid manually deleting gens directories or the next cohort may reuse prior numbers.
+- `config.yaml` declares axes, couplings, and replication targets. Every catalog reference must be
+  explicit; unspecified axes do not fall back to catalog defaults.
+- Single-column CSV files referenced via `@file:` provide axis levels. Multi-column CSVs map to tuple
+  values in header order (e.g., paired templates and models).
+- The runtime loader treats specs as immutable inputs—commit them alongside catalog changes so
+  cohorts remain reproducible.
 
-Operational flow
-- Update `data/cohorts/<cohort_id>/spec/` and ExperimentConfig (`k_max`, level).
-- Optional curated selection: write essay gen_ids to `data/2_tasks/selected_essays.txt`.
-- Materialize `cohort_id,cohort_membership` to register dynamic partitions by `gen_id`.
-- Materialize per-stage assets by partition key (`gen_id`): drafts, essays, evaluations.
-- Parse and summarize results (`cohort_aggregated_scores`, `final_results`).
+## Curated Selections (Optional Filters)
 
-Getting partition keys (gen_ids)
-- Drafts: `awk -F',' 'NR==1 || $1=="draft"' data/cohorts/*/membership.csv | cut -d',' -f2 | tail -n +2`
-- Essays: `awk -F',' 'NR==1 || $1=="essay"' data/cohorts/*/membership.csv | cut -d',' -f2 | tail -n +2`
-- Evaluations: `awk -F',' 'NR==1 || $1=="evaluation"' data/cohorts/*/membership.csv | cut -d',' -f2 | tail -n +2`
+Curated selection files narrow the spec-defined plan to a subset of existing generations. They are
+optional and only apply when the cohort spec already exists.
 
-Evaluating historical essays
-- Create or edit `data/2_tasks/selected_essays.txt` with one essay `gen_id` per line.
-- Materialize `cohort_id,cohort_membership` to register evaluation partitions for the spec-defined axes.
-- Materialize `evaluation_prompt,evaluation_raw,evaluation_parsed` for the desired evaluation `gen_id`s.
+- Place one of the following files under `data/2_tasks/` before materializing:
+  - `selected_essays.txt` — essay `gen_id`s (one per line) to reuse existing essays and rebuild
+    evaluations for the spec's evaluation templates/models.
+  - `selected_drafts.txt` — draft `gen_id`s to reuse drafts while regenerating essays and evaluations
+    according to the spec.
+- Only one selection file may be present; asset execution fails fast when both exist.
+- When no selection file exists, the entire spec plan is materialized.
+- Selection files never inject templates or models—coverage still derives from the spec's evaluation
+  axes.
 
-## Curated Selection Quickstart
+After materialization, remove the selection file if you want the next run to materialize the full
+spec again.
 
-This section summarizes the curated workflow previously documented in the selection guide.
+## Operational Tips
 
-Prerequisites
-- Set `DAGSTER_HOME` to a writable directory, e.g. `export DAGSTER_HOME=$(pwd)/dagster_home`.
-- Optional: build cross‑experiment scores if you plan to select by prior‑art top‑N:
-  `uv run python scripts/aggregate_scores.py --output data/7_cross_experiment/aggregated_scores.csv`.
-- Start Dagster for a richer experience: `uv run dagster dev -f src/daydreaming_dagster/definitions.py`.
+- **Environment override.** Set `DD_COHORT=<cohort_id>` (or pass `asset_config.override`) so the
+  `cohort_id` asset resolves to the correct spec bundle.
+- **Analysis.** Include `cohort_id` and `parent_gen_id` when comparing runs to keep pivots stable.
+- **Replication config.** `data/1_raw/replication_config.csv` must provide integer replication counts
+  for draft, essay, and evaluation stages. The cohort builder fails fast when counts are missing or
+  invalid.
 
-Step 1 — Select essay gen_ids
-- Use `scripts/select_top_essays.py` to pick top‑N essays by evaluation score (template + averaging strategy). The script writes `data/2_tasks/selected_essays.txt` with one essay `gen_id` per line.
+## Essay Modes (Copy vs LLM)
 
-Example
-```bash
-uv run python scripts/select_top_essays.py \
-  --template gemini-prior-art-eval \
-  --top-n 25 \
-  --aggregated-scores data/7_cross_experiment/aggregated_scores.csv
-```
+Essay templates specify a `generator` column in `data/1_raw/essay_templates.csv`:
 
-The selection script defaults to `data/7_cross_experiment/aggregated_scores.csv`; override `--aggregated-scores` if you are testing a different export.
+- `copy` — the essay is the parsed draft text (single-phase).
+- `llm` — the essay is generated by an LLM (two-phase).
 
-Notes
-- `selected_essays.txt` is the input signal for curated cohort builds. When present, the cohort
-  membership will include all stages (draft + essay + evaluation) for the selected essays.
-
-  - **Unified behavior:** All stages are always added to cohort membership for complete tracking.
-  - **Skip logic:** Existing artifacts (`raw.txt`, `parsed.txt`) are automatically reused unless
-    `force: true` is set in `StageSettings` (see `experiment_config.py`).
-  - **Replication:** The configured number of evaluation replicates are scheduled per cohort run.
-    Existing evaluations are automatically reused by skip logic.
-  - **Legacy directives:** Old `# mode:` and `# fill-up` directives are no longer recognized.
-    Remove them from selection files - skip logic now handles reuse automatically.
-- When using `selected_drafts.txt`, essays and evaluations are added for each essay template/model pair enumerated in the cohort spec (or catalog defaults).
-  - If both `selected_essays.txt` and `selected_drafts.txt` are present the cohort build fails fast—pick one curated entry point per run.
-- When pivoting or aggregating parsed results, prefer `parent_gen_id` (the essay `gen_id`) for stable grouping.
-
-Step 2 — Build cohort and register partitions
-```bash
-uv run dagster asset materialize --select "cohort_id,cohort_membership" -f src/daydreaming_dagster/definitions.py
-```
-
-What happens
-- Reads a cohort spec bundle when present (see Spec-driven, above). Otherwise: curated mode via `selected_essays.txt` / `selected_drafts.txt`, falling back to Cartesian expansion over the catalog axes.
-- Writes `data/cohorts/<cohort_id>/membership.csv`; registers dynamic partitions add‑only for draft/essay/evaluation; validates parent integrity.
-
-Running the curated set
-- From the UI, materialize partitions using the registered `gen_id`s (see “Getting partition keys”). Or via CLI:
-
-Drafts and essays (by `gen_id`)
-```bash
-uv run dagster asset materialize -f src/daydreaming_dagster/definitions.py \
-  --select "draft_prompt,draft_raw,draft_parsed" --partition "<draft_gen_id>"
-
-uv run dagster asset materialize -f src/daydreaming_dagster/definitions.py \
-  --select "essay_prompt,essay_raw,essay_parsed" --partition "<essay_gen_id>"
-```
-
-Evaluations (by `gen_id`)
-```bash
-uv run dagster asset materialize -f src/daydreaming_dagster/definitions.py \
-  --select "evaluation_prompt,evaluation_raw,evaluation_parsed" --partition "<evaluation_gen_id>"
-```
-
-Parsing and summaries
-```bash
-uv run dagster asset materialize -f src/daydreaming_dagster/definitions.py \
-  --select cohort_aggregated_scores,final_results
-```
-
-Environment tip
-- Set `DD_COHORT=<cohort_id>` when materializing to ensure new generations reserve IDs under the same cohort. If unset, `cohort_id` is computed deterministically from the manifest, and `cohort_membership` writes both the manifest and membership.
-
-Analysis tip
-- When comparing different curated runs or baselines, include `cohort_id` in your pivots and group by `parent_gen_id` to keep comparisons stable across attempts.
-
-One‑phase essay (copy) vs two‑phase essay (LLM)
-- The essay stage supports two generator modes configured per essay template in `data/1_raw/essay_templates.csv` via the `generator` column:
-  - `copy`: the essay is a verbatim copy of the parsed draft text (one‑phase pipeline). No LLM call happens in the essay stage; evaluation targets the essay copy.
-  - `llm`: the essay is generated by an LLM using the draft as input (two‑phase pipeline).
-- In catalog mode, every draft pairs with every essay template, regardless of mode. To avoid mixing one‑phase and two‑phase essays in the same cohort:
-- Option A: constrain the cohort spec to the desired essay templates (e.g., keep only a `copy` template selected for a pure one‑phase cohort), or
-  - Option B: use curated mode (`selected_essays.txt`) to include only the essays you want, or
-  - Option C: build separate cohorts (IDs) for one‑phase and two‑phase runs. Deterministic IDs ensure each cohort’s generations stay isolated even if templates overlap.
-- See also: docs/architecture/architecture.md, section “Two‑Phase LLM Generation” for where `copy`/`llm` is enforced at runtime.
+Configure the spec to include only the essay templates needed for a cohort. If you want distinct
+cohorts for one-phase and two-phase runs, create separate spec bundles so deterministic IDs remain
+isolated. See `docs/architecture/architecture.md` (“Two-Phase LLM Generation”) for runtime details.
