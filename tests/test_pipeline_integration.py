@@ -17,6 +17,19 @@ import pandas as pd
 import pytest
 from dagster import materialize, DagsterInstance
 from tests.helpers.llm_stubs import CannedLLMResource
+from daydreaming_dagster.cohorts import load_cohort_definition
+
+
+class _StubCohortSpec:
+    def compile_definition(
+        self,
+        *,
+        spec=None,
+        path=None,
+        catalogs=None,
+        seed=None,
+    ):
+        return load_cohort_definition(spec or path, catalogs=catalogs, seed=seed)
 
 # Markers
 pytestmark = [pytest.mark.integration, pytest.mark.live_data]
@@ -474,6 +487,7 @@ class TestPipelineIntegration:
                     ),
                     "error_log_io_manager": CSVIOManager(base_path=pipeline_data_root / "7_reporting"),
                     "experiment_config": ExperimentConfig(k_max=2, description_level="paragraph"),
+                    "cohort_spec": _StubCohortSpec(),
                 }
 
                 print("🚀 Starting complete pipeline workflow...")
@@ -862,6 +876,7 @@ class TestPipelineIntegration:
                     "io_manager": _DictIOManager(),
                     "in_memory_io_manager": InMemoryIOManager(),
                     "experiment_config": ExperimentConfig(k_max=2, description_level="paragraph"),
+                    "cohort_spec": _StubCohortSpec(),
                 }
 
                 result = materialize([selected_combo_mappings], resources=resources, instance=instance)

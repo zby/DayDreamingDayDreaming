@@ -11,7 +11,8 @@ Highlights:
 - Rule pipeline (`subset → tie → pair → tuple`) to bound Cartesian growth.
 - Replication configuration that appends deterministic `replicate` indices without manual duplication.
 - CLI (`scripts/compile_experiment_design.py`) for producing CSV/JSONL output with catalog data sourced from JSON/CSV files.
-- Cohort integration: `cohort_membership` loads spec bundles via `daydreaming_dagster.cohorts.load_cohort_plan` when `data/cohorts/<cohort_id>/spec/` is present, ensuring spec + catalogs fully determine cohort rows.
+- Cohort integration: `cohort_membership` loads spec bundles via `daydreaming_dagster.cohorts.load_cohort_definition` when `data/cohorts/<cohort_id>/spec/` is present, ensuring spec + catalogs fully determine cohort rows.
+- In-memory parsing via `parse_spec_mapping` for tests and dependency-injection scenarios where writing spec files is unnecessary.
 - Migration helper (`scripts/migrations/generate_cohort_spec.py`) snapshotting existing cohorts into spec bundles so legacy runs can adopt the DSL without manual transcription.
 
 ### Why this design?
@@ -30,6 +31,8 @@ Top-level keys supported by `load_spec` / CLI:
 | `replicates` | mapping | Optional. Defines per-axis replication counts (`{axis: count}`), emitting `<axis>_replicate` columns automatically. |
 
 > Specs must be single files. Directory bundles (`spec/axes/*.txt`, `spec/rules/*.yaml`) are no longer supported—use `@file:` references instead.
+
+To parse pre-loaded mappings (e.g., during tests), call `parse_spec_mapping(mapping, source=..., base_dir=...)`. The helper shares validation with `load_spec` while letting callers avoid temporary files.
 
 ### 2.1 Axes
 
@@ -158,6 +161,11 @@ Flags:
 | `--catalog-csv NAME=PATH[:COLUMN]` | CSV source for catalog levels (repeatable). |
 | `--data-root PATH` | Base directory for resolving `@attribute` shortcuts via `Paths`. |
 | `--seed INT` | Deterministic shuffle seed. |
+
+## 7. Dagster Integration
+
+- Request the `cohort_spec` resource from Dagster assets to load and cache specs via `CohortSpecResource`. Assets can call `context.resources.cohort_spec.compile_definition(path=..., catalogs=...)` to avoid redundant filesystem reads.
+- `load_cohort_definition` also accepts an already parsed `ExperimentSpec`, enabling higher-level orchestration code to inject specs without touching disk.
 | `--limit INT` | When printing to stdout, limits row count. |
 
 Exit codes follow standard Python semantics (`0` on success, `SpecDslError` message on failure).

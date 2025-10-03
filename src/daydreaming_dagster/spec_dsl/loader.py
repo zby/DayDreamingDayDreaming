@@ -49,6 +49,24 @@ def _parse_file(path: Path) -> Mapping[str, Any]:
     raise _UnsupportedSpecFormat(path)
 
 
+def parse_spec_mapping(
+    data: Mapping[str, Any],
+    *,
+    source: Path | str | None = None,
+    base_dir: Path | None = None,
+) -> ExperimentSpec:
+    """Parse an already-loaded spec mapping into an :class:`ExperimentSpec`."""
+
+    config_path = Path(source) if source is not None else Path("<memory>")
+    mapping = _load_mapping(data, path=config_path)
+
+    if base_dir is None:
+        candidate = config_path if config_path.is_dir() else config_path.parent
+        base_dir = candidate or Path(".")
+
+    return _build_experiment_spec(mapping, config_path=config_path, base_dir=base_dir)
+
+
 def load_spec(path: Path | str) -> ExperimentSpec:
     """Load a spec file into an :class:`ExperimentSpec`."""
 
@@ -60,22 +78,35 @@ def load_spec(path: Path | str) -> ExperimentSpec:
         )
 
     data = _parse_file(spec_path)
+    return _build_experiment_spec(
+        data,
+        config_path=spec_path,
+        base_dir=spec_path if spec_path.is_dir() else spec_path.parent,
+    )
 
+
+def _build_experiment_spec(
+    data: Mapping[str, Any],
+    *,
+    config_path: Path,
+    base_dir: Path,
+) -> ExperimentSpec:
+    base_dir = Path(base_dir)
     axes_section = data.get("axes", {})
     if not isinstance(axes_section, Mapping):
         raise SpecDslError(
             SpecDslErrorCode.INVALID_SPEC,
-            ctx={"path": str(spec_path), "error": "axes must be mapping"},
+            ctx={"path": str(config_path), "error": "axes must be mapping"},
         )
 
-    base_dir = spec_path if spec_path.is_dir() else spec_path.parent
+    base_dir = base_dir
 
     axes: OrderedDict[str, AxisSpec] = OrderedDict()
     for name, axis_payload in axes_section.items():
         levels = _parse_axis_entry(
             name=name,
             payload=axis_payload,
-            config_path=spec_path,
+            config_path=config_path,
             root_dir=base_dir,
         )
         axes[name] = AxisSpec(name=name, levels=tuple(levels))
@@ -83,7 +114,7 @@ def load_spec(path: Path | str) -> ExperimentSpec:
     raw_rules = data.get("rules", {})
     rules = _parse_rules(
         raw_rules,
-        config_path=spec_path,
+        config_path=config_path,
         base_dir=base_dir,
     )
 
@@ -91,13 +122,13 @@ def load_spec(path: Path | str) -> ExperimentSpec:
     if not isinstance(output, Mapping):
         raise SpecDslError(
             SpecDslErrorCode.INVALID_SPEC,
-            ctx={"path": str(spec_path), "error": "output must be mapping"},
+            ctx={"path": str(config_path), "error": "output must be mapping"},
         )
 
     if "order" in output:
         raise SpecDslError(
             SpecDslErrorCode.INVALID_SPEC,
-            ctx={"path": str(spec_path), "error": "output.order deprecated"},
+            ctx={"path": str(config_path), "error": "output.order deprecated"},
         )
 
     deprecated_flags = {
@@ -112,7 +143,7 @@ def load_spec(path: Path | str) -> ExperimentSpec:
             raise SpecDslError(
                 SpecDslErrorCode.INVALID_SPEC,
                 ctx={
-                    "path": str(spec_path),
+                    "path": str(config_path),
                     "error": f"output.{flag} deprecated",
                 },
             )
@@ -121,11 +152,11 @@ def load_spec(path: Path | str) -> ExperimentSpec:
     if not isinstance(field_order, list):
         raise SpecDslError(
             SpecDslErrorCode.INVALID_SPEC,
-            ctx={"path": str(spec_path), "error": "output.field_order required"},
+            ctx={"path": str(config_path), "error": "output.field_order required"},
         )
 
     replicates_section = data.get("replicates", {})
-    replicates = _parse_replicates(replicates_section, config_path=spec_path)
+    replicates = _parse_replicates(replicates_section, config_path=config_path)
 
     return ExperimentSpec(
         axes=axes,

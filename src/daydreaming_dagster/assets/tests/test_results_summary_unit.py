@@ -9,6 +9,19 @@ import yaml
 from dagster import build_asset_context
 
 import daydreaming_dagster.assets.results_summary as rs
+from daydreaming_dagster.cohorts import load_cohort_definition
+
+
+class _StubCohortSpec:
+    def compile_definition(
+        self,
+        *,
+        spec=None,
+        path=None,
+        catalogs=None,
+        seed=None,
+    ):
+        return load_cohort_definition(spec or path, catalogs=catalogs, seed=seed)
 
 
 def _write_csv(path: Path, rows: list[dict]) -> None:
@@ -134,7 +147,13 @@ def _make_parsed_scores():
 
 def test_generation_scores_pivot_smoke(tmp_path):
     _prepare_data_root(tmp_path)
-    ctx = build_asset_context(resources={"data_root": str(tmp_path)}, partition_key="cohort-test")
+    ctx = build_asset_context(
+        resources={
+            "data_root": str(tmp_path),
+            "cohort_spec": _StubCohortSpec(),
+        },
+        partition_key="cohort-test",
+    )
     parsed = _make_parsed_scores()
     pivot = rs.generation_scores_pivot(ctx, parsed)
 
@@ -158,7 +177,13 @@ def test_generation_scores_pivot_smoke(tmp_path):
 
 def test_generation_scores_pivot_missing_evaluations_fill_counts(tmp_path):
     _prepare_data_root(tmp_path)
-    ctx = build_asset_context(resources={"data_root": str(tmp_path)}, partition_key="cohort-test")
+    ctx = build_asset_context(
+        resources={
+            "data_root": str(tmp_path),
+            "cohort_spec": _StubCohortSpec(),
+        },
+        partition_key="cohort-test",
+    )
     parsed = pd.DataFrame(
         [
             {
@@ -226,7 +251,13 @@ def test_generation_scores_pivot_missing_evaluations_fill_counts(tmp_path):
 
 def test_final_results_overall_and_by_template(tmp_path):
     _prepare_data_root(tmp_path)
-    ctx = build_asset_context(resources={"data_root": str(tmp_path)}, partition_key="cohort-test")
+    ctx = build_asset_context(
+        resources={
+            "data_root": str(tmp_path),
+            "cohort_spec": _StubCohortSpec(),
+        },
+        partition_key="cohort-test",
+    )
     parsed = _make_parsed_scores()
     out = rs.final_results(ctx, parsed)
 
@@ -240,7 +271,13 @@ def test_final_results_overall_and_by_template(tmp_path):
 
 def test_evaluation_model_template_pivot(tmp_path):
     _prepare_data_root(tmp_path)
-    ctx = build_asset_context(resources={"data_root": str(tmp_path)}, partition_key="cohort-test")
+    ctx = build_asset_context(
+        resources={
+            "data_root": str(tmp_path),
+            "cohort_spec": _StubCohortSpec(),
+        },
+        partition_key="cohort-test",
+    )
     parsed = _make_parsed_scores()
     pivot = rs.evaluation_model_template_pivot(ctx, parsed)
 

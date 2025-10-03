@@ -7,7 +7,20 @@ import pandas as pd
 import yaml
 from dagster import build_asset_context
 
+from daydreaming_dagster.cohorts import load_cohort_definition
 from daydreaming_dagster.models.content_combination import ContentCombination
+
+
+class _StubCohortSpec:
+    def compile_definition(
+        self,
+        *,
+        spec=None,
+        path=None,
+        catalogs=None,
+        seed=None,
+    ):
+        return load_cohort_definition(spec or path, catalogs=catalogs, seed=seed)
 
 
 def _write_csv(path: Path, rows: list[dict]) -> None:
@@ -135,7 +148,10 @@ def test_cohort_id_deterministic_and_manifest_written(tmp_path):
     )
 
     context = build_asset_context(
-        resources={"data_root": str(tmp_path)},
+        resources={
+            "data_root": str(tmp_path),
+            "cohort_spec": _StubCohortSpec(),
+        },
         asset_config={"override": "cohort-demo"},
     )
     combos = [
@@ -197,7 +213,10 @@ def test_cohort_id_override_precedence_config_over_env(tmp_path, monkeypatch):
     monkeypatch.setenv("DD_COHORT", "ENV-COHORT-123")
 
     context = build_asset_context(
-        resources={"data_root": str(tmp_path)},
+        resources={
+            "data_root": str(tmp_path),
+            "cohort_spec": _StubCohortSpec(),
+        },
         asset_config={"override": "CONFIG-COHORT-999"},
     )
     combos = [ContentCombination(contents=[{"name": "x", "content": "p"}], combo_id="x", concept_ids=["x"])]
@@ -206,7 +225,13 @@ def test_cohort_id_override_precedence_config_over_env(tmp_path, monkeypatch):
     assert cid_config == "CONFIG-COHORT-999"
     assert (tmp_path / "cohorts" / cid_config / "manifest.json").exists()
 
-    context_env = build_asset_context(resources={"data_root": str(tmp_path)}, asset_config={})
+    context_env = build_asset_context(
+        resources={
+            "data_root": str(tmp_path),
+            "cohort_spec": _StubCohortSpec(),
+        },
+        asset_config={}
+    )
     cid_env = module.cohort_id(context_env, content_combinations=combos)
     assert cid_env == "ENV-COHORT-123"
     assert (tmp_path / "cohorts" / cid_env / "manifest.json").exists()

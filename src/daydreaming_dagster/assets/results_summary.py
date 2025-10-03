@@ -5,7 +5,7 @@ import numpy as np
 from ..data_layer.paths import Paths, COHORT_REPORT_ASSET_TARGETS
 from .raw_data import EVALUATION_TEMPLATES_KEY
 from .group_cohorts import _build_spec_catalogs
-from ..cohorts import build_allowlists_from_plan, load_cohort_plan
+from ..cohorts import build_allowlists_from_definition
 from ..utils.evaluation_processing import filter_valid_scores
 from ..utils.errors import DDError, Err
 from .partitions import cohort_reports_partitions
@@ -26,7 +26,7 @@ def _require_cohort_partition(context, asset_name: str) -> str:
     stage="results_summary",
     group_name="results_processing",
     io_manager_key="summary_results_io_manager",
-    required_resource_keys={"data_root"},
+    required_resource_keys={"data_root", "cohort_spec"},
     deps={EVALUATION_TEMPLATES_KEY, AssetKey("cohort_id")},
     partitions_def=cohort_reports_partitions,
 )
@@ -53,8 +53,11 @@ def generation_scores_pivot(context, cohort_aggregated_scores: pd.DataFrame) -> 
         )
 
     catalogs = _build_spec_catalogs(paths.data_root, pd.DataFrame())
-    spec_plan = load_cohort_plan(spec_dir, catalogs=catalogs)
-    allowlists = build_allowlists_from_plan(spec_plan)
+    spec_plan = context.resources.cohort_spec.compile_definition(
+        path=spec_dir,
+        catalogs=catalogs,
+    )
+    allowlists = build_allowlists_from_definition(spec_plan)
 
     eval_templates = list(allowlists.evaluation_templates)
     eval_models = list(allowlists.evaluation_models)

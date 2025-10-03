@@ -9,7 +9,20 @@ import yaml
 from dagster import build_asset_context
 
 from daydreaming_dagster.assets.group_cohorts import cohort_membership
+from daydreaming_dagster.cohorts import load_cohort_definition
 from daydreaming_dagster.utils.ids import compute_deterministic_gen_id, draft_signature, essay_signature
+
+
+class _StubCohortSpec:
+    def compile_definition(
+        self,
+        *,
+        spec=None,
+        path=None,
+        catalogs=None,
+        seed=None,
+    ):
+        return load_cohort_definition(spec or path, catalogs=catalogs, seed=seed)
 
 
 def _write_csv(path: Path, rows: list[dict]) -> None:
@@ -91,7 +104,12 @@ def test_essay_rows_reference_draft_ids(tmp_path: Path) -> None:
     for stage in ("draft", "essay", "evaluation"):
         (tmp_path / "gens" / stage).mkdir(parents=True, exist_ok=True)
 
-    context = build_asset_context(resources={"data_root": str(tmp_path)})
+    context = build_asset_context(
+        resources={
+            "data_root": str(tmp_path),
+            "cohort_spec": _StubCohortSpec(),
+        }
+    )
     selected_df = pd.DataFrame(
         [
             {

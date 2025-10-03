@@ -4,11 +4,12 @@ from collections import OrderedDict
 from pathlib import Path
 
 import pytest
+import yaml
 
-from daydreaming_dagster.spec_dsl import load_spec, compile_design
+from daydreaming_dagster.spec_dsl import compile_design, parse_spec_mapping
 from daydreaming_dagster.utils.errors import DDError, Err
 
-from daydreaming_dagster.cohorts.spec_planner import CohortPlan
+from daydreaming_dagster.cohorts.spec_planner import CohortDefinition
 
 
 FIXTURES = Path(__file__).resolve().parents[4] / "tests" / "fixtures" / "spec_dsl"
@@ -28,10 +29,11 @@ def _catalogs() -> dict[str, list[str]]:
 
 def test_cohort_plan_from_spec_bundle() -> None:
     spec_path = FIXTURES / "cohort_cartesian" / "config.yaml"
-    spec = load_spec(spec_path)
+    payload = yaml.safe_load(spec_path.read_text(encoding="utf-8"))
+    spec = parse_spec_mapping(payload, source=spec_path, base_dir=spec_path.parent)
     rows = compile_design(spec, catalogs=_catalogs())
 
-    plan = CohortPlan.from_design_rows(rows)
+    plan = CohortDefinition.from_design_rows(rows)
 
     assert len(plan.drafts) == 2
     assert {draft.replicate for draft in plan.drafts} == {1, 2}
@@ -69,7 +71,7 @@ def test_cohort_plan_missing_required_field_raises() -> None:
     )
 
     with pytest.raises(DDError) as excinfo:
-        CohortPlan.from_design_rows([bad_row])
+        CohortDefinition.from_design_rows([bad_row])
 
     assert excinfo.value.code is Err.INVALID_CONFIG
     assert excinfo.value.ctx and excinfo.value.ctx.get("field") == "draft_llm"

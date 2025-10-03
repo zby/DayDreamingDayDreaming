@@ -59,6 +59,7 @@ from daydreaming_dagster.assets.cross_experiment import (
     filtered_evaluation_results,
     template_version_comparison_pivot,
 )
+from daydreaming_dagster.resources import CohortSpecResource
 from daydreaming_dagster.resources.llm_client import LLMClientResource
 from daydreaming_dagster.resources.experiment_config import ExperimentConfig
 from daydreaming_dagster.resources.io_managers import (
@@ -192,6 +193,7 @@ def _shared_resources(paths: Paths) -> dict[str, Any]:
         ),
         "scores_aggregator": ScoresAggregatorResource(),
         "membership_service": MembershipServiceResource(),
+        "cohort_spec": CohortSpecResource(),
     }
 
 

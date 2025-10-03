@@ -29,7 +29,10 @@ from ..utils.raw_readers import (
     read_llm_models,
     read_replication_config,
 )
-from ..cohorts import CohortPlan, build_allowlists_from_plan, load_cohort_plan
+from ..cohorts import (
+    CohortDefinition,
+    build_allowlists_from_definition,
+)
 from ..models import ContentCombination
 from daydreaming_dagster.models.content_combination import generate_combo_id
 from ..data_layer.gens_data_layer import GensDataLayer
@@ -470,7 +473,7 @@ class CohortBuilder:
 
         return rows
 
-    def build_from_spec_plan(self, plan: CohortPlan) -> List[MembershipRow]:
+    def build_from_spec_plan(self, plan: CohortDefinition) -> List[MembershipRow]:
         if not plan:
             return []
 
@@ -1150,7 +1153,7 @@ def validate_cohort_membership(
 @asset_with_boundary(
     stage="cohort",
     group_name="cohort",
-    required_resource_keys={"data_root"},
+    required_resource_keys={"data_root", "cohort_spec"},
 )
 def cohort_membership(
     context,
@@ -1189,8 +1192,11 @@ def cohort_membership(
         )
 
     catalogs = _build_spec_catalogs(data_root, selected_combo_mappings)
-    spec_plan = load_cohort_plan(spec_dir, catalogs=catalogs)
-    allowlists = build_allowlists_from_plan(spec_plan)
+    spec_plan = context.resources.cohort_spec.compile_definition(
+        path=spec_dir,
+        catalogs=catalogs,
+    )
+    allowlists = build_allowlists_from_definition(spec_plan)
 
     selection_cfg = _load_curated_selection_config(data_root)
     selected_ids = selection_cfg.ids
@@ -1298,7 +1304,7 @@ def cohort_membership(
 @asset_with_boundary(
     stage="cohort",
     group_name="cohort",
-    required_resource_keys={"data_root"},
+    required_resource_keys={"data_root", "cohort_spec"},
     io_manager_key="io_manager",
     deps=["prune_dynamic_partitions"],
 )
@@ -1346,7 +1352,7 @@ def register_cohort_partitions(context, cohort_membership: pd.DataFrame) -> Dict
     stage="cohort",
     group_name="cohort",
     io_manager_key="io_manager",
-    required_resource_keys={"data_root"},
+    required_resource_keys={"data_root", "cohort_spec"},
 )
 def cohort_id(context, content_combinations: list[ContentCombination]) -> str:
     """Compute a deterministic cohort_id from the current manifest and persist it."""
@@ -1383,8 +1389,11 @@ def cohort_id(context, content_combinations: list[ContentCombination]) -> str:
         )
 
     catalogs = _build_spec_catalogs(data_root, pd.DataFrame())
-    spec_plan = load_cohort_plan(spec_dir, catalogs=catalogs)
-    allowlists = build_allowlists_from_plan(spec_plan)
+    spec_plan = context.resources.cohort_spec.compile_definition(
+        path=spec_dir,
+        catalogs=catalogs,
+    )
+    allowlists = build_allowlists_from_definition(spec_plan)
 
     asset_combo_ids = {
         str(combo.combo_id)

@@ -8,7 +8,20 @@ import pytest
 from dagster import build_asset_context
 
 from daydreaming_dagster.assets.group_cohorts import cohort_membership
+from daydreaming_dagster.cohorts import load_cohort_definition
 from daydreaming_dagster.cohorts.spec_migration import generate_spec_bundle
+
+
+class _StubCohortSpec:
+    def compile_definition(
+        self,
+        *,
+        spec=None,
+        path=None,
+        catalogs=None,
+        seed=None,
+    ):
+        return load_cohort_definition(spec or path, catalogs=catalogs, seed=seed)
 
 
 def _write_csv(path: Path, rows: list[dict]) -> None:
@@ -120,7 +133,12 @@ def test_generate_spec_round_trip(tmp_path: Path, essay_templates: list[str]) ->
         ]
     )
 
-    context = build_asset_context(resources={"data_root": str(data_root)})
+    context = build_asset_context(
+        resources={
+            "data_root": str(data_root),
+            "cohort_spec": _StubCohortSpec(),
+        }
+    )
     baseline_df = cohort_membership(
         context,
         cohort_id=cohort_id,
@@ -133,7 +151,12 @@ def test_generate_spec_round_trip(tmp_path: Path, essay_templates: list[str]) ->
     assert "@file:items/cohort_rows.csv" in config_text
 
     roundtrip_df = cohort_membership(
-        build_asset_context(resources={"data_root": str(data_root)}),
+        build_asset_context(
+            resources={
+                "data_root": str(data_root),
+                "cohort_spec": _StubCohortSpec(),
+            }
+        ),
         cohort_id=cohort_id,
         selected_combo_mappings=combo_df,
     )

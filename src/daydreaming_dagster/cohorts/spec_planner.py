@@ -97,7 +97,7 @@ class EvaluationPlanEntry(BaseModel):
         )
 
 
-class CohortPlan(BaseModel):
+class CohortDefinition(BaseModel):
     drafts: list[DraftPlanEntry] = Field(default_factory=list)
     essays: list[EssayPlanEntry] = Field(default_factory=list)
     evaluations: list[EvaluationPlanEntry] = Field(default_factory=list)
@@ -105,7 +105,7 @@ class CohortPlan(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     @classmethod
-    def from_design_rows(cls, rows: Sequence[Mapping[str, Any]]) -> "CohortPlan":
+    def from_design_rows(cls, rows: Sequence[Mapping[str, Any]]) -> "CohortDefinition":
         if not rows:
             return cls()
 
@@ -193,7 +193,7 @@ class CohortPlan(BaseModel):
 
 
 @dataclass(frozen=True)
-class CohortPlanAllowlists:
+class CohortDefinitionAllowlists:
     combos: tuple[str, ...]
     draft_templates: tuple[str, ...]
     essay_templates: tuple[str, ...]
@@ -202,18 +202,20 @@ class CohortPlanAllowlists:
     evaluation_models: tuple[str, ...]
 
 
-def build_allowlists_from_plan(plan: CohortPlan | None) -> CohortPlanAllowlists:
-    if plan is None:
-        return CohortPlanAllowlists((), (), (), (), (), ())
+def build_allowlists_from_definition(
+    definition: CohortDefinition | None,
+) -> CohortDefinitionAllowlists:
+    if definition is None:
+        return CohortDefinitionAllowlists((), (), (), (), (), ())
 
-    draft_templates = {entry.template_id for entry in plan.drafts}
-    essay_templates = {entry.template_id for entry in plan.essays}
-    evaluation_templates = {entry.template_id for entry in plan.evaluations}
-    generation_models = {entry.llm_model_id for entry in plan.drafts}
-    evaluation_models = {entry.llm_model_id for entry in plan.evaluations}
-    combos = {entry.combo_id for entry in plan.drafts}
+    draft_templates = {entry.template_id for entry in definition.drafts}
+    essay_templates = {entry.template_id for entry in definition.essays}
+    evaluation_templates = {entry.template_id for entry in definition.evaluations}
+    generation_models = {entry.llm_model_id for entry in definition.drafts}
+    evaluation_models = {entry.llm_model_id for entry in definition.evaluations}
+    combos = {entry.combo_id for entry in definition.drafts}
 
-    return CohortPlanAllowlists(
+    return CohortDefinitionAllowlists(
         combos=tuple(sorted(combos)),
         draft_templates=tuple(sorted(draft_templates)),
         essay_templates=tuple(sorted(essay_templates)),
@@ -223,36 +225,52 @@ def build_allowlists_from_plan(plan: CohortPlan | None) -> CohortPlanAllowlists:
     )
 
 
-def compile_cohort_plan(
+def compile_cohort_definition(
     spec: ExperimentSpec,
     *,
     catalogs: Mapping[str, Any] | None = None,
     seed: int | None = None,
-) -> CohortPlan:
+) -> CohortDefinition:
     rows = compile_design(spec, catalogs=catalogs, seed=seed)
-    return CohortPlan.from_design_rows(rows)
+    return CohortDefinition.from_design_rows(rows)
 
 
-def load_cohort_plan(
-    path: str | Path,
+def load_cohort_definition(
+    source: str | Path | ExperimentSpec,
     *,
     catalogs: Mapping[str, Any] | None = None,
     seed: int | None = None,
-) -> CohortPlan:
-    spec_path = Path(path)
-    if spec_path.is_dir():
-        spec_path = spec_path / "config.yaml"
-    spec = load_spec(spec_path)
-    return compile_cohort_plan(spec, catalogs=catalogs, seed=seed)
+) -> CohortDefinition:
+    if isinstance(source, ExperimentSpec):
+        spec = source
+    else:
+        spec_path = Path(source)
+        if spec_path.is_dir():
+            spec_path = spec_path / "config.yaml"
+        spec = load_spec(spec_path)
+    return compile_cohort_definition(spec, catalogs=catalogs, seed=seed)
 
 
 __all__ = [
-    "CohortPlan",
+    "CohortDefinition",
     "DraftPlanEntry",
     "EssayPlanEntry",
     "EvaluationPlanEntry",
-    "CohortPlanAllowlists",
-    "build_allowlists_from_plan",
-    "compile_cohort_plan",
-    "load_cohort_plan",
+    "CohortDefinitionAllowlists",
+    "build_allowlists_from_definition",
+    "compile_cohort_definition",
+    "load_cohort_definition",
+    "CohortPlan",  # BACKCOMPAT
+    "CohortPlanAllowlists",  # BACKCOMPAT
+    "build_allowlists_from_plan",  # BACKCOMPAT
+    "compile_cohort_plan",  # BACKCOMPAT
+    "load_cohort_plan",  # BACKCOMPAT
 ]
+
+
+# BACKCOMPAT: provide legacy names for downstream callers; remove once migrations complete.
+CohortPlan = CohortDefinition
+CohortPlanAllowlists = CohortDefinitionAllowlists
+build_allowlists_from_plan = build_allowlists_from_definition
+compile_cohort_plan = compile_cohort_definition
+load_cohort_plan = load_cohort_definition

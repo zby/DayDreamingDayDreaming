@@ -12,6 +12,7 @@ from dagster import Failure, build_asset_context
 SPEC_FIXTURES = Path(__file__).resolve().parents[4] / "tests" / "fixtures" / "spec_dsl"
 
 from daydreaming_dagster.assets.group_cohorts import cohort_membership
+from daydreaming_dagster.cohorts import load_cohort_definition
 from daydreaming_dagster.utils.ids import (
     compute_deterministic_gen_id,
     draft_signature,
@@ -230,7 +231,12 @@ def test_cohort_membership_curated_includes_all_stages(base_data_root: Path) -> 
         },
     )
 
-    context = build_asset_context(resources={"data_root": str(data_root)})
+    context = build_asset_context(
+        resources={
+            "data_root": str(data_root),
+            "cohort_spec": _StubCohortSpec(),
+        }
+    )
     df = cohort_membership(
         context,
         cohort_id=cohort_id,
@@ -309,7 +315,12 @@ def test_cohort_membership_cartesian_multiple_replicates(tmp_path: Path) -> None
         },
     )
 
-    context = build_asset_context(resources={"data_root": str(data_root)})
+    context = build_asset_context(
+        resources={
+            "data_root": str(data_root),
+            "cohort_spec": _StubCohortSpec(),
+        }
+    )
     selected_df = pd.DataFrame(
         [
             {
@@ -418,7 +429,12 @@ def test_cohort_membership_uses_spec_plan(tmp_path: Path) -> None:
     spec_target = data_root / "cohorts" / "spec-cohort" / "spec"
     shutil.copytree(SPEC_FIXTURES / "cohort_cartesian", spec_target)
 
-    context = build_asset_context(resources={"data_root": str(data_root)})
+    context = build_asset_context(
+        resources={
+            "data_root": str(data_root),
+            "cohort_spec": _StubCohortSpec(),
+        }
+    )
     selected_df = pd.DataFrame({"combo_id": ["combo-1"]})
 
     df = cohort_membership(
@@ -456,7 +472,12 @@ def test_curfated_selection_conflict_raises(base_data_root: Path) -> None:
     (select_dir / "selected_essays.txt").write_text("e_123\n", encoding="utf-8")
     (select_dir / "selected_drafts.txt").write_text("d_456\n", encoding="utf-8")
 
-    context = build_asset_context(resources={"data_root": str(data_root)})
+    context = build_asset_context(
+        resources={
+            "data_root": str(data_root),
+            "cohort_spec": _StubCohortSpec(),
+        }
+    )
     with pytest.raises(Failure) as err:
         cohort_membership(
             context,
@@ -511,7 +532,12 @@ def test_curated_with_comments(base_data_root: Path) -> None:
         encoding="utf-8",
     )
 
-    context = build_asset_context(resources={"data_root": str(data_root)})
+    context = build_asset_context(
+        resources={
+            "data_root": str(data_root),
+            "cohort_spec": _StubCohortSpec(),
+        }
+    )
     df = cohort_membership(
         context,
         cohort_id="cohort-with-comments",
@@ -520,3 +546,13 @@ def test_curated_with_comments(base_data_root: Path) -> None:
 
     # Should succeed and include all stages
     assert set(df["stage"]) == {"draft", "essay", "evaluation"}
+class _StubCohortSpec:
+    def compile_definition(
+        self,
+        *,
+        spec=None,
+        path=None,
+        catalogs=None,
+        seed=None,
+    ):
+        return load_cohort_definition(spec or path, catalogs=catalogs, seed=seed)

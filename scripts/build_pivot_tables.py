@@ -18,7 +18,7 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 import json
-from typing import Set
+from typing import Any, Mapping, Set
 import pandas as pd
 
 
@@ -36,7 +36,12 @@ _ensure_src_on_path()
 from daydreaming_dagster.utils.errors import DDError, Err
 from daydreaming_dagster.data_layer.paths import Paths
 from daydreaming_dagster.assets.group_cohorts import _build_spec_catalogs
-from daydreaming_dagster.cohorts import build_allowlists_from_plan, load_cohort_plan
+from daydreaming_dagster.cohorts import (
+    CohortDefinition,
+    build_allowlists_from_definition,
+    load_cohort_definition,
+)
+from daydreaming_dagster.spec_dsl import ExperimentSpec
 
 
 def _compose_essay_task_id(df: pd.DataFrame) -> pd.Series:
@@ -98,9 +103,17 @@ def _load_essay_cohorts(essay_ids: Set[str], data_root: Path) -> dict[str, str]:
     return cohorts
 
 
-def _load_spec_filters(cohort_id: str, paths: Paths) -> tuple[set[str], set[str]]:
+def _load_spec_filters(
+    cohort_id: str,
+    paths: Paths,
+    *,
+    definition: CohortDefinition | None = None,
+    spec: ExperimentSpec | None = None,
+    catalogs: Mapping[str, Any] | None = None,
+    seed: int | None = None,
+) -> tuple[set[str], set[str]]:
     spec_dir = paths.data_root / "cohorts" / cohort_id / "spec"
-    if not spec_dir.exists():
+    if definition is None and spec is None and not spec_dir.exists():
         raise DDError(
             Err.INVALID_CONFIG,
             ctx={
@@ -110,9 +123,13 @@ def _load_spec_filters(cohort_id: str, paths: Paths) -> tuple[set[str], set[str]
             },
         )
 
-    catalogs = _build_spec_catalogs(paths.data_root, pd.DataFrame())
-    plan = load_cohort_plan(spec_dir, catalogs=catalogs)
-    allowlists = build_allowlists_from_plan(plan)
+    catalogs = catalogs or _build_spec_catalogs(paths.data_root, pd.DataFrame())
+    plan = definition or load_cohort_definition(
+        spec if spec is not None else spec_dir,
+        catalogs=catalogs,
+        seed=seed,
+    )
+    allowlists = build_allowlists_from_definition(plan)
 
     eval_templates = {tpl for tpl in allowlists.evaluation_templates}
     eval_models = {model for model in allowlists.evaluation_models}
@@ -135,6 +152,10 @@ def build_pivot(
     *,
     paths: Paths,
     cohort_allowlist: str | None = None,
+    cohort_definition: CohortDefinition | None = None,
+    cohort_spec: ExperimentSpec | None = None,
+    catalogs: Mapping[str, Any] | None = None,
+    seed: int | None = None,
 ) -> None:
     if not parsed_scores.exists():
         raise DDError(
@@ -146,7 +167,14 @@ def build_pivot(
 
     evaluation_filter: tuple[set[str], set[str]] | None = None
     if cohort_allowlist:
-        evaluation_filter = _load_spec_filters(cohort_allowlist, paths)
+        evaluation_filter = _load_spec_filters(
+            cohort_allowlist,
+            paths,
+            definition=cohort_definition,
+            spec=cohort_spec,
+            catalogs=catalogs,
+            seed=seed,
+        )
 
     if evaluation_filter:
         eval_templates, eval_models = evaluation_filter
