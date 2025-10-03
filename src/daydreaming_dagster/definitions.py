@@ -39,10 +39,6 @@ from daydreaming_dagster.assets.group_cohorts import (
 from daydreaming_dagster.assets.maintenance import (
     prune_dynamic_partitions,
 )
-from daydreaming_dagster.assets.documents_reporting import (
-    documents_latest_report,
-    documents_consistency_report,
-)
 from daydreaming_dagster.checks.documents_checks import (
     draft_files_exist_check,
     essay_files_exist_check,
@@ -158,8 +154,6 @@ RESULT_ASSETS = (
     perfect_score_paths,
     filtered_evaluation_results,
     template_version_comparison_pivot,
-    documents_latest_report,
-    documents_consistency_report,
     prune_dynamic_partitions,
 )
 
