@@ -89,6 +89,12 @@ output:
 
 `field_order` pins column order in the emitted rows/CSV. Pair, tuple, and tie rules always expand back into their component axes; the synthetic axes are removed after expansion.
 
+#### CSV include format
+
+- **Single column** (`levels.csv` with header `value`): produces `list[str]` for axes.
+- **Multi column** (`tuples.csv` with headers matching `axes`): produces `list[tuple[str, ...]]` in header order.
+- Empty rows or cells raise `SpecDslError` to keep the spec deterministic.
+
 ### 2.4 Replicates
 
 ```yaml
