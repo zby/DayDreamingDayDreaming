@@ -168,6 +168,15 @@ Notes:
 
 **Important**: Set `DAGSTER_HOME=$(pwd)/dagster_home` to use the project's Dagster configuration, which includes auto-materialization settings. Without this, Dagster uses temporary storage and ignores the project configuration.
 
+### Cohort Specs & Naming
+
+- Specs live under `data/cohorts/<cohort_id>/spec/` (`config.yaml` plus optional `@file` helpers). The compiler reads these files directly when planning cohort membership.
+- Axis names and level values in the spec must exactly match identifiers in the catalogs and on-disk template/concept files. If they do not, rename the files or regenerate the spec; do **not** introduce aliasing layers.
+- When adding a catalog entry:
+  1. Create/update the CSV row and associated template/concept file using the desired identifier.
+  2. Update or regenerate the relevant cohort specs (e.g., `uv run python scripts/migrations/generate_cohort_spec.py --cohort-id <id>`).
+- Raw catalogs no longer use `active` flags; specs (or curated selection files such as `selected_essays.txt`) are the only way to include or exclude items.
+
 ### Pipeline Parameters
 
 Configure in `daydreaming_dagster/resources/experiment_config.py`:
