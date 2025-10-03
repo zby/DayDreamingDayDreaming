@@ -1,19 +1,19 @@
-concept_id,name,active
-dearth-ai-discoveries,Dearth of AI-driven Discoveries,True
-default-mode-network,Default Mode Network,True
-large-language-model,Large Language Model (LLM),False
-large-language-model-v1,Large Language Model (LLM),True
-human-creativity-insight,Human Creativity and Insight,False
-combinatorial-search,Combinatorial Search,False
-generator-verifier-gap,Generator-Verifier Gap,False
-generator-verifier-gap-v1,Generator-Verifier Gap,False
-generate-and-test,Generate-and-Test,True
-economic-innovation-models,Economic Innovation Models,False
-mind-wandering,Mind-Wandering,False
-combinatorial-creativity,Combinatorial Creativity,False
-adversarial-evaluation,Adversarial Evaluation,False
-positive-feedback-loop,Positive Feedback Loop,True
-economic-moat,Economic Moat,False
-economic-moat-v1,Economic Moat,True
-flywheel-effect,Flywheel Effect,False
-data-flywheel,Data Flywheel,False
+concept_id,name
+dearth-ai-discoveries,Dearth of AI-driven Discoveries
+default-mode-network,Default Mode Network
+large-language-model,Large Language Model (LLM)
+large-language-model-v1,Large Language Model (LLM)
+human-creativity-insight,Human Creativity and Insight
+combinatorial-search,Combinatorial Search
+generator-verifier-gap,Generator-Verifier Gap
+generator-verifier-gap-v1,Generator-Verifier Gap
+generate-and-test,Generate-and-Test
+economic-innovation-models,Economic Innovation Models
+mind-wandering,Mind-Wandering
+combinatorial-creativity,Combinatorial Creativity
+adversarial-evaluation,Adversarial Evaluation
+positive-feedback-loop,Positive Feedback Loop
+economic-moat,Economic Moat
+economic-moat-v1,Economic Moat
+flywheel-effect,Flywheel Effect
+data-flywheel,Data Flywheel

@@ -151,10 +151,10 @@ def small_test_data():
             {"concept_id": "test-concept-2", "name": "Test Concept Two"}
         ]),
         "generation_models": pd.DataFrame([
-            {"model_name": "test-model", "active": True}
+            {"model_name": "test-model"}
         ]),
         "evaluation_models": pd.DataFrame([
-            {"model_name": "test-eval-model", "active": True}
+            {"model_name": "test-eval-model"}
         ])
     }
 
@@ -372,25 +372,25 @@ def tiny_data_root(tmp_path: Path) -> Path:
     (raw / "templates" / "evaluation").mkdir(parents=True, exist_ok=True)
     # CSVs
     (raw / "llm_models.csv").write_text(
-        "model_id,for_generation,for_evaluation,active\n"
-        "m-gen,True,False,True\n"
-        "m-eval,False,True,True\n",
+        "model_id,for_generation,for_evaluation\n"
+        "m-gen,True,False\n"
+        "m-eval,False,True\n",
         encoding="utf-8",
     )
     (raw / "draft_templates.csv").write_text(
-        "template_id,template_name,description,parser,generator,active\n"
-        "test-draft,T Draft,Desc,essay_block,llm,True\n",
+        "template_id,template_name,description,parser,generator\n"
+        "test-draft,T Draft,Desc,essay_block,llm\n",
         encoding="utf-8",
     )
     (raw / "essay_templates.csv").write_text(
-        "template_id,template_name,description,parser,generator,active\n"
-        "test-essay-llm,T Essay,Desc,identity,llm,True\n"
-        "test-essay-copy,T Essay,Desc,identity,copy,True\n",
+        "template_id,template_name,description,parser,generator\n"
+        "test-essay-llm,T Essay,Desc,identity,llm\n"
+        "test-essay-copy,T Essay,Desc,identity,copy\n",
         encoding="utf-8",
     )
     (raw / "evaluation_templates.csv").write_text(
-        "template_id,template_name,description,parser,active\n"
-        "test-eval,T Eval,Desc,in_last_line,True\n",
+        "template_id,template_name,description,parser\n"
+        "test-eval,T Eval,Desc,in_last_line\n",
         encoding="utf-8",
     )
     # Templates

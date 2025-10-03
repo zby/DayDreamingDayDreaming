@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections import OrderedDict
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Iterable, Mapping, Sequence
 
@@ -191,6 +192,37 @@ class CohortPlan(BaseModel):
             yield (evaluation.essay.draft, evaluation.essay, evaluation)
 
 
+@dataclass(frozen=True)
+class CohortPlanAllowlists:
+    combos: tuple[str, ...]
+    draft_templates: tuple[str, ...]
+    essay_templates: tuple[str, ...]
+    evaluation_templates: tuple[str, ...]
+    generation_models: tuple[str, ...]
+    evaluation_models: tuple[str, ...]
+
+
+def build_allowlists_from_plan(plan: CohortPlan | None) -> CohortPlanAllowlists:
+    if plan is None:
+        return CohortPlanAllowlists((), (), (), (), (), ())
+
+    draft_templates = {entry.template_id for entry in plan.drafts}
+    essay_templates = {entry.template_id for entry in plan.essays}
+    evaluation_templates = {entry.template_id for entry in plan.evaluations}
+    generation_models = {entry.llm_model_id for entry in plan.drafts}
+    evaluation_models = {entry.llm_model_id for entry in plan.evaluations}
+    combos = {entry.combo_id for entry in plan.drafts}
+
+    return CohortPlanAllowlists(
+        combos=tuple(sorted(combos)),
+        draft_templates=tuple(sorted(draft_templates)),
+        essay_templates=tuple(sorted(essay_templates)),
+        evaluation_templates=tuple(sorted(evaluation_templates)),
+        generation_models=tuple(sorted(generation_models)),
+        evaluation_models=tuple(sorted(evaluation_models)),
+    )
+
+
 def compile_cohort_plan(
     spec: ExperimentSpec,
     *,
@@ -216,6 +248,8 @@ __all__ = [
     "DraftPlanEntry",
     "EssayPlanEntry",
     "EvaluationPlanEntry",
+    "CohortPlanAllowlists",
+    "build_allowlists_from_plan",
     "compile_cohort_plan",
     "load_cohort_plan",
 ]

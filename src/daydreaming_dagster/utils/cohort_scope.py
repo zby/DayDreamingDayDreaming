@@ -1,4 +1,4 @@
-"""Cohort scope helper for resolving active generations and metadata."""
+"""Cohort scope helper for resolving cohort-backed generations and metadata."""
 
 from __future__ import annotations
 

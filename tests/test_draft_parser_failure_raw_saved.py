@@ -30,7 +30,6 @@ def _write_draft_templates_csv(dir_path: Path, template_id: str, parser: str):
                 "template_id": template_id,
                 "template_name": "Test Draft Template",
                 "description": "Uses parser for extraction",
-                "active": True,
                 "parser": parser,
                 # Intentionally omit 'generator' column to trigger Failure in resolve_generator_mode
             }

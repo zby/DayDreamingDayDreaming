@@ -96,7 +96,7 @@ def effective_parser_name(
             ctx={"stage": stage, "reason": "unsupported_stage"},
         )
 
-    df = read_templates(Path(data_root), stage_str, filter_active=False)
+    df = read_templates(Path(data_root), stage_str)
     row = df[df["template_id"].astype(str) == str(template_id)]
     if row.empty:
         raise DDError(
@@ -124,17 +124,13 @@ def resolve_generator_mode(
     data_root: Path,
     template_id: str,
     override_from_prompt: Optional[str] = None,
-    filter_active: Optional[bool] = None,
 ) -> Literal["llm", "copy"]:
     if isinstance(
         override_from_prompt, str
     ) and override_from_prompt.strip().upper().startswith("COPY_MODE"):
         return "copy"
 
-    if filter_active is None:
-        filter_active = False
-
-    df = read_templates(Path(data_root), kind, filter_active=bool(filter_active))
+    df = read_templates(Path(data_root), kind)
     if df.empty:
         raise DDError(
             Err.DATA_MISSING,

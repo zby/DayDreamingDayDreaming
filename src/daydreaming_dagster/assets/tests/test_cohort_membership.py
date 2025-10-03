@@ -6,6 +6,7 @@ import shutil
 
 import pandas as pd
 import pytest
+import yaml
 from dagster import Failure, build_asset_context
 
 SPEC_FIXTURES = Path(__file__).resolve().parents[4] / "tests" / "fixtures" / "spec_dsl"
@@ -29,6 +30,96 @@ def _write_csv(path: Path, rows: list[dict]) -> None:
     pd.DataFrame(rows).to_csv(path, index=False)
 
 
+def _write_spec(
+    root: Path,
+    *,
+    cohort_id: str,
+    combos: list[str],
+    draft_templates: list[str],
+    essay_templates: list[str],
+    evaluation_templates: list[str],
+    generation_llms: list[str],
+    evaluation_llms: list[str],
+    replicates: dict[str, dict[str, int | str]] | None = None,
+) -> None:
+    spec_dir = root / "cohorts" / cohort_id / "spec"
+    spec_dir.mkdir(parents=True, exist_ok=True)
+
+    allowed_matrix = [
+        [tpl, model] for tpl in evaluation_templates for model in evaluation_llms
+    ]
+    if not allowed_matrix:
+        allowed_matrix = [["placeholder-eval", "placeholder-model"]]
+
+    spec: dict[str, object] = {
+        "axes": {
+            "combo_id": {
+                "levels": [str(item) for item in combos],
+                "catalog_lookup": {"catalog": "combos"},
+            },
+            "draft_template": {
+                "levels": [str(item) for item in draft_templates],
+                "catalog_lookup": {"catalog": "draft_templates"},
+            },
+            "draft_llm": {
+                "levels": [str(item) for item in generation_llms],
+                "catalog_lookup": {"catalog": "generation_llms"},
+            },
+            "essay_template": {
+                "levels": [str(item) for item in essay_templates],
+                "catalog_lookup": {"catalog": "essay_templates"},
+            },
+            "essay_llm": {
+                "levels": [str(item) for item in generation_llms],
+                "catalog_lookup": {"catalog": "essay_llms"},
+            },
+            "evaluation_template": {
+                "levels": [str(item) for item in evaluation_templates],
+                "catalog_lookup": {"catalog": "evaluation_templates"},
+            },
+            "evaluation_llm": {
+                "levels": [str(item) for item in evaluation_llms],
+                "catalog_lookup": {"catalog": "evaluation_llms"},
+            },
+        },
+        "rules": [
+            {
+                "pair": {
+                    "left": "evaluation_template",
+                    "right": "evaluation_llm",
+                    "name": "evaluation_bundle",
+                    "allowed": allowed_matrix,
+                }
+            }
+        ],
+        "output": {
+            "field_order": [
+                "combo_id",
+                "draft_template",
+                "draft_llm",
+                "essay_template",
+                "essay_llm",
+                "evaluation_template",
+                "evaluation_llm",
+            ]
+        },
+    }
+
+    if replicates:
+        spec["replicates"] = replicates
+        replicate_columns = [
+            cfg.get("column")
+            for cfg in replicates.values()
+            if isinstance(cfg, dict) and cfg.get("column")
+        ]
+        spec["output"]["field_order"].extend(replicate_columns)
+
+    (spec_dir / "config.yaml").write_text(
+        yaml.safe_dump(spec, sort_keys=False),
+        encoding="utf-8",
+    )
+
+
 @pytest.fixture()
 def base_data_root(tmp_path: Path) -> Path:
     # Common raw tables used by all scenarios
@@ -44,15 +135,15 @@ def base_data_root(tmp_path: Path) -> Path:
     )
     _write_csv(
         raw / "draft_templates.csv",
-        [{"template_id": "draft-A", "active": True, "generator": "llm"}],
+        [{"template_id": "draft-A", "generator": "llm"}],
     )
     _write_csv(
         raw / "essay_templates.csv",
-        [{"template_id": "essay-X", "active": True, "generator": "llm"}],
+        [{"template_id": "essay-X", "generator": "llm"}],
     )
     _write_csv(
         raw / "evaluation_templates.csv",
-        [{"template_id": "eval-1", "active": True, "generator": "llm"}],
+        [{"template_id": "eval-1", "generator": "llm"}],
     )
     _write_csv(
         raw / "llm_models.csv",
@@ -61,6 +152,43 @@ def base_data_root(tmp_path: Path) -> Path:
             {"id": "eval-model", "for_generation": False, "for_evaluation": True},
         ],
     )
+    _write_csv(
+        tmp_path / "combo_mappings.csv",
+        [{"combo_id": "combo-1"}],
+    )
+
+    _write_spec(
+        tmp_path,
+        cohort_id="cohort-curated",
+        combos=["combo-1"],
+        draft_templates=["draft-A"],
+        essay_templates=["essay-X"],
+        evaluation_templates=["eval-1"],
+        generation_llms=["gen-model"],
+        evaluation_llms=["eval-model"],
+        replicates={
+            "draft_template": {"count": 1, "column": "draft_replicate"},
+            "essay_template": {"count": 1, "column": "essay_replicate"},
+            "evaluation_template": {"count": 1, "column": "evaluation_replicate"},
+        },
+    )
+    for extra_id in ("cohort-conflict", "cohort-with-comments"):
+        _write_spec(
+            tmp_path,
+            cohort_id=extra_id,
+            combos=["combo-1"],
+            draft_templates=["draft-A"],
+            essay_templates=["essay-X"],
+            evaluation_templates=["eval-1"],
+            generation_llms=["gen-model"],
+            evaluation_llms=["eval-model"],
+            replicates={
+                "draft_template": {"count": 1, "column": "draft_replicate"},
+                "essay_template": {"count": 1, "column": "essay_replicate"},
+                "evaluation_template": {"count": 1, "column": "evaluation_replicate"},
+            },
+        )
+
     (tmp_path / "2_tasks").mkdir(parents=True, exist_ok=True)
     (tmp_path / "gens" / "draft").mkdir(parents=True, exist_ok=True)
     (tmp_path / "gens" / "essay").mkdir(parents=True, exist_ok=True)
@@ -168,15 +296,15 @@ def test_cohort_membership_cartesian_multiple_replicates(tmp_path: Path) -> None
     )
     _write_csv(
         raw / "draft_templates.csv",
-        [{"template_id": "draft-A", "active": True, "generator": "llm"}],
+        [{"template_id": "draft-A", "generator": "llm"}],
     )
     _write_csv(
         raw / "essay_templates.csv",
-        [{"template_id": "essay-X", "active": True, "generator": "llm"}],
+        [{"template_id": "essay-X", "generator": "llm"}],
     )
     _write_csv(
         raw / "evaluation_templates.csv",
-        [{"template_id": "eval-1", "active": True, "generator": "llm"}],
+        [{"template_id": "eval-1", "generator": "llm"}],
     )
     _write_csv(
         raw / "llm_models.csv",
@@ -188,6 +316,24 @@ def test_cohort_membership_cartesian_multiple_replicates(tmp_path: Path) -> None
     (data_root / "gens" / "draft").mkdir(parents=True, exist_ok=True)
     (data_root / "gens" / "essay").mkdir(parents=True, exist_ok=True)
     (data_root / "gens" / "evaluation").mkdir(parents=True, exist_ok=True)
+
+    _write_csv(data_root / "combo_mappings.csv", [{"combo_id": "combo-1"}])
+
+    _write_spec(
+        data_root,
+        cohort_id="cohort-cart",
+        combos=["combo-1"],
+        draft_templates=["draft-A"],
+        essay_templates=["essay-X"],
+        evaluation_templates=["eval-1"],
+        generation_llms=["gen-model"],
+        evaluation_llms=["eval-model"],
+        replicates={
+            "draft_template": {"count": 2, "column": "draft_replicate"},
+            "essay_template": {"count": 2, "column": "essay_replicate"},
+            "evaluation_template": {"count": 1, "column": "evaluation_replicate"},
+        },
+    )
 
     context = build_asset_context(resources={"data_root": str(data_root)})
     selected_df = pd.DataFrame(
@@ -255,18 +401,18 @@ def test_cohort_membership_uses_spec_plan(tmp_path: Path) -> None:
     )
     _write_csv(
         raw / "draft_templates.csv",
-        [{"template_id": "draft-A", "active": True, "generator": "llm"}],
+        [{"template_id": "draft-A", "generator": "llm"}],
     )
     _write_csv(
         raw / "essay_templates.csv",
         [
-            {"template_id": "essay-X", "active": True, "generator": "llm"},
-            {"template_id": "essay-Y", "active": True, "generator": "llm"},
+            {"template_id": "essay-X", "generator": "llm"},
+            {"template_id": "essay-Y", "generator": "llm"},
         ],
     )
     _write_csv(
         raw / "evaluation_templates.csv",
-        [{"template_id": "eval-1", "active": True, "generator": "llm"}],
+        [{"template_id": "eval-1", "generator": "llm"}],
     )
     _write_csv(
         raw / "llm_models.csv",

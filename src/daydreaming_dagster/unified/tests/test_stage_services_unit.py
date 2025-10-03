@@ -67,8 +67,8 @@ def test_resolve_parser_name_fallback(tmp_path: Path):
     csv_dir = tmp_path / "1_raw"
     csv_dir.mkdir(parents=True, exist_ok=True)
     (csv_dir / "draft_templates.csv").write_text(
-        "template_id,template_name,description,parser,generator,active\n"
-        "foo,Foo,Desc,essay_block,llm,True\n",
+        "template_id,template_name,description,parser,generator\n"
+        "foo,Foo,Desc,essay_block,llm\n",
         encoding="utf-8",
     )
     name = resolve_parser_name(tmp_path, "draft", "foo", None)

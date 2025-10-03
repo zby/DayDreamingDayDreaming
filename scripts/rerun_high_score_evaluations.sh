@@ -118,6 +118,17 @@ run_with_retry "zjr94fjsqpaklhv8"
 
 echo "=== Refreshing cohort aggregated scores and pivots ==="
 uv run dagster asset materialize --select cohort_aggregated_scores -f src/daydreaming_dagster/definitions.py
-.venv/bin/python scripts/build_pivot_tables.py --limit-to-active-templates
+if [ -z "${COHORT_ID}" ]; then
+  echo "Set COHORT_ID to filter the pivot to a cohort spec (e.g., export COHORT_ID=my-cohort)" >&2
+  .venv/bin/python scripts/build_pivot_tables.py
+else
+  .venv/bin/python scripts/build_pivot_tables.py --cohort-allowlist "${COHORT_ID}"
+fi
+
+cat <<'NOTE'
+NOTE: The legacy scripts/copy_essays_with_drafts.py helper has been retired.
+      Review the cohort summary CSV (generation_scores.csv) produced above to
+      identify essays for manual analysis and copy files as needed.
+NOTE
 
 echo "Done."

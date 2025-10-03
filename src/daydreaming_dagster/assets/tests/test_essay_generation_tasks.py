@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+import textwrap
 
 import pandas as pd
+import yaml
 from dagster import build_asset_context
 
 from daydreaming_dagster.assets.group_cohorts import cohort_membership
@@ -20,6 +22,68 @@ def _write_json(path: Path, payload: dict) -> None:
     path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
+def _write_spec(root: Path, cohort_id: str) -> None:
+    spec_dir = root / "cohorts" / cohort_id / "spec"
+    spec_dir.mkdir(parents=True, exist_ok=True)
+    spec = {
+        "axes": {
+            "combo_id": {
+                "levels": ["combo-1"],
+                "catalog_lookup": {"catalog": "combos"},
+            },
+            "draft_template": {
+                "levels": ["draft-A"],
+                "catalog_lookup": {"catalog": "draft_templates"},
+            },
+            "draft_llm": {
+                "levels": ["gen-model"],
+                "catalog_lookup": {"catalog": "generation_llms"},
+            },
+            "essay_template": {
+                "levels": ["essay-X"],
+                "catalog_lookup": {"catalog": "essay_templates"},
+            },
+            "essay_llm": {
+                "levels": ["gen-model"],
+                "catalog_lookup": {"catalog": "essay_llms"},
+            },
+            "evaluation_template": {
+                "levels": ["eval-1"],
+                "catalog_lookup": {"catalog": "evaluation_templates"},
+            },
+            "evaluation_llm": {
+                "levels": ["eval-model"],
+                "catalog_lookup": {"catalog": "evaluation_llms"},
+            },
+        },
+        "rules": [
+            {
+                "pair": {
+                    "left": "evaluation_template",
+                    "right": "evaluation_llm",
+                    "name": "evaluation_bundle",
+                    "allowed": [["eval-1", "eval-model"]],
+                }
+            }
+        ],
+        "output": {
+            "field_order": [
+                "combo_id",
+                "draft_template",
+                "draft_llm",
+                "essay_template",
+                "essay_llm",
+                "evaluation_template",
+                "evaluation_llm",
+            ]
+        },
+    }
+    (spec_dir / "config.yaml").write_text(
+        yaml.safe_dump(spec, sort_keys=False),
+        encoding="utf-8",
+    )
+
+
 def test_essay_rows_reference_draft_ids(tmp_path: Path) -> None:
     raw = tmp_path / "1_raw"
     raw.mkdir(parents=True, exist_ok=True)
@@ -31,11 +95,11 @@ def test_essay_rows_reference_draft_ids(tmp_path: Path) -> None:
             {"stage": "evaluation", "replicates": 1},
         ],
     )
-    _write_csv(raw / "draft_templates.csv", [{"template_id": "draft-A", "active": True, "generator": "llm"}])
-    _write_csv(raw / "essay_templates.csv", [{"template_id": "essay-X", "active": True, "generator": "llm"}])
+    _write_csv(raw / "draft_templates.csv", [{"template_id": "draft-A", "generator": "llm"}])
+    _write_csv(raw / "essay_templates.csv", [{"template_id": "essay-X", "generator": "llm"}])
     _write_csv(
         raw / "evaluation_templates.csv",
-        [{"template_id": "eval-1", "active": True, "generator": "llm"}],
+        [{"template_id": "eval-1", "generator": "llm"}],
     )
     _write_csv(
         raw / "llm_models.csv",
@@ -44,6 +108,8 @@ def test_essay_rows_reference_draft_ids(tmp_path: Path) -> None:
             {"id": "eval-model", "for_generation": False, "for_evaluation": True},
         ],
     )
+    _write_csv(tmp_path / "combo_mappings.csv", [{"combo_id": "combo-1"}])
+    _write_spec(tmp_path, "cohort-essay")
     for stage in ("draft", "essay", "evaluation"):
         (tmp_path / "gens" / stage).mkdir(parents=True, exist_ok=True)
 

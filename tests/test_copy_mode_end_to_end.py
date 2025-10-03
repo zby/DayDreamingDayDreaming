@@ -42,8 +42,8 @@ def test_copy_mode_essay_is_verbatim_draft(tmp_path: Path):
     raw_dir = data_root / "1_raw"
     raw_dir.mkdir(parents=True, exist_ok=True)
     (raw_dir / "essay_templates.csv").write_text(
-        "template_id,template_name,description,active,generator\n"
-        "parsed-from-links-v1,Parsed From Links,Copy parsed draft,true,copy\n",
+        "template_id,template_name,description,generator\n"
+        "parsed-from-links-v1,Parsed From Links,Copy parsed draft,copy\n",
         encoding="utf-8",
     )
 

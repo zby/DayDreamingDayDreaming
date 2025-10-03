@@ -44,7 +44,8 @@ def main(gen_id: str) -> int:
         reader = csv.DictReader(handle)
         for row in reader:
             if str(row.get("template_id") or "").strip() == template_id:
-                is_active = str(row.get("active") or "").strip().lower() == "true"
+                active_field = row.get("active")
+                is_active = True if active_field is None else str(active_field).strip().lower() == "true"
                 print(template_id)
                 return 0 if is_active else 5
 

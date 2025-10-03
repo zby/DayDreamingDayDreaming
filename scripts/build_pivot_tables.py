@@ -3,13 +3,13 @@
 
 Outputs:
 - `evaluation_scores_by_template_model.csv` – evaluation template/model pairs
-  per essay task. Pass `--limit-to-active` to include only active evaluation
-  templates and evaluation models in the pivot.
+  per essay task. `--cohort-id` automatically scopes the pivot using that
+  cohort's spec; you can also pass `--cohort-allowlist <cohort_id>` explicitly.
 
 Usage examples:
 ```
 python scripts/build_pivot_tables.py
-python scripts/build_pivot_tables.py --limit-to-active
+python scripts/build_pivot_tables.py --cohort-allowlist cohort-2025-q1
 ```
 """
 
@@ -35,6 +35,8 @@ _ensure_src_on_path()
 
 from daydreaming_dagster.utils.errors import DDError, Err
 from daydreaming_dagster.data_layer.paths import Paths
+from daydreaming_dagster.assets.group_cohorts import _build_spec_catalogs
+from daydreaming_dagster.cohorts import build_allowlists_from_plan, load_cohort_plan
 
 
 def _compose_essay_task_id(df: pd.DataFrame) -> pd.Series:
@@ -77,35 +79,6 @@ def _compose_essay_task_id(df: pd.DataFrame) -> pd.Series:
     return df.apply(compose, axis=1)
 
 
-def _load_active_templates(eval_templates_path: Path) -> set[str]:
-    import csv
-
-    active: set[str] = set()
-    with eval_templates_path.open(newline="") as handle:
-        reader = csv.DictReader(handle)
-        for row in reader:
-            if row.get("active", "").strip().lower() == "true":
-                template_id = row.get("template_id", "").strip()
-                if template_id:
-                    active.add(template_id)
-    return active
-
-
-def _load_active_models(llm_models_path: Path) -> Set[str]:
-    import csv
-
-    active: set[str] = set()
-    with llm_models_path.open(newline="") as handle:
-        reader = csv.DictReader(handle)
-        for row in reader:
-            flag = str(row.get("for_evaluation") or "").strip().lower()
-            if flag == "true":
-                model_id = row.get("id", "").strip()
-                if model_id:
-                    active.add(model_id)
-    return active
-
-
 def _load_essay_cohorts(essay_ids: Set[str], data_root: Path) -> dict[str, str]:
     cohorts: dict[str, str] = {}
     base = data_root / "gens" / "essay"
@@ -125,14 +98,43 @@ def _load_essay_cohorts(essay_ids: Set[str], data_root: Path) -> dict[str, str]:
     return cohorts
 
 
+def _load_spec_filters(cohort_id: str, paths: Paths) -> tuple[set[str], set[str]]:
+    spec_dir = paths.data_root / "cohorts" / cohort_id / "spec"
+    if not spec_dir.exists():
+        raise DDError(
+            Err.INVALID_CONFIG,
+            ctx={
+                "reason": "cohort_spec_required",
+                "cohort_id": cohort_id,
+                "path": str(spec_dir),
+            },
+        )
+
+    catalogs = _build_spec_catalogs(paths.data_root, pd.DataFrame())
+    plan = load_cohort_plan(spec_dir, catalogs=catalogs)
+    allowlists = build_allowlists_from_plan(plan)
+
+    eval_templates = {tpl for tpl in allowlists.evaluation_templates}
+    eval_models = {model for model in allowlists.evaluation_models}
+
+    if not eval_templates or not eval_models:
+        raise DDError(
+            Err.INVALID_CONFIG,
+            ctx={
+                "reason": "cohort_spec_missing_evaluation_axes",
+                "cohort_id": cohort_id,
+            },
+        )
+
+    return eval_templates, eval_models
+
+
 def build_pivot(
     parsed_scores: Path,
     out_dir: Path,
     *,
-    limit_to_active: bool,
-    evaluation_templates_path: Path,
-    llm_models_path: Path,
-    data_root: Path,
+    paths: Paths,
+    cohort_allowlist: str | None = None,
 ) -> None:
     if not parsed_scores.exists():
         raise DDError(
@@ -142,46 +144,31 @@ def build_pivot(
 
     df = pd.read_csv(parsed_scores)
 
-    if limit_to_active:
-        active_templates = _load_active_templates(evaluation_templates_path)
-        active_models = _load_active_models(llm_models_path)
-        if not active_templates:
-            raise DDError(
-                Err.DATA_MISSING,
-                ctx={
-                    "reason": "no_active_evaluation_templates",
-                    "path": str(evaluation_templates_path),
-                },
-            )
-        if not active_models:
-            raise DDError(
-                Err.DATA_MISSING,
-                ctx={
-                    "reason": "no_active_evaluation_models",
-                    "path": str(llm_models_path),
-                },
-            )
+    evaluation_filter: tuple[set[str], set[str]] | None = None
+    if cohort_allowlist:
+        evaluation_filter = _load_spec_filters(cohort_allowlist, paths)
+
+    if evaluation_filter:
+        eval_templates, eval_models = evaluation_filter
         if "evaluation_template" not in df.columns or "evaluation_llm_model" not in df.columns:
             raise DDError(
                 Err.INVALID_CONFIG,
-                ctx={
-                    "reason": "parsed_scores_missing_evaluation_columns",
-                },
+                ctx={"reason": "parsed_scores_missing_evaluation_columns"},
             )
         before = len(df)
         df = df[
-            df["evaluation_template"].isin(active_templates)
-            & df["evaluation_llm_model"].isin(active_models)
+            df["evaluation_template"].isin(eval_templates)
+            & df["evaluation_llm_model"].isin(eval_models)
         ].copy()
         if df.empty:
             raise DDError(
                 Err.DATA_MISSING,
-                ctx={"reason": "active_filter_removed_all_rows"},
+                ctx={"reason": "allowlist_filter_removed_all_rows"},
             )
         removed = before - len(df)
         if removed:
             print(
-                "Filtered parsed scores to active templates/models: "
+                "Filtered parsed scores to spec-defined evaluation templates/models: "
                 f"kept {len(df)} rows (dropped {removed})."
             )
 
@@ -316,12 +303,13 @@ def build_pivot(
     metric_columns = [col for col in all_combo_columns if col in result.columns]
 
     numeric_metrics = result[metric_columns].apply(pd.to_numeric, errors="coerce") if metric_columns else None
+    score_sum_column = "allowlisted_template_score_sum"
     if numeric_metrics is not None:
-        result["active_template_score_sum"] = numeric_metrics.sum(axis=1, skipna=True).fillna(0.0)
+        result[score_sum_column] = numeric_metrics.sum(axis=1, skipna=True).fillna(0.0)
     else:
-        result["active_template_score_sum"] = 0.0
+        result[score_sum_column] = 0.0
 
-    ordered_columns = meta_output_cols + metric_columns + ["active_template_score_sum"]
+    ordered_columns = meta_output_cols + metric_columns + [score_sum_column]
     pivot = result.reindex(columns=ordered_columns)
 
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -345,18 +333,6 @@ def main() -> None:
         help="Directory to write pivot CSVs (default: data/7_cross_experiment)",
     )
     parser.add_argument(
-        "--evaluation-templates",
-        type=Path,
-        default=Path("data/1_raw/evaluation_templates.csv"),
-        help="Path to evaluation templates CSV (default: data/1_raw/evaluation_templates.csv)",
-    )
-    parser.add_argument(
-        "--llm-models",
-        type=Path,
-        default=Path("data/1_raw/llm_models.csv"),
-        help="Path to LLM models CSV (default: data/1_raw/llm_models.csv)",
-    )
-    parser.add_argument(
         "--data-root",
         type=Path,
         default=Path("data"),
@@ -369,10 +345,11 @@ def main() -> None:
         help="If provided, derive parsed scores and output directory from data/cohorts/<id>/reports",
     )
     parser.add_argument(
-        "--limit-to-active",
-        action="store_true",
+        "--cohort-allowlist",
+        type=str,
+        default=None,
         help=(
-            "If set, restrict the pivot to evaluations whose template and LLM model are marked active."
+            "Optional cohort ID whose spec defines the evaluation templates/models to include"
         ),
     )
     args = parser.parse_args()
@@ -381,6 +358,8 @@ def main() -> None:
 
     parsed_scores_path = args.parsed_scores
     output_dir = args.out_dir
+
+    cohort_allowlist = args.cohort_allowlist
 
     if args.cohort_id:
         cohort_id = args.cohort_id.strip()
@@ -391,14 +370,14 @@ def main() -> None:
             )
         parsed_scores_path = paths.cohort_parsing_csv(cohort_id, "aggregated_scores.csv")
         output_dir = paths.cohort_report_root(cohort_id) / "summary"
+        if not cohort_allowlist:
+            cohort_allowlist = cohort_id
 
     build_pivot(
         parsed_scores=parsed_scores_path,
         out_dir=output_dir,
-        limit_to_active=args.limit_to_active,
-        evaluation_templates_path=args.evaluation_templates,
-        llm_models_path=args.llm_models,
-        data_root=args.data_root,
+        paths=paths,
+        cohort_allowlist=cohort_allowlist,
     )
 
 

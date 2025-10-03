@@ -52,9 +52,9 @@ def test_resolve_essay_generator_mode_csv_and_override(tmp_path: Path):
     base = tmp_path / "1_raw"
     base.mkdir(parents=True, exist_ok=True)
     (base / "essay_templates.csv").write_text(
-        "template_id,template_name,description,generator,active\n"
-        "t1,T,Desc,llm,True\n"
-        "t2,T,Desc,copy,True\n",
+        "template_id,template_name,description,generator\n"
+        "t1,T,Desc,llm\n"
+        "t2,T,Desc,copy\n",
         encoding="utf-8",
     )
     assert resolve_generator_mode(kind="essay", data_root=tmp_path, template_id="t1") == "llm"

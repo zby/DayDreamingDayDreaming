@@ -168,12 +168,12 @@ This project intentionally separates tracked, reproducible definitions from untr
 
 - Dynamic partitions for draft/essay/evaluation are (re)registered by `cohort_membership`. Existing cohort partitions are pruned cohort‑scoped before re‑registering.
 - CSV outputs (membership) are rewritten by their producing assets.
-- Files under `3_generation/` and `4_evaluation/` are not deleted by the pipeline. Existing files remain on disk unless you remove them manually.
+- Gens-store artifacts under `data/gens/<stage>/<gen_id>/` are not deleted by the pipeline. Existing files remain on disk unless you remove them manually.
 
 ### Overwrite guards for LLM artifacts
 
-- Prompts (`3_generation/generation_prompts`, `4_evaluation/evaluation_prompts`) are configured to allow overwrite so they reflect the current template code.
-- Responses (`3_generation/generation_responses`, `4_evaluation/evaluation_responses`) are protected against overwrite by default. If a response file already exists for a partition key, the run will fail with a clear error instead of silently overwriting. To regenerate, either:
+- Prompts (`data/gens/<stage>/<gen_id>/prompt.txt`) are configured to allow overwrite so they reflect the current template code.
+- Responses (`data/gens/<stage>/<gen_id>/parsed.txt`) are protected against overwrite by default. If a response file already exists for a partition key, the run will fail with a clear error instead of silently overwriting. To regenerate, either:
   - delete the specific file(s), or
   - change the partition key (e.g., different template/model), or
   - intentionally configure the IO manager with `overwrite=True` (not recommended for responses).
@@ -188,8 +188,7 @@ To start fresh while retaining experiment definitions, you can remove generated 
 
 ```bash
 rm -rf data/cohorts/*
-rm -rf data/3_generation/*
-rm -rf data/4_evaluation/*
+rm -rf data/gens/*
 rm -rf data/5_parsing/*
 rm -rf data/7_reporting/*
 ```

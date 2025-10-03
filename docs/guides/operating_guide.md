@@ -122,44 +122,34 @@ The two‑phase system includes automatic quality validation:
 
 The system uses CSV-based configuration for easy experiment setup without code changes.
 
-#### 1. Choose Active Concepts
+#### 1. Define the Cohort Spec
 
-Edit `data/1_raw/concepts_metadata.csv` and set `active` to:
-- `default-mode-network`: True
-- `mind-wandering`: False  
-- `combinatorial-creativity`: False
-- Keep other required concepts active (e.g., `dearth-ai-discoveries`, `adversarial-evaluation`, `economic-moat`)
+Generate or edit the cohort spec under `data/cohorts/<cohort_id>/spec/` to enumerate the concepts, templates, and model allowlists. The easiest way to bootstrap a spec is to run `uv run python scripts/migrations/generate_cohort_spec.py --cohort-id <cohort>` which reads the current catalogs and writes `config.yaml` plus `items/cohort_rows.yaml`. Update those files to reflect the exact combinations you want to materialize.
 
-This drives the first pipeline step to regenerate `content_combinations` using only the active concepts.
+#### 2. Adjust Template Metadata
 
-#### 2. Restrict Generation Templates
-
-Edit the template CSV files to control which templates are active:
+Template CSVs now describe parser/generator properties only—the spec selects which entries participate in a cohort. When adding a new template:
 
 **Draft Templates** (`data/1_raw/draft_templates.csv`):
-- Columns: `template_id`, `template_name`, `description`, `active`, `parser`.
-- Control which Phase‑1 draft templates are used by setting `active: true` (set others to `false`).
-- Parser column: if the draft output requires extraction, set a valid `parser` name (e.g., `essay_idea_last`). Parsing happens in Phase‑1 and failures there will fail the draft with a clear error. RAW LLM output remains saved under `data/gens/draft/<gen_id>/raw.txt` for debugging.
-- Parser registry: supported parser names are defined in `daydreaming_dagster/utils/draft_parsers.py`. To add a new parser, implement and register it there.
-- To introduce a new draft template:
-  - Add a file under `data/1_raw/templates/draft/<template_id>.txt`.
-  - Add a row to `data/1_raw/draft_templates.csv` with the same `template_id`, set `active=true`, and set `parser` if needed.
+- Columns: `template_id`, `template_name`, `description`, `parser`, `generator`.
+- Parser column: if the draft output requires extraction, set a valid `parser` name (e.g., `essay_block`). Parsing happens in Phase‑1 and failures there will fail the draft with a clear error. Raw LLM output remains saved under `data/gens/draft/<gen_id>/raw.txt` for debugging.
+- After adding the `.txt` template file in `data/1_raw/templates/draft/`, reference the new `template_id` inside the cohort spec so it participates in generation.
 
 **Essay Templates** (`data/1_raw/essay_templates.csv`):
-- Set desired essay-phase templates to `active: true`.
+- Columns: `template_id`, `template_name`, `description`, `parser`, `generator`.
 - Generator column (`generator`): `llm` (default) uses the parsed draft as input; `copy` returns the parsed draft verbatim. Essay‑level parser mode is deprecated after parser‑first.
+- Include the desired essay templates in the cohort spec axes to enable them for a run.
 
-This limits generation to specific prompt styles for each phase of the two-phase generation process. You can also override the template root by setting `GEN_TEMPLATES_ROOT` (defaults to `data/1_raw/templates`).
+This workflow keeps catalog metadata centralized while the cohort spec remains the sole source of truth for “which combinations should run”. You can still override the template root by setting `GEN_TEMPLATES_ROOT` (defaults to `data/1_raw/templates`).
 
 #### 3. Mark Experiment Metadata
 
 Use a Dagster run tag to label the run, e.g. `experiment_id=exp_default_mode_only` (via Dagit Launchpad or job definition).
 
 Optionally stash selection files for traceability:
-- `data/experiments/exp_default_mode_only/active_concepts.csv`
-- `data/experiments/exp_default_mode_only/active_draft_templates.csv`
-- `data/experiments/exp_default_mode_only/active_essay_templates.csv`
-- `data/experiments/exp_default_mode_only/active_evaluation_templates.csv`
+- `data/experiments/exp_default_mode_only/spec_snapshot/` (copy of the cohort spec used for the run)
+- `data/experiments/exp_default_mode_only/selected_essays.txt`
+- `data/experiments/exp_default_mode_only/selected_drafts.txt`
 
 ---
 
@@ -218,7 +208,7 @@ Cross‑experiment tracking no longer uses auto‑appenders. Use analysis assets
 
 Evaluation is cohort‑driven and gen‑id keyed:
 
-- `cohort_membership` expands evaluation rows from essay parents × active evaluation templates × evaluation models, and registers dynamic partitions for those `gen_id`s.
+- `cohort_membership` expands evaluation rows from essay parents × spec-defined evaluation templates × evaluation models, and registers dynamic partitions for those `gen_id`s.
 - `evaluation_prompt` loads the source essay via `parent_gen_id` from the gens store and renders the evaluation template with the essay text.
 - `parsed_scores` parses outputs from `data/gens/evaluation/<gen_id>` and filters to evaluation `gen_id`s present in cohort membership when available.
 - `parsed_scores` contains normalized outputs and sets `generation_response_path` to the essay’s `parsed.txt` under the gens store. Downstream pivots should key by `parent_gen_id` (the essay `gen_id`) for deterministic grouping across runs.
@@ -232,14 +222,14 @@ Lineage and IDs (gen‑id first)
 - Tasks and assets must pass/require `parent_gen_id` for essays and evaluations (fail fast if missing). This removes all “latest‑by‑task” ambiguity and makes pivots deterministic.
 
 Note on legacy data:
-- If you need to evaluate historical essays not part of the current cohort, write their essay `gen_id`s into `data/2_tasks/selected_essays.txt`, then materialize `cohort_id,cohort_membership` to register evaluation partitions for the active evaluation axes. Use `# mode: reuse-essays` to reuse the original drafts/essays and schedule fresh evaluations. Combine it with `# fill-up` if you only want to top up missing evaluator combinations (instead of creating brand-new replicates). Alternatively, point `selected_drafts.txt` at deterministic draft IDs to reuse the drafts directly (default mode `reuse-drafts`).
+- If you need to evaluate historical essays not part of the current cohort, write their essay `gen_id`s into `data/2_tasks/selected_essays.txt`, then materialize `cohort_id,cohort_membership` to register evaluation partitions for the spec-defined evaluation axes. Use `# mode: reuse-essays` to reuse the original drafts/essays and schedule fresh evaluations. Combine it with `# fill-up` if you only want to top up missing evaluator combinations (instead of creating brand-new replicates). Alternatively, point `selected_drafts.txt` at deterministic draft IDs to reuse the drafts directly (default mode `reuse-drafts`).
 
 ### Targeted Evaluations (No full cube)
 
 To run a specific evaluation (e.g., `novelty`) only on chosen documents (e.g., prior-art winners):
 
-1. Ensure the evaluation template exists and is active in `data/1_raw/evaluation_templates.csv` and the evaluation models are flagged `for_evaluation` in `llm_models.csv`.
-2. Build cohort membership (either Cartesian from actives or curated via `selected_essays.txt`):
+1. Ensure the evaluation template exists in `data/1_raw/evaluation_templates.csv`, include it in the cohort spec (or curated selection), and confirm the evaluation models are flagged `for_evaluation` in `llm_models.csv`.
+2. Build cohort membership (either catalog expansion or curated via `selected_essays.txt`):
    ```bash
    uv run dagster asset materialize --select "cohort_id,cohort_membership" -f src/daydreaming_dagster/definitions.py
    ```
@@ -250,7 +240,7 @@ uv run dagster asset materialize --select "evaluation_prompt,evaluation_raw,eval
    ```
 4. Re-run `parsed_scores` to ingest the new results.
 
-For cross-experiment winners, include their essay `gen_id`s in `data/2_tasks/selected_essays.txt` and rebuild cohort membership to register evaluation partitions for the active axes.
+For cross-experiment winners, include their essay `gen_id`s in `data/2_tasks/selected_essays.txt` and rebuild cohort membership to register evaluation partitions for the spec-defined axes.
 
 ### Curated Selection Quick Start (Drafts, Essays, Evaluations)
 
@@ -348,7 +338,7 @@ uv run dagster asset materialize -f src/daydreaming_dagster/definitions.py \
     - `essay/<gen_id>/{prompt.txt,raw.txt,parsed.txt,metadata.json}`
     - `evaluation/<gen_id>/{prompt.txt,raw.txt,parsed.txt,metadata.json}`
   - `data/cohorts/<cohort>/reports/parsing/` - Cohort-scoped parsed evaluation scores (e.g. `aggregated_scores.csv`)
-  - `data/cohorts/<cohort>/reports/summary/` - Final aggregated results for the active cohort
+  - `data/cohorts/<cohort>/reports/summary/` - Final aggregated results for the selected cohort
   - `data/7_cross_experiment/` - Cross-experiment tracking tables and score rebuilds (`aggregated_scores.csv`, pivots, etc.)
 
   Cohort runs always refresh `data/cohorts/<cohort>/reports/parsing/aggregated_scores.csv`. Rebuild scripts leave that file alone and instead recreate the shared cross-experiment tables under `data/7_cross_experiment/`.
@@ -443,7 +433,7 @@ Invalid essay_task_id referenced by evaluation task 'eval_001': ''
 **Root Causes:**
 - Missing or incorrect `parent_gen_id` in `cohort_membership`
 - Essay row not present for the referenced `parent_gen_id`
-- Inconsistent active axes vs. curated selection
+- Inconsistent spec selections vs. curated overrides
 
 **Diagnostic Steps:**
 1. Inspect cohort membership:
@@ -459,7 +449,7 @@ Invalid essay_task_id referenced by evaluation task 'eval_001': ''
 
 **Solutions:**
 ```bash
-# Rebuild cohort membership after fixing raw actives or curated selection
+# Rebuild cohort membership after updating the cohort spec or curated selection
 uv run dagster asset materialize --select "cohort_id,cohort_membership" -f src/daydreaming_dagster/definitions.py
 
 # Inspect raw inputs for issues
@@ -668,7 +658,7 @@ Set up monitoring for:
 
 ## Notes
 
-- This is a no-code-change workflow: flipping concept/template `active` flags controls which combinations are built and executed
+- This is a no-code-change workflow: updating the cohort spec (or curated selection files) controls which combinations are built and executed
 - Stable combo IDs are versioned and persisted in `data/combo_mappings.csv` for cross-run analysis
 - If you later want stronger isolation (per-experiment folders and automatic propagation of `experiment_id` into paths/metadata), see `plans/experiment_management_plan.md` for a low-friction enhancement using Dagster run tags
 

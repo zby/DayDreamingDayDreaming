@@ -8,15 +8,15 @@ Key idea
   - `llm`: generate essay from draft via LLM
 
 Prerequisites
-- Ensure drafts (Phase‑1) are configured and can run: active rows in `data/1_raw/draft_templates.csv` and at least one generation‑capable model in `data/1_raw/llm_models.csv` (`for_generation=true`).
-- Have at least one essay template with `generator=copy` active. The default repo includes `parsed-from-links-v1` as an example.
+- Ensure drafts (Phase‑1) are configured and can run: entries exist in `data/1_raw/draft_templates.csv` and at least one generation‑capable model in `data/1_raw/llm_models.csv` (`for_generation=true`).
+- Include at least one essay template with `generator=copy` in the cohort spec. The default repo includes `parsed-from-links-v1` as an example.
 
 Setup
 1) Configure essay copy template
-   - Edit `data/1_raw/essay_templates.csv` and set one row to `active=true` and `generator=copy` (e.g., `parsed-from-links-v1`).
-   - Optional: deactivate `llm` essay templates to avoid mixing modes in Cartesian cohorts.
+   - Edit `data/1_raw/essay_templates.csv` and ensure one row sets `generator=copy` (e.g., `parsed-from-links-v1`). Reference that `template_id` in the cohort spec.
+   - Optional: limit the cohort spec to only copy-mode essays to avoid mixing modes in catalog expansions.
 2) Build cohort
-   - Cartesian: rely on `selected_combo_mappings` to generate combos from the active concept set and ensure desired draft templates/models are active; then:
+   - Catalog mode: rely on `selected_combo_mappings` to generate combos from the available concept set and ensure the cohort spec selects the desired draft templates/models; then:
      - `uv run dagster asset materialize --select "cohort_id,cohort_membership" -f src/daydreaming_dagster/definitions.py`
    - Curated: create `data/2_tasks/selected_essays.txt` with essay `gen_id`s from prior runs; then materialize the two assets as above.
 3) Materialize partitions
@@ -29,7 +29,7 @@ Setup
 
 Notes and gotchas
 - Parent link is mandatory: essays read the draft via `parent_gen_id`. The cohort membership ensures this link exists.
-- Mixed cohorts: in Cartesian mode, every active draft combines with all active essays (both `copy` and `llm`). For a pure one‑phase baseline, deactivate `llm` essays or use a separate cohort.
+- Mixed cohorts: in catalog mode, every draft combines with all essays (both `copy` and `llm`). For a pure one‑phase baseline, constrain the cohort spec to copy-mode templates or use a separate cohort.
 - Dynamic partitions: ensure `cohort_membership` runs first (or with the daemon) so draft/essay/evaluation partitions exist before materializing stage assets.
 
 Where it’s enforced in code
@@ -38,7 +38,7 @@ Where it’s enforced in code
 - Cohort Cartesian expansion: `daydreaming_dagster/assets/group_cohorts.py::cohort_membership`
 
 Design discussion: mixing one‑phase and two‑phase
-- Full Cartesian expansion across draft and essay templates will produce both one‑phase (copy) and two‑phase (LLM) essays if both types are active. This is intentional but can be confusing when analyzing results.
+- Full catalog expansion across draft and essay templates will produce both one‑phase (copy) and two‑phase (LLM) essays if both types are selected. This is intentional but can be confusing when analyzing results.
 - Recommended patterns:
   - Separate cohorts per mode (e.g., `cohort-2025-09-11-copy` vs `cohort-2025-09-11-llm`).
   - Or use curated mode to pick only the essays you want to evaluate together.

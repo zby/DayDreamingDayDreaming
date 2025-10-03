@@ -19,12 +19,12 @@ class ContentCombination:
     def from_concepts(cls, concepts: List[Concept], level: str = "paragraph", combo_id: Optional[str] = None) -> "ContentCombination":
         """Current approach: single level with fallback for all concepts.
 
-        Ordering note: The order of concepts in the rendered template is the
-        order of the `concepts` argument. In the current pipeline, that order
-        derives from the `concepts` asset, which preserves the row order of
-        `data/1_raw/concepts_metadata.csv` after applying the `active`
-        filter. As a result, concept combinations (and their template inputs)
-        follow the CSV row order deterministically.
+        Ordering note: The order of concepts in the rendered template mirrors
+        the `concepts` argument. In the current pipeline, that sequence is
+        derived from spec-defined combinations, which preserve the order defined
+        in `concepts_metadata.csv` when the cohort spec was generated. As a
+        result, content combinations (and their template inputs) follow the spec
+        row order deterministically.
         """
         contents = []
         concept_ids = []

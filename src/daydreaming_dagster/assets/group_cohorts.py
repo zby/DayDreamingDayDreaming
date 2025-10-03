@@ -29,7 +29,7 @@ from ..utils.raw_readers import (
     read_llm_models,
     read_replication_config,
 )
-from ..cohorts import CohortPlan, load_cohort_plan
+from ..cohorts import CohortPlan, build_allowlists_from_plan, load_cohort_plan
 from ..models import ContentCombination
 from daydreaming_dagster.models.content_combination import generate_combo_id
 from ..data_layer.gens_data_layer import GensDataLayer
@@ -127,7 +127,7 @@ def _build_spec_catalogs(
     catalogs: dict[str, list[str]] = {}
 
     def _template_ids(kind: str) -> list[str]:
-        df = read_templates(data_root, kind, filter_active=False)
+        df = read_templates(data_root, kind)
         if df.empty:
             return []
         values = {
@@ -928,25 +928,14 @@ def _prepare_curated_drafts(data_root: Path, draft_ids: Iterable[str]) -> List[C
 # Model provider name mapping removed from cohort generation to reduce complexity.
 
 
-def _eval_axes(data_root: Path) -> Tuple[List[str], List[str]]:
-    """Return active evaluation template IDs and evaluation model IDs."""
-    models_df = read_llm_models(data_root)
-    evaluation_models = models_df[models_df["for_evaluation"] == True]
-    eval_model_ids = (
-        evaluation_models["id"].astype(str).tolist() if not evaluation_models.empty else []
-    )
-    eval_templates_df = read_templates(data_root, "evaluation", filter_active=True)
-    eval_tpl_ids = (
-        eval_templates_df["template_id"].astype(str).tolist()
-        if not eval_templates_df.empty
-        else []
-    )
-    return eval_tpl_ids, eval_model_ids
-
-
-def _read_templates_safe(data_root: Path, kind: str) -> pd.DataFrame:
+def _read_templates_safe(
+    data_root: Path,
+    kind: str,
+    *,
+    allowlist: Iterable[str] | None = None,
+) -> pd.DataFrame:
     try:
-        return read_templates(data_root, kind, filter_active=False)
+        return read_templates(data_root, kind, allowlist=allowlist)
     except FileNotFoundError:
         return pd.DataFrame()
     except Exception:
@@ -1164,43 +1153,57 @@ def cohort_membership(
     cohort_id: str,
     selected_combo_mappings: pd.DataFrame,
 ) -> pd.DataFrame:
-    """Build the authoritative cohort membership CSV with normalized columns per stage.
+    """Build the authoritative cohort membership CSV using the cohort spec as the source of truth.
 
-    Branches on the presence of data/2_tasks/selected_essays.txt:
-    - If present: curated mode — recover task fields from existing gens metadata for drafts/essays
-      using the selected essay gen_ids; expand evaluations over active axes.
-    - If absent: Cartesian mode — derive drafts from (content_combinations × active draft templates ×
-      generation models), essays from (drafts × active essay templates), and evaluations from
-      (essays × active evaluation templates × evaluation models).
+    Optional curated selection files (`selected_essays.txt` / `selected_drafts.txt`) restrict the
+    spec-defined plan to a subset of existing generations. When no selection file is present, the
+    full spec plan is materialized. Evaluation coverage always derives from the spec's evaluation
+    templates and models.
 
     Writes data/cohorts/<cohort_id>/membership.csv and registers dynamic partitions add-only.
     Validates parent integrity (essay parents among draft ids; evaluation parents among essay ids).
     Returns a DataFrame of all rows written.
 
-    Note: This asset does not delete previously registered partitions. To reset the
-    partition registry, use the global maintenance asset `prune_dynamic_partitions`
-    before rebuilding a cohort, or add a cohort-scoped pruner as a separate asset.
+    Note: This asset does not delete previously registered partitions. To reset the partition
+    registry, use the global maintenance asset `prune_dynamic_partitions` before rebuilding a cohort,
+    or add a cohort-scoped pruner as a separate asset.
     """
 
     paths_obj = Paths.from_context(context)
     data_root = paths_obj.data_root
     data_layer = GensDataLayer.from_root(data_root)
 
+    spec_dir = data_root / "cohorts" / str(cohort_id) / "spec"
+    if not spec_dir.exists():
+        raise DDError(
+            Err.INVALID_CONFIG,
+            ctx={
+                "reason": "cohort_spec_required",
+                "cohort_id": cohort_id,
+                "path": str(spec_dir),
+            },
+        )
+
+    catalogs = _build_spec_catalogs(data_root, selected_combo_mappings)
+    spec_plan = load_cohort_plan(spec_dir, catalogs=catalogs)
+    allowlists = build_allowlists_from_plan(spec_plan)
+
     selection_cfg = _load_curated_selection_config(data_root)
     selected_ids = selection_cfg.ids
 
     template_modes = {
-        "draft": _template_mode_map(_read_templates_safe(data_root, "draft")),
-        "essay": _template_mode_map(_read_templates_safe(data_root, "essay")),
-        "evaluation": _template_mode_map(_read_templates_safe(data_root, "evaluation")),
+        "draft": _template_mode_map(
+            _read_templates_safe(data_root, "draft", allowlist=allowlists.draft_templates)
+        ),
+        "essay": _template_mode_map(
+            _read_templates_safe(data_root, "essay", allowlist=allowlists.essay_templates)
+        ),
+        "evaluation": _template_mode_map(
+            _read_templates_safe(
+                data_root, "evaluation", allowlist=allowlists.evaluation_templates
+            )
+        ),
     }
-
-    essay_templates_df = read_templates(data_root, "essay", filter_active=True)
-    essay_template_ids: List[str] = (
-        essay_templates_df["template_id"].astype(str).tolist()
-        if not essay_templates_df.empty
-        else []
-    )
 
     replication_cfg = _require_replication_config(data_root)
     builder = CohortBuilder(
@@ -1209,13 +1212,29 @@ def cohort_membership(
         replication_config=replication_cfg,
     )
 
-    rows: List[MembershipRow]
-    eval_stats: Dict[str, int]
+    rows: List[MembershipRow] = []
+    eval_stats: Dict[str, int] = {"created": 0, "fully_covered": 0}
 
-    spec_dir = data_root / "cohorts" / str(cohort_id) / "spec"
-    if spec_dir.exists():
-        catalogs = _build_spec_catalogs(data_root, selected_combo_mappings)
-        spec_plan = load_cohort_plan(spec_dir, catalogs=catalogs)
+    if selection_cfg.selection_type == "essay":
+        rows.extend(builder.build_from_essays(selected_ids))
+        eval_rows, eval_stats = builder.build_evaluations(
+            evaluation_templates=allowlists.evaluation_templates,
+            evaluation_models=allowlists.evaluation_models,
+        )
+        rows.extend(eval_rows)
+    elif selection_cfg.selection_type == "draft":
+        rows.extend(
+            builder.build_from_drafts(
+                selected_ids,
+                essay_template_ids=list(allowlists.essay_templates),
+            )
+        )
+        eval_rows, eval_stats = builder.build_evaluations(
+            evaluation_templates=allowlists.evaluation_templates,
+            evaluation_models=allowlists.evaluation_models,
+        )
+        rows.extend(eval_rows)
+    else:
         rows = builder.build_from_spec_plan(spec_plan)
         unique_essays = {
             evaluation.essay.key() for evaluation in spec_plan.evaluations
@@ -1224,57 +1243,6 @@ def cohort_membership(
             "created": len(spec_plan.evaluations),
             "fully_covered": len(unique_essays),
         }
-    else:
-        rows = []
-
-        if selection_cfg.selection_type == "essay":
-            rows.extend(builder.build_from_essays(selected_ids))
-        elif selection_cfg.selection_type == "draft":
-            rows.extend(
-                builder.build_from_drafts(
-                    selected_ids,
-                    essay_template_ids=essay_template_ids,
-                )
-            )
-        else:
-            draft_df = read_templates(data_root, "draft", filter_active=True)
-            draft_template_ids = (
-                draft_df["template_id"].astype(str).tolist() if not draft_df.empty else []
-            )
-
-            gen_models_df = read_llm_models(data_root)
-            generation_models = gen_models_df[gen_models_df["for_generation"] == True]
-            generation_model_ids = (
-                generation_models["id"].astype(str).tolist()
-                if not generation_models.empty
-                else []
-            )
-
-            sel_df = (
-                selected_combo_mappings
-                if isinstance(selected_combo_mappings, pd.DataFrame)
-                else pd.DataFrame()
-            )
-
-            combo_ids: List[str] = []
-            if not sel_df.empty and "combo_id" in sel_df.columns:
-                combo_ids = sel_df["combo_id"].astype(str).dropna().unique().tolist()
-
-            rows.extend(
-                builder.build_cartesian(
-                    combo_ids=combo_ids,
-                    draft_template_ids=draft_template_ids,
-                    essay_template_ids=essay_template_ids,
-                    generation_model_ids=generation_model_ids,
-                )
-            )
-
-        eval_tpl_ids, eval_model_ids = _eval_axes(data_root)
-        eval_rows, eval_stats = builder.build_evaluations(
-            evaluation_templates=eval_tpl_ids,
-            evaluation_models=eval_model_ids,
-        )
-        rows.extend(eval_rows)
 
     row_dicts = [row.to_dict() for row in rows]
     if row_dicts:
@@ -1379,40 +1347,65 @@ def register_cohort_partitions(context, cohort_membership: pd.DataFrame) -> Dict
 def cohort_id(context, content_combinations: list[ContentCombination]) -> str:
     """Compute a deterministic cohort_id from the current manifest and persist it."""
     data_root = Paths.from_context(context).data_root
-    # Build manifest from active axes
-    # Load axes strictly; let underlying errors surface naturally
-    def _tpl_ids(kind: str) -> list[str]:
-        df = read_templates(data_root, kind, filter_active=True)
-        if "active" in df.columns:
-            df = df[df["active"] == True]
-        return sorted(df["template_id"].astype(str).tolist()) if not df.empty else []
-
-    drafts = _tpl_ids("draft")
-    essays = _tpl_ids("essay")
-    evals = _tpl_ids("evaluation")
-
-    mdf = read_llm_models(data_root)
-    gen_models = sorted(mdf[mdf["for_generation"] == True]["id"].astype(str).tolist()) if not mdf.empty else []
-    eval_models = sorted(mdf[mdf["for_evaluation"] == True]["id"].astype(str).tolist()) if not mdf.empty else []
-    combos = sorted([str(c.combo_id) for c in (content_combinations or [])])
-    rep_cfg = _require_replication_config(data_root)
-
-    manifest = {
-        "combos": combos,
-        "templates": {"draft": drafts, "essay": essays, "evaluation": evals},
-        "llms": {"generation": gen_models, "evaluation": eval_models},
-        "replication": rep_cfg,
-    }
-    override = None
     asset_cfg = getattr(context, "asset_config", None)
+    override = None
     if asset_cfg:
         override = asset_cfg.get("override")
     else:
         op_ctx = getattr(context, "op_execution_context", None)
         if op_ctx and getattr(op_ctx, "op_config", None):
             override = op_ctx.op_config.get("override")
+
     env_override = get_env_cohort_id()
-    cid = compute_cohort_id("cohort", manifest, explicit=(override or env_override))
+    spec_name = override or env_override
+    if not spec_name:
+        raise DDError(
+            Err.INVALID_CONFIG,
+            ctx={
+                "reason": "cohort_spec_required",
+                "hint": "set asset_config.override or DD_COHORT",
+            },
+        )
+
+    spec_dir = data_root / "cohorts" / spec_name / "spec"
+    if not spec_dir.exists():
+        raise DDError(
+            Err.INVALID_CONFIG,
+            ctx={
+                "reason": "cohort_spec_missing",
+                "cohort_id": spec_name,
+                "path": str(spec_dir),
+            },
+        )
+
+    catalogs = _build_spec_catalogs(data_root, pd.DataFrame())
+    spec_plan = load_cohort_plan(spec_dir, catalogs=catalogs)
+    allowlists = build_allowlists_from_plan(spec_plan)
+
+    asset_combo_ids = {
+        str(combo.combo_id)
+        for combo in (content_combinations or [])
+        if getattr(combo, "combo_id", None)
+    }
+    plan_combos = set(allowlists.combos)
+    combos = sorted(plan_combos.union(asset_combo_ids))
+    rep_cfg = _require_replication_config(data_root)
+
+    manifest = {
+        "combos": combos,
+        "templates": {
+            "draft": list(allowlists.draft_templates),
+            "essay": list(allowlists.essay_templates),
+            "evaluation": list(allowlists.evaluation_templates),
+        },
+        "llms": {
+            "generation": list(allowlists.generation_models),
+            "evaluation": list(allowlists.evaluation_models),
+        },
+        "replication": rep_cfg,
+    }
+    explicit_id = override or env_override
+    cid = compute_cohort_id("cohort", manifest, explicit=explicit_id)
     write_manifest(str(data_root), cid, manifest)
     instance = context.instance
     has_dynamic_partition = getattr(instance, "has_dynamic_partition", None)
@@ -1439,7 +1432,7 @@ def cohort_id(context, content_combinations: list[ContentCombination]) -> str:
     required_resource_keys={"experiment_config", "data_root"},
 )
 def selected_combo_mappings(context) -> pd.DataFrame:
-    """Regenerate selected combo mappings from active concepts (deterministic ID).
+    """Regenerate selected combo mappings deterministically from available concepts.
 
     Output is kept in-memory via the in-memory IO manager; no CSV is written to disk.
     """
@@ -1448,9 +1441,9 @@ def selected_combo_mappings(context) -> pd.DataFrame:
     cfg = context.resources.experiment_config
     level = getattr(cfg, "description_level", "paragraph")
     k_max = int(getattr(cfg, "k_max", 2))
-    concepts = read_concepts(data_root, filter_active=True)
+    concepts = read_concepts(data_root)
     if not concepts:
-        context.add_output_metadata({"count": MetadataValue.int(0), "reason": MetadataValue.text("no active concepts")})
+        context.add_output_metadata({"count": MetadataValue.int(0), "reason": MetadataValue.text("no concepts available")})
         return pd.DataFrame(columns=["combo_id","version","concept_id","description_level","k_max","created_at"])  # empty
     selected = concepts[: max(1, min(k_max, len(concepts)))]
     manager = ComboIDManager(str(data_root / "combo_mappings.csv"))
@@ -1484,14 +1477,14 @@ def content_combinations(
     """Build combinations for generation using in-memory selected_combo_mappings data.
 
     If the provided DataFrame is empty or lacks valid combos, fall back to deriving a single
-    combination from the active concepts.
+    combination from the available concepts.
     """
     data_root = Paths.from_context(context).data_root
 
     sel = selected_combo_mappings if isinstance(selected_combo_mappings, pd.DataFrame) else pd.DataFrame()
 
     if not sel.empty:
-        all_concepts = {c.concept_id: c for c in read_concepts(data_root, filter_active=False)}
+        all_concepts = {c.concept_id: c for c in read_concepts(data_root)}
         combos: list[ContentCombination] = []
         for combo_id, group in sel.groupby("combo_id"):
             level = (
@@ -1512,11 +1505,11 @@ def content_combinations(
             )
         if combos:
             return combos
-    # Fallback: derive from active concepts using description_level/k_max
+    # Fallback: derive from available concepts using description_level/k_max
     cfg = context.resources.experiment_config
     level = getattr(cfg, "description_level", "paragraph")
     k_max = int(getattr(cfg, "k_max", 2))
-    concepts = [c for c in read_concepts(data_root, filter_active=True)]
+    concepts = [c for c in read_concepts(data_root)]
     concepts = concepts[: max(1, min(k_max, len(concepts)))]
     combo_id = generate_combo_id([c.concept_id for c in concepts], level, k_max)
     return [ContentCombination.from_concepts(concepts, level=level, combo_id=combo_id)]

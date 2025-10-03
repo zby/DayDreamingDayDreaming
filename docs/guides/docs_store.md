@@ -61,7 +61,7 @@ print(paths.parsed_path("essay", "abc123xyz"))
 
 ## Notes
 
-- Optional RAW side-writes under `data/3_generation/*_raw/` can be enabled in `ExperimentConfig` for debugging.
+- Optional RAW side-writes (`raw.txt`) live alongside artifacts in `data/gens/<stage>/<gen_id>/` when enabled via `ExperimentConfig` for debugging.
 - Single source of truth for the filesystem layout: `src/daydreaming_dagster/data_layer/paths.py`.
 
 ### Replicates

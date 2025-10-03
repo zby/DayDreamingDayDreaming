@@ -4,7 +4,8 @@ import pandas as pd
 import numpy as np
 from ..data_layer.paths import Paths, COHORT_REPORT_ASSET_TARGETS
 from .raw_data import EVALUATION_TEMPLATES_KEY
-from ..utils.raw_readers import read_templates
+from .group_cohorts import _build_spec_catalogs
+from ..cohorts import build_allowlists_from_plan, load_cohort_plan
 from ..utils.evaluation_processing import filter_valid_scores
 from ..utils.errors import DDError, Err
 from .partitions import cohort_reports_partitions
@@ -37,18 +38,31 @@ def generation_scores_pivot(context, cohort_aggregated_scores: pd.DataFrame) -> 
     Columns: Each unique (evaluation_template, evaluation_llm_model) combination
     Values: Individual score for that specific evaluator combination (no averaging)
     """
-    # Load evaluation templates CSV and extract active templates
     cohort_id = _require_cohort_partition(context, "generation_scores_pivot")
     paths = Paths.from_context(context)
 
-    eval_df = read_templates(paths.data_root, "evaluation", filter_active=True)
-    if eval_df is None or eval_df.empty:
-        context.log.warning("No evaluation templates CSV found or empty; returning empty pivot")
-        return pd.DataFrame()
-    active_templates = eval_df[eval_df.get('active', True) == True]['template_id'].tolist()
-    
-    if not active_templates:
-        context.log.warning("No active evaluation templates found; returning empty pivot")
+    spec_dir = paths.data_root / "cohorts" / str(cohort_id) / "spec"
+    if not spec_dir.exists():
+        raise DDError(
+            Err.INVALID_CONFIG,
+            ctx={
+                "reason": "cohort_spec_required",
+                "cohort_id": cohort_id,
+                "path": str(spec_dir),
+            },
+        )
+
+    catalogs = _build_spec_catalogs(paths.data_root, pd.DataFrame())
+    spec_plan = load_cohort_plan(spec_dir, catalogs=catalogs)
+    allowlists = build_allowlists_from_plan(spec_plan)
+
+    eval_templates = list(allowlists.evaluation_templates)
+    eval_models = list(allowlists.evaluation_models)
+
+    if not eval_templates or not eval_models:
+        context.log.warning(
+            "No evaluation templates/models defined in cohort spec; returning empty pivot",
+        )
         return pd.DataFrame()
     
     # Filter to valid scored rows
@@ -60,6 +74,17 @@ def generation_scores_pivot(context, cohort_aggregated_scores: pd.DataFrame) -> 
 
     if valid_scores.empty:
         context.log.warning("No valid scores found; returning empty pivot")
+        return pd.DataFrame()
+
+    valid_scores = valid_scores[
+        valid_scores["evaluation_template"].astype(str).isin(eval_templates)
+        & valid_scores["evaluation_llm_model"].astype(str).isin(eval_models)
+    ]
+
+    if valid_scores.empty:
+        context.log.warning(
+            "No cohort scores match evaluation spec; returning empty pivot",
+        )
         return pd.DataFrame()
 
     # Require evaluator id column and compose combined key (strict)
@@ -110,7 +135,7 @@ def generation_scores_pivot(context, cohort_aggregated_scores: pd.DataFrame) -> 
         return df
 
     pivot_df = pivot_mean.reset_index()
-    # Track mean columns for sum_scores later
+    # Track mean columns for aggregate scoring later
     mean_eval_cols = [c for c in pivot_df.columns if c not in index_cols]
 
     # Join min/max/count
@@ -128,12 +153,13 @@ def generation_scores_pivot(context, cohort_aggregated_scores: pd.DataFrame) -> 
     # Get mean evaluation columns (exclude index and suffixed stability columns)
     eval_columns = [col for col in mean_eval_cols if col in pivot_df.columns]
     
+    score_sum_col = "allowlisted_template_score_sum"
     # Add aggregate column with all scores summed across evaluators
     # NaNs are ignored in the sum; round for readability
     if eval_columns:
-        pivot_df['sum_scores'] = pivot_df[eval_columns].sum(axis=1, skipna=True).round(2)
+        pivot_df[score_sum_col] = pivot_df[eval_columns].sum(axis=1, skipna=True).round(2)
     else:
-        pivot_df['sum_scores'] = 0.0
+        pivot_df[score_sum_col] = 0.0
 
     # Require draft_template in cohort_aggregated_scores (added with two-phase architecture)
     if "draft_template" not in valid_scores.columns:
@@ -167,7 +193,7 @@ def generation_scores_pivot(context, cohort_aggregated_scores: pd.DataFrame) -> 
     # Order columns: index columns first, then evaluation columns
     # Place stability columns after the corresponding mean columns
     stability_cols = [c for c in pivot_df.columns if c.endswith('_min') or c.endswith('_max') or c.endswith('_n')]
-    ordered_cols = index_cols + eval_columns + stability_cols + ['sum_scores', 'generation_response_path']
+    ordered_cols = index_cols + eval_columns + stability_cols + [score_sum_col, 'generation_response_path']
     pivot_df = pivot_df[ordered_cols]
 
     # Metadata
@@ -176,7 +202,7 @@ def generation_scores_pivot(context, cohort_aggregated_scores: pd.DataFrame) -> 
         "rows": MetadataValue.int(len(pivot_df)),
         "unique_generations": MetadataValue.int(pivot_df[['combo_id', 'draft_template', 'generation_template', 'generation_model']].drop_duplicates().shape[0]),
         "evaluation_combinations": MetadataValue.int(len(eval_columns)),
-        "total_active_templates": MetadataValue.int(len(active_templates)),
+        "total_spec_templates": MetadataValue.int(len(eval_templates)),
         "evaluation_columns": MetadataValue.text(", ".join(eval_columns)),
         "cohort_id": MetadataValue.text(cohort_id),
         "output": MetadataValue.path(str(paths.cohort_summary_csv(cohort_id, filename))),

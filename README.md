@@ -142,7 +142,7 @@ uv run pytest --cov=daydreaming_dagster
 
 ### Cohorts (deterministic run IDs)
 
-- A dedicated asset `cohort_id` (group `cohort`) computes a deterministic cohort identifier from the current manifest of combos, active templates, and models.
+- A dedicated asset `cohort_id` (group `cohort`) computes a deterministic cohort identifier from the current manifest of combos, templates, and models produced by the cohort spec (or catalog defaults).
 - The manifest is written to `data/cohorts/<cohort_id>/manifest.json`; the `cohort_id` value is threaded into all task CSVs and gens metadata when present.
 - Gen IDs are reserved as `reserve_gen_id(stage, task_id, run_id=cohort_id)` so all artifacts are tied to a visible, reproducible cohort.
 
@@ -188,7 +188,7 @@ config = ExperimentConfig(
     template_names_filter=["00_systematic_analytical", "02_problem_solving"]
 )
 
-# Concepts are filtered by the 'active' column in concepts_metadata.csv
+# The cohort spec determines which concepts participate; ExperimentConfig filters refine tasks at runtime.
 ```
 
 ## Data Structure
@@ -221,10 +221,11 @@ data/1_raw/templates/
 
 Adding a new draft template:
 - Place the template file under `data/1_raw/templates/draft/<template_id>.txt`.
-- Register it in `data/1_raw/draft_templates.csv` with the same `template_id` and set `active=true` (set others to `false`). If the draft output requires extraction into an essay‑ready fragment, set the `parser` column (e.g., `essay_idea_last`). Supported parser names live in `daydreaming_dagster/utils/draft_parsers.py`. Missing or unknown parsers cause a hard failure during draft generation (Phase‑1), and the RAW draft is still saved for debugging.
+- Register it in `data/1_raw/draft_templates.csv` with the same `template_id`. If the draft output requires extraction into an essay‑ready fragment, set the `parser` column (e.g., `essay_block`). Supported parser names live in `daydreaming_dagster/utils/draft_parsers.py`. Missing or unknown parsers cause a hard failure during draft generation (Phase‑1), and the raw draft is still saved for debugging.
+- Reference the new `template_id` from the cohort spec so it participates in the experiment.
 - Optional: set `GEN_TEMPLATES_ROOT` to point to a different root if you maintain templates outside the repo.
 
-Active draft templates are controlled in `data/1_raw/draft_templates.csv` via the `active` column. Examples include:
+Examples include:
 - `deliberate-rolling-thread-v2` / `-v3` — Tagged rolling idea with per-step `<essay-idea>` blocks designed for downstream parsing.
 - `rolling-summary-v1` — Readable idea-thread recursion with enforced link types and a rolling “Idea So Far — i” summary.
 
@@ -239,8 +240,8 @@ Active draft templates are controlled in `data/1_raw/draft_templates.csv` via th
 - **Gens Store (primary)**: `data/gens/<stage>/<gen_id>/`
   - Contains `raw.txt`, `parsed.txt`, optional `prompt.txt`, and `metadata.json`
   - Stages: `draft`, `essay`, `evaluation`
-- **Optional RAW side-writes**: `data/3_generation/*_raw/` (enabled via ExperimentConfig; useful for debugging truncation/parser issues)
-- **Cohort Results**: `data/cohorts/<cohort>/reports/{parsing,summary,analysis}/*.csv` (outputs from Dagster assets scoped to the active cohort)
+- **Optional RAW side-writes**: `data/gens/<stage>/<gen_id>/raw.txt` (enable via `ExperimentConfig` to inspect parser/truncation issues)
+- **Cohort Results**: `data/cohorts/<cohort>/reports/{parsing,summary,analysis}/*.csv` (outputs from Dagster assets scoped to the selected cohort)
 - **Cross-Experiment Tables**: `data/7_cross_experiment/*.csv` (rebuilt on demand by analysis scripts)
 - **Global Mapping**: `data/combo_mappings.csv` (append-only mapping of stable combo IDs to their concept components)
 

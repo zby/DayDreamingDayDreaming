@@ -160,7 +160,7 @@ LLM generation/evaluation assets remain manual to avoid surprise API usage/costs
 
 **Data Flow**:
 1. **Concept Combinations**: Generate k_max-sized combinations from concepts in-memory (`selected_combo_mappings`). Legacy curated CSVs can still be managed manually, but the pipeline no longer reads them directly.
-2. **Cohort ID**: Compute deterministic ID from active combos/templates/models and replication targets, then write the manifest.
+2. **Cohort ID**: Compute a deterministic ID from the cohort spec's combos/templates/models and replication targets, then write the manifest.
 3. **Cohort Membership**: Build normalized rows for `draft`, `essay`, and `evaluation` and register dynamic partitions by `gen_id`.
 
 **Key Features**:
@@ -370,7 +370,7 @@ asset returns successfully, so they cannot provide this early‑write behavior.
 
 The pipeline uses Dagster's dynamic partitions keyed by `gen_id` for each stage (`draft`, `essay`, `evaluation`).
 
-- Registration: the `cohort_membership` asset writes `data/cohorts/<cohort_id>/membership.csv` and registers each `gen_id` as a dynamic partition for the appropriate stage. When a cohort spec exists under `data/cohorts/<cohort_id>/spec/`, the DSL compiler provides the authoritative rows; otherwise curated selections or active axes drive the plan. It prunes stale partitions for the same cohort before re-registering to remain idempotent.
+- Registration: the `cohort_membership` asset writes `data/cohorts/<cohort_id>/membership.csv` and registers each `gen_id` as a dynamic partition for the appropriate stage. When a cohort spec exists under `data/cohorts/<cohort_id>/spec/`, the DSL compiler provides the authoritative rows; otherwise curated selections drive the plan. It prunes stale partitions for the same cohort before re-registering to remain idempotent.
 - Execution: partitioned assets read `context.partition_key` (a `gen_id`) and resolve metadata (template/model/parents) via cohort membership and the gens store.
 
 ### Benefits of This Architecture
@@ -398,8 +398,8 @@ data/
 │   ├── templates/
 │   │   ├── draft/              # Phase‑1 draft Jinja templates
 │   │   └── essay/              # Phase‑2 essay Jinja templates
-│   ├── draft_templates.csv     # Active draft templates (+ optional parser)
-│   ├── essay_templates.csv     # Active essay templates (+ generator: llm|copy)
+│   ├── draft_templates.csv     # Draft template metadata (+ optional parser)
+│   ├── essay_templates.csv     # Essay template metadata (+ generator: llm|copy)
 │   ├── evaluation_templates.csv
 │   └── llm_models.csv          # Available models with flags: for_generation|for_evaluation
 ├── cohorts/<cohort_id>/        # Cohort manifest + authoritative membership
@@ -409,7 +409,6 @@ data/
 │   ├── draft/<gen_id>/{prompt.txt,raw.txt,parsed.txt,metadata.json}
 │   ├── essay/<gen_id>/{prompt.txt,raw.txt,parsed.txt,metadata.json}
 │   └── evaluation/<gen_id>/{prompt.txt,raw.txt,parsed.txt,metadata.json}
-├── 3_generation/               # Legacy only (not used by current pipeline)
 ├── 5_parsing/                  # Parsed evaluation scores
 │   └── parsed_scores.csv
 ├── cohorts/
@@ -430,7 +429,7 @@ data/
 
 - Membership is authoritative; dynamic partitions are registered by the `cohort_membership` asset.
 - Prompts are allowed to overwrite to reflect current templates.
-- Runtime persistence uses the gens store: `data/gens/<stage>/<gen_id>` with metadata. Legacy directories under `data/3_generation/` are retained for historical analysis; scripts may read them for migration only. New runs write canonical artifacts to the gens store and do not create versioned files.
+- Runtime persistence uses the gens store: `data/gens/<stage>/<gen_id>` with metadata. Historical directories from earlier pipelines are retained for reference only; new runs write canonical artifacts to the gens store and do not create versioned files.
 
 ## Performance and Scalability
 
@@ -488,7 +487,7 @@ The pipeline is designed for efficient concurrent processing:
 
 The evaluation flow is cohort- and gen-id–centric with explicit parent links:
 
-- `cohort_membership` registers evaluation partitions by expanding essay parents × active evaluation templates × evaluation models.
+- `cohort_membership` registers evaluation partitions by expanding essay parents × spec-defined evaluation templates × evaluation models.
 - `evaluation_prompt` reads the essay text from the gens store via `parent_gen_id` and renders the Jinja template for the evaluator model.
 - Partitions are keyed by evaluation `gen_id`; parent pointers remain stable across re-runs.
 
@@ -499,7 +498,7 @@ The evaluation flow is cohort- and gen-id–centric with explicit parent links:
 
 ### Legacy Inputs
 
-- Legacy Kedro-era artifacts under `data/3_generation/generation_responses/` are not auto-discovered. The Dagster pipeline reads from `data/gens/essay/<essay_gen_id>/parsed.txt`. To evaluate historical essays, migrate them into the gens store (see `scripts/copy_essays_with_drafts.py`) or write their `gen_id`s to `data/2_tasks/selected_essays.txt` and materialize `cohort_id,cohort_membership` so the registry points at the migrated files.
+- Historical artifacts stored outside the gens store are not auto-discovered. The Dagster pipeline reads from `data/gens/essay/<essay_gen_id>/parsed.txt`. To evaluate older essays, migrate them into the gens store by writing their `gen_id`s to `data/2_tasks/selected_essays.txt` and materializing `cohort_id,cohort_membership` so the registry points at the migrated files.
 
 ## Migration Benefits from Kedro
 
