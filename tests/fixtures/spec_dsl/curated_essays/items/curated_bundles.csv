@@ -1,0 +1,3 @@
+essay_template,essay_llm,evaluation_template,evaluation_llm
+essay-copy-v1,sonnet-4,verification-eval-v1,sonnet-4
+essay-llm-v1,sonnet-4,verification-eval-v1,sonnet-4

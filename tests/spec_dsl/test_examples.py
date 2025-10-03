@@ -9,26 +9,27 @@ from daydreaming_dagster.spec_dsl import compile_design, load_spec
 FIXTURES = Path(__file__).parent.parent / "fixtures" / "spec_dsl"
 
 CATALOGS = {
-    "draft_templates": [
+    "draft_template": [
         "creative-synthesis-v2",
         "application-implementation-v2",
         "gwern_original",
     ],
-    "essay_templates": [
+    "essay_template": [
         "parsed-from-links-v1",
         "essay-copy-v1",
         "essay-llm-v1",
         "essay-theme-v16",
         "essay-theme-v17",
     ],
-    "evaluation_templates": [
+    "evaluation_template": [
         "creativity-metrics-v2",
         "daydreaming-verification-v3",
         "verification-eval-v1",
         "quality-eval-v1",
     ],
-    "evaluation_llms": ["sonnet-4", "gemini_25_pro"],
-    "essay_llms": ["sonnet-4", "gemini_25_pro"],
+    "draft_llm": ["gemini_25_pro", "sonnet-4"],
+    "essay_llm": ["sonnet-4", "gemini_25_pro"],
+    "evaluation_llm": ["sonnet-4", "gemini_25_pro"],
 }
 
 EXAMPLES = {
@@ -42,13 +43,13 @@ EXAMPLES = {
 
 @pytest.mark.parametrize("example","baseline_cartesian dual_llm_cartesian paired_copy_mix full_two_phase_cartesian curated_essays".split())
 def test_examples_compile(example: str) -> None:
-    spec_path = FIXTURES / example
+    spec_path = FIXTURES / example / "config.yaml"
     spec = load_spec(spec_path)
     rows = compile_design(spec, catalogs=CATALOGS)
     assert len(rows) == EXAMPLES[example]
 
     if example == "dual_llm_cartesian":
-        replicate_values = {row["draft_replicate"] for row in rows}
+        replicate_values = {row["draft_template_replicate"] for row in rows}
         assert replicate_values == {1, 2}
     if example == "curated_essays":
         for row in rows:

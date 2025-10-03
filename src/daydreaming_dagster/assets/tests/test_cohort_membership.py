@@ -53,45 +53,23 @@ def _write_spec(
 
     spec: dict[str, object] = {
         "axes": {
-            "combo_id": {
-                "levels": [str(item) for item in combos],
-                "catalog_lookup": {"catalog": "combos"},
-            },
-            "draft_template": {
-                "levels": [str(item) for item in draft_templates],
-                "catalog_lookup": {"catalog": "draft_templates"},
-            },
-            "draft_llm": {
-                "levels": [str(item) for item in generation_llms],
-                "catalog_lookup": {"catalog": "generation_llms"},
-            },
-            "essay_template": {
-                "levels": [str(item) for item in essay_templates],
-                "catalog_lookup": {"catalog": "essay_templates"},
-            },
-            "essay_llm": {
-                "levels": [str(item) for item in generation_llms],
-                "catalog_lookup": {"catalog": "essay_llms"},
-            },
-            "evaluation_template": {
-                "levels": [str(item) for item in evaluation_templates],
-                "catalog_lookup": {"catalog": "evaluation_templates"},
-            },
-            "evaluation_llm": {
-                "levels": [str(item) for item in evaluation_llms],
-                "catalog_lookup": {"catalog": "evaluation_llms"},
-            },
+            "combo_id": [str(item) for item in combos],
+            "draft_template": [str(item) for item in draft_templates],
+            "draft_llm": [str(item) for item in generation_llms],
+            "essay_template": [str(item) for item in essay_templates],
+            "essay_llm": [str(item) for item in generation_llms],
+            "evaluation_template": [str(item) for item in evaluation_templates],
+            "evaluation_llm": [str(item) for item in evaluation_llms],
         },
-        "rules": [
-            {
-                "pair": {
+        "rules": {
+            "pairs": {
+                "evaluation_bundle": {
                     "left": "evaluation_template",
                     "right": "evaluation_llm",
-                    "name": "evaluation_bundle",
                     "allowed": allowed_matrix,
                 }
             }
-        ],
+        },
         "output": {
             "field_order": [
                 "combo_id",
@@ -107,11 +85,7 @@ def _write_spec(
 
     if replicates:
         spec["replicates"] = replicates
-        replicate_columns = [
-            cfg.get("column")
-            for cfg in replicates.values()
-            if isinstance(cfg, dict) and cfg.get("column")
-        ]
+        replicate_columns = [f"{axis}_replicate" for axis in replicates]
         spec["output"]["field_order"].extend(replicate_columns)
 
     (spec_dir / "config.yaml").write_text(
@@ -167,9 +141,9 @@ def base_data_root(tmp_path: Path) -> Path:
         generation_llms=["gen-model"],
         evaluation_llms=["eval-model"],
         replicates={
-            "draft_template": {"count": 1, "column": "draft_replicate"},
-            "essay_template": {"count": 1, "column": "essay_replicate"},
-            "evaluation_template": {"count": 1, "column": "evaluation_replicate"},
+            "draft_template": 1,
+            "essay_template": 1,
+            "evaluation_template": 1,
         },
     )
     for extra_id in ("cohort-conflict", "cohort-with-comments"):
@@ -183,9 +157,9 @@ def base_data_root(tmp_path: Path) -> Path:
             generation_llms=["gen-model"],
             evaluation_llms=["eval-model"],
             replicates={
-                "draft_template": {"count": 1, "column": "draft_replicate"},
-                "essay_template": {"count": 1, "column": "essay_replicate"},
-                "evaluation_template": {"count": 1, "column": "evaluation_replicate"},
+                "draft_template": 1,
+                "essay_template": 1,
+                "evaluation_template": 1,
             },
         )
 
@@ -329,9 +303,9 @@ def test_cohort_membership_cartesian_multiple_replicates(tmp_path: Path) -> None
         generation_llms=["gen-model"],
         evaluation_llms=["eval-model"],
         replicates={
-            "draft_template": {"count": 2, "column": "draft_replicate"},
-            "essay_template": {"count": 2, "column": "essay_replicate"},
-            "evaluation_template": {"count": 1, "column": "evaluation_replicate"},
+            "draft_template": 2,
+            "essay_template": 2,
+            "evaluation_template": 1,
         },
     )
 

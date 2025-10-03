@@ -239,7 +239,10 @@ def load_cohort_plan(
     catalogs: Mapping[str, Any] | None = None,
     seed: int | None = None,
 ) -> CohortPlan:
-    spec = load_spec(path)
+    spec_path = Path(path)
+    if spec_path.is_dir():
+        spec_path = spec_path / "config.yaml"
+    spec = load_spec(spec_path)
     return compile_cohort_plan(spec, catalogs=catalogs, seed=seed)
 
 

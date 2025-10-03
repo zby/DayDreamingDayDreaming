@@ -1,45 +1,24 @@
 axes:
-  combo_id:
-    levels: [combo-1]
-    catalog_lookup: {catalog: combos}
-  draft_template:
-    levels: [draft-A]
-    catalog_lookup: {catalog: draft_templates}
-  draft_llm:
-    levels: [draft-llm]
-    catalog_lookup: {catalog: generation_llms}
-  essay_template:
-    levels: [essay-X, essay-Y]
-    catalog_lookup: {catalog: essay_templates}
-  essay_llm:
-    levels: [essay-llm]
-    catalog_lookup: {catalog: essay_llms}
-  evaluation_template:
-    levels: [eval-1]
-    catalog_lookup: {catalog: evaluation_templates}
-  evaluation_llm:
-    levels: [eval-llm]
-    catalog_lookup: {catalog: evaluation_llms}
+  combo_id: [combo-1]
+  draft_template: [draft-A]
+  draft_llm: [draft-llm]
+  essay_template: '@file:items/essay_templates.csv'
+  essay_llm: [essay-llm]
+  evaluation_template: [eval-1]
+  evaluation_llm: [eval-llm]
 rules:
-  - tuple:
-      name: essay_bundle
+  tuples:
+    essay_bundle:
       axes: [essay_template, essay_llm]
-      items:
-        - [essay-X, essay-llm]
-        - [essay-Y, essay-llm]
-  - pair:
+      items: '@file:items/essay_llm_pairs.csv'
+  pairs:
+    evaluation_bundle:
       left: evaluation_template
       right: evaluation_llm
-      name: evaluation_bundle
-      allowed:
-        - [eval-1, eval-llm]
+      allowed: '@file:items/evaluation_pairs.csv'
 replicates:
-  draft_template:
-    count: 2
-    column: draft_replicate
-  essay_template:
-    count: 2
-    column: essay_replicate
+  draft_template: 2
+  essay_template: 2
 output:
   field_order:
     - combo_id
@@ -49,5 +28,5 @@ output:
     - essay_llm
     - evaluation_template
     - evaluation_llm
-    - draft_replicate
-    - essay_replicate
+    - draft_template_replicate
+    - essay_template_replicate

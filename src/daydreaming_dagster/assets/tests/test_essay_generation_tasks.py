@@ -27,45 +27,23 @@ def _write_spec(root: Path, cohort_id: str) -> None:
     spec_dir.mkdir(parents=True, exist_ok=True)
     spec = {
         "axes": {
-            "combo_id": {
-                "levels": ["combo-1"],
-                "catalog_lookup": {"catalog": "combos"},
-            },
-            "draft_template": {
-                "levels": ["draft-A"],
-                "catalog_lookup": {"catalog": "draft_templates"},
-            },
-            "draft_llm": {
-                "levels": ["gen-model"],
-                "catalog_lookup": {"catalog": "generation_llms"},
-            },
-            "essay_template": {
-                "levels": ["essay-X"],
-                "catalog_lookup": {"catalog": "essay_templates"},
-            },
-            "essay_llm": {
-                "levels": ["gen-model"],
-                "catalog_lookup": {"catalog": "essay_llms"},
-            },
-            "evaluation_template": {
-                "levels": ["eval-1"],
-                "catalog_lookup": {"catalog": "evaluation_templates"},
-            },
-            "evaluation_llm": {
-                "levels": ["eval-model"],
-                "catalog_lookup": {"catalog": "evaluation_llms"},
-            },
+            "combo_id": ["combo-1"],
+            "draft_template": ["draft-A"],
+            "draft_llm": ["gen-model"],
+            "essay_template": ["essay-X"],
+            "essay_llm": ["gen-model"],
+            "evaluation_template": ["eval-1"],
+            "evaluation_llm": ["eval-model"],
         },
-        "rules": [
-            {
-                "pair": {
+        "rules": {
+            "pairs": {
+                "evaluation_bundle": {
                     "left": "evaluation_template",
                     "right": "evaluation_llm",
-                    "name": "evaluation_bundle",
                     "allowed": [["eval-1", "eval-model"]],
                 }
             }
-        ],
+        },
         "output": {
             "field_order": [
                 "combo_id",

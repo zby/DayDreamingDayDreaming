@@ -68,45 +68,23 @@ def test_generate_spec_round_trip(tmp_path: Path, essay_templates: list[str]) ->
     spec_dir.mkdir(parents=True, exist_ok=True)
     spec = {
         "axes": {
-            "combo_id": {
-                "levels": ["combo-1"],
-                "catalog_lookup": {"catalog": "combos"},
-            },
-            "draft_template": {
-                "levels": ["draft-A"],
-                "catalog_lookup": {"catalog": "draft_templates"},
-            },
-            "draft_llm": {
-                "levels": ["draft-llm"],
-                "catalog_lookup": {"catalog": "generation_llms"},
-            },
-            "essay_template": {
-                "levels": [str(template) for template in essay_templates],
-                "catalog_lookup": {"catalog": "essay_templates"},
-            },
-            "essay_llm": {
-                "levels": ["essay-llm"],
-                "catalog_lookup": {"catalog": "essay_llms"},
-            },
-            "evaluation_template": {
-                "levels": ["eval-1"],
-                "catalog_lookup": {"catalog": "evaluation_templates"},
-            },
-            "evaluation_llm": {
-                "levels": ["eval-llm"],
-                "catalog_lookup": {"catalog": "evaluation_llms"},
-            },
+            "combo_id": ["combo-1"],
+            "draft_template": ["draft-A"],
+            "draft_llm": ["draft-llm"],
+            "essay_template": [str(template) for template in essay_templates],
+            "essay_llm": ["essay-llm"],
+            "evaluation_template": ["eval-1"],
+            "evaluation_llm": ["eval-llm"],
         },
-        "rules": [
-            {
-                "pair": {
+        "rules": {
+            "pairs": {
+                "evaluation_bundle": {
                     "left": "evaluation_template",
                     "right": "evaluation_llm",
-                    "name": "evaluation_bundle",
                     "allowed": [["eval-1", "eval-llm"]],
                 }
             }
-        ],
+        },
         "output": {
             "field_order": [
                 "combo_id",
@@ -116,15 +94,15 @@ def test_generate_spec_round_trip(tmp_path: Path, essay_templates: list[str]) ->
                 "essay_llm",
                 "evaluation_template",
                 "evaluation_llm",
-                "draft_replicate",
-                "essay_replicate",
-                "evaluation_replicate",
+                "draft_template_replicate",
+                "essay_template_replicate",
+                "evaluation_template_replicate",
             ]
         },
         "replicates": {
-            "draft_template": {"count": 2, "column": "draft_replicate"},
-            "essay_template": {"count": 2, "column": "essay_replicate"},
-            "evaluation_template": {"count": 1, "column": "evaluation_replicate"},
+            "draft_template": 2,
+            "essay_template": 2,
+            "evaluation_template": 1,
         },
     }
     (spec_dir / "config.yaml").write_text(
@@ -152,7 +130,7 @@ def test_generate_spec_round_trip(tmp_path: Path, essay_templates: list[str]) ->
     spec_dir = generate_spec_bundle(data_root, cohort_id, overwrite=True)
     assert spec_dir.exists()
     config_text = (spec_dir / "config.yaml").read_text(encoding="utf-8")
-    assert "@file:items/cohort_rows.yaml" in config_text
+    assert "@file:items/cohort_rows.csv" in config_text
 
     roundtrip_df = cohort_membership(
         build_asset_context(resources={"data_root": str(data_root)}),
@@ -169,6 +147,6 @@ def test_generate_spec_round_trip(tmp_path: Path, essay_templates: list[str]) ->
         check_like=True,
     )
 
-    item_path = spec_dir / "items" / "cohort_rows.yaml"
+    item_path = spec_dir / "items" / "cohort_rows.csv"
     assert item_path.exists()
     assert "combo-1" in item_path.read_text(encoding="utf-8")

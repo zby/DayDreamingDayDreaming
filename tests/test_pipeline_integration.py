@@ -44,48 +44,26 @@ def _write_spec(
         allowed_matrix = [["placeholder-eval", "placeholder-model"]]
 
     axes = {
-        "combo_id": {
-            "levels": [str(item) for item in combos],
-            "catalog_lookup": {"catalog": "combos"},
-        },
-        "draft_template": {
-            "levels": [str(item) for item in draft_templates],
-            "catalog_lookup": {"catalog": "draft_templates"},
-        },
-        "draft_llm": {
-            "levels": [str(item) for item in generation_llms],
-            "catalog_lookup": {"catalog": "generation_llms"},
-        },
-        "essay_template": {
-            "levels": [str(item) for item in essay_templates],
-            "catalog_lookup": {"catalog": "essay_templates"},
-        },
-        "essay_llm": {
-            "levels": [str(item) for item in generation_llms],
-            "catalog_lookup": {"catalog": "essay_llms"},
-        },
-        "evaluation_template": {
-            "levels": [str(item) for item in evaluation_templates],
-            "catalog_lookup": {"catalog": "evaluation_templates"},
-        },
-        "evaluation_llm": {
-            "levels": [str(item) for item in evaluation_llms],
-            "catalog_lookup": {"catalog": "evaluation_llms"},
-        },
+        "combo_id": [str(item) for item in combos],
+        "draft_template": [str(item) for item in draft_templates],
+        "draft_llm": [str(item) for item in generation_llms],
+        "essay_template": [str(item) for item in essay_templates],
+        "essay_llm": [str(item) for item in generation_llms],
+        "evaluation_template": [str(item) for item in evaluation_templates],
+        "evaluation_llm": [str(item) for item in evaluation_llms],
     }
 
     spec: dict[str, object] = {
         "axes": axes,
-        "rules": [
-            {
-                "pair": {
+        "rules": {
+            "pairs": {
+                "evaluation_bundle": {
                     "left": "evaluation_template",
                     "right": "evaluation_llm",
-                    "name": "evaluation_bundle",
                     "allowed": allowed_matrix,
                 }
             }
-        ],
+        },
         "output": {
             "field_order": [
                 "combo_id",
@@ -101,11 +79,7 @@ def _write_spec(
 
     if replicates:
         spec["replicates"] = replicates
-        replicate_columns = [
-            cfg.get("column")
-            for cfg in replicates.values()
-            if isinstance(cfg, dict) and cfg.get("column")
-        ]
+        replicate_columns = [f"{axis}_replicate" for axis in replicates]
         spec["output"]["field_order"].extend(replicate_columns)
 
     (spec_dir / "config.yaml").write_text(
@@ -291,22 +265,13 @@ def pipeline_data_root_prepared():
                 for _, row in rep_df.iterrows()
             }
 
-    replicates_spec: dict[str, dict[str, int | str]] = {}
+    replicates_spec: dict[str, int] = {}
     if rep_map.get("draft", 1) > 1:
-        replicates_spec["draft_template"] = {
-            "count": int(rep_map["draft"]),
-            "column": "draft_replicate",
-        }
+        replicates_spec["draft_template"] = int(rep_map["draft"])
     if rep_map.get("essay", 1) > 1:
-        replicates_spec["essay_template"] = {
-            "count": int(rep_map["essay"]),
-            "column": "essay_replicate",
-        }
+        replicates_spec["essay_template"] = int(rep_map["essay"])
     if rep_map.get("evaluation", 1) > 1:
-        replicates_spec["evaluation_template"] = {
-            "count": int(rep_map["evaluation"]),
-            "column": "evaluation_replicate",
-        }
+        replicates_spec["evaluation_template"] = int(rep_map["evaluation"])
 
     _write_spec(
         pipeline_data_root,

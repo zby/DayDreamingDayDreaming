@@ -14,25 +14,20 @@ def write_spec(tmp_path: Path) -> Path:
         json.dumps(
             {
                 "axes": {
-                    "draft_template": {
-                        "levels": ["draft-A"],
-                        "catalog_lookup": {"catalog": "draft_templates"},
-                    },
+                    "draft_template": ["draft-A"],
                     "essay_template": ["essay-A"],
                 },
-                "rules": [
-                    {
-                        "pair": {
+                "rules": {
+                    "pairs": {
+                        "draft_essay": {
                             "left": "draft_template",
                             "right": "essay_template",
-                            "name": "draft_essay",
                             "allowed": [["draft-A", "essay-A"]],
                         }
                     }
-                ],
+                },
                 "output": {
-                    "keep_pair_axis": True,
-                    "field_order": ["draft_template", "essay_template", "draft_essay"],
+                    "field_order": ["draft_template", "essay_template"],
                 },
             }
         ),
@@ -45,7 +40,7 @@ def test_cli_writes_csv(tmp_path: Path) -> None:
     spec_path = write_spec(tmp_path)
     out_path = tmp_path / "rows.csv"
     catalog_path = tmp_path / "catalog.json"
-    catalog_path.write_text(json.dumps({"draft_templates": ["draft-A"]}), encoding="utf-8")
+    catalog_path.write_text(json.dumps({"draft_template": ["draft-A"]}), encoding="utf-8")
 
     exit_code = main([
         str(spec_path),
@@ -60,14 +55,14 @@ def test_cli_writes_csv(tmp_path: Path) -> None:
     assert exit_code == 0
     content = out_path.read_text(encoding="utf-8").splitlines()
     header = content[0].split(",")
-    assert header == ["draft_template", "essay_template", "draft_essay"]
+    assert header == ["draft_template", "essay_template"]
 
 
 def test_cli_writes_jsonl(tmp_path: Path) -> None:
     spec_path = write_spec(tmp_path)
     out_path = tmp_path / "rows.jsonl"
     catalog_path = tmp_path / "catalog.json"
-    catalog_path.write_text(json.dumps({"draft_templates": ["draft-A"]}), encoding="utf-8")
+    catalog_path.write_text(json.dumps({"draft_template": ["draft-A"]}), encoding="utf-8")
 
     exit_code = main([
         str(spec_path),
@@ -83,7 +78,7 @@ def test_cli_writes_jsonl(tmp_path: Path) -> None:
     lines = out_path.read_text(encoding="utf-8").strip().splitlines()
     payload = json.loads(lines[0])
     assert payload["draft_template"] == "draft-A"
-    assert list(payload.keys()) == ["draft_template", "essay_template", "draft_essay"]
+    assert list(payload.keys()) == ["draft_template", "essay_template"]
 
 
 def test_cli_catalog_csv_support(tmp_path: Path) -> None:
@@ -98,7 +93,7 @@ def test_cli_catalog_csv_support(tmp_path: Path) -> None:
         "--format",
         "csv",
         "--catalog-csv",
-        f"draft_templates={csv_path}:id",
+        f"draft_template={csv_path}:id",
     ])
 
     assert exit_code == 0

@@ -1,0 +1,5 @@
+evaluation_template,evaluation_llm
+creativity-metrics-v2,sonnet-4
+creativity-metrics-v2,gemini_25_pro
+daydreaming-verification-v3,sonnet-4
+daydreaming-verification-v3,gemini_25_pro

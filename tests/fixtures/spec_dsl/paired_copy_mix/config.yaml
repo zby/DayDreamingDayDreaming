@@ -1,24 +1,14 @@
 axes:
-  draft_template:
-    levels: [creative-synthesis-v2, gwern_original]
-    catalog_lookup: {catalog: draft_templates}
-  essay_template:
-    levels: [essay-llm-v1, essay-copy-v1]
-    catalog_lookup: {catalog: essay_templates}
-  evaluation_template:
-    levels: [quality-eval-v1]
-    catalog_lookup: {catalog: evaluation_templates}
-  evaluation_llm:
-    levels: [sonnet-4]
-    catalog_lookup: {catalog: evaluation_llms}
+  draft_template: '@file:items/draft_templates.csv'
+  essay_template: '@file:items/essay_templates.csv'
+  evaluation_template: '@file:items/evaluation_templates.csv'
+  evaluation_llm: '@file:items/evaluation_llms.csv'
 rules:
-  - pair:
+  pairs:
+    draft_essay_mode:
       left: draft_template
       right: essay_template
-      name: draft_essay_mode
-      allowed:
-        - [creative-synthesis-v2, essay-llm-v1]
-        - [gwern_original, essay-copy-v1]
+      allowed: '@file:items/draft_essay_pairs.csv'
 output:
   field_order:
     - draft_template

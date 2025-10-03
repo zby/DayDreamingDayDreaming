@@ -42,15 +42,7 @@ def compile_design(
 
     _validate_catalogs(spec.axes, catalogs)
 
-    output_opts = {
-        "expand_ties": bool(spec.output.get("expand_ties", True)),
-        "expand_pairs": bool(spec.output.get("expand_pairs", True)),
-        "keep_pair_axis": bool(spec.output.get("keep_pair_axis", False)),
-        "expand_tuples": bool(spec.output.get("expand_tuples", True)),
-        "keep_tuple_axis": bool(spec.output.get("keep_tuple_axis", False)),
-        "field_order": spec.output.get("field_order"),
-        "replicates": spec.replicates,
-    }
+    field_order = spec.output.get("field_order")
 
     for rule in spec.rules:
         _apply_rule(rule, axis_levels, axis_order, tie_back, pair_meta, tuple_meta)
@@ -64,12 +56,13 @@ def compile_design(
 
     for combo in cartesian:
         base_row = OrderedDict(zip(axis_order, combo, strict=False))
-        expanded_rows = _expand_row(
+        expanded_rows = _finalize_row(
             base_row,
-            tie_back,
-            pair_meta,
-            tuple_meta,
-            output_opts,
+            tie_back=tie_back,
+            pair_meta=pair_meta,
+            tuple_meta=tuple_meta,
+            field_order=field_order,
+            replicates=spec.replicates,
         )
         rows.extend(expanded_rows)
     return rows
@@ -79,31 +72,20 @@ def _validate_catalogs(
     axes: Mapping[str, AxisSpec],
     catalogs: Any | None,
 ) -> None:
-    if catalogs is None:
+    if not catalogs:
         return
 
-    if not hasattr(catalogs, "get"):
+    get = getattr(catalogs, "get", None)
+    if get is None:
         raise SpecDslError(
             SpecDslErrorCode.INVALID_SPEC,
             ctx={"error": "catalogs must provide .get accessor"},
         )
 
     for axis_name, axis_spec in axes.items():
-        catalog_meta = axis_spec.catalog_lookup
-        if not catalog_meta:
-            continue
-        catalog_name = catalog_meta.get("name") or catalog_meta.get("catalog")
-        if not isinstance(catalog_name, str):
-            raise SpecDslError(
-                SpecDslErrorCode.INVALID_SPEC,
-                ctx={"error": "catalog_lookup requires catalog name", "axis": axis_name},
-            )
-        catalog_values = catalogs.get(catalog_name)
+        catalog_values = get(axis_name)
         if catalog_values is None:
-            raise SpecDslError(
-                SpecDslErrorCode.INVALID_SPEC,
-                ctx={"error": "catalog not provided", "axis": axis_name, "catalog": catalog_name},
-            )
+            continue
         if not isinstance(catalog_values, (set, list, tuple)):
             catalog_values = list(catalog_values)
         catalog_set = set(catalog_values)
@@ -114,7 +96,6 @@ def _validate_catalogs(
                 ctx={
                     "error": "axis levels missing from catalog",
                     "axis": axis_name,
-                    "catalog": catalog_name,
                     "missing": tuple(missing),
                 },
             )
@@ -384,7 +365,6 @@ def _apply_tuple(
     name = spec.get("name")
     axes_list = spec.get("axes")
     items = spec.get("items")
-    expand_override = spec.get("expand")
 
     if not isinstance(name, str):
         raise SpecDslError(
@@ -401,10 +381,10 @@ def _apply_tuple(
             SpecDslErrorCode.INVALID_SPEC,
             ctx={"error": "tuple.items must be non-empty list"},
         )
-    if expand_override is not None and not isinstance(expand_override, bool):
+    if "expand" in spec:
         raise SpecDslError(
             SpecDslErrorCode.INVALID_SPEC,
-            ctx={"error": "tuple.expand must be boolean"},
+            ctx={"error": "tuple.expand deprecated"},
         )
 
     for axis_name in axes_list:
@@ -447,10 +427,7 @@ def _apply_tuple(
 
     axes[name] = canonical_items
     axis_order.insert(insert_at, name)
-    tuple_meta[name] = {
-        "axes": list(axes_list),
-        "expand_override": expand_override,
-    }
+    tuple_meta[name] = {"axes": list(axes_list)}
 
     for axis_name in axes_list:
         resolved = tie_back.get(axis_name, axis_name)
@@ -459,27 +436,21 @@ def _apply_tuple(
             axis_order.remove(resolved)
 
 
-def _expand_row(
+def _finalize_row(
     row: OrderedDict[str, Any],
+    *,
     tie_back: dict[str, str],
     pair_meta: dict[str, tuple[str, str]],
     tuple_meta: dict[str, dict[str, Any]],
-    opts: dict[str, Any],
+    field_order: Sequence[Any] | None,
+    replicates: Mapping[str, ReplicateSpec] | None,
 ) -> list[OrderedDict[str, Any]]:
-    # Expand pair axes first so downstream tie expansion can reuse restored columns.
-    _expand_pairs(row, pair_meta, opts)
-    _expand_tuples(row, tuple_meta, opts)
+    _expand_pairs(row, pair_meta)
+    _expand_tuples(row, tuple_meta)
+    _expand_ties(row, tie_back)
 
-    if opts["expand_ties"]:
-        for original, canonical in tie_back.items():
-            if original == canonical:
-                continue
-            if canonical in row and original not in row:
-                row[original] = row[canonical]
+    rows = _apply_replicates([row], replicates)
 
-    rows = _apply_replicates([row], opts.get("replicates"))
-
-    field_order = opts.get("field_order")
     if isinstance(field_order, list):
         for r in rows:
             ordered = OrderedDict()
@@ -494,7 +465,7 @@ def _expand_row(
     return rows
 
 
-def _expand_pairs(row: OrderedDict[str, Any], pair_meta: dict[str, tuple[str, str]], opts: dict[str, Any]) -> None:
+def _expand_pairs(row: OrderedDict[str, Any], pair_meta: dict[str, tuple[str, str]]) -> None:
     if not pair_meta:
         return
     to_delete: list[str] = []
@@ -508,16 +479,14 @@ def _expand_pairs(row: OrderedDict[str, Any], pair_meta: dict[str, tuple[str, st
                 ctx={"error": "pair axis value must be 2-tuple", "axis": axis_name},
             )
         left_val, right_val = pair_value
-        if opts["expand_pairs"]:
-            row[left_raw] = left_val
-            row[right_raw] = right_val
-        if not opts["keep_pair_axis"]:
-            to_delete.append(axis_name)
+        row[left_raw] = left_val
+        row[right_raw] = right_val
+        to_delete.append(axis_name)
     for axis_name in to_delete:
         row.pop(axis_name, None)
 
 
-def _expand_tuples(row: OrderedDict[str, Any], tuple_meta: dict[str, dict[str, Any]], opts: dict[str, Any]) -> None:
+def _expand_tuples(row: OrderedDict[str, Any], tuple_meta: dict[str, dict[str, Any]]) -> None:
     if not tuple_meta:
         return
     to_delete: list[str] = []
@@ -530,16 +499,19 @@ def _expand_tuples(row: OrderedDict[str, Any], tuple_meta: dict[str, dict[str, A
                 SpecDslErrorCode.INVALID_SPEC,
                 ctx={"error": "tuple axis value has wrong arity", "axis": axis_name},
             )
-        expand = meta.get("expand_override")
-        if expand is None:
-            expand = opts["expand_tuples"]
-        if expand:
-            for sub_axis, value in zip(meta["axes"], tuple_value, strict=False):
-                row[sub_axis] = value
-        if not opts["keep_tuple_axis"]:
-            to_delete.append(axis_name)
+        for sub_axis, value in zip(meta["axes"], tuple_value, strict=False):
+            row[sub_axis] = value
+        to_delete.append(axis_name)
     for axis_name in to_delete:
         row.pop(axis_name, None)
+
+
+def _expand_ties(row: OrderedDict[str, Any], tie_back: dict[str, str]) -> None:
+    for original, canonical in tie_back.items():
+        if original == canonical:
+            continue
+        if canonical in row and original not in row:
+            row[original] = row[canonical]
 
 
 def _apply_replicates(

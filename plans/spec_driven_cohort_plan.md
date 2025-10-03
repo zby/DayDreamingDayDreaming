@@ -29,14 +29,14 @@
 
 ### 3.2 Materialization Flow
 - `cohort_plan` asset loads the DSL spec, compiles it with the shared module, and receives deterministic rows describing every draft/essay/evaluation combination plus replicate indices.
-- Planner groups rows by stage: drafts use `(draft_template, draft_llm, draft_replicate)`, essays use the tuple-expanded essay columns, evaluations use `(evaluation_template, evaluation_llm)`.
+- Planner groups rows by stage: drafts use `(draft_template, draft_llm, draft_template_replicate)`, essays use the tuple-expanded essay columns, evaluations use `(evaluation_template, evaluation_llm)`.
 - No implicit Cartesian logic remains in the planner—the DSL already captures structured couplings and eliminates unintended combinations.
 - `materialize_cohort` consumes the grouped rows to produce `membership.csv`, manifest, and seeded metadata.
 - Spec directory is the sole configuration surface; catalogs remain immutable references.
 
 ### 3.3 Global Catalog Behavior
 - `data/1_raw/*.csv` keep all entries; `active` column removed.
-- Catalog data is surfaced through the DSL via `catalog_lookup` and CLI flags (`--catalog`, `--catalog-csv`, `--data-root`).
+- Catalog data is surfaced through axis-keyed catalogs passed to the DSL (CLI flags `--catalog`, `--catalog-csv`, `--data-root`).
 - `combo_mappings.csv` remains append-only; specs reference IDs directly.
 - Users maintain specs per cohort; catalogs stay global references.
 

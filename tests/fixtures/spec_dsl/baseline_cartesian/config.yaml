@@ -1,26 +1,14 @@
 axes:
-  draft_template:
-    levels: [creative-synthesis-v2, application-implementation-v2, gwern_original]
-    catalog_lookup: {catalog: draft_templates}
-  essay_template:
-    levels: [parsed-from-links-v1]
-    catalog_lookup: {catalog: essay_templates}
-  evaluation_template:
-    levels: [creativity-metrics-v2, daydreaming-verification-v3]
-    catalog_lookup: {catalog: evaluation_templates}
-  evaluation_llm:
-    levels: [sonnet-4, gemini_25_pro]
-    catalog_lookup: {catalog: evaluation_llms}
+  draft_template: '@file:items/draft_templates.csv'
+  essay_template: '@file:items/essay_templates.csv'
+  evaluation_template: '@file:items/evaluation_templates.csv'
+  evaluation_llm: '@file:items/evaluation_llms.csv'
 rules:
-  - pair:
+  pairs:
+    evaluation_bundle:
       left: evaluation_template
       right: evaluation_llm
-      name: evaluation_bundle
-      allowed:
-        - [creativity-metrics-v2, sonnet-4]
-        - [creativity-metrics-v2, gemini_25_pro]
-        - [daydreaming-verification-v3, sonnet-4]
-        - [daydreaming-verification-v3, gemini_25_pro]
+      allowed: '@file:items/evaluation_pairs.csv'
 output:
   field_order:
     - draft_template

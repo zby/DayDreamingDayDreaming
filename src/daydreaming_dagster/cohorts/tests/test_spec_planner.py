@@ -16,18 +16,18 @@ FIXTURES = Path(__file__).resolve().parents[4] / "tests" / "fixtures" / "spec_ds
 
 def _catalogs() -> dict[str, list[str]]:
     return {
-        "combos": ["combo-1"],
-        "draft_templates": ["draft-A"],
-        "generation_llms": ["draft-llm"],
-        "essay_templates": ["essay-X", "essay-Y"],
-        "essay_llms": ["essay-llm"],
-        "evaluation_templates": ["eval-1"],
-        "evaluation_llms": ["eval-llm"],
+        "combo_id": ["combo-1"],
+        "draft_template": ["draft-A"],
+        "draft_llm": ["draft-llm"],
+        "essay_template": ["essay-X", "essay-Y"],
+        "essay_llm": ["essay-llm"],
+        "evaluation_template": ["eval-1"],
+        "evaluation_llm": ["eval-llm"],
     }
 
 
 def test_cohort_plan_from_spec_bundle() -> None:
-    spec_path = FIXTURES / "cohort_cartesian"
+    spec_path = FIXTURES / "cohort_cartesian" / "config.yaml"
     spec = load_spec(spec_path)
     rows = compile_design(spec, catalogs=_catalogs())
 

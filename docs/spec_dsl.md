@@ -24,30 +24,22 @@ Top-level keys supported by `load_spec` / CLI:
 
 | Key | Type | Notes |
 |-----|------|-------|
-| `axes` | mapping axis → list _or_ mapping | Required. Each axis is either a list of literal levels or a mapping containing `levels` plus optional `catalog_lookup` metadata. Directory specs may place lists in `axes/<axis>.txt`; the loader wraps them automatically. |
-| `rules` | list | Optional. Each entry is a single-rule mapping (`subset`, `tie`, `pair`, `tuple`). Execution order is preserved. |
-| `output` | mapping | Optional. Controls expansion flags, field ordering, shuffle seed. |
-| `replicates` | mapping | Optional. Defines per-axis replication (`{axis: {count, column?}}`). |
+| `axes` | mapping axis → list/`@file:` string | Required. Values are inline lists or shorthand references like `@file:levels.csv`. CSV includes must provide a header; the loader reads the first column when a single value is needed. |
+| `rules` | mapping | Optional. Sectioned by rule type (`subsets`, `ties`, `pairs`, `tuples`). The loader converts each section into the canonical rule pipeline order. |
+| `output` | mapping | Optional. Currently used for column ordering (`field_order`) and shuffle seed. |
+| `replicates` | mapping | Optional. Defines per-axis replication counts (`{axis: count}`), emitting `<axis>_replicate` columns automatically. |
+
+> Specs must be single files. Directory bundles (`spec/axes/*.txt`, `spec/rules/*.yaml`) are no longer supported—use `@file:` references instead.
 
 ### 2.1 Axes
 
 ```yaml
 axes:
-  draft_template:
-    levels: [creative-v2, gwern_original]
-    catalog_lookup: { catalog: drafts }
-  essay_template: [copy_v1]
+  draft_template: [creative-v2, gwern_original]
+  essay_template: '@file:items/essay_templates.csv'
 ```
 
-`catalog_lookup` instructs the compiler to verify axis levels against the named catalog. Catalog data is supplied at compile time (see §4).
-
-To reuse existing lists, point a level declaration at an external file with `@file:`. Paths are resolved relative to the spec file (or spec directory when using bundled configs). Supported formats include YAML/JSON (parsed into native structures), CSV (returned as lists of rows), and plain text (newline-separated values):
-
-```yaml
-axes:
-  essay_template:
-    levels: '@file:items/essay_templates.yaml'
-```
+Axis values are declared inline or loaded from sibling files via the `@file:` shorthand. Paths resolve relative to the spec file (or bundle root). CSV is the recommended format: provide a header row and one value per line for simple lists. Multi-column CSVs feed tuple or pair rules, returning a tuple of strings ordered by the header. (YAML/JSON remain supported if richer structures are required.)
 
 ### 2.2 Rules
 
@@ -55,26 +47,23 @@ Rules run after axis deduplication. Each mapping must contain exactly one rule k
 
 ```yaml
 rules:
-  - subset:
-      axis: draft_template
-      keep: [creative-v2]
-  - tie:
+  subsets:
+    draft_template: [creative-v2]
+  ties:
+    draft_essay:
       axes: [draft_template, essay_template]
-      to: draft_essay
-  - pair:
+  pairs:
+    draft_eval:
       left: draft_template
       right: evaluation_template
-      name: draft_eval
       allowed:
         - [creative-v2, eval-a]
         - [creative-v2, eval-b]
       balance: left
-  - tuple:
-      name: essay_bundle
+  tuples:
+    essay_bundle:
       axes: [essay_template, essay_llm]
-      items:
-        - [copy_v1, copy_llm]
-      expand: true
+      items: '@file:items/essay_bundle.csv'
 ```
 
 See §3 for semantics.
@@ -82,63 +71,58 @@ See §3 for semantics.
 File references are also supported inside rules. For example:
 
 ```yaml
-  - tuple:
-      name: curated_bundle
+rules:
+  tuples:
+    curated_bundle:
       axes: [essay_template, essay_llm, evaluation_template, evaluation_llm]
-      items: '@file:items/curated_bundles.yaml'
+      items: '@file:items/curated_bundles.csv'
 ```
 
-`items/curated_bundles.yaml` should contain a YAML/JSON array describing the tuple entries.
+`items/curated_bundles.csv` should contain a header matching the listed axes and one row per allowed tuple.
 
 ### 2.3 Output Options
 
 ```yaml
 output:
-  expand_pairs: true
-  keep_pair_axis: false
-  expand_ties: true
-  expand_tuples: true
   field_order: [draft_template, essay_template, evaluation_template]
 ```
 
-Flags default to expanding pairs/tuples and dropping synthetic axes; override as needed. `field_order` pins column order in the emitted rows/CSV.
+`field_order` pins column order in the emitted rows/CSV. Pair, tuple, and tie rules always expand back into their component axes; the synthetic axes are removed after expansion.
 
 ### 2.4 Replicates
 
 ```yaml
 replicates:
-  draft_template:
-    count: 2
-    column: draft_replicate  # optional (defaults to "draft_template_replicate")
+  draft_template: 2
 ```
 
-Each referenced axis (post-rule application) is duplicated `count` times, with replicate indices `1..count` written to the given column. Those columns participate in deterministic `gen_id` construction.
+Each referenced axis (post-rule application) is duplicated `count` times, with replicate indices `1..count` written to the automatically derived column `<axis>_replicate`. Those columns participate in deterministic `gen_id` construction.
 
 ## 3. Rule Semantics
 
-- **Subset** (`subset: {axis, keep}`): Filters the axis to the listed values; empty results raise `SpecDslError`.
-- **Tie** (`tie: {axes: [...], to?}`): Intersects levels across the axes, collapses them into a canonical axis (`to` or the first name), and records original aliases so they can be re-expanded if `expand_ties` is true.
-- **Pair** (`pair: {left, right, name, allowed, balance?}`): Replaces two axes with a new synthetic axis containing the allowed pairs. Optional `balance` (`left`, `right`, `both`) enforces uniform degrees. During emission, original columns reappear unless `expand_pairs` is false; `keep_pair_axis` retains the synthetic axis alongside the expansion.
-- **Tuple** (`tuple: {name, axes, items, expand?}`): Couples N axes into a single tuple-valued axis. Items can be inline or `@file:`. Expansion restores the original axes when `expand` (or global `expand_tuples`) is true; otherwise the tuple axis persists.
+- **Subset** (`subsets: axis → levels`): Filters the axis to the listed values; empty results raise `SpecDslError`.
+- **Tie** (`ties: canonical → {axes}`): Intersects levels across the listed axes, collapses them into the canonical key, then restores the original axis names with the canonical values.
+- **Pair** (`pairs: name → {left, right, allowed, balance?}`): Replaces two axes with a new synthetic axis (named after the mapping key) containing the allowed pairs. Optional `balance` (`left`, `right`, `both`) enforces uniform degrees. After rules run, the compiler always rehydrates the original left/right columns and removes the synthetic axis.
+- **Tuple** (`tuples: name → {axes, items}`): Couples N axes into a single tuple-valued axis. Items can be inline or `@file:`. After rule evaluation the compiler restores the individual axes and drops the tuple axis.
 
 Rules execute in declaration order: `subset` → `tie` → `pair` → `tuple` → Cartesian product → output expansion/replication.
 
 ## 4. Catalog Validation
 
-Axes with `catalog_lookup: { catalog: name }` are validated against provided catalog data. Supply catalogs via the CLI:
+Validation now keys off the axis identifiers themselves. When `compile_design` receives a `catalogs` mapping, any axis present in that mapping is checked for membership.
 
-- `--catalog path.json` (repeatable). Each JSON file must contain mappings `{catalog_name: [values...]}` or `{catalog_name: {value: ...}}`.
-- `--catalog-csv name=PATH[:column]` (repeatable). Reads values from a CSV column (defaults to `id`).
-- `--data-root /path/to/data` enables shortcuts like `--catalog-csv templates=@stage_templates_csv:template_id`, resolving attributes on `daydreaming_dagster.data_layer.paths.Paths`.
+- `--catalog path.json` (repeatable). Each JSON file must contain mappings `{axis_name: [values...]}` or `{axis_name: {value: ...}}`.
+- `--catalog-csv axis=PATH[:column]` (repeatable). Reads values from a CSV column (defaults to `id`).
+- `--data-root /path/to/data` enables shortcuts like `--catalog-csv draft_template=@stage_templates_csv:template_id`, resolving attributes on `daydreaming_dagster.data_layer.paths.Paths`.
 
-If any axis value is missing, the compiler raises `SpecDslError(INVALID_SPEC)` with the offending `missing` list.
+If any axis value is missing from its provided catalog, the compiler raises `SpecDslError(INVALID_SPEC)` with the offending `missing` list.
 
 ## 5. Replication Flow
 
 Replication happens after pair/tuple expansion but before field ordering:
 
 1. For each row, look up every `ReplicateSpec` whose axis remains present.
-2. Duplicate the row `count` times, inserting a 1-based replicate index into the configured column (default `<axis>_replicate`).
+2. Duplicate the row `count` times, inserting a 1-based replicate index into the derived column `<axis>_replicate`.
 3. Downstream signature builders can hash `(combo, draft_template, ..., draft_template_replicate)` to form unique generation IDs deterministically.
 
 If an axis is missing or the replicate column conflicts with an existing field, the compiler raises `SpecDslError` to protect schema integrity.
@@ -177,9 +161,7 @@ Exit codes follow standard Python semantics (`0` on success, `SpecDslError` mess
 ```yaml
 # spec/examples/dual_llm_cartesian.yaml
 axes:
-  draft_template:
-    levels: [creative-v2, application-v2]
-    catalog_lookup: { catalog: drafts }
+  draft_template: [creative-v2, application-v2]
   essay_template: [essay-copy, essay-llm]
   evaluation_template: [eval-a, eval-b]
   draft_llm: [gemini_25_pro]
@@ -187,27 +169,22 @@ axes:
   evaluation_llm: [sonnet-4]
 
 rules:
-  - subset:
-      axis: essay_template
-      keep: [essay-copy, essay-llm]
-  - pair:
+  pairs:
+    draft_essay:
       left: draft_template
       right: essay_template
-      name: draft_essay
       allowed:
         - [creative-v2, essay-llm]
         - [application-v2, essay-copy]
-  - tuple:
-      name: essay_bundle
+  tuples:
+    essay_bundle:
       axes: [essay_template, essay_llm]
       items:
         - [essay-copy, copy_llm]
         - [essay-llm, sonnet-4]
 
 replicates:
-  draft_template:
-    count: 2
-    column: draft_replicate
+  draft_template: 2
 
 output:
   field_order:
@@ -217,7 +194,7 @@ output:
     - essay_llm
     - evaluation_template
     - evaluation_llm
-    - draft_replicate
+    - draft_template_replicate
 ```
 
 Compile with:
@@ -228,4 +205,4 @@ uv run python scripts/compile_experiment_design.py spec/examples/dual_llm_cartes
   --catalog data/catalogs/drafts.json
 ```
 
-The resulting rows provide every column needed to derive deterministic generation IDs, including `draft_replicate` indices.
+The resulting rows provide every column needed to derive deterministic generation IDs, including `draft_template_replicate` indices.

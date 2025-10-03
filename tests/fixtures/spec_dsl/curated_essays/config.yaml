@@ -1,22 +1,13 @@
 axes:
-  essay_template:
-    levels: '@file:items/essay_templates.yaml'
-    catalog_lookup: {catalog: essay_templates}
-  essay_llm:
-    levels: [sonnet-4, gemini_25_pro]
-    catalog_lookup: {catalog: essay_llms}
-  evaluation_template:
-    levels: [verification-eval-v1]
-    catalog_lookup: {catalog: evaluation_templates}
-  evaluation_llm:
-    levels: [sonnet-4]
-    catalog_lookup: {catalog: evaluation_llms}
+  essay_template: '@file:items/essay_templates.csv'
+  essay_llm: [sonnet-4, gemini_25_pro]
+  evaluation_template: [verification-eval-v1]
+  evaluation_llm: [sonnet-4]
 rules:
-  - tuple:
-      name: curated_bundle
+  tuples:
+    curated_bundle:
       axes: [essay_template, essay_llm, evaluation_template, evaluation_llm]
-      items: '@file:items/curated_bundles.yaml'
-      expand: true
+      items: '@file:items/curated_bundles.csv'
 output:
   field_order:
     - essay_template

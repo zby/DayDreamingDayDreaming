@@ -21,7 +21,7 @@
 - Remove `catalog_lookup` from `AxisSpec`; rely on axis identifiers and spec-provided lists (inline or via file reference).
 
 ### 2. Loader Rewrite (`spec_dsl/loader.py`)
-- Require `axes: { axis_name: [level, ...] }` as the primary representation, while allowing a string value like `@file:levels.yaml` to pull levels from a sibling file (simplified compared to current nested payloads).
+- Require `axes: { axis_name: [level, ...] }` as the primary representation, while allowing a string value like `@file:levels.csv` to pull levels from a sibling file (simplified compared to current nested payloads).
 - Define rule sections (`pairs`, `subsets`, `ties`, `tuples`, etc.) as top-level mappings; convert them into the internal rule representation.
 - Require `output.field_order`; error if deprecated keys (e.g., `order`) appear.
 - Simplify file loading helpers to accept the `@file:` shorthand only; drop legacy nested structures.

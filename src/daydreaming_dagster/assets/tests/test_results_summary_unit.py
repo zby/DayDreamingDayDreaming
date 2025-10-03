@@ -58,48 +58,26 @@ def _prepare_data_root(data_root: Path) -> None:
     spec_dir.mkdir(parents=True, exist_ok=True)
     spec = {
         "axes": {
-            "combo_id": {
-                "levels": ["combo_001", "combo_002"],
-                "catalog_lookup": {"catalog": "combos"},
-            },
-            "draft_template": {
-                "levels": ["links-v4"],
-                "catalog_lookup": {"catalog": "draft_templates"},
-            },
-            "draft_llm": {
-                "levels": ["deepseek"],
-                "catalog_lookup": {"catalog": "generation_llms"},
-            },
-            "essay_template": {
-                "levels": ["systematic-analytical-v2"],
-                "catalog_lookup": {"catalog": "essay_templates"},
-            },
-            "essay_llm": {
-                "levels": ["deepseek"],
-                "catalog_lookup": {"catalog": "essay_llms"},
-            },
-            "evaluation_template": {
-                "levels": ["daydreaming-verification-v2", "creativity-metrics-v2"],
-                "catalog_lookup": {"catalog": "evaluation_templates"},
-            },
-            "evaluation_llm": {
-                "levels": ["deepseek", "qwen"],
-                "catalog_lookup": {"catalog": "evaluation_llms"},
-            },
+            "combo_id": ["combo_001", "combo_002"],
+            "draft_template": ["links-v4"],
+            "draft_llm": ["deepseek"],
+            "essay_template": ["systematic-analytical-v2"],
+            "essay_llm": ["deepseek"],
+            "evaluation_template": ["daydreaming-verification-v2", "creativity-metrics-v2"],
+            "evaluation_llm": ["deepseek", "qwen"],
         },
-        "rules": [
-            {
-                "pair": {
+        "rules": {
+            "pairs": {
+                "evaluation_bundle": {
                     "left": "evaluation_template",
                     "right": "evaluation_llm",
-                    "name": "evaluation_bundle",
                     "allowed": [
                         ["daydreaming-verification-v2", "deepseek"],
                         ["creativity-metrics-v2", "qwen"],
                     ],
                 }
             }
-        ],
+        },
         "output": {
             "field_order": [
                 "combo_id",

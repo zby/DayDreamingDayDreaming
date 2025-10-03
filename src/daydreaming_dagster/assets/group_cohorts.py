@@ -139,15 +139,15 @@ def _build_spec_catalogs(
 
     drafts = _template_ids("draft")
     if drafts:
-        catalogs["draft_templates"] = drafts
+        catalogs["draft_template"] = drafts
 
     essays = _template_ids("essay")
     if essays:
-        catalogs["essay_templates"] = essays
+        catalogs["essay_template"] = essays
 
     evaluations = _template_ids("evaluation")
     if evaluations:
-        catalogs["evaluation_templates"] = evaluations
+        catalogs["evaluation_template"] = evaluations
 
     llm_df = read_llm_models(data_root)
     if not llm_df.empty:
@@ -163,11 +163,10 @@ def _build_spec_catalogs(
         }
         if generation_llms:
             sorted_generation = sorted(generation_llms)
-            catalogs["generation_llms"] = sorted_generation
-            catalogs.setdefault("draft_llms", sorted_generation)
-            catalogs.setdefault("essay_llms", sorted_generation)
+            catalogs["draft_llm"] = sorted_generation
+            catalogs.setdefault("essay_llm", sorted_generation)
         if evaluation_llms:
-            catalogs["evaluation_llms"] = sorted(evaluation_llms)
+            catalogs["evaluation_llm"] = sorted(evaluation_llms)
 
     combos: set[str] = set()
     if isinstance(selected_combo_mappings, pd.DataFrame) and not selected_combo_mappings.empty:
@@ -191,7 +190,7 @@ def _build_spec_catalogs(
             )
 
     if combos:
-        catalogs["combos"] = sorted(combos)
+        catalogs["combo_id"] = sorted(combos)
 
     return catalogs
 

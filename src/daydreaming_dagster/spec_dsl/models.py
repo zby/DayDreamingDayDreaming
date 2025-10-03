@@ -12,7 +12,6 @@ class AxisSpec:
 
     name: str
     levels: Sequence[Any]
-    catalog_lookup: Mapping[str, Any] | None = None
 
 
 @dataclass(frozen=True)

@@ -3,18 +3,12 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, Iterable
 
+import csv
 import shutil
 import json
 
 import pandas as pd
 import yaml
-
-CATALOG_MAP = {
-    "combo_id": "combos",
-    "draft_template": "draft_templates",
-    "essay_template": "essay_templates",
-    "evaluation_template": "evaluation_templates",
-}
 
 AXIS_ORDER = [
     "combo_id",
@@ -146,15 +140,11 @@ def _build_items(
     return items, axis_levels
 
 
-def _prepare_axes(axis_levels: dict[str, set]) -> dict[str, dict[str, Any]]:
-    axes: dict[str, dict[str, Any]] = {}
+def _prepare_axes(axis_levels: dict[str, set]) -> dict[str, list[Any]]:
+    axes: dict[str, list[Any]] = {}
     for axis in AXIS_ORDER:
         levels = sorted(axis_levels[axis])
-        payload: dict[str, Any] = {"levels": levels}
-        catalog = CATALOG_MAP.get(axis)
-        if catalog:
-            payload["catalog_lookup"] = {"catalog": catalog}
-        axes[axis] = payload
+        axes[axis] = [str(level) for level in levels]
     return axes
 
 
@@ -192,24 +182,23 @@ def generate_spec_bundle(
 
     items_dir = target_dir / "items"
     items_dir.mkdir(parents=True, exist_ok=True)
-    items_path = items_dir / "cohort_rows.yaml"
-    items_path.write_text(
-        yaml.safe_dump(items, sort_keys=False, allow_unicode=True),
-        encoding="utf-8",
-    )
+    items_path = items_dir / "cohort_rows.csv"
+    with items_path.open("w", encoding="utf-8", newline="") as fh:
+        writer = csv.writer(fh)
+        writer.writerow(AXIS_ORDER)
+        for row in items:
+            writer.writerow([str(value) for value in row])
 
     config = {
         "axes": axes,
-        "rules": [
-            {
-                "tuple": {
-                    "name": "cohort_rows",
+        "rules": {
+            "tuples": {
+                "cohort_rows": {
                     "axes": AXIS_ORDER,
-                    "items": "@file:items/cohort_rows.yaml",
-                    "expand": True,
+                    "items": "@file:items/cohort_rows.csv",
                 }
             }
-        ],
+        },
         "output": {"field_order": AXIS_ORDER},
     }
 
