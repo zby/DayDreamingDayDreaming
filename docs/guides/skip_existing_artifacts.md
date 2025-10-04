@@ -138,7 +138,6 @@ draft,3  # Incrementing this creates new gen_ids -> new files
 
 - **Backward compatible:** Existing workflows unchanged (default is skip)
 - **No data migration:** Works with existing artifacts
-- **Mode directives removed:** Legacy `mode:` directives in `selected_essays.txt` are no longer recognized (remove them from selection files)
 
 ## Simplified Cohort Membership (Post-Modes)
 
@@ -146,11 +145,9 @@ draft,3  # Incrementing this creates new gen_ids -> new files
 
 | Concern | Mechanism | Purpose |
 |---------|-----------|---------|
-| **Membership** | `selected_essays.txt` presence | Controls WHICH gen_ids appear in cohort membership (always includes all stages: draft + essay + eval) |
 | **Skip logic** | `force` flag in `StageSettings` | Controls WHETHER to regenerate artifacts when materializing a gen_id |
 
 **How it works now:**
-1. File `data/2_tasks/selected_essays.txt` contains:
    ```
    e_abc123
    ```

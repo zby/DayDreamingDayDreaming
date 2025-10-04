@@ -260,17 +260,4 @@ __all__ = [
     "build_allowlists_from_definition",
     "compile_cohort_definition",
     "load_cohort_definition",
-    "CohortPlan",  # BACKCOMPAT
-    "CohortPlanAllowlists",  # BACKCOMPAT
-    "build_allowlists_from_plan",  # BACKCOMPAT
-    "compile_cohort_plan",  # BACKCOMPAT
-    "load_cohort_plan",  # BACKCOMPAT
 ]
-
-
-# BACKCOMPAT: provide legacy names for downstream callers; remove once migrations complete.
-CohortPlan = CohortDefinition
-CohortPlanAllowlists = CohortDefinitionAllowlists
-build_allowlists_from_plan = build_allowlists_from_definition
-compile_cohort_plan = compile_cohort_definition
-load_cohort_plan = load_cohort_definition

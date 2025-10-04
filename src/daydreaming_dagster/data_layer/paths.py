@@ -170,7 +170,6 @@ class Paths:
     def stage_templates_csv(self, stage: str) -> Path:
         return self.raw_dir / f"{stage}_templates.csv"
 
-    @property
     # --- Cohorts ---
     def cohort_dir(self, cohort_id: str) -> Path:
         return self.cohorts_dir / str(cohort_id)

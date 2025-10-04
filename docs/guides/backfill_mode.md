@@ -2,7 +2,7 @@
 
 ## Overview
 
-When creating evaluation cohorts in "backfill mode" (using the `# include-existing-evaluations` directive), the system includes existing evaluations in the cohort membership and skips regenerating them during materialization.
+When creating evaluation cohorts in "backfill mode" (using the `# include-existing-evaluations` directive), the system includes existing evaluations in the cohort membership and skips regenerating them during materialization. Legacy flows that relied on external selection files (`selected_essays.txt`, `selected_drafts.txt`) have been removed; the cohort spec is now the sole source of truth.
 
 ## Problem: Partition Materialization Status
 
@@ -100,32 +100,16 @@ def parsed_exists(self, stage: str, gen_id: str) -> bool:
 
 ### Creating a Backfill Cohort
 
-1. **Generate the selection file:**
-   ```bash
-   uv run python scripts/select_missing_novelty_v2.py \
-     --cohort novelty_v2_backfill \
-     --top-n 30
-   ```
-
-2. **The script writes to `data/2_tasks/selected_essays.txt`:**
-   ```
-   # mode: evaluation-only
-   # include-existing-evaluations
-   e_1hbnjo1jogt1adhn
-   e_2coj0l79j102vbge
-   ...
-   ```
-
-3. **Set cohort environment variable:**
+1. **Set cohort environment variable:**
    ```bash
    export DD_COHORT=novelty_v2_backfill
    ```
 
-4. **Materialize cohort assets:**
+2. **Materialize cohort assets:**
    - In Dagster UI: Materialize `group:cohort`
    - This creates membership with existing evaluations limited by `replication_config.csv`
 
-5. **Run evaluation backfill:**
+3. **Run evaluation backfill:**
    - Select all three evaluation assets or use the `evaluation` asset group
    - Launch backfill for all partitions
    - Existing evaluations record resume metadata for the partition (reason `parsed_exists`)
@@ -172,7 +156,6 @@ This ensures that if 50 evaluations exist for an essay+template+model but `repli
 - `src/daydreaming_dagster/assets/group_cohorts.py:906-922` - Limiting existing evaluations to replicate count
 - `src/daydreaming_dagster/data_layer/gens_data_layer.py:123-126` - `parsed_exists()` method
 - `tests/data_layer/test_gens_data_layer.py:69-78` - Test coverage for `parsed_exists()`
-- `scripts/select_missing_novelty_v2.py` - Script for generating backfill selection files
 
 ## Design Philosophy
 

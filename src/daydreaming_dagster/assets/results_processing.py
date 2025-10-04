@@ -21,12 +21,9 @@ def cohort_aggregated_scores_impl(
     - Delegates aggregation to scores_aggregator.parse_all_scores
     - Returns the resulting DataFrame (no Dagster context required)
     """
-    try:
-        keep_list = membership_service.stage_gen_ids(
-            data_root, "evaluation", cohort_id=cohort_id
-        )
-    except FileNotFoundError:
-        keep_list = []
+    keep_list = membership_service.stage_gen_ids(
+        data_root, "evaluation", cohort_id=cohort_id
+    )
     return scores_aggregator.parse_all_scores(data_root, keep_list)
 
 

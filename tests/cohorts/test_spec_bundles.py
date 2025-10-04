@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import pandas as pd
 import pytest
 
 from daydreaming_dagster.assets.group_cohorts import _build_spec_catalogs
@@ -33,7 +32,7 @@ if not SPEC_DIRS:
 
 @pytest.mark.parametrize("spec_dir", SPEC_DIRS, ids=lambda path: path.parent.name)
 def test_spec_bundle_compiles(spec_dir: Path) -> None:
-    catalogs = _build_spec_catalogs(DATA_ROOT, pd.DataFrame())  # reuse runtime catalog hydration
+    catalogs = _build_spec_catalogs(DATA_ROOT)  # reuse runtime catalog hydration
     plan = load_cohort_definition(spec_dir, catalogs=catalogs)
 
     assert plan.drafts or plan.essays or plan.evaluations

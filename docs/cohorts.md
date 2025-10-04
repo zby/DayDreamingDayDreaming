@@ -64,24 +64,6 @@ data/
 - The runtime loader treats specs as immutable inputs—commit them alongside catalog changes so
   cohorts remain reproducible.
 
-## Curated Selections (Optional Filters)
-
-Curated selection files narrow the spec-defined plan to a subset of existing generations. They are
-optional and only apply when the cohort spec already exists.
-
-- Place one of the following files under `data/2_tasks/` before materializing:
-  - `selected_essays.txt` — essay `gen_id`s (one per line) to reuse existing essays and rebuild
-    evaluations for the spec's evaluation templates/models.
-  - `selected_drafts.txt` — draft `gen_id`s to reuse drafts while regenerating essays and evaluations
-    according to the spec.
-- Only one selection file may be present; asset execution fails fast when both exist.
-- When no selection file exists, the entire spec plan is materialized.
-- Selection files never inject templates or models—coverage still derives from the spec's evaluation
-  axes.
-
-After materialization, remove the selection file if you want the next run to materialize the full
-spec again.
-
 ## Operational Tips
 
 - **Environment override.** Set `DD_COHORT=<cohort_id>` (or pass `asset_config.override`) so the

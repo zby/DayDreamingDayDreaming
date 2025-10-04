@@ -123,7 +123,7 @@ def _load_spec_filters(
             },
         )
 
-    catalogs = catalogs or _build_spec_catalogs(paths.data_root, pd.DataFrame())
+    catalogs = catalogs or _build_spec_catalogs(paths.data_root)
     plan = definition or load_cohort_definition(
         spec if spec is not None else spec_dir,
         catalogs=catalogs,
