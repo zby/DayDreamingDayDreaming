@@ -6,9 +6,8 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
-from daydreaming_dagster.assets.group_cohorts import (
-    CohortBuilder,
-    MEMBERSHIP_COLUMNS,
+from daydreaming_dagster.assets.group_cohorts import CohortBuilder, MEMBERSHIP_COLUMNS
+from daydreaming_dagster.cohorts import (
     persist_membership_csv,
     seed_cohort_metadata,
     validate_cohort_membership,
@@ -75,7 +74,7 @@ def test_persist_membership_csv_deduplicates_rows(tmp_path: Path) -> None:
     slim_df, out_path = persist_membership_csv(
         cohort_id="cohort-1",
         membership=membership,
-        data_layer=data_layer,
+        data_root=data_layer.data_root,
     )
 
     assert len(slim_df) == 2
@@ -99,7 +98,7 @@ def test_seed_cohort_metadata_creates_missing_files(tmp_path: Path) -> None:
 
     data_layer = GensDataLayer(tmp_path)
     seed_cohort_metadata(
-        data_layer=data_layer,
+        data_root=data_layer.data_root,
         cohort_id="cohort-1",
         membership=membership,
         template_modes={"draft": {"draft-tpl": "llm"}},

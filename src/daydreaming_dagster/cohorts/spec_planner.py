@@ -17,6 +17,8 @@ from daydreaming_dagster.utils.raw_readers import (
     read_replication_config,
     read_templates,
 )
+from daydreaming_dagster.data_layer.gens_data_layer import GensDataLayer
+from daydreaming_dagster.data_layer.paths import Paths
 
 
 def _require_str(row: Mapping[str, Any], key: str, *, aliases: Iterable[str] = ()) -> str:
@@ -431,6 +433,19 @@ def _normalize_str(value) -> str | None:
     return text or None
 
 
+def _normalize_int(value, default: int = 1) -> int:
+    try:
+        if value is None or pd.isna(value):  # type: ignore[arg-type]
+            return default
+    except Exception:
+        if value is None:
+            return default
+    try:
+        return int(value)
+    except Exception:
+        return default
+
+
 @dataclass(frozen=True)
 class CohortSpecContext:
     definition: CohortDefinition
@@ -531,6 +546,167 @@ def load_cohort_definition(
             spec_path = spec_path / "config.yaml"
         spec = load_spec(spec_path)
     return compile_cohort_definition(spec, catalogs=catalogs, seed=seed)
+
+
+def persist_membership_csv(
+    *,
+    cohort_id: str,
+    membership: pd.DataFrame,
+    data_root: Path,
+) -> tuple[pd.DataFrame, Path]:
+    """Write the slim membership CSV and return (slim_df, path)."""
+
+    paths = Paths.from_str(data_root)
+    cohort_dir = paths.cohorts_dir / str(cohort_id)
+    cohort_dir.mkdir(parents=True, exist_ok=True)
+    out_path = cohort_dir / "membership.csv"
+
+    columns = ["stage", "gen_id"]
+    if membership is None or membership.empty:
+        slim_df = pd.DataFrame(columns=columns)
+    else:
+        missing = [col for col in columns if col not in membership.columns]
+        if missing:
+            working = membership.copy()
+            for col in missing:
+                working[col] = ""
+            slim_df = working[columns].drop_duplicates(subset=columns)
+        else:
+            slim_df = membership[columns].drop_duplicates(subset=columns)
+
+    slim_df = slim_df.reset_index(drop=True)
+    slim_df.to_csv(out_path, index=False)
+    return slim_df, out_path
+
+
+def seed_cohort_metadata(
+    *,
+    data_root: Path,
+    cohort_id: str,
+    membership: pd.DataFrame,
+    template_modes: dict[str, Dict[str, str]],
+) -> None:
+    """Ensure metadata.json exists for each cohort generation prior to running stage assets."""
+
+    if membership is None or membership.empty:
+        return
+
+    if "stage" not in membership.columns or "gen_id" not in membership.columns:
+        return
+
+    data_layer = GensDataLayer.from_root(data_root)
+
+    for _, row in membership.iterrows():
+        stage = _normalize_str(row.get("stage"))
+        gen_id = _normalize_str(row.get("gen_id"))
+        if stage not in {"draft", "essay", "evaluation"} or not gen_id:
+            continue
+
+        meta_path = data_layer.paths.metadata_path(stage, gen_id)
+        if meta_path.exists():
+            continue
+
+        template_id = _normalize_str(row.get("template_id"))
+        combo_id = _normalize_str(row.get("combo_id"))
+        parent_gen_id = _normalize_str(row.get("parent_gen_id"))
+        llm_model_id = _normalize_str(row.get("llm_model_id"))
+
+        stage_modes = template_modes.get(stage or "", {})
+        mode = stage_modes.get(template_id or "", None)
+        if stage == "draft":
+            mode = mode or "llm"
+        elif stage == "essay":
+            mode = mode or "llm"
+        elif stage == "evaluation":
+            mode = mode or "llm"
+
+        metadata: Dict[str, object] = {
+            "stage": stage,
+            "gen_id": gen_id,
+            "origin_cohort_id": str(cohort_id),
+            "mode": mode or "llm",
+        }
+        if template_id:
+            metadata["template_id"] = template_id
+        if combo_id and stage == "draft":
+            metadata["combo_id"] = combo_id
+        if parent_gen_id:
+            metadata["parent_gen_id"] = parent_gen_id
+        if llm_model_id:
+            metadata["llm_model_id"] = llm_model_id
+
+        replicate_val = row.get("replicate")
+        replicate = _normalize_int(replicate_val, default=1)
+        metadata["replicate"] = replicate
+
+        data_layer.write_main_metadata(stage, gen_id, metadata)
+
+
+def validate_cohort_membership(
+    membership: pd.DataFrame,
+    *,
+    data_root: Path,
+    strict: bool = True,
+) -> None:
+    """Ensure parent references are present in the cohort membership."""
+
+    if membership is None or membership.empty:
+        return
+
+    if "stage" not in membership.columns or "gen_id" not in membership.columns:
+        return
+
+    drafts = set(
+        membership[membership["stage"] == "draft"]["gen_id"].astype(str).tolist()
+    )
+    essays = set(
+        membership[membership["stage"] == "essay"]["gen_id"].astype(str).tolist()
+    )
+
+    essay_parent_missing: List[str] = []
+    eval_parent_missing: List[str] = []
+    data_layer = GensDataLayer.from_root(data_root)
+
+    if "parent_gen_id" in membership.columns:
+        essay_parents = (
+            membership[
+                (membership["stage"] == "essay")
+                & membership["parent_gen_id"].notna()
+            ]["parent_gen_id"].astype(str)
+        )
+        for pid in essay_parents:
+            if pid not in drafts:
+                essay_parent_missing.append(pid)
+
+        eval_parents = (
+            membership[
+                (membership["stage"] == "evaluation")
+                & membership["parent_gen_id"].notna()
+            ]["parent_gen_id"].astype(str)
+        )
+        for pid in eval_parents:
+            if pid in essays:
+                continue
+            try:
+                data_layer.read_main_metadata("essay", pid)
+            except DDError as err:
+                if err.code is not Err.DATA_MISSING:
+                    raise
+                eval_parent_missing.append(pid)
+                continue
+
+    if not strict:
+        return
+
+    if essay_parent_missing or eval_parent_missing:
+        raise DDError(
+            Err.INVALID_CONFIG,
+            ctx={
+                "reason": "cohort_parent_integrity_failed",
+                "missing_draft_parents": essay_parent_missing,
+                "missing_essay_parents": eval_parent_missing,
+            },
+        )
 
 
 __all__ = [
