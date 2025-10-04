@@ -159,21 +159,9 @@ def test_select_and_build_cohort_from_curated_list(tmp_path: Path) -> None:
     assert set(membership["gen_id"]) == {"draft-1", "essay-1", "eval-1", "eval-2"}
     assert (membership["origin_cohort_id"] == "novelty-top").all()
 
-    spec_dir = data_root / "cohorts" / "novelty-top" / "spec"
-    config_path = spec_dir / "config.yaml"
-    assert config_path.exists()
-    config_yaml = config_path.read_text(encoding="utf-8")
-    assert "@file:items/cohort_rows.csv" in config_yaml
-
-    items_path = spec_dir / "items" / "cohort_rows.csv"
-    assert items_path.exists()
-    items = pd.read_csv(items_path)
-    assert "combo_id" in items.columns
-    assert "novelty" in items["evaluation_template"].tolist()
-
     curated_copy = data_root / "cohorts" / "novelty-top" / "curation" / "essay_candidates.csv"
     assert curated_copy.exists()
     curated_df = pd.read_csv(curated_copy)
     assert "essay_gen_id" in curated_df.columns
 
-    assert "Generated spec" in result_build.stdout
+    assert "Membership and curated list written" in result_build.stdout

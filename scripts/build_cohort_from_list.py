@@ -16,7 +16,6 @@ from typing import Iterable, Sequence
 import pandas as pd
 
 from daydreaming_dagster.assets.group_cohorts import MEMBERSHIP_COLUMNS
-from daydreaming_dagster.cohorts import SpecGenerationError, generate_spec_bundle
 from daydreaming_dagster.utils.errors import DDError, Err
 
 DEFAULT_CANDIDATE_LIST = Path("data/curation/top_essay_candidates.csv")
@@ -304,17 +303,11 @@ def main(argv: Sequence[str] | None = None) -> int:
     candidates.to_csv(curated_path, index=False)
     print(f"Copied candidate list to {curated_path}")
 
-    try:
-        spec_dir = generate_spec_bundle(
-            data_root=data_root,
-            cohort_id=cohort_id,
-            overwrite=args.overwrite,
-        )
-    except SpecGenerationError as exc:
-        print(f"ERROR: failed to generate spec bundle: {exc}")
-        return 2
-
-    print(f"Generated spec under {spec_dir}")
+    print(
+        "Membership and curated list written. Copy an existing cohort spec (see scripts/migrations/spec_wizard.py) "
+        "or author a spec manually for cohort",
+        cohort_id,
+    )
     return 0
 
 
