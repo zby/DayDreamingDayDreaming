@@ -375,7 +375,6 @@ class _StubCohortSpec:
         *,
         spec=None,
         path=None,
-        catalogs=None,
         seed=None,
     ):
-        return load_cohort_definition(spec or path, catalogs=catalogs, seed=seed)
+        return load_cohort_definition(spec or path, seed=seed)

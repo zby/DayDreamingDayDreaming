@@ -36,7 +36,7 @@ def test_cohort_plan_from_spec_bundle() -> None:
     spec_path = FIXTURES / "cohort_cartesian" / "config.yaml"
     payload = yaml.safe_load(spec_path.read_text(encoding="utf-8"))
     spec = parse_spec_mapping(payload, source=spec_path, base_dir=spec_path.parent)
-    rows = compile_design(spec, catalogs=_catalogs())
+    rows = compile_design(spec)
 
     plan = CohortDefinition.from_design_rows(rows)
 

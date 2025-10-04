@@ -21,7 +21,7 @@ def test_compile_design_cartesian_product() -> None:
         output={},
     )
 
-    rows = compile_design(spec, catalogs={"draft_template": {"draft-A"}})
+    rows = compile_design(spec)
 
     assert rows == [
         OrderedDict([("draft_template", "draft-A"), ("essay_model", "llm-1")]),
@@ -89,7 +89,7 @@ def test_compile_design_catalog_input_does_not_filter_levels() -> None:
         output={},
     )
 
-    rows = compile_design(spec, catalogs={"draft_template": {"draft-A"}})
+    rows = compile_design(spec)
 
     assert sorted(row["draft_template"] for row in rows) == ["draft-A", "draft-B"]
 
@@ -189,7 +189,7 @@ def test_compile_design_pair_replaces_axes_with_pairs() -> None:
         output={},
     )
 
-    rows = compile_design(spec, catalogs={"draft_template": {"d1", "d2"}})
+    rows = compile_design(spec)
 
     assert rows == [
         OrderedDict([("draft_template", "d1"), ("essay_template", "e1")]),
@@ -218,7 +218,7 @@ def test_compile_design_pair_validates_balance_and_domains() -> None:
     )
 
     with pytest.raises(SpecDslError) as exc:
-        compile_design(spec, catalogs={"draft_template": {"d1", "d2"}})
+        compile_design(spec)
 
     assert exc.value.code is SpecDslErrorCode.INVALID_SPEC
     assert exc.value.ctx and "imbalance" in exc.value.ctx["error"]
@@ -245,7 +245,7 @@ def test_compile_design_pair_after_tie_resolves_axis_names() -> None:
         output={},
     )
 
-    rows = compile_design(spec, catalogs={"draft_template": {"d1", "d2"}})
+    rows = compile_design(spec)
 
     assert rows == [
         OrderedDict([("draft_template", "d1"), ("eval_template", "e1")]),
@@ -273,7 +273,7 @@ def test_compile_design_pair_validation_errors() -> None:
     )
 
     with pytest.raises(SpecDslError) as exc:
-        compile_design(spec, catalogs={"draft_template": {"d1"}})
+        compile_design(spec)
 
     assert exc.value.code is SpecDslErrorCode.INVALID_SPEC
     assert exc.value.ctx and exc.value.ctx["pair"] == ("d1", "missing")
