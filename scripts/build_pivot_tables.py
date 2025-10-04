@@ -35,9 +35,9 @@ _ensure_src_on_path()
 
 from daydreaming_dagster.utils.errors import DDError, Err
 from daydreaming_dagster.data_layer.paths import Paths
-from daydreaming_dagster.assets.group_cohorts import _build_spec_catalogs
 from daydreaming_dagster.cohorts import (
     CohortDefinition,
+    build_spec_catalogs,
     load_cohort_allowlists,
     load_cohort_definition,
 )
@@ -112,7 +112,7 @@ def _load_spec_filters(
     catalogs: Mapping[str, Any] | None = None,
     seed: int | None = None,
 ) -> tuple[set[str], set[str]]:
-    catalogs = catalogs or _build_spec_catalogs(paths.data_root)
+    catalogs = catalogs or build_spec_catalogs(paths.data_root)
 
     plan = definition
     if plan is None and spec is not None:

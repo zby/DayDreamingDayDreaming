@@ -3,12 +3,15 @@
 from .spec_planner import (
     CohortDefinition,
     CohortDefinitionAllowlists,
+    CohortSpecContext,
     DraftPlanEntry,
     EssayPlanEntry,
     EvaluationPlanEntry,
     build_allowlists_from_definition,
-    load_cohort_allowlists,
+    build_spec_catalogs,
     compile_cohort_definition,
+    load_cohort_allowlists,
+    load_cohort_context,
     load_cohort_definition,
 )
 from .spec_migration import generate_spec_bundle, SpecGenerationError
@@ -19,8 +22,11 @@ __all__ = [
     "EssayPlanEntry",
     "EvaluationPlanEntry",
     "CohortDefinitionAllowlists",
+    "CohortSpecContext",
     "build_allowlists_from_definition",
+    "build_spec_catalogs",
     "load_cohort_allowlists",
+    "load_cohort_context",
     "compile_cohort_definition",
     "load_cohort_definition",
     "generate_spec_bundle",

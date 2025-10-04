@@ -4,8 +4,7 @@ import pandas as pd
 
 from ..data_layer.paths import Paths, COHORT_REPORT_ASSET_TARGETS
 from .raw_data import EVALUATION_TEMPLATES_KEY
-from .group_cohorts import _build_spec_catalogs
-from ..cohorts import load_cohort_allowlists
+from ..cohorts import build_spec_catalogs, load_cohort_allowlists
 from ..results_summary.transformations import (
     compute_generation_scores_pivot,
     compute_final_results,
@@ -55,7 +54,7 @@ def generation_scores_pivot(context, cohort_aggregated_scores: pd.DataFrame) -> 
         data_root=paths.data_root,
         cohort_id=cohort_id,
         compile_definition=context.resources.cohort_spec.compile_definition,
-        catalogs=_build_spec_catalogs(paths.data_root),
+        catalogs=build_spec_catalogs(paths.data_root),
         require_evaluation_axes=False,
     )
 

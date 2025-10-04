@@ -4,8 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from daydreaming_dagster.assets.group_cohorts import _build_spec_catalogs
-from daydreaming_dagster.cohorts import load_cohort_definition
+from daydreaming_dagster.cohorts import build_spec_catalogs, load_cohort_definition
 
 
 DATA_ROOT = Path(__file__).resolve().parents[2] / "data"
@@ -32,7 +31,7 @@ if not SPEC_DIRS:
 
 @pytest.mark.parametrize("spec_dir", SPEC_DIRS, ids=lambda path: path.parent.name)
 def test_spec_bundle_compiles(spec_dir: Path) -> None:
-    catalogs = _build_spec_catalogs(DATA_ROOT)  # reuse runtime catalog hydration
+    catalogs = build_spec_catalogs(DATA_ROOT)  # reuse runtime catalog hydration
     plan = load_cohort_definition(spec_dir, catalogs=catalogs)
 
     assert plan.drafts or plan.essays or plan.evaluations

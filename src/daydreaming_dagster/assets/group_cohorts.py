@@ -22,15 +22,11 @@ from ..utils.ids import (
     evaluation_signature,
     compute_deterministic_gen_id,
 )
-from ..utils.raw_readers import (
-    read_concepts,
-    read_templates,
-    read_llm_models,
-    read_replication_config,
-)
+from ..utils.raw_readers import read_concepts
 from ..cohorts import (
     CohortDefinition,
-    build_allowlists_from_definition,
+    build_spec_catalogs,
+    load_cohort_context,
 )
 from ..models import ContentCombination
 from ..data_layer.gens_data_layer import GensDataLayer
@@ -85,79 +81,6 @@ MEMBERSHIP_COLUMNS = [
     "llm_model_id",
     "replicate",
 ]
-
-
-def _build_spec_catalogs(
-    data_root: Path,
-) -> dict[str, list[str]]:
-    catalogs: dict[str, list[str]] = {}
-
-    def _template_ids(kind: str) -> list[str]:
-        df = read_templates(data_root, kind)
-        if df.empty:
-            return []
-        values = {
-            str(value).strip()
-            for value in df["template_id"].dropna().tolist()
-            if str(value).strip()
-        }
-        return sorted(values)
-
-    drafts = _template_ids("draft")
-    if drafts:
-        catalogs["draft_template"] = drafts
-
-    essays = _template_ids("essay")
-    if essays:
-        catalogs["essay_template"] = essays
-
-    evaluations = _template_ids("evaluation")
-    if evaluations:
-        catalogs["evaluation_template"] = evaluations
-
-    llm_df = read_llm_models(data_root)
-    if not llm_df.empty:
-        generation_llms = {
-            str(value).strip()
-            for value in llm_df[llm_df["for_generation"] == True]["id"].dropna().tolist()
-            if str(value).strip()
-        }
-        evaluation_llms = {
-            str(value).strip()
-            for value in llm_df[llm_df["for_evaluation"] == True]["id"].dropna().tolist()
-            if str(value).strip()
-        }
-        if generation_llms:
-            sorted_generation = sorted(generation_llms)
-            catalogs["draft_llm"] = sorted_generation
-            catalogs.setdefault("essay_llm", sorted_generation)
-        if evaluation_llms:
-            catalogs["evaluation_llm"] = sorted(evaluation_llms)
-
-    if "essay_llm" in catalogs:
-        values = set(catalogs["essay_llm"])
-        values.add("None")
-        catalogs["essay_llm"] = sorted(values)
-
-    combos: set[str] = set()
-
-    combo_path = data_root / "combo_mappings.csv"
-    if combo_path.exists():
-        try:
-            combo_df = pd.read_csv(combo_path, usecols=["combo_id"])
-        except Exception:  # pragma: no cover - best-effort catalog hydration
-            combo_df = pd.DataFrame()
-        if not combo_df.empty:
-            combos.update(
-                str(value).strip()
-                for value in combo_df["combo_id"].dropna().tolist()
-                if str(value).strip()
-            )
-
-    if combos:
-        catalogs["combo_id"] = sorted(combos)
-
-    return catalogs
 
 
 class CohortBuilder:
@@ -423,27 +346,6 @@ class CohortBuilder:
 
         return rows
 
-def _require_replication_config(data_root: Path) -> dict[str, int]:
-    rep_cfg = read_replication_config(data_root)
-    if not isinstance(rep_cfg, dict):
-        raise DDError(
-            Err.DATA_MISSING,
-            ctx={"reason": "replication_config_missing"},
-        )
-    for stage in ("draft", "essay", "evaluation"):
-        value = rep_cfg.get(stage)
-        if not isinstance(value, int) or value < 1:
-            raise DDError(
-                Err.INVALID_CONFIG,
-                ctx={
-                    "reason": "invalid_replication_config",
-                    "stage": stage,
-                    "value": value,
-                },
-            )
-    return rep_cfg
-
-
 class _ReplicateAllocator:
     """Allocate deterministic replicate indices without reusing existing ids."""
 
@@ -489,45 +391,6 @@ def _deterministic_id_for_base(stage: str, base_signature: tuple, replicate_inde
             ctx={"reason": "unsupported_replicate_stage", "stage": stage},
         )
     return compute_deterministic_gen_id(stage_norm, signature)
-
-
-def _read_templates_safe(
-    data_root: Path,
-    stage: str,
-    *,
-    allowlist: Sequence[str] | None = None,
-) -> pd.DataFrame:
-    """Load templates for a stage and optionally filter by allowlist."""
-
-    df = read_templates(data_root, stage)
-    if df.empty:
-        return pd.DataFrame()
-    if allowlist:
-        allowed = {str(item).strip() for item in allowlist if str(item).strip()}
-        if allowed:
-            df = df[df["template_id"].astype(str).str.strip().isin(allowed)]
-    return df
-
-
-def _template_mode_map(df: pd.DataFrame, *, default: str = "llm") -> Dict[str, str]:
-    """Build a template_id → mode map from a templates DataFrame."""
-
-    if df is None or getattr(df, "empty", True):
-        return {}
-
-    mode_map: Dict[str, str] = {}
-    for _, row in df.iterrows():
-        template_id = _normalize_str(row.get("template_id") or row.get("id"))
-        if not template_id:
-            continue
-        raw_mode = row.get("generator") if "generator" in row.index else None
-        mode = (raw_mode or default)
-        if isinstance(mode, str):
-            mode = mode.strip().lower() or default
-        else:
-            mode = str(mode).strip().lower() or default
-        mode_map[template_id] = mode
-    return mode_map
 
 
 def _normalize_str(value) -> str | None:
@@ -743,39 +606,16 @@ def cohort_membership(
     data_root = paths_obj.data_root
     data_layer = GensDataLayer.from_root(data_root)
 
-    spec_dir = data_root / "cohorts" / str(cohort_id) / "spec"
-    if not spec_dir.exists():
-        raise DDError(
-            Err.INVALID_CONFIG,
-            ctx={
-                "reason": "cohort_spec_required",
-                "cohort_id": cohort_id,
-                "path": str(spec_dir),
-            },
-        )
-
-    catalogs = _build_spec_catalogs(data_root)
-    spec_plan = context.resources.cohort_spec.compile_definition(
-        path=spec_dir,
-        catalogs=catalogs,
+    spec_ctx = load_cohort_context(
+        data_root=data_root,
+        cohort_id=cohort_id,
+        compile_definition=context.resources.cohort_spec.compile_definition,
     )
-    allowlists = build_allowlists_from_definition(spec_plan)
 
-    template_modes = {
-        "draft": _template_mode_map(
-            _read_templates_safe(data_root, "draft", allowlist=allowlists.draft_templates)
-        ),
-        "essay": _template_mode_map(
-            _read_templates_safe(data_root, "essay", allowlist=allowlists.essay_templates)
-        ),
-        "evaluation": _template_mode_map(
-            _read_templates_safe(
-                data_root, "evaluation", allowlist=allowlists.evaluation_templates
-            )
-        ),
-    }
-
-    replication_cfg = _require_replication_config(data_root)
+    spec_plan = spec_ctx.definition
+    allowlists = spec_ctx.allowlists
+    template_modes = spec_ctx.template_modes
+    replication_cfg = spec_ctx.replication_config
     builder = CohortBuilder(
         cohort_id=str(cohort_id),
         data_layer=data_layer,
@@ -914,37 +754,27 @@ def cohort_id(context) -> str:
             },
         )
 
-    spec_dir = data_root / "cohorts" / spec_name / "spec"
-    if not spec_dir.exists():
-        raise DDError(
-            Err.INVALID_CONFIG,
-            ctx={
-                "reason": "cohort_spec_missing",
-                "cohort_id": spec_name,
-                "path": str(spec_dir),
-            },
-        )
-
-    catalogs = _build_spec_catalogs(data_root)
-    spec_plan = context.resources.cohort_spec.compile_definition(
-        path=spec_dir,
+    catalogs = build_spec_catalogs(data_root)
+    spec_ctx = load_cohort_context(
+        data_root=data_root,
+        cohort_id=spec_name,
+        compile_definition=context.resources.cohort_spec.compile_definition,
         catalogs=catalogs,
     )
-    allowlists = build_allowlists_from_definition(spec_plan)
 
-    combos = sorted(set(allowlists.combos))
-    rep_cfg = _require_replication_config(data_root)
+    combos = sorted(set(spec_ctx.allowlists.combos))
+    rep_cfg = spec_ctx.replication_config
 
     manifest = {
         "combos": combos,
         "templates": {
-            "draft": list(allowlists.draft_templates),
-            "essay": list(allowlists.essay_templates),
-            "evaluation": list(allowlists.evaluation_templates),
+            "draft": list(spec_ctx.allowlists.draft_templates),
+            "essay": list(spec_ctx.allowlists.essay_templates),
+            "evaluation": list(spec_ctx.allowlists.evaluation_templates),
         },
         "llms": {
-            "generation": list(allowlists.generation_models),
-            "evaluation": list(allowlists.evaluation_models),
+            "generation": list(spec_ctx.allowlists.generation_models),
+            "evaluation": list(spec_ctx.allowlists.evaluation_models),
         },
         "replication": rep_cfg,
     }
