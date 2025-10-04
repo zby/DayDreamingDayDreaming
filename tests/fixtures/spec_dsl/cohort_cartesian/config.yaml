@@ -2,6 +2,8 @@ axes:
   combo_id: [combo-1]
   draft_template: [draft-A]
   draft_llm: [draft-llm]
+  draft_template_replicate: ['1', '2']
+  essay_template_replicate: ['1', '2']
   evaluation_template: [eval-1]
   evaluation_llm: [eval-llm]
 rules:
@@ -14,17 +16,14 @@ rules:
       left: evaluation_template
       right: evaluation_llm
       allowed: '@file:items/evaluation_pairs.csv'
-replicates:
-  draft_template: 2
-  essay_template: 2
 output:
   field_order:
     - combo_id
     - draft_template
     - draft_llm
+    - draft_template_replicate
     - essay_template
     - essay_llm
+    - essay_template_replicate
     - evaluation_template
     - evaluation_llm
-    - draft_template_replicate
-    - essay_template_replicate

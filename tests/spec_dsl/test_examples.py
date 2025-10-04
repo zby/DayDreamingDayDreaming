@@ -39,10 +39,14 @@ EXAMPLES = {
     "paired_copy_mix": 2,
     "full_two_phase_cartesian": 64,
     "curated_essays": 2,
+    "creative_alignment_tuple": 528,
 }
 
 
-@pytest.mark.parametrize("example","baseline_cartesian dual_llm_cartesian paired_copy_mix full_two_phase_cartesian curated_essays".split())
+@pytest.mark.parametrize(
+    "example",
+    "baseline_cartesian dual_llm_cartesian paired_copy_mix full_two_phase_cartesian curated_essays creative_alignment_tuple".split(),
+)
 def test_examples_compile(example: str) -> None:
     spec_path = FIXTURES / example / "config.yaml"
     payload = yaml.safe_load(spec_path.read_text(encoding="utf-8"))
@@ -52,7 +56,15 @@ def test_examples_compile(example: str) -> None:
 
     if example == "dual_llm_cartesian":
         replicate_values = {row["draft_template_replicate"] for row in rows}
-        assert replicate_values == {1, 2}
+        assert replicate_values == {"1", "2"}
     if example == "curated_essays":
         for row in rows:
             assert row["evaluation_template"] == "verification-eval-v1"
+    if example == "creative_alignment_tuple":
+        assert {
+            (row["draft_template"], row["essay_template"])
+            for row in rows
+        } == {
+            ("creative-synthesis-v10", "creative-synthesis-v10"),
+            ("creative-synthesis-v7", "parsed-from-links-v1"),
+        }

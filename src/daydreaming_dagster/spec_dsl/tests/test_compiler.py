@@ -4,7 +4,7 @@ import pytest
 
 from daydreaming_dagster.spec_dsl.compiler import compile_design
 from daydreaming_dagster.spec_dsl.errors import SpecDslError, SpecDslErrorCode
-from daydreaming_dagster.spec_dsl.models import AxisSpec, ExperimentSpec, ReplicateSpec
+from daydreaming_dagster.spec_dsl.models import AxisSpec, ExperimentSpec
 
 
 def make_spec(**kwargs):
@@ -349,59 +349,3 @@ def test_compile_design_respects_seed_for_shuffling() -> None:
     assert rows_a != rows_c
 
 
-def test_compile_design_applies_replicates() -> None:
-    replicates = {
-        "draft_template": ReplicateSpec(
-            axis="draft_template",
-            count=2,
-            column="draft_template_replicate",
-        )
-    }
-    spec = make_spec(
-        axes={"draft_template": AxisSpec("draft_template", ("d1", "d2"))},
-        rules=(),
-        output={},
-        replicates=replicates,
-    )
-
-    rows = compile_design(spec)
-
-    assert len(rows) == 4
-    assert rows[0]["draft_template_replicate"] == 1
-    assert rows[1]["draft_template_replicate"] == 2
-
-
-def test_compile_design_replicate_axis_missing_errors() -> None:
-    replicates = {"missing_axis": ReplicateSpec(axis="missing_axis", count=2, column="missing_rep")}
-    spec = make_spec(
-        axes={"draft_template": AxisSpec("draft_template", ("d1",))},
-        rules=(),
-        output={},
-        replicates=replicates,
-    )
-
-    with pytest.raises(SpecDslError) as exc:
-        compile_design(spec)
-
-    assert exc.value.code is SpecDslErrorCode.INVALID_SPEC
-    assert exc.value.ctx["axis"] == "missing_axis"
-    spec = make_spec(
-        axes={
-            "essay_template": AxisSpec("essay_template", ("e1",)),
-            "essay_llm": AxisSpec("essay_llm", ("mA",)),
-        },
-        rules=({
-            "tuple": {
-                "name": "essay_bundle",
-                "axes": ["essay_template", "essay_llm"],
-                "items": [["e1", "wrong"]],
-            }
-        },),
-        output={},
-    )
-
-    with pytest.raises(SpecDslError) as exc:
-        compile_design(spec)
-
-    assert exc.value.code is SpecDslErrorCode.INVALID_SPEC
-    assert exc.value.ctx and exc.value.ctx["value"] == "wrong"

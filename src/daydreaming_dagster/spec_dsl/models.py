@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any, Mapping, Sequence
 
 
@@ -15,19 +15,9 @@ class AxisSpec:
 
 
 @dataclass(frozen=True)
-class ReplicateSpec:
-    """Replication configuration for a given axis."""
-
-    axis: str
-    count: int
-    column: str
-
-
-@dataclass(frozen=True)
 class ExperimentSpec:
     """Top-level spec bundle loaded from disk."""
 
     axes: Mapping[str, AxisSpec]
     rules: Sequence[Mapping[str, Any]]
-    output: Mapping[str, Any] = field(default_factory=dict)
-    replicates: Mapping[str, ReplicateSpec] = field(default_factory=dict)
+    output: Mapping[str, Any]

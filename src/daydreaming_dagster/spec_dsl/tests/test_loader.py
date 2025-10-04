@@ -46,9 +46,6 @@ def test_load_spec_round_trip_file(tmp_path: Path) -> None:
             "output": {
                 "field_order": ["draft_template", "essay_model"],
             },
-            "replicates": {
-                "draft_template": 2,
-            },
         },
     )
 
@@ -68,8 +65,6 @@ def test_load_spec_round_trip_file(tmp_path: Path) -> None:
         },
     )
     assert spec.output["field_order"] == ["draft_template", "essay_model"]
-    assert spec.replicates["draft_template"].count == 2
-    assert spec.replicates["draft_template"].column == "draft_template_replicate"
 
 
 def test_parse_spec_round_trip(tmp_path: Path) -> None:
@@ -99,9 +94,6 @@ def test_parse_spec_round_trip(tmp_path: Path) -> None:
             },
             "output": {
                 "field_order": ["draft_template", "essay_model"],
-            },
-            "replicates": {
-                "draft_template": 2,
             },
         }
     )
@@ -134,38 +126,6 @@ def test_load_spec_directory_support(tmp_path: Path) -> None:
 
     assert exc.value.code is SpecDslErrorCode.INVALID_SPEC
     assert exc.value.ctx and "deprecated" in exc.value.ctx.get("error", "")
-
-
-def test_parse_spec_replicates_validation(tmp_path: Path) -> None:
-    factory = ExperimentSpecFactory(tmp_path)
-
-    with pytest.raises(SpecDslError) as exc:
-        factory.parse(
-            {
-                "axes": {"draft_template": ["d1"]},
-                "replicates": {"draft_template": 0},
-                "output": {"field_order": ["draft_template"]},
-            }
-        )
-
-    assert exc.value.code is SpecDslErrorCode.INVALID_SPEC
-
-
-def test_parse_spec_rejects_deprecated_output_flags(tmp_path: Path) -> None:
-    factory = ExperimentSpecFactory(tmp_path)
-
-    with pytest.raises(SpecDslError) as exc:
-        factory.parse(
-            {
-                "axes": {"draft_template": ["d1"]},
-                "output": {
-                    "field_order": ["draft_template"],
-                    "expand_pairs": False,
-                },
-            }
-        )
-
-    assert exc.value.code is SpecDslErrorCode.INVALID_SPEC
 
 
 def test_parse_spec_rejects_csv_without_header(tmp_path: Path) -> None:
@@ -279,20 +239,6 @@ def test_parse_spec_rejects_legacy_rules_shape(tmp_path: Path) -> None:
                     {"subset": {"axis": "draft_template", "keep": ["d1"]}},
                 ],
                 "output": {"field_order": ["draft_template"]},
-            }
-        )
-
-    assert exc.value.code is SpecDslErrorCode.INVALID_SPEC
-
-
-def test_parse_spec_rejects_deprecated_output_order(tmp_path: Path) -> None:
-    factory = ExperimentSpecFactory(tmp_path)
-
-    with pytest.raises(SpecDslError) as exc:
-        factory.parse(
-            {
-                "axes": {"draft_template": ["d1"]},
-                "output": {"order": ["draft_template"], "field_order": ["draft_template"]},
             }
         )
 

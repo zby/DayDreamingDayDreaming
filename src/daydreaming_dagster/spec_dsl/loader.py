@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Any, Iterable, Mapping, MutableMapping, Sequence
 
 from daydreaming_dagster.spec_dsl.errors import SpecDslError, SpecDslErrorCode
-from daydreaming_dagster.spec_dsl.models import AxisSpec, ExperimentSpec, ReplicateSpec
+from daydreaming_dagster.spec_dsl.models import AxisSpec, ExperimentSpec
 
 try:  # Optional dependency for YAML specs
     import yaml  # type: ignore
@@ -99,11 +99,9 @@ def _build_experiment_spec(
             ctx={"path": str(config_path), "error": "axes must be mapping"},
         )
 
-    base_dir = base_dir
-
     axes: OrderedDict[str, AxisSpec] = OrderedDict()
     derived_axes: set[str] = set()
-    explicit_axes: set[str] = set()
+    explicit_axes: set[str] = set(axes_section.keys())
     for name, axis_payload in axes_section.items():
         levels = _parse_axis_entry(
             name=name,
@@ -112,7 +110,6 @@ def _build_experiment_spec(
             root_dir=base_dir,
         )
         axes[name] = AxisSpec(name=name, levels=tuple(levels))
-        explicit_axes.add(name)
 
     raw_rules = data.get("rules", {})
     rules = _parse_rules(
@@ -150,29 +147,6 @@ def _build_experiment_spec(
             ctx={"path": str(config_path), "error": "output must be mapping"},
         )
 
-    if "order" in output:
-        raise SpecDslError(
-            SpecDslErrorCode.INVALID_SPEC,
-            ctx={"path": str(config_path), "error": "output.order deprecated"},
-        )
-
-    deprecated_flags = {
-        "expand_pairs",
-        "keep_pair_axis",
-        "expand_ties",
-        "expand_tuples",
-        "keep_tuple_axis",
-    }
-    for flag in deprecated_flags:
-        if flag in output:
-            raise SpecDslError(
-                SpecDslErrorCode.INVALID_SPEC,
-                ctx={
-                    "path": str(config_path),
-                    "error": f"output.{flag} deprecated",
-                },
-            )
-
     field_order = output.get("field_order")
     if not isinstance(field_order, list):
         raise SpecDslError(
@@ -180,11 +154,7 @@ def _build_experiment_spec(
             ctx={"path": str(config_path), "error": "output.field_order required"},
         )
 
-    replicates_section = data.get("replicates", {})
-    replicates = _parse_replicates(replicates_section, config_path=config_path)
-
     valid_fields = set(axes.keys())
-    valid_fields.update(spec.column for spec in replicates.values())
     missing_fields = [field for field in field_order if field not in valid_fields]
     if missing_fields:
         raise SpecDslError(
@@ -200,7 +170,6 @@ def _build_experiment_spec(
         axes=axes,
         rules=tuple(rules),
         output=dict(output),
-        replicates=replicates,
     )
 def _parse_axis_entry(
     *,
@@ -239,50 +208,6 @@ def _parse_axis_entry(
         SpecDslErrorCode.INVALID_SPEC,
         ctx={"path": str(config_path), "axis": name, "error": "axis entry must be list or mapping"},
     )
-
-
-def _parse_replicates(
-    section: Any,
-    *,
-    config_path: Path,
-) -> "OrderedDict[str, ReplicateSpec]":
-    if section in (None, {}):
-        return OrderedDict()
-    if not isinstance(section, Mapping):
-        raise SpecDslError(
-            SpecDslErrorCode.INVALID_SPEC,
-            ctx={"path": str(config_path), "error": "replicates must be mapping"},
-        )
-
-    replicates: "OrderedDict[str, ReplicateSpec]" = OrderedDict()
-    for axis, payload in section.items():
-        if not isinstance(axis, str):
-            raise SpecDslError(
-                SpecDslErrorCode.INVALID_SPEC,
-                ctx={"path": str(config_path), "error": "replicate axis must be string"},
-            )
-        if not isinstance(payload, int):
-            raise SpecDslError(
-                SpecDslErrorCode.INVALID_SPEC,
-                ctx={
-                    "path": str(config_path),
-                    "axis": axis,
-                    "error": "replicate value must be integer",
-                },
-            )
-        if payload < 1:
-            raise SpecDslError(
-                SpecDslErrorCode.INVALID_SPEC,
-                ctx={
-                    "path": str(config_path),
-                    "axis": axis,
-                    "error": "replicate count must be >=1",
-                },
-            )
-        column = f"{axis}_replicate"
-        replicates[axis] = ReplicateSpec(axis=axis, count=payload, column=column)
-
-    return replicates
 
 
 def _resolve_file_reference(value: Any, *, base_dir: Path) -> Any:

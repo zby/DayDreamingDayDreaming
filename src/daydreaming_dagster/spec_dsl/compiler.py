@@ -8,7 +8,7 @@ from random import Random
 from typing import Any, Iterable, Mapping, Sequence
 
 from daydreaming_dagster.spec_dsl.errors import SpecDslError, SpecDslErrorCode
-from daydreaming_dagster.spec_dsl.models import ExperimentSpec, ReplicateSpec
+from daydreaming_dagster.spec_dsl.models import ExperimentSpec
 
 
 def _dedupe(seq: Iterable[Any]) -> list[Any]:
@@ -60,7 +60,6 @@ def compile_design(
             pair_meta=pair_meta,
             tuple_meta=tuple_meta,
             field_order=field_order,
-            replicates=spec.replicates,
         )
         rows.extend(expanded_rows)
     return rows
@@ -406,13 +405,12 @@ def _finalize_row(
     pair_meta: dict[str, tuple[str, str]],
     tuple_meta: dict[str, dict[str, Any]],
     field_order: Sequence[Any] | None,
-    replicates: Mapping[str, ReplicateSpec] | None,
 ) -> list[OrderedDict[str, Any]]:
     _expand_pairs(row, pair_meta)
     _expand_tuples(row, tuple_meta)
     _expand_ties(row, tie_back)
 
-    rows = _apply_replicates([row], replicates)
+    rows = [row]
 
     if isinstance(field_order, list):
         for r in rows:
@@ -476,31 +474,3 @@ def _expand_ties(row: OrderedDict[str, Any], tie_back: dict[str, str]) -> None:
         if canonical in row and original not in row:
             row[original] = row[canonical]
 
-
-def _apply_replicates(
-    rows: list[OrderedDict[str, Any]],
-    replicates: Mapping[str, ReplicateSpec] | None,
-) -> list[OrderedDict[str, Any]]:
-    if not replicates:
-        return rows
-
-    expanded: list[OrderedDict[str, Any]] = rows
-    for axis, spec in replicates.items():
-        new_rows: list[OrderedDict[str, Any]] = []
-        for row in expanded:
-            if axis not in row:
-                raise SpecDslError(
-                    SpecDslErrorCode.INVALID_SPEC,
-                    ctx={"error": "replicate axis missing from row", "axis": axis},
-                )
-            if spec.column in row:
-                raise SpecDslError(
-                    SpecDslErrorCode.INVALID_SPEC,
-                    ctx={"error": "replicate column already present", "column": spec.column},
-                )
-            for idx in range(1, spec.count + 1):
-                new_row = OrderedDict(row)
-                new_row[spec.column] = idx
-                new_rows.append(new_row)
-        expanded = new_rows
-    return expanded

@@ -1,6 +1,7 @@
 axes:
   draft_template: '@file:items/draft_templates.csv'
   draft_llm: [gemini_25_pro]
+  draft_template_replicate: ['1', '2']
   evaluation_template: [verification-eval-v1]
   evaluation_llm: [sonnet-4]
 rules:
@@ -15,14 +16,12 @@ rules:
       allowed:
         - [creative-synthesis-v2, [essay-llm-v1, sonnet-4]]
         - [application-implementation-v2, [essay-copy-v1, sonnet-4]]
-replicates:
-  draft_template: 2
 output:
   field_order:
     - draft_template
     - draft_llm
+    - draft_template_replicate
     - essay_template
     - essay_llm
     - evaluation_template
     - evaluation_llm
-    - draft_template_replicate

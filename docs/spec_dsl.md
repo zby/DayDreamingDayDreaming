@@ -9,7 +9,7 @@ The DSL turns declarative specs (YAML/JSON/TOML or directory bundles) into order
 Highlights:
 - Ordered axis definitions with catalogs enforced against the generated membership rows.
 - Rule pipeline (`subset → tie → pair → tuple`) to bound Cartesian growth.
-- Replication configuration that appends deterministic `replicate` indices without manual duplication.
+- Explicit replicate axes (e.g., `draft_template_replicate`) keep deterministic indices visible in the spec.
 - CLI (`scripts/compile_experiment_design.py`) for producing CSV/JSONL output with catalog data sourced from JSON/CSV files.
 - Cohort integration: `cohort_membership` loads spec bundles via `daydreaming_dagster.cohorts.load_cohort_definition` when `data/cohorts/<cohort_id>/spec/` is present, ensuring spec + catalogs fully determine cohort rows.
 - In-memory parsing via `parse_spec_mapping` for tests and dependency-injection scenarios where writing spec files is unnecessary.
@@ -17,7 +17,7 @@ Highlights:
 
 ### Why this design?
 
-The cohort planner operates over a large, full-factorial search space (templates × models × evaluation settings). We rarely want the raw Cartesian product—most experiments depend on structured couplings (e.g., draft template ↔ essay template, essay template ↔ evaluation template). The DSL encodes those couplings explicitly while keeping the generative space deterministic: every combination we intend to compare appears exactly once, every replicate is numbered, and stats across draft/essay/evaluation axes remain balanced. This structure lets us run consistent comparisons across inputs regardless of how many axes we add in the future.
+The cohort planner operates over a large, full-factorial search space (templates × models × evaluation settings). We rarely want the raw Cartesian product—most experiments depend on structured couplings (e.g., draft template ↔ essay template, essay template ↔ evaluation template). The DSL encodes those couplings explicitly while keeping the generative space deterministic: every combination we intend to compare appears exactly once, every replicate axis is explicit, and stats across draft/essay/evaluation axes remain balanced. This structure lets us run consistent comparisons across inputs regardless of how many axes we add in the future.
 
 ## 2. Spec Structure
 
@@ -28,7 +28,6 @@ Top-level keys supported by `load_spec` / CLI:
 | `axes` | mapping axis → list/`@file:` string | Required. Values are inline lists or shorthand references like `@file:levels.csv`. CSV includes must provide a header; the loader reads the first column when a single value is needed. |
 | `rules` | mapping | Optional. Sectioned by rule type (`subsets`, `ties`, `pairs`, `tuples`). The loader converts each section into the canonical rule pipeline order. |
 | `output` | mapping | Optional. Currently used for column ordering (`field_order`) and shuffle seed. |
-| `replicates` | mapping | Optional. Defines per-axis replication counts (`{axis: count}`), emitting `<axis>_replicate` columns automatically. |
 
 > Specs must be single files. Directory bundles (`spec/axes/*.txt`, `spec/rules/*.yaml`) are no longer supported—use `@file:` references instead.
 
@@ -43,6 +42,8 @@ axes:
 ```
 
 Axis values are declared inline or loaded from sibling files via the `@file:` shorthand. Paths resolve relative to the spec file (or bundle root). CSV is the recommended format: provide a header row and one value per line for simple lists. Multi-column CSVs feed tuple or pair rules, returning a tuple of strings ordered by the header. (YAML/JSON remain supported if richer structures are required.)
+
+Include replicate axes explicitly (e.g., `draft_template_replicate: [1, 2]`) or derive them from tuple rows so every replicate index remains visible in the spec.
 
 Axes whose levels come exclusively from tuple rules no longer need explicit declarations; you can omit the axis entirely (or set it to `null` for clarity). The loader backfills those levels from the tuple rows and rejects specs that try to mix inline lists with tuple-derived bindings for the same axis.
 
@@ -100,15 +101,6 @@ output:
 - **Multi column** (`tuples.csv` with headers matching `axes`): produces `list[tuple[str, ...]]` in header order.
 - Empty rows or cells raise `SpecDslError` to keep the spec deterministic.
 
-### 2.4 Replicates
-
-```yaml
-replicates:
-  draft_template: 2
-```
-
-Each referenced axis (post-rule application) is duplicated `count` times, with replicate indices `1..count` written to the automatically derived column `<axis>_replicate`. Those columns participate in deterministic `gen_id` construction.
-
 ## 3. Rule Semantics
 
 - **Subset** (`subsets: axis → levels`): Filters the axis to the listed values; empty results raise `SpecDslError`.
@@ -116,7 +108,7 @@ Each referenced axis (post-rule application) is duplicated `count` times, with r
 - **Pair** (`pairs: name → {left, right, allowed, balance?}`): Replaces two axes with a new synthetic axis (named after the mapping key) containing the allowed pairs. Optional `balance` (`left`, `right`, `both`) enforces uniform degrees. After rules run, the compiler always rehydrates the original left/right columns and removes the synthetic axis.
 - **Tuple** (`tuples: name → {axes, items}`): Couples N axes into a single tuple-valued axis. Items can be inline or `@file:`. After rule evaluation the compiler restores the individual axes and drops the tuple axis.
 
-Rules execute in declaration order: `subset` → `tie` → `pair` → `tuple` → Cartesian product → output expansion/replication.
+Rules execute in declaration order: `subset` → `tie` → `pair` → `tuple` → Cartesian product → output column ordering.
 
 ## 4. Catalog Validation
 
@@ -130,17 +122,7 @@ CLI flags remain unchanged:
 
 During asset execution the loader converts these sources into a `CohortCatalog` and cross-checks the generated membership rows, raising `DDError(Err.INVALID_CONFIG)` with the missing values if any stage references out-of-catalog resources.
 
-## 5. Replication Flow
-
-Replication happens after pair/tuple expansion but before field ordering:
-
-1. For each row, look up every `ReplicateSpec` whose axis remains present.
-2. Duplicate the row `count` times, inserting a 1-based replicate index into the derived column `<axis>_replicate`.
-3. Downstream signature builders can hash `(combo, draft_template, ..., draft_template_replicate)` to form unique generation IDs deterministically.
-
-If an axis is missing or the replicate column conflicts with an existing field, the compiler raises `SpecDslError` to protect schema integrity.
-
-## 6. CLI Usage
+## 5. CLI Usage
 
 `scripts/compile_experiment_design.py` wraps the DSL and exposes convenience flags:
 
@@ -201,8 +183,8 @@ rules:
         - [essay-copy, copy_llm]
         - [essay-llm, sonnet-4]
 
-replicates:
-  draft_template: 2
+axes:
+  draft_template_replicate: [1, 2]
 
 output:
   field_order:

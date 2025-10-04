@@ -41,7 +41,7 @@ def _write_spec(
     evaluation_templates: list[str],
     generation_llms: list[str],
     evaluation_llms: list[str],
-    replicates: dict[str, dict[str, int | str]] | None = None,
+    replicates: dict[str, int] | None = None,
 ) -> None:
     spec_dir = root / "cohorts" / cohort_id / "spec"
     spec_dir.mkdir(parents=True, exist_ok=True)
@@ -85,9 +85,10 @@ def _write_spec(
     }
 
     if replicates:
-        spec["replicates"] = replicates
-        replicate_columns = [f"{axis}_replicate" for axis in replicates]
-        spec["output"]["field_order"].extend(replicate_columns)
+        for axis, count in replicates.items():
+            column = f"{axis}_replicate"
+            spec["axes"][column] = [str(idx) for idx in range(1, int(count) + 1)]
+            spec["output"]["field_order"].append(column)
 
     (spec_dir / "config.yaml").write_text(
         yaml.safe_dump(spec, sort_keys=False),

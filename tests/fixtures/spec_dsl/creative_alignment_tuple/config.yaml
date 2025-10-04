@@ -1,0 +1,48 @@
+axes:
+  combo_id:
+  - combo_v1_a
+  - combo_v1_b
+  - combo_v1_c
+  evaluation_template:
+  - creativity-metrics-v2
+  - daydreaming-verification-v2
+  - gemini-prior-art-eval-v2
+  - interdisciplinary-coherence
+  - iterative-loops-v2
+  - novel-elements-coverage-v1
+  - novelty
+  - novelty-v2
+  - o3-prior-art-eval
+  - scientific-rigor-v2
+  - style-coherence-v3
+  evaluation_llm:
+  - gemini_25_pro
+  evaluation_replicate:
+  - '1'
+  - '2'
+  essay_replicate:
+  - '1'
+  - '2'
+rules:
+  tuples:
+    draft_essay_alignment:
+      axes: [draft_template, essay_template]
+      items:
+        - [creative-synthesis-v10, creative-synthesis-v10]
+        - [creative-synthesis-v7, parsed-from-links-v1]
+    generation_alignment:
+      axes: [draft_llm, essay_llm]
+      items:
+        - [gemini_25_pro, gemini_25_pro]
+        - [deepseek_r1_p, deepseek_r1_p]
+output:
+  field_order:
+  - combo_id
+  - draft_template
+  - draft_llm
+  - essay_template
+  - essay_llm
+  - essay_replicate
+  - evaluation_template
+  - evaluation_llm
+  - evaluation_replicate
