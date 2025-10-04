@@ -1,8 +1,6 @@
 axes:
   draft_template: '@file:items/draft_templates.csv'
   draft_llm: '@file:items/draft_llms.csv'
-  essay_template: '@file:items/essay_templates.csv'
-  essay_llm: '@file:items/essay_llms.csv'
   evaluation_template: '@file:items/evaluation_templates.csv'
   evaluation_llm: '@file:items/evaluation_llms.csv'
 rules:

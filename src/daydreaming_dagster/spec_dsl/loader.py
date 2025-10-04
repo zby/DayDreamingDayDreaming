@@ -7,7 +7,7 @@ import io
 import json
 from collections import OrderedDict
 from pathlib import Path
-from typing import Any, Iterable, Mapping
+from typing import Any, Iterable, Mapping, MutableMapping, Sequence
 
 from daydreaming_dagster.spec_dsl.errors import SpecDslError, SpecDslErrorCode
 from daydreaming_dagster.spec_dsl.models import AxisSpec, ExperimentSpec, ReplicateSpec
@@ -102,6 +102,8 @@ def _build_experiment_spec(
     base_dir = base_dir
 
     axes: OrderedDict[str, AxisSpec] = OrderedDict()
+    derived_axes: set[str] = set()
+    explicit_axes: set[str] = set()
     for name, axis_payload in axes_section.items():
         levels = _parse_axis_entry(
             name=name,
@@ -110,6 +112,7 @@ def _build_experiment_spec(
             root_dir=base_dir,
         )
         axes[name] = AxisSpec(name=name, levels=tuple(levels))
+        explicit_axes.add(name)
 
     raw_rules = data.get("rules", {})
     rules = _parse_rules(
@@ -117,6 +120,28 @@ def _build_experiment_spec(
         config_path=config_path,
         base_dir=base_dir,
     )
+
+    tuple_axis_levels = _derive_tuple_axes(
+        rules,
+        axes=axes,
+        derived_axes=derived_axes,
+        explicit_axes=explicit_axes,
+        config_path=config_path,
+    )
+
+    for axis_name, levels in tuple_axis_levels.items():
+        axes[axis_name] = AxisSpec(name=axis_name, levels=tuple(levels))
+
+    for axis_name in derived_axes:
+        if axis_name not in tuple_axis_levels:
+            raise SpecDslError(
+                SpecDslErrorCode.INVALID_SPEC,
+                ctx={
+                    "path": str(config_path),
+                    "axis": axis_name,
+                    "error": "axis marked as derived but not provided by tuple",
+                },
+            )
 
     output = data.get("output", {})
     if not isinstance(output, Mapping):
@@ -157,6 +182,19 @@ def _build_experiment_spec(
 
     replicates_section = data.get("replicates", {})
     replicates = _parse_replicates(replicates_section, config_path=config_path)
+
+    valid_fields = set(axes.keys())
+    valid_fields.update(spec.column for spec in replicates.values())
+    missing_fields = [field for field in field_order if field not in valid_fields]
+    if missing_fields:
+        raise SpecDslError(
+            SpecDslErrorCode.INVALID_SPEC,
+            ctx={
+                "path": str(config_path),
+                "error": "output.field_order references undefined fields",
+                "missing": tuple(missing_fields),
+            },
+        )
 
     return ExperimentSpec(
         axes=axes,
@@ -579,3 +617,85 @@ def _parse_tuple_rules(
 
         rules.append({"tuple": rule_payload})
     return rules
+
+
+def _derive_tuple_axes(
+    rules: Sequence[Mapping[str, Any]],
+    *,
+    axes: MutableMapping[str, AxisSpec],
+    derived_axes: set[str],
+    explicit_axes: set[str],
+    config_path: Path,
+) -> dict[str, list[Any]]:
+    if not rules:
+        return {}
+
+    tuple_axis_levels: dict[str, list[Any]] = {}
+
+    for rule in rules:
+        tuple_spec = rule.get("tuple")  # type: ignore[assignment]
+        if not tuple_spec:
+            continue
+
+        axes_list = tuple_spec.get("axes")
+        items = tuple_spec.get("items")
+
+        if not isinstance(axes_list, list) or not all(isinstance(a, str) for a in axes_list):
+            raise SpecDslError(
+                SpecDslErrorCode.INVALID_SPEC,
+                ctx={"path": str(config_path), "error": "tuple axes must be list of strings"},
+            )
+
+        if not isinstance(items, list) or not items:
+            raise SpecDslError(
+                SpecDslErrorCode.INVALID_SPEC,
+                ctx={"path": str(config_path), "error": "tuple items must be non-empty list"},
+            )
+
+        arity = len(axes_list)
+
+        for axis_name in axes_list:
+            if axis_name not in axes:
+                axes[axis_name] = AxisSpec(name=axis_name, levels=())
+                derived_axes.add(axis_name)
+            if axis_name in explicit_axes:
+                raise SpecDslError(
+                    SpecDslErrorCode.INVALID_SPEC,
+                    ctx={
+                        "path": str(config_path),
+                        "axis": axis_name,
+                        "error": "tuple axis may not provide explicit levels",
+                    },
+                )
+
+        for entry in items:
+            if not isinstance(entry, (list, tuple)) or len(entry) != arity:
+                raise SpecDslError(
+                    SpecDslErrorCode.INVALID_SPEC,
+                    ctx={
+                        "path": str(config_path),
+                        "error": "tuple item arity mismatch",
+                        "tuple_axes": tuple(axes_list),
+                        "item": entry,
+                    },
+                )
+            for idx, axis_name in enumerate(axes_list):
+                value = entry[idx]
+                axis_values = tuple_axis_levels.setdefault(axis_name, [])
+                if value not in axis_values:
+                    axis_values.append(value)
+
+    # Ensure every derived axis picked up levels
+    for axis_name in derived_axes:
+        levels = tuple_axis_levels.get(axis_name)
+        if not levels:
+            raise SpecDslError(
+                SpecDslErrorCode.INVALID_SPEC,
+                ctx={
+                    "path": str(config_path),
+                    "axis": axis_name,
+                    "error": "tuple axis must provide at least one value",
+                },
+            )
+
+    return tuple_axis_levels

@@ -1,8 +1,4 @@
-axes:
-  essay_template: '@file:items/essay_templates.csv'
-  essay_llm: [sonnet-4, gemini_25_pro]
-  evaluation_template: [verification-eval-v1]
-  evaluation_llm: [sonnet-4]
+axes: {}
 rules:
   tuples:
     curated_bundle:

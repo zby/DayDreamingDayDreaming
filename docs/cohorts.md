@@ -59,6 +59,7 @@ data/
 
 - `config.yaml` declares axes, couplings, and replication targets. Every catalog reference must be
   explicit; unspecified axes do not fall back to catalog defaults.
+- When tuple rules supply the axis values, you can omit those axes (or set them to `null`) and the loader will infer the levels directly from the tuple rows.
 - Catalog integrity is enforced after building `membership.csv` via `validate_membership_against_catalog`, so mismatches surface during asset runs rather than at spec parse time. Keep the spec bundle and hydrated catalogs in sync.
 - Single-column CSV files referenced via `@file:` provide axis levels. Multi-column CSVs map to tuple
   values in header order (e.g., paired templates and models).

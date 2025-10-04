@@ -1,8 +1,6 @@
 axes:
   draft_template: '@file:items/draft_templates.csv'
   draft_llm: [gemini_25_pro]
-  essay_template: '@file:items/essay_templates.csv'
-  essay_llm: [sonnet-4]
   evaluation_template: [verification-eval-v1]
   evaluation_llm: [sonnet-4]
 rules:

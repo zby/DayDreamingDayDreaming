@@ -198,7 +198,74 @@ def test_parse_spec_requires_field_order(tmp_path: Path) -> None:
         )
 
     assert exc.value.code is SpecDslErrorCode.INVALID_SPEC
-    assert "field_order" in str(exc.value.ctx)
+
+
+def test_parse_spec_allows_tuple_derived_axes(tmp_path: Path) -> None:
+    factory = ExperimentSpecFactory(tmp_path)
+
+    spec = factory.parse(
+        {
+            "axes": {},
+            "rules": {
+                "tuples": {
+                    "draft_bundle": {
+                        "axes": ["draft_template", "draft_llm"],
+                        "items": [["draft-A", "llm-1"], ["draft-B", "llm-2"]],
+                    }
+                }
+            },
+            "output": {
+                "field_order": ["draft_template", "draft_llm"],
+            },
+        }
+    )
+
+    assert spec.axes["draft_template"].levels == ("draft-A", "draft-B")
+    assert spec.axes["draft_llm"].levels == ("llm-1", "llm-2")
+
+
+def test_parse_spec_rejects_tuple_axis_with_explicit_levels(tmp_path: Path) -> None:
+    factory = ExperimentSpecFactory(tmp_path)
+
+    with pytest.raises(SpecDslError) as exc:
+        factory.parse(
+            {
+                "axes": {
+                    "draft_template": ["draft-A"],
+                },
+                "rules": {
+                    "tuples": {
+                        "draft_bundle": {
+                            "axes": ["draft_template", "draft_llm"],
+                            "items": [["draft-A", "llm-1"]],
+                        }
+                    }
+                },
+                "output": {
+                    "field_order": ["draft_template", "draft_llm"],
+                },
+            }
+        )
+
+    assert exc.value.code is SpecDslErrorCode.INVALID_SPEC
+    assert exc.value.ctx and exc.value.ctx["axis"] == "draft_template"
+
+
+def test_parse_spec_rejects_derived_axis_without_tuple(tmp_path: Path) -> None:
+    factory = ExperimentSpecFactory(tmp_path)
+
+    with pytest.raises(SpecDslError) as exc:
+        factory.parse(
+            {
+                "rules": {},
+                "output": {
+                    "field_order": ["draft_template"],
+                },
+            }
+        )
+
+    assert exc.value.code is SpecDslErrorCode.INVALID_SPEC
+    assert exc.value.ctx and exc.value.ctx.get("missing") == ("draft_template",)
 
 
 def test_parse_spec_rejects_legacy_rules_shape(tmp_path: Path) -> None:

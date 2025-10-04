@@ -2,8 +2,6 @@ axes:
   combo_id: [combo-1]
   draft_template: [draft-A]
   draft_llm: [draft-llm]
-  essay_template: '@file:items/essay_templates.csv'
-  essay_llm: [essay-llm]
   evaluation_template: [eval-1]
   evaluation_llm: [eval-llm]
 rules:

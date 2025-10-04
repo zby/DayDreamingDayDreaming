@@ -44,6 +44,8 @@ axes:
 
 Axis values are declared inline or loaded from sibling files via the `@file:` shorthand. Paths resolve relative to the spec file (or bundle root). CSV is the recommended format: provide a header row and one value per line for simple lists. Multi-column CSVs feed tuple or pair rules, returning a tuple of strings ordered by the header. (YAML/JSON remain supported if richer structures are required.)
 
+Axes whose levels come exclusively from tuple rules no longer need explicit declarations; you can omit the axis entirely (or set it to `null` for clarity). The loader backfills those levels from the tuple rows and rejects specs that try to mix inline lists with tuple-derived bindings for the same axis.
+
 ### 2.2 Rules
 
 Rules run after axis deduplication. Each mapping must contain exactly one rule key:
