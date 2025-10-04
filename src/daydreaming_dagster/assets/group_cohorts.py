@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import Dict, Iterable, List, Sequence, Tuple
 
 import pandas as pd
-from dagster import MetadataValue
+from dagster import AssetKey, MetadataValue
 from ._decorators import asset_with_boundary
 
 from ..utils.ids import (
@@ -1041,6 +1041,7 @@ def _combo_rows_for_manifest(data_root: Path, cohort_id: str) -> tuple[list[str]
     group_name="cohort",
     io_manager_key="in_memory_io_manager",
     required_resource_keys={"data_root"},
+    deps={AssetKey("cohort_id")},
 )
 def selected_combo_mappings(
     context,
@@ -1081,6 +1082,7 @@ def selected_combo_mappings(
     group_name="cohort",
     io_manager_key="io_manager",
     required_resource_keys={"data_root"},
+    deps={AssetKey("cohort_id")},
 )
 def content_combinations(
     context,

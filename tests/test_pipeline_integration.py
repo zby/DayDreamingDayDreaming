@@ -247,6 +247,45 @@ def pipeline_data_root_prepared():
             ]
         ).to_csv(combo_mappings_csv, index=False)
 
+    if concepts_csv.exists():
+        existing_concepts = pd.read_csv(concepts_csv)
+        existing_ids = set(existing_concepts["concept_id"].astype(str)) if not existing_concepts.empty else set()
+
+        required_ids = set()
+        if combo_mappings_csv.exists():
+            required_ids = {
+                str(value).strip()
+                for value in combo_df[combo_df["combo_id"].astype(str).isin(combos)]["concept_id"].tolist()
+                if str(value).strip()
+            }
+
+        missing_ids = sorted(required_ids - existing_ids)
+        if missing_ids:
+            extras: list[pd.DataFrame] = []
+            if old_concepts_csv.exists():
+                source = pd.read_csv(old_concepts_csv)
+            else:
+                source = pd.DataFrame()
+            for concept_id in missing_ids:
+                if "concept_id" in source.columns:
+                    row = source[source["concept_id"].astype(str) == concept_id].head(1)
+                else:
+                    row = pd.DataFrame()
+                if row.empty:
+                    row = pd.DataFrame(
+                        [
+                            {
+                                "concept_id": concept_id,
+                                "name": concept_id.replace("-", " ").title(),
+                            }
+                        ]
+                    )
+                extras.append(row)
+            if extras:
+                existing_concepts = pd.concat([existing_concepts, *extras], ignore_index=True)
+                existing_concepts = existing_concepts.drop_duplicates(subset=["concept_id"]).reset_index(drop=True)
+                existing_concepts.to_csv(concepts_csv, index=False)
+
     # Ensure at least one two-phase template exists for downstream checks
     draft_file = pipeline_data_root / "1_raw" / "templates" / "draft" / f"{target_template}.txt"
     essay_file = pipeline_data_root / "1_raw" / "templates" / "essay" / f"{target_template}.txt"
@@ -500,7 +539,11 @@ class TestPipelineIntegration:
                 print("📋 Step 1: Materializing task definitions...")
                 
                 # First materialize selected_combo_mappings
-                result = materialize([selected_combo_mappings], resources=resources, instance=instance)
+                result = materialize(
+                    [cohort_id, selected_combo_mappings],
+                    resources=resources,
+                    instance=instance,
+                )
                 assert result.success, "Selected combo mappings materialization failed"
                 
                 # Then materialize the rest (include cohort assets to satisfy dependencies)
@@ -792,11 +835,11 @@ class TestPipelineIntegration:
                     "cohort_spec": _StubCohortSpec(),
                 }
 
-                result = materialize([selected_combo_mappings], resources=resources, instance=instance)
+                result = materialize([cohort_id, selected_combo_mappings], resources=resources, instance=instance)
                 assert result.success, "selected_combo_mappings materialization should succeed"
 
                 result = materialize(
-                    [selected_combo_mappings, content_combinations],
+                    [cohort_id, selected_combo_mappings, content_combinations],
                     resources=resources,
                     instance=instance,
                 )
