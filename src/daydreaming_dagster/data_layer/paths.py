@@ -171,9 +171,6 @@ class Paths:
         return self.raw_dir / f"{stage}_templates.csv"
 
     @property
-    def selected_combo_mappings_csv(self) -> Path:
-        return self.tasks_dir / "selected_combo_mappings.csv"
-
     # --- Cohorts ---
     def cohort_dir(self, cohort_id: str) -> Path:
         return self.cohorts_dir / str(cohort_id)

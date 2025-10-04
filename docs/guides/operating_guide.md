@@ -4,7 +4,7 @@ This comprehensive guide covers everything you need to know to set up, run, and 
 
 See also
 - Documentation Index: docs/index.md
-- Curated Runs Quickstart: docs/cohorts.md#curated-selection-quickstart
+- Cohort workflow quickstart: docs/cohorts.md#cohort-membership
 - Cohorts & membership: docs/cohorts.md
 
 ## Table of Contents
@@ -148,8 +148,6 @@ Use a Dagster run tag to label the run, e.g. `experiment_id=exp_default_mode_onl
 
 Optionally stash selection files for traceability:
 - `data/experiments/exp_default_mode_only/spec_snapshot/` (copy of the cohort spec used for the run)
-- `data/experiments/exp_default_mode_only/selected_essays.txt`
-- `data/experiments/exp_default_mode_only/selected_drafts.txt`
 
 ---
 
@@ -197,7 +195,7 @@ Optionally stash selection files for traceability:
 
 Raw inputs are not auto-materialized; instead, re-run the cohort setup assets whenever raw CSVs or template files change:
 
-- `selected_combo_mappings`, `content_combinations`, `cohort_id`, `cohort_membership`, and `register_cohort_partitions` should be materialized after editing `data/1_raw/**/*`. If you maintain a curated `data/2_tasks/selected_combo_mappings.csv`, update it manually—the pipeline no longer rewrites it.
+- `selected_combo_mappings`, `content_combinations`, `cohort_id`, `cohort_membership`, and `register_cohort_partitions` should be materialized after editing `data/1_raw/**/*` so the manifest, combo catalog, and membership stay aligned.
 - This sequence registers dynamic partitions for the downstream generation and evaluation groups.
 
 Cross‑experiment tracking no longer uses auto‑appenders. Use analysis assets (`filtered_evaluation_results`, `template_version_comparison_pivot`) and scripts for backfills under `data/7_cross_experiment/`. These analyses read scores strictly from `data/gens/evaluation/<gen_id>/parsed.txt` and do not parse `raw.txt` — ensure evaluation assets have produced parsed outputs before running cross‑experiment analysis.
@@ -222,14 +220,12 @@ Lineage and IDs (gen‑id first)
 - Tasks and assets must pass/require `parent_gen_id` for essays and evaluations (fail fast if missing). This removes all “latest‑by‑task” ambiguity and makes pivots deterministic.
 
 Note on legacy data:
-- If you need to evaluate historical essays not part of the current cohort, write their essay `gen_id`s into `data/2_tasks/selected_essays.txt`, then materialize `cohort_id,cohort_membership` to register evaluation partitions for the spec-defined evaluation axes. Use `# mode: reuse-essays` to reuse the original drafts/essays and schedule fresh evaluations. Combine it with `# fill-up` if you only want to top up missing evaluator combinations (instead of creating brand-new replicates). Alternatively, point `selected_drafts.txt` at deterministic draft IDs to reuse the drafts directly (default mode `reuse-drafts`).
 
 ### Targeted Evaluations (No full cube)
 
 To run a specific evaluation (e.g., `novelty`) only on chosen documents (e.g., prior-art winners):
 
-1. Ensure the evaluation template exists in `data/1_raw/evaluation_templates.csv`, include it in the cohort spec (or curated selection), and confirm the evaluation models are flagged `for_evaluation` in `llm_models.csv`.
-2. Build cohort membership (either catalog expansion or curated via `selected_essays.txt`):
+1. Ensure the evaluation template exists in `data/1_raw/evaluation_templates.csv`, include it in the cohort spec, and confirm the evaluation models are flagged `for_evaluation` in `llm_models.csv`.
    ```bash
    uv run dagster asset materialize --select "cohort_id,cohort_membership" -f src/daydreaming_dagster/definitions.py
    ```
@@ -240,41 +236,6 @@ uv run dagster asset materialize --select "evaluation_prompt,evaluation_raw,eval
    ```
 4. Re-run `parsed_scores` to ingest the new results.
 
-For cross-experiment winners, include their essay `gen_id`s in `data/2_tasks/selected_essays.txt` and rebuild cohort membership to register evaluation partitions for the spec-defined axes.
-
-### Curated Selection Quick Start (Drafts, Essays, Evaluations)
-
-Use the selection script to write a list of essay gen_ids, then let Dagster build the cohort and register partitions (no need to change `k_max`). If `data/7_cross_experiment/aggregated_scores.csv` is missing, build it first:
-`uv run python scripts/aggregate_scores.py --output data/7_cross_experiment/aggregated_scores.csv`.
-In all examples below, treat `parent_gen_id` as the canonical key for evaluation pivots and selections.
-
-1) Select top‑N evaluation winners (editable list)
-```bash
-uv run python scripts/select_top_essays.py --template gemini-prior-art-eval --top-n 30
-# Edit data/2_tasks/selected_essays.txt if desired
-# The script defaults to data/7_cross_experiment/aggregated_scores.csv; override via --aggregated-scores if needed
-```
-
-2) Build cohort membership and register partitions (inside Dagster)
-```bash
-export DAGSTER_HOME="$(pwd)/dagster_home"
-uv run dagster asset materialize --select "cohort_id,cohort_membership" -f src/daydreaming_dagster/definitions.py
-```
-
-What it does
-- Writes `data/cohorts/<cohort_id>/membership.csv` with normalized rows (same columns for all stages):
-  `stage, gen_id, cohort_id, parent_gen_id, combo_id, template_id, llm_model_id`.
-- Registers dynamic partitions add‑only for draft/essay/evaluation.
-- Enforces parent integrity within the cohort.
-
-3) Run in Dagster
-- Drafts: materialize `draft_prompt,draft_raw,draft_parsed` for selected partitions (by gen_id)
-- Essays: materialize `essay_prompt,essay_raw,essay_parsed`
-- Evaluations: materialize `evaluation_prompt,evaluation_raw,evaluation_parsed`
-
-Tip
-- Set `DD_COHORT=<cohort_id>` to bind generation/evaluation seeds; task assets compute/persist a deterministic cohort id when not provided.
-- Use `--dry-run` to preview changes.
 
 ### Where Assets Live
 
@@ -433,7 +394,7 @@ Invalid essay_task_id referenced by evaluation task 'eval_001': ''
 **Root Causes:**
 - Missing or incorrect `parent_gen_id` in `cohort_membership`
 - Essay row not present for the referenced `parent_gen_id`
-- Inconsistent spec selections vs. curated overrides
+- Cohort spec missing an essay entry for the referenced evaluation parent
 
 **Diagnostic Steps:**
 1. Inspect cohort membership:
@@ -449,7 +410,7 @@ Invalid essay_task_id referenced by evaluation task 'eval_001': ''
 
 **Solutions:**
 ```bash
-# Rebuild cohort membership after updating the cohort spec or curated selection
+# Rebuild cohort membership after updating the cohort spec
 uv run dagster asset materialize --select "cohort_id,cohort_membership" -f src/daydreaming_dagster/definitions.py
 
 # Inspect raw inputs for issues
@@ -658,7 +619,7 @@ Set up monitoring for:
 
 ## Notes
 
-- This is a no-code-change workflow: updating the cohort spec (or curated selection files) controls which combinations are built and executed
+- This is a no-code-change workflow: updating the cohort spec controls which combinations are built and executed
 - Stable combo IDs are versioned and persisted in `data/combo_mappings.csv` for cross-run analysis
 - If you later want stronger isolation (per-experiment folders and automatic propagation of `experiment_id` into paths/metadata), see `plans/experiment_management_plan.md` for a low-friction enhancement using Dagster run tags
 

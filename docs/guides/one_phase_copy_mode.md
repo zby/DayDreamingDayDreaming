@@ -16,9 +16,8 @@ Setup
    - Edit `data/1_raw/essay_templates.csv` and ensure one row sets `generator=copy` (e.g., `parsed-from-links-v1`). Reference that `template_id` in the cohort spec.
    - Optional: limit the cohort spec to only copy-mode essays to avoid mixing modes in catalog expansions.
 2) Build cohort
-   - Catalog mode: rely on `selected_combo_mappings` to generate combos from the available concept set and ensure the cohort spec selects the desired draft templates/models; then:
-     - `uv run dagster asset materialize --select "cohort_id,cohort_membership" -f src/daydreaming_dagster/definitions.py`
-   - Curated: create `data/2_tasks/selected_essays.txt` with essay `gen_id`s from prior runs; then materialize the two assets as above.
+   - Catalog mode: ensure `data/combo_mappings.csv` contains the desired combos and materialize `cohort_id` (which writes the manifest) followed by `selected_combo_mappings`/`content_combinations` to hydrate combo content:
+     - `uv run dagster asset materialize --select "cohort_id,selected_combo_mappings,content_combinations,cohort_membership" -f src/daydreaming_dagster/definitions.py`
 3) Materialize partitions
    - Drafts: `uv run dagster asset materialize --select "group:generation_draft" -f src/daydreaming_dagster/definitions.py`
    - Essays (copy mode): `uv run dagster asset materialize --select "group:generation_essays" -f src/daydreaming_dagster/definitions.py`
@@ -41,5 +40,4 @@ Design discussion: mixing one‑phase and two‑phase
 - Full catalog expansion across draft and essay templates will produce both one‑phase (copy) and two‑phase (LLM) essays if both types are selected. This is intentional but can be confusing when analyzing results.
 - Recommended patterns:
   - Separate cohorts per mode (e.g., `cohort-2025-09-11-copy` vs `cohort-2025-09-11-llm`).
-  - Or use curated mode to pick only the essays you want to evaluate together.
   - If you need strict pairing, consider tagging templates into families and adding a lightweight join rule in `cohort_membership` (not implemented by default) to pair only within a family.

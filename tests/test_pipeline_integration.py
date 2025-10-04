@@ -126,6 +126,10 @@ def pipeline_data_root_prepared():
     (pipeline_data_root / "cohorts").mkdir(parents=True)
     (pipeline_data_root / "7_reporting").mkdir(parents=True)
 
+    combo_src = repo_root / "data" / "combo_mappings.csv"
+    if combo_src.exists():
+        shutil.copy2(combo_src, pipeline_data_root / "combo_mappings.csv")
+
     # Copy live 1_raw
     for item in live_source.iterdir():
         dest = pipeline_data_root / "1_raw" / item.name
@@ -627,97 +631,6 @@ class TestPipelineIntegration:
 
                 # Optional: RAW outputs may or may not exist for failed partitions depending on failure cause
                 print("🎉 Task setup workflow test passed successfully!")
-
-    def test_combo_mappings_normalized_structure(self):
-        """Specific test for the normalized combo_mappings.csv structure (superset)."""
-        # Use a simplified test with minimal data
-        with tempfile.TemporaryDirectory() as temp_root:
-            temp_dagster_home = Path(temp_root) / "dagster_home" 
-            temp_data_dir = Path(temp_root) / "data"
-            
-            temp_dagster_home.mkdir()
-            temp_data_dir.mkdir()
-            (temp_data_dir / "1_raw").mkdir()
-            (temp_data_dir / "2_tasks").mkdir()
-            # minimal directory structure for task layer
-            
-            # Create minimal test data
-            concepts_dir = temp_data_dir / "1_raw" / "concepts"
-            concepts_dir.mkdir()
-            
-            # Minimal concepts metadata
-            test_concepts = pd.DataFrame([
-                {"concept_id": "test-concept-1", "name": "Test Concept 1"},
-                {"concept_id": "test-concept-2", "name": "Test Concept 2"},
-                {"concept_id": "inactive-concept", "name": "Inactive Concept"}
-            ])
-            test_concepts.to_csv(temp_data_dir / "1_raw" / "concepts_metadata.csv", index=False)
-            
-            # Create minimal description files
-            desc_para_dir = concepts_dir / "descriptions-paragraph" 
-            desc_para_dir.mkdir()
-            desc_para_dir.joinpath("test-concept-1.txt").write_text("Test concept 1 description")
-            desc_para_dir.joinpath("test-concept-2.txt").write_text("Test concept 2 description")
-            desc_para_dir.joinpath("inactive-concept.txt").write_text("Inactive concept description")
-            
-            env = {
-                'DAGSTER_HOME': str(temp_dagster_home),
-                'DD_COHORT': 'pipeline-test',
-            }
-            with patch.dict(os.environ, env):
-                instance = DagsterInstance.ephemeral(tempdir=str(temp_dagster_home))
-                
-                # Import selection generator and content_combinations (no fallback)
-                from daydreaming_dagster.assets.group_cohorts import selected_combo_mappings, content_combinations
-                from daydreaming_dagster.resources.io_managers import (
-                    CSVIOManager,
-                    InMemoryIOManager,
-                )
-                from daydreaming_dagster.resources.experiment_config import ExperimentConfig
-                
-                test_data_root = str(temp_data_dir)
-                
-                resources = {
-                    "data_root": test_data_root,
-                    "csv_io_manager": CSVIOManager(base_path=Path(test_data_root) / "2_tasks"),
-                    "in_memory_io_manager": InMemoryIOManager(fallback_data_root=Path(test_data_root)),
-                    "experiment_config": ExperimentConfig(k_max=2, description_level="paragraph"),
-                }
-                
-                # Materialize selection + combinations together so the in-memory output wires correctly
-                result = materialize(
-                    [selected_combo_mappings, content_combinations],
-                    resources=resources,
-                    instance=instance,
-                )
-
-                assert result.success, "Content combinations materialization should succeed"
-                
-                # Test the superset mapping file
-                mappings_file = temp_data_dir / "combo_mappings.csv"
-                assert mappings_file.exists(), "combo_mappings.csv should be created"
-                df = pd.read_csv(mappings_file)
-
-                # Structure should include normalized mapping plus metadata
-                assert {"combo_id","concept_id","description_level","k_max"}.issubset(set(df.columns))
-
-                # With k_max=2 and two concepts, there should be exactly one combo using those two
-                expected_ids = {"test-concept-1", "test-concept-2"}
-                combos = df.groupby("combo_id")["concept_id"].apply(lambda s: set(s.astype(str).tolist()))
-                matching = [cid for cid, cset in combos.items() if cset == expected_ids]
-                assert len(matching) == 1, "Should have exactly one combo for the two concepts"
-                # Each combination has 2 rows (one per concept)
-                assert len(df[df["combo_id"] == matching[0]]) == 2
-
-                # Test combo_id format (accept both legacy sequential and new stable formats)
-                combo_ids = df["combo_id"].unique()
-                legacy_pattern = re.compile(r"^combo_\d{3}$")
-                stable_pattern = re.compile(r"^combo_v\d+_[0-9a-f]{12}$")
-                assert all(
-                    legacy_pattern.match(cid) or stable_pattern.match(cid)
-                    for cid in combo_ids
-                ), "combo_ids should match 'combo_XXX' (legacy) or 'combo_vN_<12-hex>' (stable)"
-                print("✅ Normalized combo_mappings.csv test passed!")
 
     def test_template_allowlist_filters_membership(self):
         """Cohort membership should include only templates defined by the spec."""

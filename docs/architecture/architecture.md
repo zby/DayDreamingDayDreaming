@@ -139,7 +139,7 @@ Note: Observable source assets were removed for simplicity during development. W
 - **Validation**: Ensure required fields and structure
 - **Metadata Extraction**: Generate searchable metadata for concepts
 - **Template Processing**: Load and validate Jinja2 templates
-- **Manual Refresh**: After editing files under `data/1_raw/**`, materialize `selected_combo_mappings`, `content_combinations`, `cohort_id`, `cohort_membership`, and `register_cohort_partitions` to propagate changes and rebuild dynamic partitions.
+- **Manual Refresh**: After editing files under `data/1_raw/**`, materialize `cohort_id`, `selected_combo_mappings`, `content_combinations`, `cohort_membership`, and `register_cohort_partitions` to propagate changes and rebuild dynamic partitions.
 
 **Implementation Details**:
 ```python
@@ -159,7 +159,7 @@ LLM generation/evaluation assets remain manual to avoid surprise API usage/costs
 **Purpose**: Generate experiment structure and authoritative cohort membership
 
 **Data Flow**:
-1. **Concept Combinations**: Generate k_max-sized combinations from concepts in-memory (`selected_combo_mappings`). Legacy curated CSVs can still be managed manually, but the pipeline no longer reads them directly.
+1. **Concept Combinations**: Hydrate combos referenced by the cohort manifest (`selected_combo_mappings`) using the canonical `data/combo_mappings.csv` catalog; specs and raw catalogs remain the contract.
 2. **Cohort ID**: Compute a deterministic ID from the cohort spec's combos/templates/models and replication targets, then write the manifest.
 3. **Cohort Membership**: Build normalized rows for `draft`, `essay`, and `evaluation` and register dynamic partitions by `gen_id`.
 
@@ -181,7 +181,7 @@ We encode every generation ID from stage-specific signatures and a 1-based repli
 
 Replicate counts are sourced from `data/1_raw/replication_config.csv`; the cohort manifest persists these per-stage targets and membership enforces them when building rows. Because IDs are fully deterministic, the pipeline no longer keeps “reuse” counters or legacy fallbacks—re-running a cohort with the same manifest simply reuses the existing identifiers and Dagster reports `SKIPPED` partitions.
 
-When a curated rerun asks for new replicates, the allocator walks deterministic IDs until it
+When a rerun asks for new replicates, the allocator walks deterministic IDs until it
 finds the next unused number. If prior gens directories are removed manually, the next cohort may
 reissue those replicate indices; prefer the migration scripts (or a complete cleanup) when
 trimming state.
@@ -370,7 +370,7 @@ asset returns successfully, so they cannot provide this early‑write behavior.
 
 The pipeline uses Dagster's dynamic partitions keyed by `gen_id` for each stage (`draft`, `essay`, `evaluation`).
 
-- Registration: the `cohort_membership` asset writes `data/cohorts/<cohort_id>/membership.csv` and registers each `gen_id` as a dynamic partition for the appropriate stage. When a cohort spec exists under `data/cohorts/<cohort_id>/spec/`, the DSL compiler provides the authoritative rows; otherwise curated selections drive the plan. It prunes stale partitions for the same cohort before re-registering to remain idempotent.
+- Registration: the `cohort_membership` asset writes `data/cohorts/<cohort_id>/membership.csv` and registers each `gen_id` as a dynamic partition for the appropriate stage. When a cohort spec exists under `data/cohorts/<cohort_id>/spec/`, the DSL compiler provides the authoritative rows. It prunes stale partitions for the same cohort before re-registering to remain idempotent.
 - Execution: partitioned assets read `context.partition_key` (a `gen_id`) and resolve metadata (template/model/parents) via cohort membership and the gens store.
 
 ### Benefits of This Architecture
@@ -495,10 +495,6 @@ The evaluation flow is cohort- and gen-id–centric with explicit parent links:
 
 - `parsed_scores` parses evaluator responses under `data/gens/evaluation/<gen_id>`; enrichment (combo_id, generation template/model, parent links) is read from gens-store metadata (and cohort membership when available).
 - `generation_scores_pivot` pivots by `combo_id`, `generation_template`, `generation_model` and uses `parent_gen_id` for deterministic grouping.
-
-### Legacy Inputs
-
-- Historical artifacts stored outside the gens store are not auto-discovered. The Dagster pipeline reads from `data/gens/essay/<essay_gen_id>/parsed.txt`. To evaluate older essays, migrate them into the gens store by writing their `gen_id`s to `data/2_tasks/selected_essays.txt` and materializing `cohort_id,cohort_membership` so the registry points at the migrated files.
 
 ## Migration Benefits from Kedro
 

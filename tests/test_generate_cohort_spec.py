@@ -132,6 +132,7 @@ def test_generate_spec_round_trip(tmp_path: Path, essay_templates: list[str]) ->
             }
         ]
     )
+    combo_df.to_csv(data_root / "combo_mappings.csv", index=False)
 
     context = build_asset_context(
         resources={
@@ -142,7 +143,6 @@ def test_generate_spec_round_trip(tmp_path: Path, essay_templates: list[str]) ->
     baseline_df = cohort_membership(
         context,
         cohort_id=cohort_id,
-        selected_combo_mappings=combo_df,
     )
 
     spec_dir = generate_spec_bundle(data_root, cohort_id, overwrite=True)
@@ -158,7 +158,6 @@ def test_generate_spec_round_trip(tmp_path: Path, essay_templates: list[str]) ->
             }
         ),
         cohort_id=cohort_id,
-        selected_combo_mappings=combo_df,
     )
 
     def _normalize(df: pd.DataFrame) -> pd.DataFrame:

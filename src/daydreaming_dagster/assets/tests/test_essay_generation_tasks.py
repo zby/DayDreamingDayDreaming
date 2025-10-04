@@ -99,7 +99,17 @@ def test_essay_rows_reference_draft_ids(tmp_path: Path) -> None:
             {"id": "eval-model", "for_generation": False, "for_evaluation": True},
         ],
     )
-    _write_csv(tmp_path / "combo_mappings.csv", [{"combo_id": "combo-1"}])
+    _write_csv(
+        tmp_path / "combo_mappings.csv",
+        [
+            {
+                "combo_id": "combo-1",
+                "concept_id": "c1",
+                "description_level": "paragraph",
+                "k_max": 1,
+            }
+        ],
+    )
     _write_spec(tmp_path, "cohort-essay")
     for stage in ("draft", "essay", "evaluation"):
         (tmp_path / "gens" / stage).mkdir(parents=True, exist_ok=True)
@@ -110,20 +120,9 @@ def test_essay_rows_reference_draft_ids(tmp_path: Path) -> None:
             "cohort_spec": _StubCohortSpec(),
         }
     )
-    selected_df = pd.DataFrame(
-        [
-            {
-                "combo_id": "combo-1",
-                "concept_id": "c1",
-                "description_level": "paragraph",
-                "k_max": 1,
-            }
-        ]
-    )
     df = cohort_membership(
         context,
         cohort_id="cohort-essay",
-        selected_combo_mappings=selected_df,
     )
 
     draft_id = compute_deterministic_gen_id(

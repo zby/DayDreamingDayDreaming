@@ -7,7 +7,7 @@ import shutil
 import pandas as pd
 import pytest
 import yaml
-from dagster import Failure, build_asset_context
+from dagster import build_asset_context
 
 SPEC_FIXTURES = Path(__file__).resolve().parents[4] / "tests" / "fixtures" / "spec_dsl"
 
@@ -129,7 +129,14 @@ def base_data_root(tmp_path: Path) -> Path:
     )
     _write_csv(
         tmp_path / "combo_mappings.csv",
-        [{"combo_id": "combo-1"}],
+        [
+            {
+                "combo_id": "combo-1",
+                "concept_id": "concept-1",
+                "description_level": "paragraph",
+                "k_max": 1,
+            }
+        ],
     )
 
     _write_spec(
@@ -169,96 +176,6 @@ def base_data_root(tmp_path: Path) -> Path:
     (tmp_path / "gens" / "essay").mkdir(parents=True, exist_ok=True)
     (tmp_path / "gens" / "evaluation").mkdir(parents=True, exist_ok=True)
     return tmp_path
-
-
-def test_cohort_membership_curated_includes_all_stages(base_data_root: Path) -> None:
-    """Test that curated mode always includes draft + essay + eval rows in membership."""
-    data_root = base_data_root
-    cohort_id = "cohort-curated"
-
-    # Seed existing draft/essay metadata referenced by selected_essays
-    draft_src = compute_deterministic_gen_id(
-        "draft",
-        draft_signature("combo-1", "draft-A", "gen-model", 1),
-    )
-    essay_src = compute_deterministic_gen_id(
-        "essay",
-        essay_signature(draft_src, "essay-X", 1),
-    )
-    _write_json(
-        data_root / "gens" / "draft" / draft_src / "metadata.json",
-        {
-            "stage": "draft",
-            "gen_id": draft_src,
-            "combo_id": "combo-1",
-            "template_id": "draft-A",
-            "llm_model_id": "gen-model",
-            "replicate": 1,
-            "origin_cohort_id": "legacy-cohort",
-        },
-    )
-    _write_json(
-        data_root / "gens" / "essay" / essay_src / "metadata.json",
-            {
-                "stage": "essay",
-                "gen_id": essay_src,
-                "template_id": "essay-X",
-                "parent_gen_id": draft_src,
-                "llm_model_id": "gen-model",
-                "replicate": 1,
-                "origin_cohort_id": "legacy-cohort",
-            },
-        )
-
-    # Selected essays list puts membership in curated mode
-    (data_root / "2_tasks" / "selected_essays.txt").write_text(f"{essay_src}\n", encoding="utf-8")
-
-    # Pretend a prior deterministic evaluation exists (replicate=1)
-    existing_eval_id = compute_deterministic_gen_id(
-        "evaluation",
-        evaluation_signature(essay_src, "eval-1", "eval-model", 1),
-    )
-    _write_json(
-        data_root / "gens" / "evaluation" / existing_eval_id / "metadata.json",
-        {
-            "stage": "evaluation",
-            "gen_id": existing_eval_id,
-            "parent_gen_id": essay_src,
-            "template_id": "eval-1",
-            "llm_model_id": "eval-model",
-            "replicate": 1,
-            "origin_cohort_id": "legacy-cohort",
-        },
-    )
-
-    context = build_asset_context(
-        resources={
-            "data_root": str(data_root),
-            "cohort_spec": _StubCohortSpec(),
-        }
-    )
-    df = cohort_membership(
-        context,
-        cohort_id=cohort_id,
-        selected_combo_mappings=pd.DataFrame(),
-    )
-
-    # Unified behavior: membership includes existing draft + essay + existing eval
-    assert set(df["stage"]) == {"draft", "essay", "evaluation"}
-
-    drafts = df[df["stage"] == "draft"]["gen_id"].tolist()
-    essays = df[df["stage"] == "essay"]["gen_id"].tolist()
-    evaluations = df[df["stage"] == "evaluation"]["gen_id"].tolist()
-
-    # All existing gen_ids should be in membership
-    assert draft_src in drafts
-    assert essay_src in essays
-    assert existing_eval_id in evaluations
-
-    # All stages present in membership
-    assert len(drafts) >= 1
-    assert len(essays) >= 1
-    assert len(evaluations) >= 1
 
 
 def test_cohort_membership_cartesian_multiple_replicates(tmp_path: Path) -> None:
@@ -321,20 +238,9 @@ def test_cohort_membership_cartesian_multiple_replicates(tmp_path: Path) -> None
             "cohort_spec": _StubCohortSpec(),
         }
     )
-    selected_df = pd.DataFrame(
-        [
-            {
-                "combo_id": "combo-1",
-                "concept_id": "c1",
-                "description_level": "paragraph",
-                "k_max": 2,
-            }
-        ]
-    )
     df = cohort_membership(
         context,
         cohort_id="cohort-cart",
-        selected_combo_mappings=selected_df,
     )
 
     drafts = df[df["stage"] == "draft"]["gen_id"].tolist()
@@ -435,12 +341,9 @@ def test_cohort_membership_uses_spec_plan(tmp_path: Path) -> None:
             "cohort_spec": _StubCohortSpec(),
         }
     )
-    selected_df = pd.DataFrame({"combo_id": ["combo-1"]})
-
     df = cohort_membership(
         context,
         cohort_id="spec-cohort",
-        selected_combo_mappings=selected_df,
     )
 
     assert set(df["stage"].unique()) == {"draft", "essay", "evaluation"}
@@ -465,87 +368,6 @@ def test_cohort_membership_uses_spec_plan(tmp_path: Path) -> None:
     assert set(df["combo_id"].unique()) == {"combo-1"}
 
 
-def test_curfated_selection_conflict_raises(base_data_root: Path) -> None:
-    data_root = base_data_root
-    select_dir = data_root / "2_tasks"
-    select_dir.mkdir(parents=True, exist_ok=True)
-    (select_dir / "selected_essays.txt").write_text("e_123\n", encoding="utf-8")
-    (select_dir / "selected_drafts.txt").write_text("d_456\n", encoding="utf-8")
-
-    context = build_asset_context(
-        resources={
-            "data_root": str(data_root),
-            "cohort_spec": _StubCohortSpec(),
-        }
-    )
-    with pytest.raises(Failure) as err:
-        cohort_membership(
-            context,
-            cohort_id="cohort-conflict",
-            selected_combo_mappings=pd.DataFrame(),
-        )
-    failure = err.value
-    assert failure.metadata["error_code"].value == "INVALID_CONFIG"
-    ctx = failure.metadata.get("error_ctx")
-    if ctx is not None:
-        assert ctx.data.get("reason") == "multiple_curated_inputs"
-
-
-
-def test_curated_with_comments(base_data_root: Path) -> None:
-    """Test that comment lines (non-directive) are handled properly."""
-    data_root = base_data_root
-    draft_src = compute_deterministic_gen_id(
-        "draft",
-        draft_signature("combo-1", "draft-A", "gen-model", 1),
-    )
-    essay_src = compute_deterministic_gen_id(
-        "essay",
-        essay_signature(draft_src, "essay-X", 1),
-    )
-    _write_json(
-        data_root / "gens" / "draft" / draft_src / "metadata.json",
-        {
-            "stage": "draft",
-            "gen_id": draft_src,
-            "combo_id": "combo-1",
-            "template_id": "draft-A",
-            "llm_model_id": "gen-model",
-            "replicate": 1,
-        },
-    )
-    _write_json(
-        data_root / "gens" / "essay" / essay_src / "metadata.json",
-        {
-            "stage": "essay",
-            "gen_id": essay_src,
-            "template_id": "essay-X",
-            "parent_gen_id": draft_src,
-            "llm_model_id": "gen-model",
-            "replicate": 1,
-        },
-    )
-
-    # Comment lines should be ignored (but not treated as directives)
-    (data_root / "2_tasks" / "selected_essays.txt").write_text(
-        "# Selected essays for testing\n" + essay_src + "\n",
-        encoding="utf-8",
-    )
-
-    context = build_asset_context(
-        resources={
-            "data_root": str(data_root),
-            "cohort_spec": _StubCohortSpec(),
-        }
-    )
-    df = cohort_membership(
-        context,
-        cohort_id="cohort-with-comments",
-        selected_combo_mappings=pd.DataFrame(),
-    )
-
-    # Should succeed and include all stages
-    assert set(df["stage"]) == {"draft", "essay", "evaluation"}
 class _StubCohortSpec:
     def compile_definition(
         self,

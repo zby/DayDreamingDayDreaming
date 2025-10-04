@@ -32,10 +32,6 @@ from daydreaming_dagster.assets.results_summary import (
     generation_scores_pivot,
     evaluation_model_template_pivot,
 )
-from daydreaming_dagster.assets.group_cohorts import (
-    cohort_membership,
-    register_cohort_partitions,
-)
 from daydreaming_dagster.assets.maintenance import (
     prune_dynamic_partitions,
 )
@@ -48,8 +44,10 @@ from daydreaming_dagster.assets.raw_data import RAW_SOURCE_ASSETS
 from daydreaming_dagster.schedules.raw_schedule import raw_schedule
 from daydreaming_dagster.assets.group_cohorts import (
     cohort_id,
+    cohort_membership,
     selected_combo_mappings,
     content_combinations,
+    register_cohort_partitions,
 )
 from daydreaming_dagster.assets.cross_experiment import (
     filtered_evaluation_results,
@@ -138,10 +136,10 @@ def _stage_assets() -> list:
 
 CORE_ASSETS = (
     cohort_id,
-    cohort_membership,
-    register_cohort_partitions,
     selected_combo_mappings,
     content_combinations,
+    cohort_membership,
+    register_cohort_partitions,
 )
 
 RESULT_ASSETS = (
