@@ -89,7 +89,23 @@ uv run python scripts/build_pivot_tables.py --parsed-scores data/7_cross_experim
 # - evaluation_scores_by_template_model.csv  (pivot: rows=essay_task, cols=evaluation_template__evaluation_model)
 ```
 
-Note: Auto‑materializing appenders were removed. Derive views on demand from the gens store and tasks.
+Note: Auto-materializing appenders were removed. Derive views on demand from the gens store and tasks.
+
+### Curating Essay Cohorts
+
+``scripts/select_top_essays.py`` now stages an editable candidate list instead of
+emitting a spec directly:
+
+1. Rank essays and write a candidate CSV (defaults to ``data/curation/top_essay_candidates.csv``):
+   ```bash
+   uv run python scripts/select_top_essays.py --cohort-id novelty-top-30 --template novelty --top-n 30
+   ```
+2. Review/edit the CSV (toggle the ``selected`` column, adjust ordering, etc.).
+3. Build the cohort membership + spec bundle from the curated list:
+   ```bash
+   uv run python scripts/build_cohort_from_list.py --cohort-id novelty-top-30
+   ```
+   The command copies the curated list under ``data/cohorts/<id>/curation/`` for traceability.
 
 ### Raw CSV Change Handling (Schedule)
 

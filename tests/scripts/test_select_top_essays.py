@@ -9,6 +9,7 @@ import pandas as pd
 
 ROOT = Path(__file__).resolve().parents[2]
 SCRIPT = ROOT / "scripts" / "select_top_essays.py"
+BUILD_SCRIPT = ROOT / "scripts" / "build_cohort_from_list.py"
 
 
 def _write_metadata(root: Path, stage: str, gen_id: str, payload: dict) -> None:
@@ -46,7 +47,7 @@ def _write_aggregated_scores(path: Path) -> None:
     rows.to_csv(path, index=False)
 
 
-def test_select_top_generates_spec_and_membership(tmp_path: Path) -> None:
+def test_select_and_build_cohort_from_curated_list(tmp_path: Path) -> None:
     data_root = tmp_path / "data"
     aggregated_dir = data_root / "7_cross_experiment"
     aggregated_dir.mkdir(parents=True, exist_ok=True)
@@ -103,7 +104,9 @@ def test_select_top_generates_spec_and_membership(tmp_path: Path) -> None:
         },
     )
 
-    result = subprocess.run(
+    candidate_path = tmp_path / "top_candidates.csv"
+
+    result_select = subprocess.run(
         [
             sys.executable,
             str(SCRIPT),
@@ -113,6 +116,31 @@ def test_select_top_generates_spec_and_membership(tmp_path: Path) -> None:
             "novelty",
             "--top-n",
             "1",
+            "--aggregated-scores",
+            str(aggregated_path),
+            "--output",
+            str(candidate_path),
+            "--overwrite",
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+
+    assert candidate_path.exists(), result_select.stdout
+    candidates = pd.read_csv(candidate_path)
+    assert "essay_gen_id" in candidates.columns
+    assert "selected" in candidates.columns
+    assert candidates.loc[0, "selected"]
+
+    result_build = subprocess.run(
+        [
+            sys.executable,
+            str(BUILD_SCRIPT),
+            "--cohort-id",
+            "novelty-top",
+            "--candidate-list",
+            str(candidate_path),
             "--aggregated-scores",
             str(aggregated_path),
             "--data-root",
@@ -125,7 +153,7 @@ def test_select_top_generates_spec_and_membership(tmp_path: Path) -> None:
     )
 
     membership_path = data_root / "cohorts" / "novelty-top" / "membership.csv"
-    assert membership_path.exists(), result.stdout
+    assert membership_path.exists(), result_build.stdout
     membership = pd.read_csv(membership_path)
     assert set(membership["stage"]) == {"draft", "essay", "evaluation"}
     assert set(membership["gen_id"]) == {"draft-1", "essay-1", "eval-1", "eval-2"}
@@ -143,4 +171,9 @@ def test_select_top_generates_spec_and_membership(tmp_path: Path) -> None:
     assert "combo_id" in items.columns
     assert "novelty" in items["evaluation_template"].tolist()
 
-    assert "Generated spec" in result.stdout
+    curated_copy = data_root / "cohorts" / "novelty-top" / "curation" / "essay_candidates.csv"
+    assert curated_copy.exists()
+    curated_df = pd.read_csv(curated_copy)
+    assert "essay_gen_id" in curated_df.columns
+
+    assert "Generated spec" in result_build.stdout

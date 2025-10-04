@@ -198,7 +198,20 @@ Raw inputs are not auto-materialized; instead, re-run the cohort setup assets wh
 - `selected_combo_mappings`, `content_combinations`, `cohort_id`, `cohort_membership`, and `register_cohort_partitions` should be materialized after editing `data/1_raw/**/*` so the manifest, combo catalog, and membership stay aligned.
 - This sequence registers dynamic partitions for the downstream generation and evaluation groups.
 
-Cross‑experiment tracking no longer uses auto‑appenders. Use analysis assets (`filtered_evaluation_results`, `template_version_comparison_pivot`) and scripts for backfills under `data/7_cross_experiment/`. These analyses read scores strictly from `data/gens/evaluation/<gen_id>/parsed.txt` and do not parse `raw.txt` — ensure evaluation assets have produced parsed outputs before running cross‑experiment analysis.
+Cross‑experiment tracking no longer uses auto‑appenders. Use the `filtered_evaluation_results` asset and `scripts/build_pivot_tables.py` for backfills under `data/7_cross_experiment/`. These analyses read scores strictly from `data/gens/evaluation/<gen_id>/parsed.txt` and do not parse `raw.txt` — ensure evaluation assets have produced parsed outputs before running cross-experiment analysis.
+
+**Curating cohorts from existing essays**
+
+1. Generate an editable ranked list:
+   ```bash
+   uv run python scripts/select_top_essays.py --cohort-id my-cohort --template novelty --top-n 30
+   ```
+2. Edit the resulting CSV (`data/curation/top_essay_candidates.csv` by default), toggling the `selected` column or reordering rows.
+3. Materialise the cohort membership and spec bundle:
+   ```bash
+   uv run python scripts/build_cohort_from_list.py --cohort-id my-cohort
+   ```
+   The curated list is copied to `data/cohorts/<id>/curation/` for traceability before the usual Dagster assets consume the generated spec.
 
 ---
 
