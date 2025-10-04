@@ -1,5 +1,5 @@
 from dataclasses import dataclass, field
-from typing import List, Dict, Optional
+from typing import List, Dict
 from itertools import product
 import hashlib
 
@@ -16,7 +16,13 @@ class ContentCombination:
     metadata: Dict[str, str] = field(default_factory=dict)  # Optional metadata like level used, strategy, etc.
     
     @classmethod
-    def from_concepts(cls, concepts: List[Concept], level: str = "paragraph", combo_id: Optional[str] = None) -> "ContentCombination":
+    def from_concepts(
+        cls,
+        concepts: List[Concept],
+        level: str = "paragraph",
+        *,
+        combo_id: str,
+    ) -> "ContentCombination":
         """Current approach: single level with fallback for all concepts.
 
         Ordering note: The order of concepts in the rendered template mirrors
@@ -34,7 +40,13 @@ class ContentCombination:
             concept_ids.append(concept.concept_id)
         
         if combo_id is None:
-            combo_id = generate_combo_id(concept_ids, level, k_max=len(concepts))
+            raise DDError(
+                Err.INVALID_CONFIG,
+                ctx={
+                    "reason": "missing_combo_id",
+                    "concept_ids": concept_ids,
+                },
+            )
 
         return cls(
             contents=contents,
@@ -82,7 +94,7 @@ class ContentCombination:
             combinations = []
             for i, level in enumerate(["sentence", "paragraph", "article"]):
                 combo_id = f"combo_{i+1:03d}_uniform_{level}"
-                combo = cls.from_concepts(concepts, level, combo_id)
+                combo = cls.from_concepts(concepts, level, combo_id=combo_id)
                 combinations.append(combo)
             return combinations
         elif level_strategy == "progressive":
