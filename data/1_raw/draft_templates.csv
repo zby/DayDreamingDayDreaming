@@ -1,7 +1,7 @@
 template_id,template_name,description,parser,generator
 creative-synthesis-v2,Creative Synthesis V2 (as draft),Legacy essay template reused for Phase-1 draft,,llm
-creative-synthesis-v6,Creative Synthesis V6 (as draft),Legacy essay template reused for Phase-1 draft,essay_block,llm
-creative-synthesis-v7,Creative Synthesis V7 (as draft),Legacy essay template reused for Phase-1 draft,essay_block,llm
+creative-synthesis-v6,Creative Synthesis V6 (as draft),Legacy essay template reused for Phase-1 draft,essay_block_lenient,llm
+creative-synthesis-v7,Creative Synthesis V7 (as draft),Legacy essay template reused for Phase-1 draft,essay_block_lenient,llm
 creative-synthesis-v9,Creative Synthesis V9,Enhanced two-phase generation - Links Phase,,llm
 creative-synthesis-v10,Creative Synthesis V10,Enhanced two-phase generation - Links Phase,,llm
 pair-explorer,Pair Explorer,Explore and generate links between pairs of concepts,,llm

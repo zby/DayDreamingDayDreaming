@@ -2,6 +2,9 @@ import os
 from pathlib import Path
 
 import pandas as pd
+import pytest
+
+from dagster import Failure
 
 from daydreaming_dagster.assets.group_draft import draft_raw, draft_parsed
 from daydreaming_dagster.data_layer.gens_data_layer import GensDataLayer
@@ -37,7 +40,7 @@ def _write_draft_templates_csv(dir_path: Path, template_id: str, parser: str):
     df.to_csv(out, index=False)
 
 
-def _write_membership(dir_path: Path, *, gen_id: str, template_id: str, model_id: str):
+def _write_membership(dir_path: Path, *, gen_id: str):
     write_membership_csv(
         dir_path,
         [
@@ -50,18 +53,7 @@ def _write_membership(dir_path: Path, *, gen_id: str, template_id: str, model_id
     )
 
 
-def test_draft_parser_without_tags_passes_through(tmp_path: Path, make_ctx):
-    # Arrange: draft template with parser=essay_block, but raw text has no structured tags
-    template_id = "deliberate-rolling-thread-test"
-    _write_draft_templates_csv(tmp_path, template_id, parser="essay_block")
-
-    draft_task_id = f"comboX_{template_id}_sonnet-4"
-    gen_id = "d_gen_123"
-    # Create membership row (new path doesn't accept tasks inline)
-    _write_membership(tmp_path, gen_id=gen_id, template_id=template_id, model_id="sonnet-4")
-
-    # RAW content with >=3 lines to pass early validation, but no <essay> tags for the parser
-    raw_text = "Line A\nLine B\nLine C\n"
+def _seed_metadata(tmp_path: Path, gen_id: str, template_id: str):
     layer = GensDataLayer.from_root(tmp_path)
     layer.write_main_metadata(
         "draft",
@@ -76,8 +68,38 @@ def test_draft_parser_without_tags_passes_through(tmp_path: Path, make_ctx):
         },
     )
 
-    os.environ["GEN_TEMPLATES_ROOT"] = str(tmp_path / "1_raw" / "templates")
 
+def test_draft_parser_strict_requires_tags(tmp_path: Path, make_ctx):
+    template_id = "deliberate-rolling-thread-strict"
+    _write_draft_templates_csv(tmp_path, template_id, parser="essay_block")
+
+    gen_id = "d_gen_strict"
+    _write_membership(tmp_path, gen_id=gen_id)
+    raw_text = "Line A\nLine B\nLine C\n"
+    _seed_metadata(tmp_path, gen_id, template_id)
+
+    os.environ["GEN_TEMPLATES_ROOT"] = str(tmp_path / "1_raw" / "templates")
+    ctx = make_ctx(gen_id, tmp_path, llm=_FakeLLM(raw_text), min_draft_lines=3)
+    result = draft_raw(ctx, draft_prompt="ignored")
+    assert result == raw_text
+
+    with pytest.raises(Failure):
+        draft_parsed(ctx)
+
+
+def test_draft_parser_lenient_passes_without_tags(tmp_path: Path, make_ctx):
+    # Arrange: draft template with parser=essay_block_lenient, raw text has no structured tags
+    template_id = "deliberate-rolling-thread-test"
+    _write_draft_templates_csv(tmp_path, template_id, parser="essay_block_lenient")
+
+    gen_id = "d_gen_123"
+    _write_membership(tmp_path, gen_id=gen_id)
+
+    # RAW content with >=3 lines to pass early validation, but no <essay> tags for the parser
+    raw_text = "Line A\nLine B\nLine C\n"
+    _seed_metadata(tmp_path, gen_id, template_id)
+
+    os.environ["GEN_TEMPLATES_ROOT"] = str(tmp_path / "1_raw" / "templates")
     ctx = make_ctx(gen_id, tmp_path, llm=_FakeLLM(raw_text), min_draft_lines=3)
 
     result = draft_raw(ctx, draft_prompt="ignored")

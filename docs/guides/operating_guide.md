@@ -132,7 +132,7 @@ Template CSVs now describe parser/generator properties only—the spec selects w
 
 **Draft Templates** (`data/1_raw/draft_templates.csv`):
 - Columns: `template_id`, `template_name`, `description`, `parser`, `generator`.
-- Parser column: if the draft output requires extraction, set a valid `parser` name (e.g., `essay_block`). Parsing happens in Phase‑1 and failures there will fail the draft with a clear error. Raw LLM output remains saved under `data/gens/draft/<gen_id>/raw.txt` for debugging.
+- Parser column: if the draft output requires extraction, set a valid `parser` name (e.g., `essay_block` for strict tagged prompts, `essay_block_lenient` when you need a best-effort identity fallback). Parsing happens in Phase‑1 and failures there will fail the draft with a clear error. Raw LLM output remains saved under `data/gens/draft/<gen_id>/raw.txt` for debugging.
 - After adding the `.txt` template file in `data/1_raw/templates/draft/`, reference the new `template_id` inside the cohort spec so it participates in generation.
 
 **Essay Templates** (`data/1_raw/essay_templates.csv`):

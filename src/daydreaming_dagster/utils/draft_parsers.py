@@ -65,8 +65,7 @@ ESSAY_BLOCK_RE = re.compile(r"<essay>([\s\S]*?)</essay>", re.IGNORECASE | re.MUL
 def parse_essay_block(text: str) -> str:
     """Extract the first <essay>...</essay> block.
 
-    Falls back to identity when no essay/thinking tags are present so legacy
-    single-phase drafts still parse without throwing.
+    Raises ``DDError`` when no block is present.
     """
     m = ESSAY_BLOCK_RE.search(text)
     if m:
@@ -77,20 +76,31 @@ def parse_essay_block(text: str) -> str:
     start = lower.find("<essay>")
     if start != -1:
         return text[start + len("<essay>"):].strip()
-    if "<essay>" not in lower and "<thinking>" not in lower:
-        # No structured tags at all; treat as identity to avoid hard failures on legacy drafts.
-        return text.strip()
     raise DDError(
         Err.PARSER_FAILURE,
         ctx={"reason": "missing_essay_block"},
     )
 
 
-# Register under a simple name referenced by draft_templates.csv
+def parse_essay_block_lenient(text: str) -> str:
+    """Essay block parser that falls back to identity when tags are absent."""
+
+    try:
+        return parse_essay_block(text)
+    except DDError as exc:
+        ctx = exc.ctx or {}
+        if ctx.get("reason") == "missing_essay_block":
+            return text.strip()
+        raise
+
+
+# Register under names referenced by draft_templates.csv
 DRAFT_PARSERS_REGISTRY["essay_block"] = parse_essay_block
+DRAFT_PARSERS_REGISTRY["essay_block_lenient"] = parse_essay_block_lenient
 
 __all__ = [
     "DRAFT_PARSERS_REGISTRY",
     "parse_essay_idea_last",
     "parse_essay_block",
+    "parse_essay_block_lenient",
 ]
