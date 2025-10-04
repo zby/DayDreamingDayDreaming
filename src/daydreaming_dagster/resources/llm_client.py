@@ -31,6 +31,7 @@ class LLMClientResource(ConfigurableResource):
     rate_limit_calls: int = 1
     rate_limit_period: int = 60  # 1 call per minute
     mandatory_delay: float = 65.0  # Mandatory delay between calls (65 seconds to be extra safe)
+    default_max_tokens: int = 1024  # Fallback when callers omit max_tokens
     # Data root for loading model id -> provider mapping (llm_models.csv)
     data_root: str = "data"
 
@@ -87,21 +88,41 @@ class LLMClientResource(ConfigurableResource):
             # Load model id -> provider map best-effort
             self._model_map = self._load_model_map()
 
-    def generate(self, prompt: str, model: str, temperature: float = 0.7, max_tokens: Optional[int] = None) -> str:
+    def generate(
+        self,
+        prompt: str,
+        model: str,
+        temperature: float = 0.7,
+        max_tokens: Optional[int] = None,
+    ) -> str:
         """Generate content and return only the text.
 
         Thin wrapper over generate_with_info for backwards compatibility.
         """
-        text, _info = self.generate_with_info(prompt, model, temperature, max_tokens)
+        text, _info = self.generate_with_info(
+            prompt,
+            model,
+            temperature,
+            max_tokens,
+        )
         return text
 
-    def generate_with_info(self, prompt: str, model: str, temperature: float = 0.7, max_tokens: Optional[int] = None) -> tuple[str, dict]:
+    def generate_with_info(
+        self,
+        prompt: str,
+        model: str,
+        temperature: float = 0.7,
+        max_tokens: Optional[int] = None,
+    ) -> tuple[str, dict]:
         """Generate content and return (text, info dict).
 
         Info includes keys like 'finish_reason' and 'truncated' (True if finish_reason == 'length').
         """
         self._ensure_initialized()
-        if not isinstance(max_tokens, int) or max_tokens <= 0:
+        effective_max_tokens: Optional[int] = max_tokens
+        if effective_max_tokens is None:
+            effective_max_tokens = int(self.default_max_tokens)
+        if not isinstance(effective_max_tokens, int) or effective_max_tokens <= 0:
             raise DDError(
                 Err.INVALID_CONFIG,
                 ctx={
@@ -111,7 +132,12 @@ class LLMClientResource(ConfigurableResource):
             )
         # Accept either model_id or provider model string
         resolved_model = self._resolve_model_name(model)
-        info = self._make_api_call_info(prompt, resolved_model, temperature, max_tokens)
+        info = self._make_api_call_info(
+            prompt,
+            resolved_model,
+            temperature,
+            effective_max_tokens,
+        )
         return info.get("text", ""), info
 
     def _make_api_call_info(self, prompt: str, model: str, temperature: float, max_tokens: int) -> dict:
