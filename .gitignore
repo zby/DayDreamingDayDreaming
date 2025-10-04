@@ -238,5 +238,6 @@ tmp/
 scripts/tmp/
 
 plans/notes/
+reports/notes/
 
 .qwen
