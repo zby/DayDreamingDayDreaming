@@ -67,6 +67,50 @@ def _require_columns(df: pd.DataFrame, columns: list[str], *, reason: str) -> No
         )
 
 
+def _pivot_tables(
+    df: pd.DataFrame,
+    *,
+    index_cols: list[str],
+    column_key: str,
+    value_column: str,
+    aggregations: tuple[tuple[str, str], ...],
+) -> dict[str, pd.DataFrame]:
+    tables: dict[str, pd.DataFrame] = {}
+    for key, agg in aggregations:
+        pivot = df.pivot_table(
+            index=index_cols,
+            columns=column_key,
+            values=value_column,
+            aggfunc=agg,
+        )
+        if agg in {"mean", "min", "max"}:
+            pivot = pivot.round(2)
+        elif agg == "count":
+            pivot = pivot.fillna(0).astype(int)
+        tables[key] = pivot
+    return tables
+
+
+def _combine_pivot_tables(
+    pivot_tables: dict[str, pd.DataFrame],
+    *,
+    index_cols: list[str],
+    suffix_map: Mapping[str, str],
+) -> tuple[pd.DataFrame, list[str]]:
+    base_key = "mean" if "mean" in pivot_tables else next(iter(pivot_tables))
+    combined = pivot_tables[base_key].reset_index()
+    evaluation_columns = [column for column in combined.columns if column not in index_cols]
+
+    for key, suffix in suffix_map.items():
+        if key == base_key or key not in pivot_tables or not suffix:
+            continue
+        extra = pivot_tables[key].copy()
+        extra.columns = [f"{column}{suffix}" for column in extra.columns]
+        combined = combined.merge(extra.reset_index(), on=index_cols, how="left")
+
+    return combined.reset_index(drop=True), evaluation_columns
+
+
 def _normalize_path_lookup(
     path_lookup: pd.DataFrame | Mapping[tuple[str, str, str, str], str] | None,
     source_scores: pd.DataFrame,
@@ -126,8 +170,7 @@ def compute_generation_scores_pivot(
 
     _require_columns(
         valid_scores,
-        GENERATION_INDEX_COLUMNS
-        + [EVALUATION_TEMPLATE_COLUMN, EVALUATION_MODEL_COLUMN, SCORE_COLUMN],
+        GENERATION_INDEX_COLUMNS + [EVALUATION_TEMPLATE_COLUMN, EVALUATION_MODEL_COLUMN],
         reason="pivot_requires_columns",
     )
 
@@ -164,53 +207,30 @@ def compute_generation_scores_pivot(
     )
 
     index_cols = GENERATION_INDEX_COLUMNS
-    pivot_mean = allowlisted.pivot_table(
-        index=index_cols,
-        columns="eval_model_template",
-        values=SCORE_COLUMN,
-        aggfunc="mean",
-    ).round(2)
-    pivot_min = allowlisted.pivot_table(
-        index=index_cols,
-        columns="eval_model_template",
-        values=SCORE_COLUMN,
-        aggfunc="min",
-    ).round(2)
-    pivot_max = allowlisted.pivot_table(
-        index=index_cols,
-        columns="eval_model_template",
-        values=SCORE_COLUMN,
-        aggfunc="max",
-    ).round(2)
-    pivot_cnt = (
-        allowlisted.pivot_table(
-            index=index_cols,
-            columns="eval_model_template",
-            values=SCORE_COLUMN,
-            aggfunc="count",
-        )
-        .fillna(0)
-        .astype(int)
+    aggregations = (
+        ("mean", "mean"),
+        ("min", "min"),
+        ("max", "max"),
+        ("count", "count"),
     )
-
-    def _suffix_cols(df: pd.DataFrame, suffix: str) -> pd.DataFrame:
-        renamed = df.copy()
-        renamed.columns = [f"{column}{suffix}" for column in renamed.columns]
-        return renamed
-
-    pivot_df = pivot_mean.reset_index()
-    mean_eval_cols = [column for column in pivot_df.columns if column not in index_cols]
-
-    pv_min = _suffix_cols(pivot_min, "_min").reset_index()
-    pv_max = _suffix_cols(pivot_max, "_max").reset_index()
-    pv_cnt = _suffix_cols(pivot_cnt, "_n").reset_index()
-
-    for extra in (pv_min, pv_max, pv_cnt):
-        pivot_df = pivot_df.merge(extra, on=index_cols, how="left")
-
-    pivot_df = pivot_df.reset_index(drop=True)
-
-    evaluation_columns = [column for column in mean_eval_cols if column in pivot_df.columns]
+    pivot_tables = _pivot_tables(
+        allowlisted,
+        index_cols=index_cols,
+        column_key="eval_model_template",
+        value_column=SCORE_COLUMN,
+        aggregations=aggregations,
+    )
+    suffix_map = {
+        "mean": "",
+        "min": "_min",
+        "max": "_max",
+        "count": "_n",
+    }
+    pivot_df, evaluation_columns = _combine_pivot_tables(
+        pivot_tables,
+        index_cols=index_cols,
+        suffix_map=suffix_map,
+    )
 
     score_sum_col = "allowlisted_template_score_sum"
     if evaluation_columns:
@@ -230,11 +250,10 @@ def compute_generation_scores_pivot(
     )
 
     stability_cols = [
-        column
-        for column in pivot_df.columns
-        if column.endswith("_min")
-        or column.endswith("_max")
-        or column.endswith("_n")
+        f"{column}{suffix}"
+        for column in evaluation_columns
+        for key, suffix in suffix_map.items()
+        if suffix and f"{column}{suffix}" in pivot_df.columns and key != "mean"
     ]
     ordered_cols = (
         index_cols
@@ -406,7 +425,7 @@ def compute_evaluation_model_template_pivot(
 
     _require_columns(
         valid_scores,
-        GENERATION_INDEX_COLUMNS + [EVALUATION_TEMPLATE_COLUMN, EVALUATION_MODEL_COLUMN, SCORE_COLUMN],
+        GENERATION_INDEX_COLUMNS + [EVALUATION_TEMPLATE_COLUMN, EVALUATION_MODEL_COLUMN],
         reason="evaluation_model_template_pivot_requires_columns",
     )
 
@@ -416,25 +435,36 @@ def compute_evaluation_model_template_pivot(
         + valid_scores[EVALUATION_TEMPLATE_COLUMN].astype(str)
     )
 
-    pivot_df = valid_scores.pivot_table(
-        index=GENERATION_INDEX_COLUMNS,
-        columns="eval_model_template",
-        values=SCORE_COLUMN,
-        aggfunc="mean",
-    ).reset_index()
+    aggregations = (
+        ("mean", "mean"),
+        ("count", "count"),
+    )
+    pivot_tables = _pivot_tables(
+        valid_scores,
+        index_cols=GENERATION_INDEX_COLUMNS,
+        column_key="eval_model_template",
+        value_column=SCORE_COLUMN,
+        aggregations=aggregations,
+    )
+    suffix_map = {"mean": ""}
+    pivot_df, eval_columns = _combine_pivot_tables(
+        pivot_tables,
+        index_cols=GENERATION_INDEX_COLUMNS,
+        suffix_map=suffix_map,
+    )
 
     pivot_df = pivot_df.where(pd.notna(pivot_df), np.nan)
 
-    eval_columns = [
-        column
-        for column in pivot_df.columns
-        if column not in GENERATION_INDEX_COLUMNS
-    ]
     total_generations = len(pivot_df)
     coverage_stats: dict[str, dict[str, float]] = {}
+    count_frame = pivot_tables.get("count")
 
     for column in eval_columns:
-        non_null_count = int(pivot_df[column].count())
+        non_null_count = 0
+        if count_frame is not None and column in count_frame.columns:
+            non_null_count = int(count_frame[column].gt(0).sum())
+        else:
+            non_null_count = int(pivot_df[column].count())
         coverage_pct = (
             (non_null_count / total_generations * 100) if total_generations > 0 else 0.0
         )

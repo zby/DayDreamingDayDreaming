@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections import OrderedDict
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Iterable, Mapping, Sequence
+from typing import Any, Callable, Iterable, Mapping, Sequence
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -201,6 +201,15 @@ class CohortDefinitionAllowlists:
     generation_models: tuple[str, ...]
     evaluation_models: tuple[str, ...]
 
+    def has_evaluation_axes(self) -> bool:
+        return bool(self.evaluation_templates and self.evaluation_models)
+
+    def evaluation_templates_list(self) -> list[str]:
+        return list(self.evaluation_templates)
+
+    def evaluation_models_list(self) -> list[str]:
+        return list(self.evaluation_models)
+
 
 def build_allowlists_from_definition(
     definition: CohortDefinition | None,
@@ -223,6 +232,53 @@ def build_allowlists_from_definition(
         generation_models=tuple(sorted(generation_models)),
         evaluation_models=tuple(sorted(evaluation_models)),
     )
+
+
+def load_cohort_allowlists(
+    *,
+    data_root: Path,
+    cohort_id: str,
+    compile_definition: Callable[..., CohortDefinition],
+    catalogs: Mapping[str, Any] | None = None,
+    definition: CohortDefinition | None = None,
+    require_evaluation_axes: bool = True,
+    **compile_kwargs: Any,
+) -> CohortDefinitionAllowlists:
+    """Load cohort allowlists, enforcing spec presence and evaluation axes."""
+
+    cohort_str = str(cohort_id)
+
+    if definition is None:
+        spec_dir = Path(data_root) / "cohorts" / cohort_str / "spec"
+        if not spec_dir.exists():
+            raise DDError(
+                Err.INVALID_CONFIG,
+                ctx={
+                    "reason": "cohort_spec_required",
+                    "cohort_id": cohort_str,
+                    "path": str(spec_dir),
+                },
+            )
+        plan = compile_definition(
+            path=spec_dir,
+            catalogs=catalogs or {},
+            **compile_kwargs,
+        )
+    else:
+        plan = definition
+
+    allowlists = build_allowlists_from_definition(plan)
+
+    if require_evaluation_axes and not allowlists.has_evaluation_axes():
+        raise DDError(
+            Err.INVALID_CONFIG,
+            ctx={
+                "reason": "cohort_spec_missing_evaluation_axes",
+                "cohort_id": cohort_str,
+            },
+        )
+
+    return allowlists
 
 
 def compile_cohort_definition(
@@ -258,6 +314,7 @@ __all__ = [
     "EvaluationPlanEntry",
     "CohortDefinitionAllowlists",
     "build_allowlists_from_definition",
+    "load_cohort_allowlists",
     "compile_cohort_definition",
     "load_cohort_definition",
 ]

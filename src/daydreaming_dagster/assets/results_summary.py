@@ -5,7 +5,7 @@ import pandas as pd
 from ..data_layer.paths import Paths, COHORT_REPORT_ASSET_TARGETS
 from .raw_data import EVALUATION_TEMPLATES_KEY
 from .group_cohorts import _build_spec_catalogs
-from ..cohorts import build_allowlists_from_definition
+from ..cohorts import load_cohort_allowlists
 from ..results_summary.transformations import (
     compute_generation_scores_pivot,
     compute_final_results,
@@ -51,32 +51,22 @@ def generation_scores_pivot(context, cohort_aggregated_scores: pd.DataFrame) -> 
     cohort_id = _require_cohort_partition(context, "generation_scores_pivot")
     paths = Paths.from_context(context)
 
-    spec_dir = paths.data_root / "cohorts" / str(cohort_id) / "spec"
-    if not spec_dir.exists():
-        raise DDError(
-            Err.INVALID_CONFIG,
-            ctx={
-                "reason": "cohort_spec_required",
-                "cohort_id": cohort_id,
-                "path": str(spec_dir),
-            },
-        )
-
-    catalogs = _build_spec_catalogs(paths.data_root, pd.DataFrame())
-    spec_plan = context.resources.cohort_spec.compile_definition(
-        path=spec_dir,
-        catalogs=catalogs,
+    allowlists = load_cohort_allowlists(
+        data_root=paths.data_root,
+        cohort_id=cohort_id,
+        compile_definition=context.resources.cohort_spec.compile_definition,
+        catalogs=_build_spec_catalogs(paths.data_root),
+        require_evaluation_axes=False,
     )
-    allowlists = build_allowlists_from_definition(spec_plan)
 
-    eval_templates = list(allowlists.evaluation_templates)
-    eval_models = list(allowlists.evaluation_models)
-
-    if not eval_templates or not eval_models:
+    if not allowlists.has_evaluation_axes():
         context.log.warning(
             "No evaluation templates/models defined in cohort spec; returning empty pivot",
         )
         return pd.DataFrame()
+
+    eval_templates = allowlists.evaluation_templates_list()
+    eval_models = allowlists.evaluation_models_list()
 
     if cohort_aggregated_scores is None or cohort_aggregated_scores.empty:
         context.log.warning("No cohort aggregated scores provided; returning empty pivot")

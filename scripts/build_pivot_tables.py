@@ -38,7 +38,7 @@ from daydreaming_dagster.data_layer.paths import Paths
 from daydreaming_dagster.assets.group_cohorts import _build_spec_catalogs
 from daydreaming_dagster.cohorts import (
     CohortDefinition,
-    build_allowlists_from_definition,
+    load_cohort_allowlists,
     load_cohort_definition,
 )
 from daydreaming_dagster.spec_dsl import ExperimentSpec
@@ -112,38 +112,24 @@ def _load_spec_filters(
     catalogs: Mapping[str, Any] | None = None,
     seed: int | None = None,
 ) -> tuple[set[str], set[str]]:
-    spec_dir = paths.data_root / "cohorts" / cohort_id / "spec"
-    if definition is None and spec is None and not spec_dir.exists():
-        raise DDError(
-            Err.INVALID_CONFIG,
-            ctx={
-                "reason": "cohort_spec_required",
-                "cohort_id": cohort_id,
-                "path": str(spec_dir),
-            },
-        )
-
     catalogs = catalogs or _build_spec_catalogs(paths.data_root)
-    plan = definition or load_cohort_definition(
-        spec if spec is not None else spec_dir,
+
+    plan = definition
+    if plan is None and spec is not None:
+        plan = load_cohort_definition(spec, catalogs=catalogs, seed=seed)
+
+    def _compile_from_path(*, path, catalogs, **_kwargs):
+        return load_cohort_definition(path, catalogs=catalogs, seed=seed)
+
+    allowlists = load_cohort_allowlists(
+        data_root=paths.data_root,
+        cohort_id=cohort_id,
+        compile_definition=_compile_from_path,
         catalogs=catalogs,
-        seed=seed,
+        definition=plan,
     )
-    allowlists = build_allowlists_from_definition(plan)
 
-    eval_templates = {tpl for tpl in allowlists.evaluation_templates}
-    eval_models = {model for model in allowlists.evaluation_models}
-
-    if not eval_templates or not eval_models:
-        raise DDError(
-            Err.INVALID_CONFIG,
-            ctx={
-                "reason": "cohort_spec_missing_evaluation_axes",
-                "cohort_id": cohort_id,
-            },
-        )
-
-    return eval_templates, eval_models
+    return set(allowlists.evaluation_templates), set(allowlists.evaluation_models)
 
 
 def build_pivot(

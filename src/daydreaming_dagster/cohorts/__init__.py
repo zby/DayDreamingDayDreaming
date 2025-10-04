@@ -7,6 +7,7 @@ from .spec_planner import (
     EssayPlanEntry,
     EvaluationPlanEntry,
     build_allowlists_from_definition,
+    load_cohort_allowlists,
     compile_cohort_definition,
     load_cohort_definition,
 )
@@ -19,6 +20,7 @@ __all__ = [
     "EvaluationPlanEntry",
     "CohortDefinitionAllowlists",
     "build_allowlists_from_definition",
+    "load_cohort_allowlists",
     "compile_cohort_definition",
     "load_cohort_definition",
     "generate_spec_bundle",
