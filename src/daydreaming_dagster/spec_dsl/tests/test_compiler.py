@@ -77,7 +77,7 @@ def test_compile_design_subset_must_leave_values() -> None:
     assert exc.value.ctx["axis"] == "draft_template"
 
 
-def test_compile_design_catalog_validation() -> None:
+def test_compile_design_catalog_input_does_not_filter_levels() -> None:
     spec = make_spec(
         axes={
             "draft_template": AxisSpec(
@@ -89,11 +89,9 @@ def test_compile_design_catalog_validation() -> None:
         output={},
     )
 
-    with pytest.raises(SpecDslError) as exc:
-        compile_design(spec, catalogs={"draft_template": {"draft-A"}})
+    rows = compile_design(spec, catalogs={"draft_template": {"draft-A"}})
 
-    assert exc.value.code is SpecDslErrorCode.INVALID_SPEC
-    assert exc.value.ctx["missing"] == ("draft-B",)
+    assert sorted(row["draft_template"] for row in rows) == ["draft-A", "draft-B"]
 
 
 def test_compile_design_tie_merges_axes_and_intersects_levels() -> None:

@@ -7,7 +7,7 @@ Reference for the tuple-capable DSL used to compile cohort plans into determinis
 The DSL turns declarative specs (YAML/JSON/TOML or directory bundles) into ordered rows encoding all axis levels, pairings, tuple bindings, and replicate indices. Output rows become the source of truth for generation IDs and downstream Dagster assets.
 
 Highlights:
-- Ordered axis definitions with optional catalog validation.
+- Ordered axis definitions with catalogs enforced against the generated membership rows.
 - Rule pipeline (`subset → tie → pair → tuple`) to bound Cartesian growth.
 - Replication configuration that appends deterministic `replicate` indices without manual duplication.
 - CLI (`scripts/compile_experiment_design.py`) for producing CSV/JSONL output with catalog data sourced from JSON/CSV files.
@@ -118,13 +118,15 @@ Rules execute in declaration order: `subset` → `tie` → `pair` → `tuple` �
 
 ## 4. Catalog Validation
 
-Validation now keys off the axis identifiers themselves. When `compile_design` receives a `catalogs` mapping, any axis present in that mapping is checked for membership.
+Catalog enforcement now happens after the spec has been compiled into cohort rows. The `compile_design` helper still accepts an optional `catalogs` mapping so callers can thread data forward, but it no longer performs membership checks itself. Instead, the cohort pipeline validates the concrete membership rows via `validate_membership_against_catalog`, ensuring every combo, template, and model referenced in `membership.csv` is present in the runtime catalogs.
+
+CLI flags remain unchanged:
 
 - `--catalog path.json` (repeatable). Each JSON file must contain mappings `{axis_name: [values...]}` or `{axis_name: {value: ...}}`.
 - `--catalog-csv axis=PATH[:column]` (repeatable). Reads values from a CSV column (defaults to `id`).
 - `--data-root /path/to/data` enables shortcuts like `--catalog-csv draft_template=@stage_templates_csv:template_id`, resolving attributes on `daydreaming_dagster.data_layer.paths.Paths`.
 
-If any axis value is missing from its provided catalog, the compiler raises `SpecDslError(INVALID_SPEC)` with the offending `missing` list.
+During asset execution the loader converts these sources into a `CohortCatalog` and cross-checks the generated membership rows, raising `DDError(Err.INVALID_CONFIG)` with the missing values if any stage references out-of-catalog resources.
 
 ## 5. Replication Flow
 

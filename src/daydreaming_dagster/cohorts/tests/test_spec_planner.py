@@ -9,6 +9,11 @@ import yaml
 from daydreaming_dagster.spec_dsl import compile_design, parse_spec_mapping
 from daydreaming_dagster.utils.errors import DDError, Err
 
+from daydreaming_dagster.cohorts import (
+    CohortCatalog,
+    MembershipRow,
+    validate_membership_against_catalog,
+)
 from daydreaming_dagster.cohorts.spec_planner import CohortDefinition
 
 
@@ -75,3 +80,65 @@ def test_cohort_plan_missing_required_field_raises() -> None:
 
     assert excinfo.value.code is Err.INVALID_CONFIG
     assert excinfo.value.ctx and excinfo.value.ctx.get("field") == "draft_llm"
+
+
+def _cohort_catalog() -> CohortCatalog:
+    return CohortCatalog.from_catalogs(
+        _catalogs(),
+        replication_config={"draft": 1, "essay": 1, "evaluation": 1},
+    )
+
+
+def test_validate_membership_against_catalog_passes() -> None:
+    catalog = _cohort_catalog()
+    rows = [
+        MembershipRow(
+            stage="draft",
+            gen_id="draft-1",
+            origin_cohort_id="cohort-1",
+            combo_id="combo-1",
+            template_id="draft-A",
+            llm_model_id="draft-llm",
+        ),
+        MembershipRow(
+            stage="essay",
+            gen_id="essay-1",
+            origin_cohort_id="cohort-1",
+            parent_gen_id="draft-1",
+            combo_id="combo-1",
+            template_id="essay-X",
+            llm_model_id="essay-llm",
+        ),
+        MembershipRow(
+            stage="evaluation",
+            gen_id="eval-1",
+            origin_cohort_id="cohort-1",
+            parent_gen_id="essay-1",
+            combo_id="combo-1",
+            template_id="eval-1",
+            llm_model_id="eval-llm",
+        ),
+    ]
+
+    validate_membership_against_catalog(rows, catalog=catalog)
+
+
+def test_validate_membership_against_catalog_missing_combo_raises() -> None:
+    catalog = _cohort_catalog()
+    rows = [
+        MembershipRow(
+            stage="draft",
+            gen_id="draft-1",
+            origin_cohort_id="cohort-1",
+            combo_id="missing-combo",
+            template_id="draft-A",
+            llm_model_id="draft-llm",
+        )
+    ]
+
+    with pytest.raises(DDError) as excinfo:
+        validate_membership_against_catalog(rows, catalog=catalog)
+
+    assert excinfo.value.code is Err.INVALID_CONFIG
+    assert excinfo.value.ctx["reason"] == "catalog_combos_missing"
+    assert excinfo.value.ctx["missing"] == ["missing-combo"]

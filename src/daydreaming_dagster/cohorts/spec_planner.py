@@ -248,7 +248,7 @@ def load_cohort_allowlists(
     data_root: Path,
     cohort_id: str,
     compile_definition: Callable[..., CohortDefinition],
-    catalogs: Mapping[str, Any] | None = None,
+    catalogs: Mapping[str, Any],
     definition: CohortDefinition | None = None,
     require_evaluation_axes: bool = True,
     **compile_kwargs: Any,
@@ -256,6 +256,12 @@ def load_cohort_allowlists(
     """Load cohort allowlists, enforcing spec presence and evaluation axes."""
 
     cohort_str = str(cohort_id)
+
+    if catalogs is None:
+        raise DDError(
+            Err.INVALID_CONFIG,
+            ctx={"reason": "cohort_catalogs_required", "cohort_id": cohort_str},
+        )
 
     if definition is None:
         spec_dir = Path(data_root) / "cohorts" / cohort_str / "spec"
@@ -270,7 +276,7 @@ def load_cohort_allowlists(
             )
         plan = compile_definition(
             path=spec_dir,
-            catalogs=catalogs or {},
+            catalogs=catalogs,
             **compile_kwargs,
         )
     else:
@@ -460,7 +466,7 @@ def load_cohort_context(
     data_root: Path,
     cohort_id: str,
     compile_definition: Callable[..., CohortDefinition],
-    catalogs: Mapping[str, Any] | None = None,
+    catalogs: Mapping[str, Any],
     definition: CohortDefinition | None = None,
     require_evaluation_axes: bool = True,
     **compile_kwargs: Any,
@@ -468,7 +474,12 @@ def load_cohort_context(
     """Return compiled spec details, allowlists, template modes, and replication config."""
 
     cohort_str = str(cohort_id)
-    catalogs = catalogs or build_spec_catalogs(data_root)
+
+    if catalogs is None:
+        raise DDError(
+            Err.INVALID_CONFIG,
+            ctx={"reason": "cohort_catalogs_required", "cohort_id": cohort_str},
+        )
 
     if definition is None:
         spec_dir = Path(data_root) / "cohorts" / cohort_str / "spec"

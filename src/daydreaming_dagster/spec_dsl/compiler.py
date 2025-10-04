@@ -8,7 +8,7 @@ from random import Random
 from typing import Any, Iterable, Mapping, Sequence
 
 from daydreaming_dagster.spec_dsl.errors import SpecDslError, SpecDslErrorCode
-from daydreaming_dagster.spec_dsl.models import AxisSpec, ExperimentSpec, ReplicateSpec
+from daydreaming_dagster.spec_dsl.models import ExperimentSpec, ReplicateSpec
 
 
 def _dedupe(seq: Iterable[Any]) -> list[Any]:
@@ -40,8 +40,6 @@ def compile_design(
     pair_meta: dict[str, tuple[str, str]] = {}
     tuple_meta: dict[str, dict[str, Any]] = {}
 
-    _validate_catalogs(spec.axes, catalogs)
-
     field_order = spec.output.get("field_order")
 
     for rule in spec.rules:
@@ -66,41 +64,6 @@ def compile_design(
         )
         rows.extend(expanded_rows)
     return rows
-
-
-def _validate_catalogs(
-    axes: Mapping[str, AxisSpec],
-    catalogs: Any | None,
-) -> None:
-    if not catalogs:
-        return
-
-    get = getattr(catalogs, "get", None)
-    if get is None:
-        raise SpecDslError(
-            SpecDslErrorCode.INVALID_SPEC,
-            ctx={"error": "catalogs must provide .get accessor"},
-        )
-
-    for axis_name, axis_spec in axes.items():
-        catalog_values = get(axis_name)
-        if catalog_values is None:
-            continue
-        if not isinstance(catalog_values, (set, list, tuple)):
-            catalog_values = list(catalog_values)
-        catalog_set = set(catalog_values)
-        missing = [value for value in axis_spec.levels if value not in catalog_set]
-        if missing:
-            raise SpecDslError(
-                SpecDslErrorCode.INVALID_SPEC,
-                ctx={
-                    "error": "axis levels missing from catalog",
-                    "axis": axis_name,
-                    "missing": tuple(missing),
-                },
-            )
-
-
 def _apply_rule(
     rule: Any,
     axes: dict[str, list[Any]],

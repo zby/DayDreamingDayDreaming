@@ -1,4 +1,4 @@
-from daydreaming_dagster.assets.group_cohorts import MembershipRow
+from daydreaming_dagster.cohorts import MembershipRow
 
 
 def test_membership_row_to_dict_defaults():

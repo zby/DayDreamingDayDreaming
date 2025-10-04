@@ -30,7 +30,7 @@ See also
      uv run dagster asset materialize -f src/daydreaming_dagster/definitions.py \
        --select "cohort_id,cohort_membership"
      ```
-   - The run validates catalog references, enforces parent integrity, writes
+   - The run validates catalog references against the generated membership rows, enforces parent integrity, writes
      `data/cohorts/<cohort_id>/manifest.json` and
      `data/cohorts/<cohort_id>/membership.csv`, and registers dynamic partitions add-only for the
      generated `gen_id`s.
@@ -59,6 +59,7 @@ data/
 
 - `config.yaml` declares axes, couplings, and replication targets. Every catalog reference must be
   explicit; unspecified axes do not fall back to catalog defaults.
+- Catalog integrity is enforced after building `membership.csv` via `validate_membership_against_catalog`, so mismatches surface during asset runs rather than at spec parse time. Keep the spec bundle and hydrated catalogs in sync.
 - Single-column CSV files referenced via `@file:` provide axis levels. Multi-column CSVs map to tuple
   values in header order (e.g., paired templates and models).
 - The runtime loader treats specs as immutable inputs—commit them alongside catalog changes so

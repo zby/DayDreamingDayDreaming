@@ -173,6 +173,7 @@ Notes:
 
 - Specs live under `data/cohorts/<cohort_id>/spec/` (`config.yaml` plus optional `@file` helpers). The compiler reads these files directly when planning cohort membership.
 - Axis names and level values in the spec must exactly match identifiers in the catalogs and on-disk template/concept files. If they do not, rename the files or regenerate the spec; do **not** introduce aliasing layers.
+- Dagster assets load specs via `load_cohort_context`, which now requires the caller to supply the hydrated catalog levels (typically `build_spec_catalogs(data_root)`). Validate or regenerate the catalogs before compiling a spec so membership checks succeed.
 - When adding a catalog entry:
   1. Create/update the CSV row and associated template/concept file using the desired identifier.
   2. Update or regenerate the relevant cohort specs (e.g., `uv run python scripts/migrations/generate_cohort_spec.py --cohort-id <id>`).

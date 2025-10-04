@@ -7,10 +7,9 @@ registering dynamic partitions based on cohort membership.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 import json
 from pathlib import Path
-from typing import Dict, Iterable, List, Sequence, Tuple
+from typing import Dict, List
 
 import pandas as pd
 from dagster import AssetKey, MetadataValue
@@ -24,13 +23,20 @@ from ..utils.ids import (
 )
 from ..utils.raw_readers import read_concepts
 from ..cohorts import (
-    CohortDefinition,
     build_spec_catalogs,
     load_cohort_context,
     persist_membership_csv,
     seed_cohort_metadata,
     validate_cohort_membership,
+    validate_membership_against_catalog,
 )
+from ..cohorts.membership_engine import (
+    CohortCatalog,
+    GensDataLayerRegistry,
+    MEMBERSHIP_COLUMNS,
+    generate_membership,
+)
+from ..cohorts.validation import validate_cohort_definition
 from ..models import ContentCombination
 from ..data_layer.gens_data_layer import GensDataLayer
 from ..utils.cohorts import (
@@ -47,381 +53,6 @@ from .partitions import (
 from ..utils.errors import DDError, Err
 from ..data_layer.paths import Paths
 
-
-@dataclass(frozen=True)
-class MembershipRow:
-    """Normalized cohort membership row with consistent defaults."""
-
-    stage: str
-    gen_id: str
-    origin_cohort_id: str
-    parent_gen_id: str = ""
-    combo_id: str = ""
-    template_id: str = ""
-    llm_model_id: str = ""
-    replicate: int = 1
-
-    def to_dict(self) -> Dict[str, object]:
-        return {
-            "stage": self.stage,
-            "gen_id": self.gen_id,
-            "origin_cohort_id": self.origin_cohort_id,
-            "parent_gen_id": self.parent_gen_id,
-            "combo_id": self.combo_id,
-            "template_id": self.template_id,
-            "llm_model_id": self.llm_model_id,
-            "replicate": int(self.replicate),
-        }
-
-
-MEMBERSHIP_COLUMNS = [
-    "stage",
-    "gen_id",
-    "origin_cohort_id",
-    "parent_gen_id",
-    "combo_id",
-    "template_id",
-    "llm_model_id",
-    "replicate",
-]
-
-
-class CohortBuilder:
-    """Build cohort membership rows using data-layer helpers for deterministic IDs."""
-
-    def __init__(
-        self,
-        *,
-        cohort_id: str,
-        data_layer: GensDataLayer,
-        replication_config: Dict[str, int] | None = None,
-    ) -> None:
-        self._cohort_id = str(cohort_id)
-        self._data_layer = data_layer
-        self._replication = replication_config or {}
-        self._allocator = _ReplicateAllocator(self._data_layer.paths.gens_root)
-
-    @property
-    def cohort_id(self) -> str:
-        return self._cohort_id
-
-    @property
-    def data_root(self) -> Path:
-        return self._data_layer.data_root
-
-    def _rep_count(self, stage: str) -> int:
-        raw = self._replication.get(stage, 1)
-        try:
-            return int(raw)
-        except Exception:
-            return 1
-
-    def _draft_row(
-        self,
-        *,
-        gen_id: str,
-        combo_id: str,
-        template_id: str,
-        llm_model_id: str,
-        replicate: int | str,
-    ) -> MembershipRow:
-        replicate_int = _normalize_int(replicate, default=1)
-        return MembershipRow(
-            stage="draft",
-            gen_id=gen_id,
-            origin_cohort_id=self._cohort_id,
-            combo_id=combo_id,
-            template_id=template_id,
-            llm_model_id=llm_model_id,
-            replicate=replicate_int,
-        )
-
-    def _essay_row(
-        self,
-        *,
-        gen_id: str,
-        parent_gen_id: str,
-        combo_id: str,
-        template_id: str,
-        llm_model_id: str,
-        replicate: int | str,
-    ) -> MembershipRow:
-        replicate_int = _normalize_int(replicate, default=1)
-        return MembershipRow(
-            stage="essay",
-            gen_id=gen_id,
-            origin_cohort_id=self._cohort_id,
-            parent_gen_id=parent_gen_id,
-            combo_id=combo_id,
-            template_id=template_id,
-            llm_model_id=llm_model_id,
-            replicate=replicate_int,
-        )
-
-    def _evaluation_row(
-        self,
-        *,
-        gen_id: str,
-        parent_gen_id: str,
-        combo_id: str,
-        template_id: str,
-        llm_model_id: str,
-        replicate: int | str,
-    ) -> MembershipRow:
-        replicate_int = _normalize_int(replicate, default=1)
-        return MembershipRow(
-            stage="evaluation",
-            gen_id=gen_id,
-            origin_cohort_id=self._cohort_id,
-            parent_gen_id=parent_gen_id,
-            combo_id=combo_id,
-            template_id=template_id,
-            llm_model_id=llm_model_id,
-            replicate=replicate_int,
-        )
-
-    def build_cartesian(
-        self,
-        *,
-        combo_ids: Sequence[str],
-        draft_template_ids: Sequence[str],
-        essay_template_ids: Sequence[str],
-        generation_model_ids: Sequence[str],
-    ) -> List[MembershipRow]:
-        rows: List[MembershipRow] = []
-        draft_rep_count = self._rep_count("draft")
-        essay_rep_count = self._rep_count("essay")
-
-        draft_context: List[Dict[str, object]] = []
-
-        for combo_id in combo_ids:
-            for draft_tpl in draft_template_ids:
-                for model_id in generation_model_ids:
-                    for replicate_index in range(1, draft_rep_count + 1):
-                        draft_gen_id = self._data_layer.reserve_draft_id(
-                            combo_id=combo_id,
-                            template_id=draft_tpl,
-                            llm_model_id=model_id,
-                            cohort_id=self._cohort_id,
-                            replicate=replicate_index,
-                        )
-                        rows.append(
-                            self._draft_row(
-                                gen_id=draft_gen_id,
-                                combo_id=combo_id,
-                                template_id=draft_tpl,
-                                llm_model_id=model_id,
-                                replicate=replicate_index,
-                            )
-                        )
-                        draft_context.append(
-                            {
-                                "gen_id": draft_gen_id,
-                                "combo_id": combo_id,
-                                "template_id": draft_tpl,
-                                "llm_model_id": model_id,
-                                "replicate": replicate_index,
-                            }
-                        )
-
-        if not draft_context or not essay_template_ids:
-            return rows
-
-        for draft in draft_context:
-            draft_gen_id = str(draft.get("gen_id"))
-            combo_id = str(draft.get("combo_id"))
-            draft_template_id = str(draft.get("template_id"))
-            llm_model_id = str(draft.get("llm_model_id"))
-            for essay_tpl in essay_template_ids:
-                base_signature = (draft_gen_id, essay_tpl)
-                replicate_indices = self._allocator.allocate(
-                    "essay", base_signature, essay_rep_count
-                )
-                for replicate_index in replicate_indices:
-                    essay_gen_id = self._data_layer.reserve_essay_id(
-                        draft_gen_id=draft_gen_id,
-                        template_id=essay_tpl,
-                        cohort_id=self._cohort_id,
-                        replicate=int(replicate_index),
-                    )
-                    rows.append(
-                        self._essay_row(
-                            gen_id=essay_gen_id,
-                            parent_gen_id=draft_gen_id,
-                            combo_id=combo_id,
-                            template_id=essay_tpl,
-                            llm_model_id=llm_model_id,
-                            replicate=int(replicate_index),
-                        )
-                    )
-
-        return rows
-
-    def build_from_spec_plan(self, plan: CohortDefinition) -> List[MembershipRow]:
-        if not plan:
-            return []
-
-        rows: List[MembershipRow] = []
-        draft_ids: Dict[tuple[str, str, str, int], str] = {}
-
-        for draft_entry in plan.drafts:
-            draft_key = draft_entry.key()
-            gen_id = self._data_layer.reserve_draft_id(
-                combo_id=draft_entry.combo_id,
-                template_id=draft_entry.template_id,
-                llm_model_id=draft_entry.llm_model_id,
-                cohort_id=self._cohort_id,
-                replicate=draft_entry.replicate,
-            )
-            draft_ids[draft_key] = gen_id
-            rows.append(
-                self._draft_row(
-                    gen_id=gen_id,
-                    combo_id=draft_entry.combo_id,
-                    template_id=draft_entry.template_id,
-                    llm_model_id=draft_entry.llm_model_id,
-                    replicate=draft_entry.replicate,
-                )
-            )
-
-        essay_ids: Dict[tuple[tuple[str, str, str, int], str, str, int], str] = {}
-
-        for essay_entry in plan.essays:
-            draft_key = essay_entry.draft.key()
-            if draft_key not in draft_ids:
-                raise DDError(
-                    Err.INVALID_CONFIG,
-                    ctx={
-                        "reason": "missing_draft_for_essay",
-                        "draft": draft_key,
-                        "essay_template": essay_entry.template_id,
-                    },
-                )
-
-            draft_gen_id = draft_ids[draft_key]
-            essay_gen_id = self._data_layer.reserve_essay_id(
-                draft_gen_id=draft_gen_id,
-                template_id=essay_entry.template_id,
-                cohort_id=self._cohort_id,
-                replicate=essay_entry.replicate,
-            )
-            essay_ids[essay_entry.key()] = essay_gen_id
-            rows.append(
-                self._essay_row(
-                    gen_id=essay_gen_id,
-                    parent_gen_id=draft_gen_id,
-                    combo_id=essay_entry.draft.combo_id,
-                    template_id=essay_entry.template_id,
-                    llm_model_id=essay_entry.llm_model_id,
-                    replicate=essay_entry.replicate,
-                )
-            )
-
-        for evaluation_entry in plan.evaluations:
-            essay_key = evaluation_entry.essay.key()
-            if essay_key not in essay_ids:
-                raise DDError(
-                    Err.INVALID_CONFIG,
-                    ctx={
-                        "reason": "missing_essay_for_evaluation",
-                        "evaluation_template": evaluation_entry.template_id,
-                    },
-                )
-
-            essay_gen_id = essay_ids[essay_key]
-            evaluation_gen_id = self._data_layer.reserve_evaluation_id(
-                essay_gen_id=essay_gen_id,
-                template_id=evaluation_entry.template_id,
-                llm_model_id=evaluation_entry.llm_model_id,
-                cohort_id=self._cohort_id,
-                replicate=evaluation_entry.replicate,
-            )
-            rows.append(
-                self._evaluation_row(
-                    gen_id=evaluation_gen_id,
-                    parent_gen_id=essay_gen_id,
-                    combo_id=evaluation_entry.essay.draft.combo_id,
-                    template_id=evaluation_entry.template_id,
-                    llm_model_id=evaluation_entry.llm_model_id,
-                    replicate=evaluation_entry.replicate,
-                )
-            )
-
-        return rows
-
-class _ReplicateAllocator:
-    """Allocate deterministic replicate indices without reusing existing ids."""
-
-    def __init__(self, gens_root: Path):
-        self._gens_root = gens_root
-        self._next_indices: Dict[tuple[str, tuple], int] = {}
-
-    def allocate(self, stage: str, base_signature: tuple, count: int) -> List[int]:
-        if count <= 0:
-            return []
-        stage_norm = str(stage).lower()
-        key = (stage_norm, base_signature)
-        next_rep = self._next_indices.get(key)
-        if next_rep is None:
-            next_rep = self._discover_next(stage_norm, base_signature)
-        allocations = [next_rep + offset for offset in range(count)]
-        self._next_indices[key] = allocations[-1] + 1
-        return allocations
-
-    def _discover_next(self, stage: str, base_signature: tuple) -> int:
-        probe = 1
-        while True:
-            gen_id = _deterministic_id_for_base(stage, base_signature, probe)
-            if not (self._gens_root / stage / gen_id).exists():
-                return probe
-            probe += 1
-
-
-def _deterministic_id_for_base(stage: str, base_signature: tuple, replicate_index: int) -> str:
-    stage_norm = str(stage).lower()
-    if stage_norm == "draft":
-        combo_id, draft_template_id, llm_model_id = base_signature
-        signature = draft_signature(combo_id, draft_template_id, llm_model_id, replicate_index)
-    elif stage_norm == "essay":
-        draft_gen_id, essay_template_id = base_signature
-        signature = essay_signature(draft_gen_id, essay_template_id, replicate_index)
-    elif stage_norm == "evaluation":
-        essay_gen_id, evaluation_template_id, evaluation_model_id = base_signature
-        signature = evaluation_signature(essay_gen_id, evaluation_template_id, evaluation_model_id, replicate_index)
-    else:
-        raise DDError(
-            Err.INVALID_CONFIG,
-            ctx={"reason": "unsupported_replicate_stage", "stage": stage},
-        )
-    return compute_deterministic_gen_id(stage_norm, signature)
-
-
-def _normalize_str(value) -> str | None:
-    if value is None:
-        return None
-    if isinstance(value, str):
-        text = value.strip()
-        return text or None
-    try:
-        if pd.isna(value):  # type: ignore[arg-type]
-            return None
-    except Exception:
-        pass
-    text = str(value).strip()
-    return text or None
-
-
-def _normalize_int(value, default: int = 1) -> int:
-    try:
-        if value is None or pd.isna(value):  # type: ignore[arg-type]
-            return default
-    except Exception:
-        if value is None:
-            return default
-    try:
-        return int(value)
-    except Exception:
-        return default
 
 
 @asset_with_boundary(
@@ -451,23 +82,33 @@ def cohort_membership(
     data_root = paths_obj.data_root
     data_layer = GensDataLayer.from_root(data_root)
 
+    catalog_levels = build_spec_catalogs(data_root)
+
     spec_ctx = load_cohort_context(
         data_root=data_root,
         cohort_id=cohort_id,
         compile_definition=context.resources.cohort_spec.compile_definition,
+        catalogs=catalog_levels,
     )
 
     spec_plan = spec_ctx.definition
-    allowlists = spec_ctx.allowlists
     template_modes = spec_ctx.template_modes
     replication_cfg = spec_ctx.replication_config
-    builder = CohortBuilder(
-        cohort_id=str(cohort_id),
-        data_layer=data_layer,
+
+    catalog = CohortCatalog.from_catalogs(
+        spec_ctx.catalogs,
         replication_config=replication_cfg,
     )
+    validate_cohort_definition(spec_plan, catalog=catalog)
 
-    rows = builder.build_from_spec_plan(spec_plan)
+    registry = GensDataLayerRegistry(data_layer)
+    rows = generate_membership(
+        spec_plan,
+        cohort_id=str(cohort_id),
+        registry=registry,
+    )
+
+    validate_membership_against_catalog(rows, catalog=catalog)
     unique_essays = {
         evaluation.essay.key() for evaluation in spec_plan.evaluations
     }

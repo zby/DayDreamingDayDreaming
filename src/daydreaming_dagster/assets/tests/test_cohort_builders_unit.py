@@ -6,38 +6,91 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
-from daydreaming_dagster.assets.group_cohorts import CohortBuilder, MEMBERSHIP_COLUMNS
 from daydreaming_dagster.cohorts import (
+    CohortCatalog,
+    CohortDefinition,
+    DraftPlanEntry,
+    EssayPlanEntry,
+    EvaluationPlanEntry,
+    InMemoryGenerationRegistry,
+    MEMBERSHIP_COLUMNS,
+    generate_membership,
     persist_membership_csv,
     seed_cohort_metadata,
+    validate_cohort_definition,
     validate_cohort_membership,
 )
 from daydreaming_dagster.data_layer.gens_data_layer import GensDataLayer
 from daydreaming_dagster.utils.errors import DDError
 
 
-def test_cohort_builder_build_cartesian_expands_axes(tmp_path: Path) -> None:
-    builder = CohortBuilder(
+def test_generate_membership_builds_rows_in_order() -> None:
+    draft_entry = DraftPlanEntry(
+        combo_id="combo-1",
+        template_id="draft-tpl",
+        llm_model_id="draft-llm",
+        replicate=1,
+    )
+    essay_entry = EssayPlanEntry(
+        draft=draft_entry,
+        template_id="essay-tpl",
+        llm_model_id="essay-llm",
+        replicate=1,
+    )
+    evaluation_entry = EvaluationPlanEntry(
+        essay=essay_entry,
+        template_id="eval-tpl",
+        llm_model_id="eval-llm",
+        replicate=1,
+    )
+    definition = CohortDefinition(
+        drafts=[draft_entry],
+        essays=[essay_entry],
+        evaluations=[evaluation_entry],
+    )
+
+    registry = InMemoryGenerationRegistry()
+    rows = generate_membership(
+        definition,
         cohort_id="cohort-1",
-        data_layer=GensDataLayer(tmp_path),
-        replication_config={"draft": 2, "essay": 1, "evaluation": 1},
+        registry=registry,
     )
 
-    rows = builder.build_cartesian(
-        combo_ids=["combo-1"],
-        draft_template_ids=["draft-tpl"],
-        essay_template_ids=["essay-tpl"],
-        generation_model_ids=["draft-llm"],
+    assert [row.stage for row in rows] == ["draft", "essay", "evaluation"]
+    assert rows[0].origin_cohort_id == "cohort-1"
+    assert rows[1].parent_gen_id == rows[0].gen_id
+    assert rows[2].parent_gen_id == rows[1].gen_id
+
+
+def test_validate_cohort_definition_rejects_unknown_combo() -> None:
+    definition = CohortDefinition(
+        drafts=[
+            DraftPlanEntry(
+                combo_id="combo-missing",
+                template_id="draft-tpl",
+                llm_model_id="draft-llm",
+                replicate=1,
+            )
+        ]
+    )
+    catalog = CohortCatalog.from_catalogs(
+        {
+            "combo_id": ["combo-known"],
+            "draft_template": ["draft-tpl"],
+            "essay_template": ["essay-tpl"],
+            "evaluation_template": ["eval-tpl"],
+            "draft_llm": ["draft-llm"],
+            "essay_llm": ["essay-llm"],
+            "evaluation_llm": ["eval-llm"],
+        }
     )
 
-    draft_rows = [row for row in rows if row.stage == "draft"]
-    essay_rows = [row for row in rows if row.stage == "essay"]
+    with pytest.raises(DDError) as exc_info:
+        validate_cohort_definition(definition, catalog=catalog)
 
-    assert len(draft_rows) == 2  # replication config drives count
-    assert len(essay_rows) == 2  # drafts × essay templates × essay reps
-    assert {row.combo_id for row in draft_rows} == {"combo-1"}
-    assert all(row.gen_id.startswith("d_") for row in draft_rows)
-    assert all(row.gen_id.startswith("e_") for row in essay_rows)
+    ctx = exc_info.value.ctx
+    assert ctx["reason"] == "catalog_combos_missing"
+    assert ctx["missing"] == ["combo-missing"]
 
 
 def test_validate_cohort_membership_raises_on_missing_parents(tmp_path: Path) -> None:
