@@ -76,14 +76,14 @@ def test_resolve_content_fallback_chain():
     assert ContentCombination._resolve_content(concept_all, "paragraph") == "P"
 
 
-def test_from_concepts_requires_combo_id():
-    """Missing combo_id should raise DDError to avoid nondeterministic hashes."""
+def test_from_concepts_rejects_none_combo_id():
+    """Explicit None combo_id should raise DDError and surface missing reason."""
     concepts = [
         Concept("c1", "One", {"paragraph": "P1"}),
     ]
 
     with pytest.raises(DDError) as exc:
-        ContentCombination.from_concepts(concepts, "paragraph")
+        ContentCombination.from_concepts(concepts, "paragraph", combo_id=None)
 
     assert exc.value.code is not None
     assert exc.value.ctx.get("reason") == "missing_combo_id"
