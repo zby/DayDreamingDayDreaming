@@ -86,7 +86,6 @@ data/
 - `summary/generation_scores.csv` - Evaluation pivots by generation response
 - `summary/final_results.csv` - Aggregated statistics per analysis axis
 - `summary/perfect_score_paths.csv` - Responses with perfect scores
-- `analysis/evaluator_agreement.csv` - Agreement metrics across evaluators
 - `analysis/variance_analysis.csv` - Variance breakdown across evaluators/templates
 - Additional cohort reports generated as needed
 

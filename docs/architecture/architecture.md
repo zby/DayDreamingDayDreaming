@@ -103,7 +103,7 @@ Assets are organized into logical groups for easy selection and understanding:
 | **`evaluation`** | evaluation_prompt, evaluation_raw, evaluation_parsed | Evaluation stage assets in `group_evaluation.py`; partitioned by evaluation gen_id from cohort membership |
 | **`results_processing`** | parsed_scores | Parse evaluation scores |
 | **`results_summary`** | final_results, perfect_score_paths, generation_scores_pivot, evaluation_model_template_pivot | Final aggregated results |
-| **`results_analysis`** | evaluator_agreement_analysis, comprehensive_variance_analysis | Statistical analysis |
+| **`results_analysis`** | comprehensive_variance_analysis | Statistical analysis |
 | **`cross_experiment`** | filtered_evaluation_results (asset), `scripts/build_pivot_tables.py` (CLI) | Cross-experiment analysis |
 
 ### Stage Registry & IO Managers

@@ -23,8 +23,7 @@ from daydreaming_dagster.assets.results_processing import (
     cohort_aggregated_scores,
 )
 from daydreaming_dagster.assets.results_analysis import (
-    evaluator_agreement_analysis,
-    comprehensive_variance_analysis
+    comprehensive_variance_analysis,
 )
 from daydreaming_dagster.assets.results_summary import (
     final_results,
@@ -144,7 +143,6 @@ CORE_ASSETS = (
 
 RESULT_ASSETS = (
     cohort_aggregated_scores,
-    evaluator_agreement_analysis,
     comprehensive_variance_analysis,
     generation_scores_pivot,
     evaluation_model_template_pivot,

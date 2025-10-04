@@ -202,7 +202,6 @@ COHORT_REPORT_ASSET_TARGETS: Dict[str, Tuple[str, str]] = {
     "final_results": ("summary", "final_results.csv"),
     "perfect_score_paths": ("summary", "perfect_score_paths.csv"),
     "evaluation_model_template_pivot": ("summary", "evaluation_model_template_pivot.csv"),
-    "evaluator_agreement_analysis": ("analysis", "evaluator_agreement.csv"),
     "comprehensive_variance_analysis": ("analysis", "variance_analysis.csv"),
 }
 

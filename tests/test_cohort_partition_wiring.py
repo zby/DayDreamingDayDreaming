@@ -9,7 +9,6 @@ from daydreaming_dagster.assets.results_summary import (
     evaluation_model_template_pivot,
 )
 from daydreaming_dagster.assets.results_analysis import (
-    evaluator_agreement_analysis,
     comprehensive_variance_analysis,
 )
 
@@ -20,7 +19,6 @@ COHORT_REPORT_ASSETS = [
     final_results,
     perfect_score_paths,
     evaluation_model_template_pivot,
-    evaluator_agreement_analysis,
     comprehensive_variance_analysis,
 ]
 
