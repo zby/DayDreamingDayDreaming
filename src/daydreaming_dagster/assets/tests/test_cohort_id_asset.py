@@ -8,8 +8,6 @@ import yaml
 from dagster import build_asset_context
 
 from daydreaming_dagster.cohorts import load_cohort_definition
-from daydreaming_dagster.models.content_combination import ContentCombination
-
 
 class _StubCohortSpec:
     def compile_definition(
@@ -154,13 +152,8 @@ def test_cohort_id_deterministic_and_manifest_written(tmp_path):
         },
         asset_config={"override": "cohort-demo"},
     )
-    combos = [
-        ContentCombination(contents=[{"name": "a", "content": "x"}], combo_id="c1", concept_ids=["a"]),
-        ContentCombination(contents=[{"name": "b", "content": "y"}], combo_id="c2", concept_ids=["b"]),
-    ]
-
-    cid1 = module.cohort_id(context, content_combinations=combos)
-    cid2 = module.cohort_id(context, content_combinations=combos)
+    cid1 = module.cohort_id(context)
+    cid2 = module.cohort_id(context)
 
     assert cid1 == "cohort-demo"
     assert cid1 == cid2
@@ -219,9 +212,7 @@ def test_cohort_id_override_precedence_config_over_env(tmp_path, monkeypatch):
         },
         asset_config={"override": "CONFIG-COHORT-999"},
     )
-    combos = [ContentCombination(contents=[{"name": "x", "content": "p"}], combo_id="x", concept_ids=["x"])]
-
-    cid_config = module.cohort_id(context, content_combinations=combos)
+    cid_config = module.cohort_id(context)
     assert cid_config == "CONFIG-COHORT-999"
     assert (tmp_path / "cohorts" / cid_config / "manifest.json").exists()
 
@@ -232,6 +223,6 @@ def test_cohort_id_override_precedence_config_over_env(tmp_path, monkeypatch):
         },
         asset_config={}
     )
-    cid_env = module.cohort_id(context_env, content_combinations=combos)
+    cid_env = module.cohort_id(context_env)
     assert cid_env == "ENV-COHORT-123"
     assert (tmp_path / "cohorts" / cid_env / "manifest.json").exists()
