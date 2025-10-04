@@ -344,6 +344,7 @@ def llm_client_resource(context) -> LLMClientResource:
 - **GensPromptIOManager**: Persists prompts to `data/gens/<stage>/<gen_id>/prompt.txt`
 - **CSVIOManager**: Structured data with human-readable format
 - **InMemoryIOManager**: For ephemeral in-process passing in tests/runs
+- **RehydratingIOManager**: Wraps the in-memory manager and rehydrates `raw.txt` on demand from the gens store when a downstream asset is re-executed in isolation.
 
 Note on responses: Generation responses (raw/parsed/metadata) are not persisted via an IO
 manager. The response writer (stage_core.execute_llm) performs early writes of raw.txt and

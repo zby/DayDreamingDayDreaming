@@ -6,6 +6,7 @@ import os
 
 from ..utils.errors import DDError, Err
 from ..data_layer.paths import Paths
+from ..data_layer.gens_data_layer import GensDataLayer
 
 # Factory functions removed - use direct class instantiation in definitions.py
 
@@ -170,18 +171,10 @@ class CohortCSVIOManager(IOManager):
 
 
 class InMemoryIOManager(IOManager):
-    """
-    Simple in-memory IO manager for tests/ephemeral data passing.
-    Stores objects per-asset (and partition if present) within a single process/run.
+    """Simple in-memory IO manager for tests/ephemeral data passing."""
 
-    When a value is not found in-memory and ``fallback_data_root`` is provided, the
-    manager attempts to load persisted gens-store artifacts. This enables downstream
-    assets (e.g., *_parsed) to rehydrate raw text without re-running *_raw LLM calls.
-    """
-
-    def __init__(self, fallback_data_root: Path | str | None = None):
+    def __init__(self):
         self._store = {}
-        self._fallback_root = Path(fallback_data_root) if fallback_data_root else None
 
     def handle_output(self, context: OutputContext, obj):
         partition_key = context.partition_key if context.has_partition_key else None
@@ -195,38 +188,6 @@ class InMemoryIOManager(IOManager):
         stage_asset = upstream.asset_key.path[-1] if upstream.asset_key.path else ""
         key = (tuple(upstream.asset_key.path), partition_key)
         if key not in self._store:
-            if not self._fallback_root:
-                raise DDError(
-                    Err.DATA_MISSING,
-                    ctx={
-                        "reason": "in_memory_missing",
-                        "asset": stage_asset,
-                        "partition": partition_key,
-                    },
-                )
-
-            if not partition_key:
-                raise DDError(
-                    Err.DATA_MISSING,
-                    ctx={
-                        "reason": "in_memory_missing",
-                        "asset": stage_asset,
-                        "partition": partition_key,
-                    },
-                )
-
-            if stage_asset.endswith("_raw"):
-                stage = stage_asset.replace("_raw", "")
-                raw_path = (
-                    self._fallback_root
-                    / "gens"
-                    / stage
-                    / str(partition_key)
-                    / "raw.txt"
-                )
-                if raw_path.exists():
-                    return raw_path.read_text(encoding="utf-8")
-
             raise DDError(
                 Err.DATA_MISSING,
                 ctx={
@@ -237,3 +198,31 @@ class InMemoryIOManager(IOManager):
             )
 
         return self._store[key]
+
+
+class RehydratingIOManager(InMemoryIOManager):
+    """In-memory IO manager that can rehydrate raw artifacts from the gens store."""
+
+    def __init__(self, data_root: Path | str):
+        super().__init__()
+        self._layer = GensDataLayer.from_root(data_root)
+
+    def load_input(self, context: InputContext):
+        try:
+            return super().load_input(context)
+        except DDError as err:
+            if err.code is not Err.DATA_MISSING:
+                raise
+
+            upstream = context.upstream_output
+            partition_key = context.partition_key if context.has_partition_key else None
+            stage_asset = upstream.asset_key.path[-1] if upstream.asset_key.path else ""
+            if not (partition_key and stage_asset.endswith("_raw")):
+                raise
+
+            stage = stage_asset[:-4]  # drop "_raw"
+            raw_text = self._layer.read_raw(stage, partition_key)
+
+            key = (tuple(upstream.asset_key.path), partition_key)
+            self._store[key] = raw_text
+            return raw_text

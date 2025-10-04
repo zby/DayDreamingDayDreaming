@@ -60,6 +60,7 @@ from daydreaming_dagster.resources.io_managers import (
     CSVIOManager,
     CohortCSVIOManager,
     InMemoryIOManager,
+    RehydratingIOManager,
 )
 from daydreaming_dagster.resources.gens_prompt_io_manager import GensPromptIOManager
 from daydreaming_dagster.resources.scores_aggregator import ScoresAggregatorResource
@@ -89,7 +90,7 @@ def _build_stage_registry() -> dict[Stage, StageEntry]:
         return lambda paths: GensPromptIOManager(gens_root=paths.gens_root, stage=stage)
 
     def response_manager() -> Callable[[Paths], Any]:
-        return lambda paths: InMemoryIOManager(fallback_data_root=paths.data_root)
+        return lambda paths: RehydratingIOManager(paths.data_root)
 
     return {
         "draft": StageEntry(
@@ -168,7 +169,7 @@ def _shared_resources(paths: Paths) -> dict[str, Any]:
         "experiment_config": ExperimentConfig(),
         "data_root": str(data_root_path),
         "csv_io_manager": CSVIOManager(base_path=paths.tasks_dir),
-        "in_memory_io_manager": InMemoryIOManager(fallback_data_root=data_root_path),
+        "in_memory_io_manager": RehydratingIOManager(data_root_path),
         "error_log_io_manager": CSVIOManager(base_path=data_root_path / "7_reporting"),
         "parsing_results_io_manager": CohortCSVIOManager(
             paths,
