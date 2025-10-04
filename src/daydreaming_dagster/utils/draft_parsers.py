@@ -59,22 +59,27 @@ DRAFT_PARSERS_REGISTRY: Dict[str, Callable[[str], str]] = {
 }
 
 # New parser: extract the content of the first <essay>...</essay> block
-ESSAY_BLOCK_RE = re.compile(r"<essay>([\s\S]*?)</essay>", re.MULTILINE)
+ESSAY_BLOCK_RE = re.compile(r"<essay>([\s\S]*?)</essay>", re.IGNORECASE | re.MULTILINE)
 
 
 def parse_essay_block(text: str) -> str:
     """Extract the first <essay>...</essay> block.
 
-    Raises ValueError if no block found.
+    Falls back to identity when no essay/thinking tags are present so legacy
+    single-phase drafts still parse without throwing.
     """
     m = ESSAY_BLOCK_RE.search(text)
     if m:
         return m.group(1).strip()
     # FALLBACK(PARSER): if closing tag missing, capture from the first <essay> to EOF.
     # Prefer fixing upstream template/data to always emit well-formed blocks.
-    start = text.find("<essay>")
+    lower = text.lower()
+    start = lower.find("<essay>")
     if start != -1:
         return text[start + len("<essay>"):].strip()
+    if "<essay>" not in lower and "<thinking>" not in lower:
+        # No structured tags at all; treat as identity to avoid hard failures on legacy drafts.
+        return text.strip()
     raise DDError(
         Err.PARSER_FAILURE,
         ctx={"reason": "missing_essay_block"},

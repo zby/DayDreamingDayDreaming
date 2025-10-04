@@ -2,9 +2,6 @@ import os
 from pathlib import Path
 
 import pandas as pd
-import pytest
-
-from dagster import Failure
 
 from daydreaming_dagster.assets.group_draft import draft_raw, draft_parsed
 from daydreaming_dagster.data_layer.gens_data_layer import GensDataLayer
@@ -53,8 +50,8 @@ def _write_membership(dir_path: Path, *, gen_id: str, template_id: str, model_id
     )
 
 
-def test_draft_parser_failure_saves_raw_then_fails(tmp_path: Path, make_ctx):
-    # Arrange: draft template with parser=essay_block, but raw text has no <essay> block
+def test_draft_parser_without_tags_passes_through(tmp_path: Path, make_ctx):
+    # Arrange: draft template with parser=essay_block, but raw text has no structured tags
     template_id = "deliberate-rolling-thread-test"
     _write_draft_templates_csv(tmp_path, template_id, parser="essay_block")
 
@@ -86,8 +83,8 @@ def test_draft_parser_failure_saves_raw_then_fails(tmp_path: Path, make_ctx):
     result = draft_raw(ctx, draft_prompt="ignored")
     assert result == raw_text
 
-    with pytest.raises(Failure):
-        _ = draft_parsed(ctx)
+    parsed_text = draft_parsed(ctx)
+    assert parsed_text.strip() == raw_text.strip()
 
     # In membership-first mode, failures may occur before RAW write depending on setup.
     # If RAW exists, ensure it matches the LLM output; otherwise proceed.
@@ -95,3 +92,7 @@ def test_draft_parser_failure_saves_raw_then_fails(tmp_path: Path, make_ctx):
     assert raw_fp.exists()
     content = raw_fp.read_text(encoding="utf-8")
     assert content == raw_text
+
+    parsed_fp = tmp_path / "gens" / "draft" / gen_id / "parsed.txt"
+    assert parsed_fp.exists()
+    assert parsed_fp.read_text(encoding="utf-8").strip() == raw_text.strip()
