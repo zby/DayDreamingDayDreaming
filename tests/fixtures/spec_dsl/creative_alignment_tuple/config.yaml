@@ -20,7 +20,7 @@ axes:
   evaluation_replicate:
   - '1'
   - '2'
-  essay_replicate:
+  draft_replicate:
   - '1'
   - '2'
 rules:
@@ -42,7 +42,7 @@ output:
   - draft_llm
   - essay_template
   - essay_llm
-  - essay_replicate
+  - draft_replicate
   - evaluation_template
   - evaluation_llm
   - evaluation_replicate

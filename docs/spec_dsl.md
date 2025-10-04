@@ -45,6 +45,8 @@ Axis values are declared inline or loaded from sibling files via the `@file:` sh
 
 Include replicate axes explicitly (e.g., `draft_template_replicate: [1, 2]`) or derive them from tuple rows so every replicate index remains visible in the spec.
 
+> **Note:** Replicate axes are applied blindly by the compiler. If an allowlisted essay template runs in `copy` mode (e.g., `parsed-from-links-v1`), every replicate will resolve to the same essay text because the parent draft is reused verbatim. That behaviour is expected but can be surprising—keep copy-mode templates on a single replicate or add a follow-up TODO to collapse them in the compiler once template metadata is available.
+
 Axes whose levels come exclusively from tuple rules no longer need explicit declarations; you can omit the axis entirely (or set it to `null` for clarity). The loader backfills those levels from the tuple rows and rejects specs that try to mix inline lists with tuple-derived bindings for the same axis.
 
 ### 2.2 Rules
