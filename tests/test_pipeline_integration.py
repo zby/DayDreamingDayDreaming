@@ -227,37 +227,27 @@ def pipeline_data_root_prepared():
         mdf.to_csv(models_csv, index=False)
 
     combo_mappings_csv = pipeline_data_root / "combo_mappings.csv"
-    if combo_mappings_csv.exists():
-        combo_df = pd.read_csv(combo_mappings_csv)
-        combo_df = combo_df.head(10).reset_index(drop=True)
-        combo_df.to_csv(combo_mappings_csv, index=False)
-        combos = combo_df["combo_id"].astype(str).dropna().unique().tolist()[:3]
-    else:
-        combos = ["combo-test-1"]
-        pd.DataFrame(
-            [
-                {
-                    "combo_id": "combo-test-1",
-                    "concept_id": "concept-1",
-                    "description_level": "paragraph",
-                    "k_max": 2,
-                    "version": "v1",
-                    "created_at": "",
-                }
-            ]
-        ).to_csv(combo_mappings_csv, index=False)
+    if not combo_mappings_csv.exists():
+        raise RuntimeError(
+            "Expected combo_mappings.csv to exist under the prepared pipeline root. "
+            f"Missing file: {combo_mappings_csv}. Ensure live data was copied before running this test."
+        )
+
+    combo_df = pd.read_csv(combo_mappings_csv)
+    combo_df = combo_df.head(10).reset_index(drop=True)
+    combo_df.to_csv(combo_mappings_csv, index=False)
+    combos = combo_df["combo_id"].astype(str).dropna().unique().tolist()[:3]
 
     if concepts_csv.exists():
         existing_concepts = pd.read_csv(concepts_csv)
         existing_ids = set(existing_concepts["concept_id"].astype(str)) if not existing_concepts.empty else set()
 
         required_ids = set()
-        if combo_mappings_csv.exists():
-            required_ids = {
-                str(value).strip()
-                for value in combo_df[combo_df["combo_id"].astype(str).isin(combos)]["concept_id"].tolist()
-                if str(value).strip()
-            }
+        required_ids = {
+            str(value).strip()
+            for value in combo_df[combo_df["combo_id"].astype(str).isin(combos)]["concept_id"].tolist()
+            if str(value).strip()
+        }
 
         missing_ids = sorted(required_ids - existing_ids)
         if missing_ids:
