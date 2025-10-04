@@ -51,7 +51,7 @@ def test_examples_compile(example: str) -> None:
     spec_path = FIXTURES / example / "config.yaml"
     payload = yaml.safe_load(spec_path.read_text(encoding="utf-8"))
     spec = parse_spec_mapping(payload, source=spec_path, base_dir=spec_path.parent)
-    rows = compile_design(spec, catalogs=CATALOGS)
+    rows = compile_design(spec)
     assert len(rows) == EXAMPLES[example]
 
     if example == "dual_llm_cartesian":

@@ -18,7 +18,7 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 import json
-from typing import Any, Mapping, Set
+from typing import Any, Set
 import pandas as pd
 
 
@@ -109,23 +109,19 @@ def _load_spec_filters(
     *,
     definition: CohortDefinition | None = None,
     spec: ExperimentSpec | None = None,
-    catalogs: Mapping[str, Any] | None = None,
     seed: int | None = None,
 ) -> tuple[set[str], set[str]]:
-    catalogs = catalogs or build_spec_catalogs(paths.data_root)
-
     plan = definition
     if plan is None and spec is not None:
-        plan = load_cohort_definition(spec, catalogs=catalogs, seed=seed)
+        plan = load_cohort_definition(spec, seed=seed)
 
-    def _compile_from_path(*, path, catalogs, **_kwargs):
-        return load_cohort_definition(path, catalogs=catalogs, seed=seed)
+    def _compile_from_path(*, path, **_kwargs):
+        return load_cohort_definition(path, seed=seed)
 
     allowlists = load_cohort_allowlists(
         data_root=paths.data_root,
         cohort_id=cohort_id,
         compile_definition=_compile_from_path,
-        catalogs=catalogs,
         definition=plan,
     )
 
@@ -140,7 +136,6 @@ def build_pivot(
     cohort_allowlist: str | None = None,
     cohort_definition: CohortDefinition | None = None,
     cohort_spec: ExperimentSpec | None = None,
-    catalogs: Mapping[str, Any] | None = None,
     seed: int | None = None,
 ) -> None:
     if not parsed_scores.exists():
@@ -158,7 +153,6 @@ def build_pivot(
             paths,
             definition=cohort_definition,
             spec=cohort_spec,
-            catalogs=catalogs,
             seed=seed,
         )
 

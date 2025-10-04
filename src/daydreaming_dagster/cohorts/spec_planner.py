@@ -248,7 +248,6 @@ def load_cohort_allowlists(
     data_root: Path,
     cohort_id: str,
     compile_definition: Callable[..., CohortDefinition],
-    catalogs: Mapping[str, Any],
     definition: CohortDefinition | None = None,
     require_evaluation_axes: bool = True,
     **compile_kwargs: Any,
@@ -256,12 +255,6 @@ def load_cohort_allowlists(
     """Load cohort allowlists, enforcing spec presence and evaluation axes."""
 
     cohort_str = str(cohort_id)
-
-    if catalogs is None:
-        raise DDError(
-            Err.INVALID_CONFIG,
-            ctx={"reason": "cohort_catalogs_required", "cohort_id": cohort_str},
-        )
 
     if definition is None:
         spec_dir = Path(data_root) / "cohorts" / cohort_str / "spec"
@@ -276,7 +269,6 @@ def load_cohort_allowlists(
             )
         plan = compile_definition(
             path=spec_dir,
-            catalogs=catalogs,
             **compile_kwargs,
         )
     else:
@@ -494,7 +486,6 @@ def load_cohort_context(
             )
         definition = compile_definition(
             path=spec_dir,
-            catalogs=catalogs,
             **compile_kwargs,
         )
 
@@ -502,7 +493,6 @@ def load_cohort_context(
         data_root=data_root,
         cohort_id=cohort_str,
         compile_definition=compile_definition,
-        catalogs=catalogs,
         definition=definition,
         require_evaluation_axes=require_evaluation_axes,
         **compile_kwargs,
@@ -536,17 +526,15 @@ def load_cohort_context(
 def compile_cohort_definition(
     spec: ExperimentSpec,
     *,
-    catalogs: Mapping[str, Any] | None = None,
     seed: int | None = None,
 ) -> CohortDefinition:
-    rows = compile_design(spec, catalogs=catalogs, seed=seed)
+    rows = compile_design(spec, seed=seed)
     return CohortDefinition.from_design_rows(rows)
 
 
 def load_cohort_definition(
     source: str | Path | ExperimentSpec,
     *,
-    catalogs: Mapping[str, Any] | None = None,
     seed: int | None = None,
 ) -> CohortDefinition:
     if isinstance(source, ExperimentSpec):
@@ -556,7 +544,7 @@ def load_cohort_definition(
         if spec_path.is_dir():
             spec_path = spec_path / "config.yaml"
         spec = load_spec(spec_path)
-    return compile_cohort_definition(spec, catalogs=catalogs, seed=seed)
+    return compile_cohort_definition(spec, seed=seed)
 
 
 def persist_membership_csv(

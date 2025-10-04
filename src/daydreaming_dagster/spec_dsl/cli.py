@@ -45,7 +45,7 @@ def main(argv: Iterable[str] | None = None) -> int:
 
     spec = load_spec(args.spec)
     catalogs = _load_catalogs(args.catalog, args.catalog_csv, args.data_root)
-    rows = compile_design(spec, catalogs=catalogs, seed=args.seed)
+    rows = compile_design(spec, seed=args.seed)
 
     if args.out:
         out_path = Path(args.out)

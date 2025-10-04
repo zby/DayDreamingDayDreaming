@@ -34,16 +34,10 @@ class ContentCombination:
             concept_ids.append(concept.concept_id)
         
         if combo_id is None:
-            raise DDError(
-                Err.INVALID_CONFIG,
-                ctx={
-                    "reason": "missing_combo_id",
-                    "concept_ids": concept_ids,
-                },
-            )
-        
+            combo_id = generate_combo_id(concept_ids, level, k_max=len(concepts))
+
         return cls(
-            contents=contents, 
+            contents=contents,
             combo_id=combo_id,
             concept_ids=concept_ids,
             metadata={"strategy": "single_level", "level": level}

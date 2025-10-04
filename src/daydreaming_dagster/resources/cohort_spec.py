@@ -67,7 +67,6 @@ class CohortSpecResource(ConfigurableResource):
         *,
         spec: ExperimentSpec | None = None,
         path: str | Path | None = None,
-        catalogs: Mapping[str, Any] | None = None,
         seed: int | None = None,
     ) -> CohortDefinition:
         if spec is None:
@@ -75,7 +74,7 @@ class CohortSpecResource(ConfigurableResource):
                 raise ValueError("Either 'spec' or 'path' must be provided to compile a definition")
             spec = self.get_spec(path)
         effective_seed = seed if seed is not None else self.default_seed
-        return compile_cohort_definition(spec, catalogs=catalogs, seed=effective_seed)
+        return compile_cohort_definition(spec, seed=effective_seed)
 
 
 __all__ = [

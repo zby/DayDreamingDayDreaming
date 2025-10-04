@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections import OrderedDict
 from itertools import product
 from random import Random
-from typing import Any, Iterable, Mapping, Sequence
+from typing import Any, Iterable, Sequence
 
 from daydreaming_dagster.spec_dsl.errors import SpecDslError, SpecDslErrorCode
 from daydreaming_dagster.spec_dsl.models import ExperimentSpec
@@ -25,7 +25,6 @@ def _dedupe(seq: Iterable[Any]) -> list[Any]:
 def compile_design(
     spec: ExperimentSpec,
     *,
-    catalogs: Any | None = None,  # noqa: D417 - forwarded for future use
     seed: int | None = None,
 ) -> list[OrderedDict[str, Any]]:
     """Compile a spec into a deterministic list of rows.
@@ -473,4 +472,3 @@ def _expand_ties(row: OrderedDict[str, Any], tie_back: dict[str, str]) -> None:
             continue
         if canonical in row and original not in row:
             row[original] = row[canonical]
-

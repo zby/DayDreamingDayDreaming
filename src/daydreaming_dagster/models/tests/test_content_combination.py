@@ -1,6 +1,6 @@
 import pytest
 from daydreaming_dagster.models.concept import Concept
-from daydreaming_dagster.models.content_combination import ContentCombination
+from daydreaming_dagster.models.content_combination import ContentCombination, generate_combo_id
 from daydreaming_dagster.utils.errors import DDError
 
 
@@ -76,17 +76,16 @@ def test_resolve_content_fallback_chain():
     assert ContentCombination._resolve_content(concept_all, "paragraph") == "P"
 
 
-def test_from_concepts_requires_combo_id():
+def test_from_concepts_generates_combo_id_when_missing():
     """Missing combo_id should raise DDError to avoid nondeterministic hashes."""
     concepts = [
         Concept("c1", "One", {"paragraph": "P1"}),
     ]
 
-    with pytest.raises(DDError) as exc:
-        ContentCombination.from_concepts(concepts, "paragraph")
-
-    assert exc.value.code is not None
-    assert exc.value.ctx.get("reason") == "missing_combo_id"
+    combo = ContentCombination.from_concepts(concepts, "paragraph")
+    expected_id = generate_combo_id(["c1"], "paragraph", k_max=1)
+    assert combo.combo_id == expected_id
+    assert combo.concept_ids == ["c1"]
 
 
 def test_from_concepts_multi():

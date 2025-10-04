@@ -150,7 +150,7 @@ Flags:
 
 ## 7. Dagster Integration
 
-- Request the `cohort_spec` resource from Dagster assets to load and cache specs via `CohortSpecResource`. Assets can call `context.resources.cohort_spec.compile_definition(path=..., catalogs=...)` to avoid redundant filesystem reads.
+- Request the `cohort_spec` resource from Dagster assets to load and cache specs via `CohortSpecResource`. Assets can call `context.resources.cohort_spec.compile_definition(path=...)` to avoid redundant filesystem reads.
 - `load_cohort_definition` also accepts an already parsed `ExperimentSpec`, enabling higher-level orchestration code to inject specs without touching disk.
 | `--limit INT` | When printing to stdout, limits row count. |
 
