@@ -397,7 +397,7 @@ uv run dagster asset materialize --select "cohort_id,cohort_membership" -f src/d
 
 **Error Message:**
 ```
-Invalid essay_task_id referenced by evaluation task 'eval_001': ''
+Missing parent_gen_id for evaluation partition 'eval_001'
 ```
 
 **Symptoms:**
@@ -543,7 +543,7 @@ Create a validation script:
 ```python
 import pandas as pd
 
-# Load both task tables
+# Load cohort membership once
 from pathlib import Path
 membership = pd.read_csv(next(Path("data/cohorts").glob("*/membership.csv")))
 eval_tasks = membership[membership["stage"]=="evaluation"][[
@@ -624,7 +624,7 @@ Contact a developer if:
 Set up monitoring for:
 - High failure rate on evaluation assets (>5% of partitions failing)
 - Increasing numbers of orphaned FK references
-- Unusual patterns in essay_task_id references
+- Unusual patterns in essay-level parent references
 - IO manager path configuration drift
 - Asset dependency chain breaks
 

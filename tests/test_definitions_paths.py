@@ -15,7 +15,7 @@ def test_definitions_respect_custom_data_root(definitions_with_paths):
     assert draft_response_manager._layer.data_root == paths.data_root
 
     # Shared CSV managers should target the derived paths rather than literals
-    assert defs.resources["csv_io_manager"].base_path == paths.tasks_dir
+    assert "csv_io_manager" not in defs.resources
     assert defs.resources["error_log_io_manager"].base_path == paths.data_root / "7_reporting"
 
     parsing_mgr = defs.resources["parsing_results_io_manager"]

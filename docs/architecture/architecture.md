@@ -284,7 +284,7 @@ The Unified Stage Runner (located in `src/daydreaming_dagster/unified/`) is a si
 
 **Assets / Tools**: `filtered_evaluation_results` asset, `scripts/build_pivot_tables.py`
 
-**Purpose**: Derive cross‑experiment views directly from the docs store and task CSVs (no auto‑appenders).
+**Purpose**: Derive cross‑experiment views directly from the docs store and cohort membership metadata (no auto-appenders).
 
 **Analysis**:
 - Template comparison across experiments

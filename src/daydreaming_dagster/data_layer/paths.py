@@ -48,10 +48,6 @@ class Paths:
         return self.data_root / "1_raw"
 
     @property
-    def tasks_dir(self) -> Path:
-        return self.data_root / "2_tasks"
-
-    @property
     def parsing_dir(self) -> Path:
         return self.data_root / "5_parsing"
 

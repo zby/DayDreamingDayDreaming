@@ -30,7 +30,7 @@ uv sync
 export DAGSTER_HOME=$(pwd)/dagster_home
 uv run dagster asset materialize --select "group:cohort" -f src/daydreaming_dagster/definitions.py
 
-# Run a single draft or essay partition by gen_id (from data/2_tasks/*.csv)
+# Run a single draft or essay partition by gen_id (see cohort membership CSV)
 # Drafts/essays/evaluations expose prompt/raw/parsed assets; run by partition id
 uv run dagster asset materialize --select "group:generation_draft"   --partition <gen_id> -f src/daydreaming_dagster/definitions.py
 uv run dagster asset materialize --select "group:generation_essays"  --partition <gen_id> -f src/daydreaming_dagster/definitions.py
@@ -45,7 +45,6 @@ More examples and troubleshooting: docs/guides/operating_guide.md
 
 ## Data & Partitions
 - Inputs: `data/1_raw/` (concepts, templates, `llm_models.csv` with `for_generation` / `for_evaluation`).
-- Task CSVs: `data/2_tasks/` (contain `gen_id` partition keys).
 - Gens store: `data/gens/<stage>/<gen_id>/{prompt.txt,raw.txt,parsed.txt,metadata.json}`.
 - Dynamic partitions: one `gen_id` per stage (draft, essay, evaluation).
 - Details: docs/architecture/architecture.md#storage-architecture
@@ -65,11 +64,11 @@ print(paths.parsed_path("essay", "<gen_id>"))  # data/gens/essay/<gen_id>/parsed
 - Conventions and agent guidelines: AGENTS.md
 - Storage conventions (single source of truth): `src/daydreaming_dagster/data_layer/paths.py`
 
-The membership asset writes `data/cohorts/<cohort_id>/membership.csv` (one row per stage/gen_id) and registers dynamic partitions add‑only. Task assets project their tables from membership; generation/evaluation assets run as before.
+The membership asset writes `data/cohorts/<cohort_id>/membership.csv` (one row per stage/gen_id) and registers dynamic partitions add-only so generation/evaluation assets can run without any intermediate task CSVs.
 
 ### Cross‑Experiment Views
 
-Cross‑experiment analysis is derived directly from the gens store (data/gens/**) and task CSVs:
+Cross‑experiment analysis is derived directly from the gens store (data/gens/**) and cohort metadata:
 
 - Use assets: `filtered_evaluation_results`, `template_version_comparison_pivot`.
 - Use scripts for backfills or one‑off tables under data/7_cross_experiment/ (no auto‑appenders).
@@ -86,10 +85,10 @@ uv run python scripts/build_pivot_tables.py --parsed-scores data/7_cross_experim
 
 # Outputs (under data/7_cross_experiment/):
 # - parsed_scores.csv (canonical cross-experiment evaluation scores)
-# - evaluation_scores_by_template_model.csv  (pivot: rows=essay_task, cols=evaluation_template__evaluation_model)
+# - evaluation_scores_by_template_model.csv  (pivot: rows=essay_gen_id, cols=evaluation_template__evaluation_model)
 ```
 
-Note: Auto-materializing appenders were removed. Derive views on demand from the gens store and tasks.
+Note: Auto-materializing appenders were removed. Derive views on demand from the gens store and cohort metadata.
 
 ### Curating Essay Cohorts
 
@@ -247,7 +246,6 @@ Examples include:
 - Built-in validation: depends on template; Phase‑1 parsing and minimum‑lines validation happen earlier.
 
 ### Output Data
-- **Tasks**: `data/2_tasks/*.csv` (generated combinations and tasks; include `gen_id` for each row)
 - **Gens Store (primary)**: `data/gens/<stage>/<gen_id>/`
   - Contains `raw.txt`, `parsed.txt`, optional `prompt.txt`, and `metadata.json`
   - Stages: `draft`, `essay`, `evaluation`
@@ -308,7 +306,7 @@ Examples include:
    ```
   DagsterUnknownPartitionError: Could not find a partition with key `combo_v1_<hex>_...` (or legacy `combo_001_...`)
    ```
-  **Solution**: Make sure task CSV files exist by running step 1 first. Use `awk -F, 'NR==1{for(i=1;i<=NF;i++)h[$i]=i} NR==2{print $h["gen_id"]}' data/2_tasks/draft_generation_tasks.csv` to retrieve a valid draft partition key (gen_id).
+  **Solution**: Make sure `cohort_id` and `cohort_membership` have been materialized first so partitions register. Use `awk -F, 'NR==1{for(i=1;i<=NF;i++)h[$i]=i} NR==2{print $h["gen_id"]}' data/cohorts/<cohort_id>/membership.csv` to retrieve a valid draft partition key (gen_id).
 
 4. **Partitioned Asset Group Error**:
    ```

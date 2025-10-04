@@ -108,7 +108,7 @@ def pipeline_data_root_prepared():
     Steps:
     - Clean tests/data_pipeline_test
     - Copy data/1_raw into tests/data_pipeline_test/1_raw
-    - Create output dirs (2_tasks, gens/) for gen-id–keyed prompts/responses
+    - Create output dirs (gens/) for gen-id–keyed prompts/responses
     - Trim raw catalogs to a small deterministic subset and write a cohort spec
     - Return Path to tests/data_pipeline_test
     """
@@ -120,7 +120,6 @@ def pipeline_data_root_prepared():
     if pipeline_data_root.exists():
         shutil.rmtree(pipeline_data_root)
     (pipeline_data_root / "1_raw").mkdir(parents=True)
-    (pipeline_data_root / "2_tasks").mkdir(parents=True)
     # Gen store (prompts/responses live under data/gens/<stage>/<gen_id>/)
     (pipeline_data_root / "gens").mkdir(parents=True)
     (pipeline_data_root / "cohorts").mkdir(parents=True)
@@ -340,29 +339,6 @@ class TestPipelineIntegration:
     def _verify_expected_files(self, test_directory, test_gen_partitions, test_eval_partitions):
         """Comprehensive verification of all expected pipeline output files."""
         
-        # Task CSVs are optional in membership-first mode; if present, they should be non-empty
-        task_files = [
-            test_directory / "2_tasks" / "draft_generation_tasks.csv",
-            test_directory / "2_tasks" / "essay_generation_tasks.csv",
-            test_directory / "2_tasks" / "evaluation_tasks.csv",
-        ]
-        any_present = False
-        for file_path in task_files:
-            if file_path.exists():
-                any_present = True
-                assert file_path.stat().st_size > 0, f"Task file is empty: {file_path}"
-        if not any_present:
-            print("ℹ No task CSVs present (membership-first mode)")
-            gen_tasks_file = test_directory / "2_tasks" / "draft_generation_tasks.csv"
-            if gen_tasks_file.exists():
-                gen_tasks_df = pd.read_csv(gen_tasks_file)
-                assert len(gen_tasks_df) > 0, "Generation tasks should not be empty"
-                required_columns = ["draft_task_id", "combo_id", "draft_template", "generation_model"]
-                for col in required_columns:
-                    assert col in gen_tasks_df.columns, f"Missing required column: {col}"
-                for combo_id in gen_tasks_df["combo_id"].unique():
-                    assert combo_id.startswith("combo_"), f"Invalid combo_id format: {combo_id}"
-        
         # Gen store verification under data/gens/
         gens_root = test_directory / "gens"
         for partition in test_gen_partitions:
@@ -427,7 +403,6 @@ class TestPipelineIntegration:
         all_files = list(test_directory.rglob("*"))
         file_count = len([f for f in all_files if f.is_file()])
         print(f"✓ Total files created: {file_count}")
-        print(f"✓ Task files verified: {len(task_files)}")
         print(f"✓ Generation partitions: {len(test_gen_partitions)}")
         print(f"✓ Evaluation partitions: {len(test_eval_partitions)}")
         
@@ -490,7 +465,6 @@ class TestPipelineIntegration:
                     "data_root": str(pipeline_data_root),
                     "openrouter_client": CannedLLMResource(),
                     # no documents_index resource in filesystem-only mode
-                    "csv_io_manager": CSVIOManager(base_path=pipeline_data_root / "2_tasks"),
                     # Prompt IO to gens store; responses written by assets to gens store; keep responses in-memory
                     "draft_prompt_io_manager": GensPromptIOManager(
                         gens_root=pipeline_data_root / "gens",
@@ -525,8 +499,8 @@ class TestPipelineIntegration:
 
                 print("🚀 Starting complete pipeline workflow...")
                 
-                # STEP 1: Materialize selected mappings first, then combinations and tasks
-                print("📋 Step 1: Materializing task definitions...")
+                # STEP 1: Materialize selected mappings first, then cohort scaffolding
+                print("📋 Step 1: Materializing cohort scaffolding...")
                 
                 # First materialize selected_combo_mappings
                 result = materialize(
@@ -547,19 +521,8 @@ class TestPipelineIntegration:
                     resources=resources,
                     instance=instance,
                 )
-                assert result.success, "Task materialization failed"
-                print("✅ Task materialization completed successfully")
-
-                # Task artifacts are optional in membership-first mode
-                task_dir = pipeline_data_root / "2_tasks"
-                found_any = False
-                for name in ("draft_generation_tasks.csv", "essay_generation_tasks.csv", "evaluation_tasks.csv"):
-                    p = task_dir / name
-                    if p.exists():
-                        found_any = True
-                        assert p.stat().st_size > 10, f"File appears empty: {name}"
-                if not found_any:
-                    print("ℹ No task CSVs present (membership-first mode)")
+                assert result.success, "Cohort scaffolding materialization failed"
+                print("✅ Cohort scaffolding materialized successfully")
 
                 # STEP 2: Materialize generation pipeline (drafts and essays)
                 print("🔗 Step 2: Materializing generation pipeline...")
@@ -663,7 +626,7 @@ class TestPipelineIntegration:
                 )
 
                 # Optional: RAW outputs may or may not exist for failed partitions depending on failure cause
-                print("🎉 Task setup workflow test passed successfully!")
+                print("🎉 Cohort setup workflow test passed successfully!")
 
     def test_template_allowlist_filters_membership(self):
         """Cohort membership should include only templates defined by the spec."""
@@ -674,7 +637,6 @@ class TestPipelineIntegration:
             temp_dagster_home.mkdir()
             temp_data_dir.mkdir()
             (temp_data_dir / "1_raw").mkdir()
-            (temp_data_dir / "2_tasks").mkdir()
             (temp_data_dir / "gens").mkdir()
             (temp_data_dir / "cohorts").mkdir()
             (temp_data_dir / "7_reporting").mkdir()
@@ -818,7 +780,6 @@ class TestPipelineIntegration:
 
                 resources = {
                     "data_root": str(temp_data_dir),
-                    "csv_io_manager": CSVIOManager(base_path=temp_data_dir / "2_tasks"),
                     "io_manager": _DictIOManager(),
                     "in_memory_io_manager": InMemoryIOManager(),
                     "experiment_config": ExperimentConfig(k_max=2, description_level="paragraph"),

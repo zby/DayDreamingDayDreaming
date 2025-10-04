@@ -173,9 +173,9 @@ def definitions_with_paths(tmp_path):
         defs = build_definitions(paths=paths)
 
         assert defs.resources["data_root"] == str(paths.data_root)
+        assert "csv_io_manager" not in defs.resources
 
         csv_expectations = {
-            "csv_io_manager": paths.tasks_dir,
             "cross_experiment_io_manager": paths.cross_experiment_dir,
             "error_log_io_manager": paths.data_root / "7_reporting",
         }

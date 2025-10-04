@@ -172,7 +172,6 @@ def base_data_root(tmp_path: Path) -> Path:
             },
         )
 
-    (tmp_path / "2_tasks").mkdir(parents=True, exist_ok=True)
     (tmp_path / "gens" / "draft").mkdir(parents=True, exist_ok=True)
     (tmp_path / "gens" / "essay").mkdir(parents=True, exist_ok=True)
     (tmp_path / "gens" / "evaluation").mkdir(parents=True, exist_ok=True)

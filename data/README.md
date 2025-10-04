@@ -120,11 +120,11 @@ data/
 ## Data Flow
 
 ```
-1_raw → 2_tasks → 3_generation → 4_evaluation → cohorts/<id>/reports
-   ↓                                                           ↓
-   └─ Experiment Definition                              Final Results ─┘
-                                    ↓
-                                    └─ 7_cross_experiment (rebuilt views)
+1_raw → cohort_membership → gens/<stage> → cohorts/<id>/reports
+   ↓                                                     ↓
+   └─ Experiment Definition                         Final Results ─┘
+                             ↓
+                             └─ 7_cross_experiment (rebuilt views)
 ```
 
 ## Tracking Strategy
