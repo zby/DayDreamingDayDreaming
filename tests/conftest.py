@@ -183,7 +183,10 @@ def definitions_with_paths(tmp_path):
             manager = defs.resources[key]
             assert getattr(manager, "base_path") == expected
 
-        from daydreaming_dagster.resources.io_managers import CohortCSVIOManager
+        from daydreaming_dagster.resources.io_managers import (
+            CohortCSVIOManager,
+            RehydratingIOManager,
+        )
 
         parsing_mgr = defs.resources["parsing_results_io_manager"]
         summary_mgr = defs.resources["summary_results_io_manager"]
@@ -193,7 +196,8 @@ def definitions_with_paths(tmp_path):
             assert mgr._default_category == category
 
         in_memory_manager = defs.resources["in_memory_io_manager"]
-        assert getattr(in_memory_manager, "_fallback_root") == paths.data_root
+        assert isinstance(in_memory_manager, RehydratingIOManager)
+        assert in_memory_manager._layer.data_root == paths.data_root
 
         for entry in STAGES.values():
             for resource_key in entry.resource_factories:
@@ -201,7 +205,8 @@ def definitions_with_paths(tmp_path):
                 if resource_key.endswith("prompt_io_manager"):
                     assert getattr(resource, "gens_root") == paths.gens_root
                 else:
-                    assert getattr(resource, "_fallback_root", None) == paths.data_root
+                    assert isinstance(resource, RehydratingIOManager)
+                    assert resource._layer.data_root == paths.data_root
 
         return defs, paths
 

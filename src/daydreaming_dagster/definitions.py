@@ -51,7 +51,6 @@ from daydreaming_dagster.assets.group_cohorts import (
 )
 from daydreaming_dagster.assets.cross_experiment import (
     filtered_evaluation_results,
-    template_version_comparison_pivot,
 )
 from daydreaming_dagster.resources import CohortSpecResource
 from daydreaming_dagster.resources.llm_client import LLMClientResource
@@ -152,7 +151,6 @@ RESULT_ASSETS = (
     final_results,
     perfect_score_paths,
     filtered_evaluation_results,
-    template_version_comparison_pivot,
     prune_dynamic_partitions,
 )
 

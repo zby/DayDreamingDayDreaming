@@ -104,7 +104,7 @@ Assets are organized into logical groups for easy selection and understanding:
 | **`results_processing`** | parsed_scores | Parse evaluation scores |
 | **`results_summary`** | final_results, perfect_score_paths, generation_scores_pivot, evaluation_model_template_pivot | Final aggregated results |
 | **`results_analysis`** | evaluator_agreement_analysis, comprehensive_variance_analysis | Statistical analysis |
-| **`cross_experiment`** | filtered_evaluation_results, template_version_comparison_pivot | Cross-experiment analysis |
+| **`cross_experiment`** | filtered_evaluation_results (asset), `scripts/build_pivot_tables.py` (CLI) | Cross-experiment analysis |
 
 ### Stage Registry & IO Managers
 
@@ -282,7 +282,7 @@ The Unified Stage Runner (located in `src/daydreaming_dagster/unified/`) is a si
 
 ### 7. Cross-Experiment Analysis (`cross_experiment.py`)
 
-**Assets**: `filtered_evaluation_results`, `template_version_comparison_pivot`
+**Assets / Tools**: `filtered_evaluation_results` asset, `scripts/build_pivot_tables.py`
 
 **Purpose**: Derive cross‑experiment views directly from the docs store and task CSVs (no auto‑appenders).
 
