@@ -17,7 +17,6 @@ from .spec_planner import (
     seed_cohort_metadata,
     validate_cohort_membership,
 )
-from .spec_migration import generate_spec_bundle, SpecGenerationError
 
 __all__ = [
     "CohortDefinition",
@@ -35,6 +34,4 @@ __all__ = [
     "persist_membership_csv",
     "seed_cohort_metadata",
     "validate_cohort_membership",
-    "generate_spec_bundle",
-    "SpecGenerationError",
 ]

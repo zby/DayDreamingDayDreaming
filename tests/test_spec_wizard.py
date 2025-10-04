@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from scripts.migrations import spec_wizard
+import scripts.migrations.spec_wizard as spec_wizard
 from scripts.migrations.spec_wizard import copy_spec_from_template, WizardError
 
 
@@ -45,29 +45,6 @@ def test_copy_spec_missing_template(tmp_path: Path) -> None:
     with pytest.raises(WizardError):
         copy_spec_from_template(data_root, "new", "missing")
 
-
-def test_copy_spec_autogenerates_when_missing(monkeypatch, tmp_path: Path) -> None:
-    data_root = tmp_path / "data"
-    cohorts_dir = data_root / "cohorts"
-    template_dir = cohorts_dir / "source"
-    target_dir = cohorts_dir / "clone"
-    target_dir.mkdir(parents=True, exist_ok=True)
-
-    generated_path = template_dir / "spec"
-
-    def fake_generate(root: Path, cohort_id: str, overwrite: bool = False) -> Path:
-        assert Path(root) == data_root
-        assert cohort_id == "source"
-        generated_path.mkdir(parents=True, exist_ok=True)
-        (generated_path / "config.yaml").write_text("generated\n", encoding="utf-8")
-        return generated_path
-
-    monkeypatch.setattr(spec_wizard, "generate_spec_bundle", fake_generate)
-    monkeypatch.setattr(spec_wizard, "SpecGenerationError", WizardError)
-
-    created = copy_spec_from_template(data_root, "clone", "source")
-    assert created == target_dir / "spec"
-    assert (created / "config.yaml").read_text(encoding="utf-8") == "generated\n"
 
 
 def test_wizard_selects_most_recent_by_default(monkeypatch, tmp_path: Path, capsys) -> None:

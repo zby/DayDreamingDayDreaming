@@ -4,8 +4,6 @@ import argparse
 import shutil
 from pathlib import Path
 
-from daydreaming_dagster.cohorts import generate_spec_bundle, SpecGenerationError
-
 class WizardError(RuntimeError):
     """Raised when the spec wizard cannot complete the requested action."""
 
@@ -39,11 +37,6 @@ def copy_spec_from_template(
     base = Path(data_root)
     cohorts_dir = base / "cohorts"
     template_spec = cohorts_dir / template_cohort / "spec"
-    if not template_spec.exists():
-        try:
-            generate_spec_bundle(base, template_cohort, overwrite=False)
-        except SpecGenerationError as exc:  # pragma: no cover - propagation tested via unit
-            raise WizardError(str(exc)) from exc
     if not template_spec.exists():
         raise WizardError(f"template cohort spec not found: {template_spec}")
 
