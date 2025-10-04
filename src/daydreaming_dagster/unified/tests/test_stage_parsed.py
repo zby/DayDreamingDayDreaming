@@ -212,8 +212,8 @@ def test_stage_parsed_force_regenerates(tmp_path: Path, monkeypatch) -> None:
     assert ctx.captured["reused"].value is False
 
 
-def test_stage_parsed_skips_with_missing_metadata(tmp_path: Path, monkeypatch) -> None:
-    """Test that stage_parsed reuses parsed.txt even if parsed_metadata.json is missing."""
+def test_stage_parsed_missing_metadata_fails(tmp_path: Path, monkeypatch) -> None:
+    """Existing parsed artifact without metadata should raise."""
     data_layer, paths = _prepare_generation(
         tmp_path,
         stage="draft",
@@ -242,14 +242,15 @@ def test_stage_parsed_skips_with_missing_metadata(tmp_path: Path, monkeypatch) -
 
     monkeypatch.setattr(stage_parsed, "resolve_parser_name", lambda root, stage, tpl, override: "identity")
 
-    out = stage_parsed.stage_parsed_asset(ctx, "draft", raw_text="RAW")
+    with pytest.raises(DDError) as exc_info:
+        stage_parsed.stage_parsed_asset(ctx, "draft", raw_text="RAW")
 
-    # Should return existing artifact
-    assert out == "EXISTING-PARSED"
+    err = exc_info.value
+    assert err.code is Err.DATA_MISSING
+    assert err.ctx["stage"] == "draft"
+    assert err.ctx["gen_id"] == "D1"
+    assert err.ctx["artifact"] == "parsed_metadata"
+    assert err.ctx["reason"] == "parsed_metadata_missing_for_existing_parsed"
 
-    # Metadata should mark as reused with minimal fields
-    assert ctx.captured["reused"].value is True
-    parsed_meta = ctx.captured["parsed_metadata"].value
-    assert parsed_meta["function"] == "draft_parsed"
-    assert parsed_meta["stage"] == "draft"
-    assert parsed_meta["gen_id"] == "D1"
+    # Should not capture metadata because execution failed
+    assert ctx.captured is None

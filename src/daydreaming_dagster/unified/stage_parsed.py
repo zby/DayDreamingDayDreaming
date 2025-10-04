@@ -2,9 +2,6 @@ from __future__ import annotations
 
 from typing import Any, Dict, Optional
 
-from dagster import MetadataValue
-
-from daydreaming_dagster.assets._error_boundary import resume_notice
 from daydreaming_dagster.assets._helpers import get_run_id, build_stage_artifact_metadata
 from daydreaming_dagster.data_layer.gens_data_layer import GensDataLayer, resolve_generation_metadata
 from daydreaming_dagster.utils.errors import DDError, Err
@@ -35,28 +32,22 @@ def _stage_parsed_asset(
         # Reuse existing artifact
         parsed_text = data_layer.read_parsed(stage, gen_id)
 
-        # Try to read existing metadata, but don't fail if missing
+        # Try to read existing metadata; if missing we now fail fast
         try:
             parsed_metadata = data_layer.read_parsed_metadata(stage, gen_id)
         except DDError as err:
             if err.code is Err.DATA_MISSING:
-                parsed_metadata = {
-                    "function": f"{stage}_parsed",
-                    "stage": str(stage),
-                    "gen_id": str(gen_id),
-                }
-                parsed_metadata.update(
-                    resume_notice(
-                        stage=str(stage),
-                        gen_id=gen_id,
-                        artifact="parsed",
-                        reason="missing_parsed_metadata",
-                        emit_log=True,
-                        log_level="warning",
-                    )
+                ctx = dict(err.ctx or {})
+                ctx.update(
+                    {
+                        "stage": stage,
+                        "gen_id": gen_id,
+                        "artifact": "parsed_metadata",
+                        "reason": "parsed_metadata_missing_for_existing_parsed",
+                    }
                 )
-            else:
-                raise
+                raise DDError(Err.DATA_MISSING, ctx=ctx, cause=err)
+            raise
 
         # Mark as reused
         parsed_metadata["reused"] = True

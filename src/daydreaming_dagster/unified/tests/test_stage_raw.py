@@ -5,10 +5,13 @@ import types
 from pathlib import Path
 from typing import Any, Dict
 
+import pytest
+
 import daydreaming_dagster.unified.stage_raw as stage_raw
 from daydreaming_dagster.data_layer.gens_data_layer import GensDataLayer
 from daydreaming_dagster.data_layer.paths import Paths
 from daydreaming_dagster.resources.experiment_config import ExperimentConfig, StageSettings
+from daydreaming_dagster.utils.errors import DDError, Err
 
 
 def _context(tmp_path: Path, partition_key: str, *, llm: Any | None = None):
@@ -279,8 +282,8 @@ def test_stage_raw_force_regenerates(tmp_path: Path):
     assert md["reused"].value is False
 
 
-def test_stage_raw_skips_with_missing_metadata(tmp_path: Path):
-    """Test that stage_raw reuses raw.txt even if raw_metadata.json is missing."""
+def test_stage_raw_missing_metadata_fails(tmp_path: Path):
+    """Existing raw artifact without metadata should raise."""
     paths = _prepare_generation(
         tmp_path,
         "draft",
@@ -300,17 +303,16 @@ def test_stage_raw_skips_with_missing_metadata(tmp_path: Path):
     llm = _StubLLM(text="NEW-RAW")
     ctx = _context(tmp_path, "D1", llm=llm)
 
-    out = stage_raw.stage_raw_asset(ctx, "draft", prompt_text="PROMPT TEXT")
+    with pytest.raises(DDError) as exc_info:
+        stage_raw.stage_raw_asset(ctx, "draft", prompt_text="PROMPT TEXT")
 
-    # Should return existing artifact
-    assert out == "EXISTING-RAW"
-    # LLM should not be called
+    err = exc_info.value
+    assert err.code is Err.DATA_MISSING
+    assert err.ctx["stage"] == "draft"
+    assert err.ctx["gen_id"] == "D1"
+    assert err.ctx["artifact"] == "raw_metadata"
+    assert err.ctx["reason"] == "raw_metadata_missing_for_existing_raw"
+
+    # Should not trigger LLM generation or metadata capture
     assert llm.calls == []
-
-    # Metadata should mark as reused with minimal fields
-    md = ctx._captured["metadata"]
-    assert md["reused"].value is True
-    raw_meta = md["raw_metadata"].value
-    assert raw_meta["function"] == "draft_raw"
-    assert raw_meta["stage"] == "draft"
-    assert raw_meta["gen_id"] == "D1"
+    assert "metadata" not in ctx._captured
