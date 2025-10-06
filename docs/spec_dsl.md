@@ -11,9 +11,8 @@ Highlights:
 - Rule pipeline (`subset → tie → pair → tuple`) to bound Cartesian growth.
 - Explicit replicate axes (e.g., `draft_template_replicate`) keep deterministic indices visible in the spec.
 - CLI (`scripts/compile_experiment_design.py`) for producing CSV/JSONL output with catalog data sourced from JSON/CSV files.
-- Cohort integration: `cohort_membership` loads spec bundles via `daydreaming_dagster.cohorts.load_cohort_definition` when `data/cohorts/<cohort_id>/spec/` is present, ensuring spec + catalogs fully determine cohort rows.
+- Cohort integration: `cohort_membership` loads `data/cohorts/<cohort_id>/spec/config.yaml` via `daydreaming_dagster.cohorts.load_cohort_definition`, ensuring the spec plus catalogs fully determine cohort rows.
 - In-memory parsing via `parse_spec_mapping` for tests and dependency-injection scenarios where writing spec files is unnecessary.
-- Migration helper (`scripts/migrations/generate_cohort_spec.py`) snapshotting existing cohorts into spec bundles so legacy runs can adopt the DSL without manual transcription.
 
 ### Why this design?
 
@@ -29,7 +28,7 @@ Top-level keys supported by `load_spec` / CLI:
 | `rules` | mapping | Optional. Sectioned by rule type (`subsets`, `ties`, `pairs`, `tuples`). The loader converts each section into the canonical rule pipeline order. |
 | `output` | mapping | Optional. Currently used for column ordering (`field_order`) and shuffle seed. |
 
-> Specs must be single files. Directory bundles (`spec/axes/*.txt`, `spec/rules/*.yaml`) are no longer supported—use `@file:` references instead.
+> Specs are single files (e.g., `spec/config.yaml`) that can reference sibling helpers via `@file:`. Pure directory bundles (`spec/axes/*.txt`, `spec/rules/*.yaml` without a config entry point) are no longer supported.
 
 To parse pre-loaded mappings (e.g., during tests), call `parse_spec_mapping(mapping, source=..., base_dir=...)`. The helper shares validation with `load_spec` while letting callers avoid temporary files.
 

@@ -64,7 +64,7 @@ print(paths.parsed_path("essay", "<gen_id>"))  # data/gens/essay/<gen_id>/parsed
 - Conventions and agent guidelines: AGENTS.md
 - Storage conventions (single source of truth): `src/daydreaming_dagster/data_layer/paths.py`
 
-The membership asset writes `data/cohorts/<cohort_id>/membership.csv` (one row per stage/gen_id) and registers dynamic partitions add-only so generation/evaluation assets can run without any intermediate task CSVs.
+The membership asset writes `data/cohorts/<cohort_id>/membership.csv` (one row per stage/gen_id) and registers dynamic partitions add-only so generation/evaluation assets can run without any intermediate task CSVs. See `docs/cohorts.md` for the full lifecycle and schema expectations.
 
 ### Cross‑Experiment Views
 
@@ -100,11 +100,11 @@ emitting a spec directly:
    uv run python scripts/select_top_essays.py --cohort-id novelty-top-30 --template novelty --top-n 30
    ```
 2. Review/edit the CSV (toggle the ``selected`` column, adjust ordering, etc.).
-3. Build the cohort membership + spec bundle from the curated list:
+3. Write the cohort membership CSV from the curated list:
    ```bash
    uv run python scripts/build_cohort_from_list.py --cohort-id novelty-top-30
    ```
-   The command copies the curated list under ``data/cohorts/<id>/curation/`` for traceability.
+   The command copies the curated list under ``data/cohorts/<id>/curation/`` for traceability and writes ``data/cohorts/<id>/membership.csv``. Author or copy a spec under ``data/cohorts/<id>/spec/config.yaml`` before re-materialising the cohort assets.
 
 ### Raw CSV Change Handling (Schedule)
 
@@ -170,12 +170,12 @@ Notes:
 
 ### Cohort Specs & Naming
 
-- Specs live under `data/cohorts/<cohort_id>/spec/` (`config.yaml` plus optional `@file` helpers). The compiler reads these files directly when planning cohort membership.
+- Specs live under `data/cohorts/<cohort_id>/spec/` with `config.yaml` as the entry point (plus optional `@file:` helpers beside it). The cohort assets compile that spec into a manifest and `membership.csv`; downstream code never re-reads the spec.
 - Axis names and level values in the spec must exactly match identifiers in the catalogs and on-disk template/concept files. If they do not, rename the files or regenerate the spec; do **not** introduce aliasing layers.
-- Dagster assets load specs via `load_cohort_context`, which now requires the caller to supply the hydrated catalog levels (typically `build_spec_catalogs(data_root)`). Validate or regenerate the catalogs before compiling a spec so membership checks succeed.
+- Dagster assets load specs via `load_cohort_context`, which requires hydrated catalog levels (typically `build_spec_catalogs(data_root)`). Validate or regenerate the catalogs before compiling a spec so membership checks succeed.
 - When adding a catalog entry:
   1. Create/update the CSV row and associated template/concept file using the desired identifier.
-  2. Update or regenerate the relevant cohort specs (e.g., `uv run python scripts/migrations/generate_cohort_spec.py --cohort-id <id>`).
+  2. Update or regenerate the relevant cohort specs by copying an existing `spec/` directory and editing `config.yaml` plus helper files so the cohort reflects the catalog changes.
 - Raw catalogs no longer use `active` flags; specs (or curated selection files such as `selected_essays.txt`) are the only way to include or exclude items.
 
 ### Pipeline Parameters

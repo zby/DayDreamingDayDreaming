@@ -124,7 +124,9 @@ The system uses CSV-based configuration for easy experiment setup without code c
 
 #### 1. Define the Cohort Spec
 
-Generate or edit the cohort spec under `data/cohorts/<cohort_id>/spec/` to enumerate the concepts, templates, and model allowlists. The easiest way to bootstrap a spec is to run `uv run python scripts/migrations/generate_cohort_spec.py --cohort-id <cohort>` which reads the current catalogs and writes `config.yaml` plus `items/cohort_rows.yaml`. Update those files to reflect the exact combinations you want to materialize.
+Generate or edit the cohort spec under `data/cohorts/<cohort_id>/spec/` (entry point: `config.yaml`) to enumerate the concepts, templates, and model allowlists. Bootstrap options include copying an existing cohort's `spec/` bundle as a starting point or drafting a new `config.yaml` and helper files from scratch.
+
+After editing the spec, re-materialise the cohort assets so the manifest and `membership.csv` stay aligned.
 
 #### 2. Adjust Template Metadata
 
@@ -207,11 +209,11 @@ Cross‑experiment tracking no longer uses auto‑appenders. Use the `filtered_e
    uv run python scripts/select_top_essays.py --cohort-id my-cohort --template novelty --top-n 30
    ```
 2. Edit the resulting CSV (`data/curation/top_essay_candidates.csv` by default), toggling the `selected` column or reordering rows.
-3. Materialise the cohort membership and spec bundle:
+3. Materialise the cohort membership CSV:
    ```bash
    uv run python scripts/build_cohort_from_list.py --cohort-id my-cohort
    ```
-   The curated list is copied to `data/cohorts/<id>/curation/` for traceability before the usual Dagster assets consume the generated spec.
+   The curated list is copied to `data/cohorts/<id>/curation/` for traceability and `membership.csv` is written under `data/cohorts/<id>/`. Copy or author `spec/config.yaml` for the cohort, then re-run the cohort assets so Dagster registers partitions for the new rows (see `docs/cohorts.md`).
 
 ---
 
