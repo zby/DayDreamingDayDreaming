@@ -2,6 +2,7 @@ template_id,template_name,description,parser,generator
 creativity-metrics-v2,Creativity Metrics V2,Evaluates multi-dimensional creative synthesis with required SCORE line.,in_last_line,llm
 daydreaming-verification-v2,Daydreaming Verification V2,Enhanced template with reliable 0-9 scoring and strict SCORE format,in_last_line,llm
 daydreaming-verification-v3,Daydreaming Verification V3,Evaluates DayDreaming Loop mechanism understanding; terminology usage is positive signal when mechanism is correct,in_last_line,llm
+experiment-integrity-v1,Experiment Integrity V1,Flags claims of self-run experiments or fabricated quantitative results with strict SCORE format.,in_last_line,llm
 gemini-prior-art-eval,Prior Art gemini, Gemini research based prior art evaluation,in_last_line,llm
 gemini-prior-art-eval-v2,Prior Art gemini V2 (terminology-flex),Terminology‑flex prior art evaluation (mechanism priority),in_last_line,llm
 interdisciplinary-coherence,Interdisciplinary Coherence,Specialized template for evaluating interdisciplinary work and domain integration,in_last_line,llm
