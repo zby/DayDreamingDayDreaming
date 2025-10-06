@@ -3,12 +3,12 @@
 Short, current guidance for our two-phase (draft → essay → evaluation) pipeline.
 
 Current Model
-- Partitions: `draft_gens`, `essay_gens`, `evaluation_gens` (DynamicPartitionsDefinition), keyed by `gen_id`.
-- Registration: created by `cohort_membership` (group `cohort`) from `data/cohorts/<cohort_id>/membership.csv`.
+- Partitions: `cohort_spec_partitions` (StaticPartitionsDefinition discovered from `data/cohorts/<cohort_id>/spec/`), plus `draft_gens`, `essay_gens`, `evaluation_gens` (DynamicPartitionsDefinition keyed by `gen_id`).
+- Registration: spec partitions load at process start; generation/evaluation partitions are added by `cohort_membership` (group `cohort`) from `data/cohorts/<cohort_id>/membership.csv`.
 - I/O: GensPromptIOManager persists prompts to `data/gens/<stage>/<gen_id>/prompt.txt`; assets write responses to `data/gens/<stage>/<gen_id>/{raw,parsed,metadata}.txt/json`. Cross‑phase reads use `parent_gen_id` to load parents from the gens store.
 
 Gotchas (and fixes)
-- Registration order: start Dagster with the daemon; raw + cohort assets auto-update when `data/1_raw/**/*` changes. If needed, seed `cohort_id,cohort_membership` once before generation/evaluation assets.
+- Spec discovery: create `data/cohorts/<cohort_id>/spec/config.yaml` before launching Dagster (or reload definitions) so the static `cohort_spec_partitions` includes the new cohort. After that, raw + cohort assets auto-update when `data/1_raw/**/*` changes. If needed, seed `cohort_id,cohort_membership` once before generation/evaluation assets.
 - Key consistency: `gen_id` is the ground truth for partitions. Use `parent_gen_id` to link stages.
 - Cross‑phase reads: assets like `essay_prompt` and `evaluation_prompt` load upstream text by `parent_gen_id` directly from the filesystem (`data/gens/<stage>/<gen_id>`); no cross‑partition IO‑manager context is needed.
 - Stale CSVs: if a downstream asset expects new columns in `parsed_scores` (e.g., `draft_template`) and fails, rematerialize upstream with a clear error. Example: `uv run dagster asset materialize --select parsed_scores -f src/daydreaming_dagster/definitions.py`.
@@ -18,7 +18,7 @@ Why not multi‑dimensional partitions?
 - Dagster supports only 2D multi‑partitions; our model has ≥3 dimensions. Encoding them into composite keys adds more complexity than our task tables + dynamic partitions. We’ll revisit if Dagster adds richer partitioning.
 
 Common commands
-- Initialize cohort (optional): `uv run dagster asset materialize --select "group:cohort" -f src/daydreaming_dagster/definitions.py`
+- Initialize cohort (optional): `uv run dagster asset materialize --select "group:cohort" --partition "<cohort_id>" -f src/daydreaming_dagster/definitions.py`
 - Run a draft: `uv run dagster asset materialize --select "group:generation_draft" --partition "$DRAFT_GEN_ID" -f src/daydreaming_dagster/definitions.py`
 - Run an essay: `uv run dagster asset materialize --select "group:generation_essays" --partition "$ESSAY_GEN_ID" -f src/daydreaming_dagster/definitions.py`
 - Evaluate an essay: `uv run dagster asset materialize --select "evaluation_prompt,evaluation_raw,evaluation_parsed" --partition "$EVALUATION_GEN_ID" -f src/daydreaming_dagster/definitions.py`

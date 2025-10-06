@@ -17,7 +17,7 @@ Setup
    - Optional: limit the cohort spec to only copy-mode essays to avoid mixing modes in catalog expansions.
 2) Build cohort
    - Catalog mode: ensure `data/combo_mappings.csv` contains the desired combos and materialize `cohort_id` (which writes the manifest) followed by `selected_combo_mappings`/`content_combinations` to hydrate combo content:
-     - `uv run dagster asset materialize --select "cohort_id,selected_combo_mappings,content_combinations,cohort_membership" -f src/daydreaming_dagster/definitions.py`
+     - `uv run dagster asset materialize --select "cohort_id,selected_combo_mappings,content_combinations,cohort_membership" --partition "<cohort_id>" -f src/daydreaming_dagster/definitions.py`
 3) Materialize partitions
    - Drafts: `uv run dagster asset materialize --select "group:generation_draft" --partition "<draft_gen_id>" -f src/daydreaming_dagster/definitions.py`
    - Essays (copy mode): `uv run dagster asset materialize --select "group:generation_essays" --partition "<essay_gen_id>" -f src/daydreaming_dagster/definitions.py`
@@ -29,7 +29,7 @@ Setup
 Notes and gotchas
 - Parent link is mandatory: essays read the draft via `parent_gen_id`. The cohort membership ensures this link exists.
 - Mixed cohorts: in catalog mode, every draft combines with all essays (both `copy` and `llm`). For a pure one‑phase baseline, constrain the cohort spec to copy-mode templates or use a separate cohort.
-- Dynamic partitions: ensure `cohort_membership` runs first (or with the daemon) so draft/essay/evaluation partitions exist before materializing stage assets.
+- Cohort partitions: create `data/cohorts/<cohort_id>/spec/config.yaml` before launching Dagster (or reload definitions) so the static `cohort_spec_partitions` includes the new cohort. Stage assets still rely on dynamic `gen_id` partitions, so ensure `cohort_membership` runs first (or with the daemon) before materializing drafts/essays.
 
 Where it’s enforced in code
 - Essay generator mode resolution: `daydreaming_dagster/unified/stage_core.py::resolve_generator_mode`
