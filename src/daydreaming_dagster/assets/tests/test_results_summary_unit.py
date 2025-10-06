@@ -34,6 +34,7 @@ def _scores_rows() -> pd.DataFrame:
                 "draft_template": "links-v4",
                 "generation_template": "systematic-analytical-v2",
                 "generation_model": "deepseek_r1_f",
+                "parent_gen_id": "E1",
                 "evaluation_template": "daydreaming-verification-v2",
                 "evaluation_llm_model": "deepseek",
                 "score": 8.5,
@@ -47,6 +48,7 @@ def _scores_rows() -> pd.DataFrame:
                 "draft_template": "links-v4",
                 "generation_template": "systematic-analytical-v2",
                 "generation_model": "deepseek_r1_f",
+                "parent_gen_id": "E1",
                 "evaluation_template": "creativity-metrics-v2",
                 "evaluation_llm_model": "qwen",
                 "score": 9.0,
@@ -60,6 +62,7 @@ def _scores_rows() -> pd.DataFrame:
                 "draft_template": "links-v4",
                 "generation_template": "systematic-analytical-v2",
                 "generation_model": "deepseek_r1_f",
+                "parent_gen_id": "E2",
                 "evaluation_template": "daydreaming-verification-v2",
                 "evaluation_llm_model": "deepseek",
                 "score": 9.1,
@@ -73,6 +76,7 @@ def _scores_rows() -> pd.DataFrame:
                 "draft_template": "links-v4",
                 "generation_template": "systematic-analytical-v2",
                 "generation_model": "deepseek_r1_f",
+                "parent_gen_id": "E2",
                 "evaluation_template": "creativity-metrics-v2",
                 "evaluation_llm_model": "qwen",
                 "score": None,
@@ -108,6 +112,7 @@ def test_compute_generation_scores_pivot_includes_expected_columns():
         "draft_template",
         "generation_template",
         "generation_model",
+        "parent_gen_id",
         "deepseek_daydreaming-verification-v2",
         "qwen_creativity-metrics-v2",
         "deepseek_daydreaming-verification-v2_min",
@@ -140,6 +145,7 @@ def test_compute_generation_scores_pivot_respects_path_lookup_mapping():
             row["draft_template"],
             row["generation_template"],
             row["generation_model"],
+            row["parent_gen_id"],
         ): path
         for row, path in zip(scores.to_dict("records"), paths)
     }

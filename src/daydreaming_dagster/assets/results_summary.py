@@ -70,7 +70,7 @@ def generation_scores_pivot(context, cohort_aggregated_scores: pd.DataFrame) -> 
         context.log.warning("No cohort aggregated scores provided; returning empty pivot")
         return pd.DataFrame()
 
-    if "generation_response_path" in cohort_aggregated_scores.columns:
+    if set(GENERATION_INDEX_COLUMNS + ["generation_response_path"]).issubset(cohort_aggregated_scores.columns):
         path_lookup = cohort_aggregated_scores[
             GENERATION_INDEX_COLUMNS + ["generation_response_path"]
         ].drop_duplicates()

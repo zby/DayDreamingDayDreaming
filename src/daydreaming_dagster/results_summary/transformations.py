@@ -14,6 +14,7 @@ GENERATION_INDEX_COLUMNS = [
     "draft_template",
     "generation_template",
     "generation_model",
+    "parent_gen_id",
 ]
 EVALUATION_TEMPLATE_COLUMN = "evaluation_template"
 EVALUATION_MODEL_COLUMN = "evaluation_llm_model"
