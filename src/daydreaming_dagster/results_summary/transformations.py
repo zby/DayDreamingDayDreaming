@@ -117,17 +117,17 @@ def _normalize_path_lookup(
     source_scores: pd.DataFrame,
 ) -> pd.DataFrame:
     if path_lookup is None:
-        if GENERATION_RESPONSE_COLUMN not in source_scores.columns:
+        required_cols = set(GENERATION_INDEX_COLUMNS + [GENERATION_RESPONSE_COLUMN])
+        missing = [col for col in required_cols if col not in source_scores.columns]
+        if missing:
             raise DDError(
                 Err.DATA_MISSING,
                 ctx={
-                    "missing": GENERATION_RESPONSE_COLUMN,
+                    "missing": missing,
                     "reason": "pivot_requires_generation_path",
                 },
             )
-        base = source_scores[
-            GENERATION_INDEX_COLUMNS + [GENERATION_RESPONSE_COLUMN]
-        ].drop_duplicates()
+        base = source_scores[GENERATION_INDEX_COLUMNS + [GENERATION_RESPONSE_COLUMN]].drop_duplicates()
     elif isinstance(path_lookup, Mapping):
         records = []
         for key, path in path_lookup.items():
