@@ -1,19 +1,21 @@
 # Cohorts
 
-Cohorts capture a reproducible slice of the experiment space. Each cohort owns a spec bundle rooted at `data/cohorts/<cohort_id>/spec/` with `config.yaml` as the entry point (and optional `@file:` helpers in the same directory). The cohort assets compile that spec into a manifest and a canonical `membership.csv`. Downstream assets, scripts, and tooling only rely on the persisted `membership.csv`; the spec bundle and manifest are read exclusively by the cohort asset group while building those artifacts.
+Cohorts capture a reproducible slice of the experiment space. Each cohort owns a spec bundle rooted at `data/cohorts/<cohort_id>/spec/` with `config.yaml` as the entry point (and optional `@file:` helpers in the same directory). Specs are written in the declarative DSL documented in [`docs/spec_dsl.md`](spec_dsl.md); the cohort asset group is the only Dagster code that parses those definitions. It compiles the spec into a manifest and a canonical `membership.csv`, keeping the downstream contract stable. Assets, scripts, and tooling only rely on the persisted `membership.csv`; the spec bundle and manifest stay encapsulated inside the cohort build.
+
+Our goal is to make each cohort read like a **full-factorial search space with structured couplings**. The spec DSL lets you declare independent axes (models, prompts, replicates) while still encoding required couplings (e.g. essays inherit draft parents, evaluation rubrics target specific prompt families). When authored carefully, the cohort bundle enumerates every viable combination by default and relies on explicit allowlists or pairing rules when certain dimensions must move together.
 
 ## Core artifacts
 
 | Artifact | Location | Owner | Purpose |
 | --- | --- | --- | --- |
-| Spec bundle | `data/cohorts/<cohort_id>/spec/` | Authors | Declarative definition of combos, templates, models, and replication. Parsed by `CohortSpecResource` and compiled via `load_cohort_context`. |
+| Spec bundle | `data/cohorts/<cohort_id>/spec/` | Authors | Declarative definition of combos, templates, models, and replication authored in the spec DSL. Parsed by `CohortSpecResource` and compiled via `load_cohort_context`. |
 | Manifest | `data/cohorts/<cohort_id>/manifest.json` | `cohort_id` asset | Snapshot of the allowlists derived from the spec. Used by `selected_combo_mappings` and `content_combinations` to hydrate combo metadata. |
 | Membership table | `data/cohorts/<cohort_id>/membership.csv` | `cohort_membership` asset | Canonical list of stage/gen IDs for the cohort. Drives partition registration and downstream lookups. |
 | Generation metadata | `data/gens/<stage>/<gen_id>/metadata.json` | `seed_cohort_metadata` | Pre-seeded to ensure generation assets have origin context before they run. |
 
 ## Lifecycle
 
-1. **Choose a spec.** Provide the cohort ID via the Dagster partition (`--partition <cohort_id>`). The `cohort_id` asset loads `spec/config.yaml`, computes allowlists, and persists a manifest before registering the cohort as a dynamic partition for report assets.
+1. **Choose a spec.** Provide the cohort ID via the Dagster partition (`--partition <cohort_id>`). The `cohort_id` asset loads `spec/config.yaml`, applies the structured couplings declared in the spec DSL, computes allowlists, and persists a manifest before registering the cohort as a dynamic partition for report assets.
 2. **Compile membership.** The `cohort_membership` asset compiles the spec into draft/essay/evaluation rows, validates catalog coverage, seeds generation metadata, and writes `membership.csv`. The persisted CSV is slimmed to `stage,gen_id` while the in-memory DataFrame retains parent and template information.
 3. **Register partitions.** `register_cohort_partitions` reads the returned DataFrame and registers every `gen_id` as an add-only dynamic partition for the draft, essay, and evaluation assets.
 4. **Run stage assets.** Generation assets materialize per `gen_id` partition. They never re-read the spec or manifest; partition keys and the seeded metadata tell them which combos, templates, and parents to use.
