@@ -4,10 +4,12 @@ import json
 from pathlib import Path
 
 import pandas as pd
+import pytest
 import yaml
-from dagster import build_asset_context
+from dagster import Failure, build_asset_context
 
 from daydreaming_dagster.cohorts import load_cohort_definition
+from daydreaming_dagster.utils.errors import DDError, Err
 
 class _StubCohortSpec:
     def compile_definition(
@@ -150,7 +152,7 @@ def test_cohort_id_deterministic_and_manifest_written(tmp_path):
             "data_root": str(tmp_path),
             "cohort_spec": _StubCohortSpec(),
         },
-        asset_config={"override": "cohort-demo"},
+        partition_key="cohort-demo",
     )
     cid1 = module.cohort_id(context)
     cid2 = module.cohort_id(context)
@@ -170,59 +172,36 @@ def test_cohort_id_deterministic_and_manifest_written(tmp_path):
     assert manifest["replication"] == {"draft": 2, "essay": 1, "evaluation": 3}
 
 
-def test_cohort_id_override_precedence_config_over_env(tmp_path, monkeypatch):
+def test_cohort_id_requires_partition(tmp_path):
     import daydreaming_dagster.assets.group_cohorts as module
 
     _setup_data_root(tmp_path)
     _write_spec(
         tmp_path,
-        cohort_id="CONFIG-COHORT-999",
+        cohort_id="partition-only",
         combos=["x"],
         draft_templates=["draft-A"],
         essay_templates=["essay-X"],
         evaluation_templates=["eval-1"],
         generation_llms=["gen-model-1"],
         evaluation_llms=["eval-model-1"],
-        replicates={
-            "draft_template": 2,
-            "evaluation_template": 3,
-        },
     )
-    _write_spec(
-        tmp_path,
-        cohort_id="ENV-COHORT-123",
-        combos=["x"],
-        draft_templates=["draft-A"],
-        essay_templates=["essay-X"],
-        evaluation_templates=["eval-1"],
-        generation_llms=["gen-model-1"],
-        evaluation_llms=["eval-model-1"],
-        replicates={
-            "draft_template": 2,
-            "evaluation_template": 3,
-        },
-    )
-
-    monkeypatch.setenv("DD_COHORT", "ENV-COHORT-123")
 
     context = build_asset_context(
         resources={
             "data_root": str(tmp_path),
             "cohort_spec": _StubCohortSpec(),
         },
-        asset_config={"override": "CONFIG-COHORT-999"},
     )
-    cid_config = module.cohort_id(context)
-    assert cid_config == "CONFIG-COHORT-999"
-    assert (tmp_path / "cohorts" / cid_config / "manifest.json").exists()
 
-    context_env = build_asset_context(
-        resources={
-            "data_root": str(tmp_path),
-            "cohort_spec": _StubCohortSpec(),
-        },
-        asset_config={}
-    )
-    cid_env = module.cohort_id(context_env)
-    assert cid_env == "ENV-COHORT-123"
-    assert (tmp_path / "cohorts" / cid_env / "manifest.json").exists()
+    with pytest.raises(Failure) as exc:
+        module.cohort_id(context)
+
+    meta = exc.value.metadata
+    assert meta["error_code"].text == "INVALID_CONFIG"
+    assert meta["error_ctx"].data == {
+        "reason": "cohort_spec_required",
+        "hint": "materialize with --partition <cohort_id>",
+    }
+    assert isinstance(exc.value.__cause__, DDError)
+    assert exc.value.__cause__.code is Err.INVALID_CONFIG

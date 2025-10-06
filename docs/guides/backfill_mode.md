@@ -100,10 +100,8 @@ def parsed_exists(self, stage: str, gen_id: str) -> bool:
 
 ### Creating a Backfill Cohort
 
-1. **Set cohort environment variable:**
-   ```bash
-   export DD_COHORT=novelty_v2_backfill
-   ```
+1. **Choose the cohort ID:** launch every Dagster materialization in this flow with
+   `--partition novelty_v2_backfill` so the cohort propagates through the run.
 
 2. **Materialize cohort assets:**
    - In Dagster UI: Materialize `group:cohort`
