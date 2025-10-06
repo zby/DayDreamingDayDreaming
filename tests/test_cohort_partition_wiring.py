@@ -46,9 +46,10 @@ def test_cohort_core_assets_use_cohort_spec_partitions():
         cohort_id,
         cohort_membership,
         selected_combo_mappings,
-        content_combinations,
         register_cohort_partitions,
     ]
 
     for asset in assets:
         assert asset.partitions_def is cohort_spec_partitions
+
+    assert content_combinations.partitions_def is None

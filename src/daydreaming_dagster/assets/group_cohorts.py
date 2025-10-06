@@ -423,25 +423,23 @@ def selected_combo_mappings(
     group_name="cohort",
     io_manager_key="io_manager",
     required_resource_keys={"data_root"},
-    deps={AssetKey("cohort_id")},
-    partitions_def=cohort_spec_partitions,
 )
 def content_combinations(
     context,
-    cohort_id: str,
 ) -> list[ContentCombination]:
-    """Hydrate content combinations referenced by the cohort manifest.
+    """Hydrate content combinations for all combo definitions in the catalog.
 
-    The cohort spec is authoritative for combo selection. This asset resolves each combo_id listed
-    in the cohort manifest into concrete concept content using the canonical combo mappings CSV.
+    This global view allows downstream draft generation to resolve any combo_id without requiring
+    cohort-specific recomputation. Each ContentCombination is constructed from `combo_mappings.csv`
+    using the registered concept definitions under `data/1_raw/concepts/`.
     """
 
     paths = Paths.from_context(context)
     data_root = paths.data_root
 
-    manifest_combos, combos_df = _combo_rows_for_manifest(data_root, cohort_id)
-    if not manifest_combos:
-        context.add_output_metadata({"count": MetadataValue.int(0), "reason": MetadataValue.text("no combos in manifest")})
+    combos_df = _read_combo_mappings(data_root)
+    if combos_df.empty:
+        context.add_output_metadata({"count": MetadataValue.int(0), "reason": MetadataValue.text("combo_mappings_empty")})
         return []
 
     combo_path = data_root / "combo_mappings.csv"
@@ -450,17 +448,10 @@ def content_combinations(
     concept_index = {str(concept.concept_id): concept for concept in concepts}
 
     combos: list[ContentCombination] = []
-    for combo_id in manifest_combos:
-        combo_rows = combos_df[combos_df["combo_id"].astype(str) == combo_id]
-        if combo_rows.empty:
-            raise DDError(
-                Err.INVALID_CONFIG,
-                ctx={
-                    "reason": "combo_definition_missing",
-                    "combo_id": combo_id,
-                    "path": str(combo_path),
-                },
-            )
+    for combo_id, combo_rows in combos_df.groupby("combo_id"):
+        combo_id = str(combo_id).strip()
+        if not combo_id:
+            continue
 
         level_value = combo_rows.iloc[0].get("description_level", "paragraph")
         level = str(level_value).strip() or "paragraph"
@@ -482,6 +473,7 @@ def content_combinations(
                     "reason": "concepts_missing_for_combo",
                     "combo_id": combo_id,
                     "missing_concepts": missing_concepts,
+                    "path": str(combo_path),
                 },
             )
 
@@ -493,5 +485,6 @@ def content_combinations(
             )
         )
 
+    combos.sort(key=lambda combo: combo.combo_id)
     context.add_output_metadata({"count": MetadataValue.int(len(combos))})
     return combos

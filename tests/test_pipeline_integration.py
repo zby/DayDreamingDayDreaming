@@ -592,8 +592,9 @@ class TestPipelineIntegration:
                 assert not combos_df.empty, "Expected selected combos for cohort"
 
                 content_combinations(
-                    _cohort_ctx(io_manager=resources["in_memory_io_manager"]),
-                    cohort_id=cohort_identifier,
+                    build_asset_context(
+                        resources={"data_root": str(pipeline_data_root)}
+                    )
                 )
 
                 membership_df = cohort_membership(
@@ -895,8 +896,7 @@ class TestPipelineIntegration:
                 )
 
                 content_combinations(
-                    _cohort_ctx(io_manager=resources["io_manager"]),
-                    cohort_id=cid,
+                    build_asset_context(resources={"data_root": str(temp_data_dir)})
                 )
 
                 membership_df = cohort_membership(

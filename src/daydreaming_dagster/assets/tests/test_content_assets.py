@@ -56,8 +56,7 @@ class TestContentAssets:
         failure = err.value
         assert failure.metadata.get("error_code").value == "DATA_MISSING"
 
-    def test_content_combinations_from_manifest(self, tmp_path: Path) -> None:
-        cohort_id = "cohort-ok"
+    def test_content_combinations_from_catalog(self, tmp_path: Path) -> None:
         combos = [
             {
                 "combo_id": "combo-1",
@@ -76,7 +75,6 @@ class TestContentAssets:
                 "created_at": "",
             },
         ]
-        _write_manifest(tmp_path, cohort_id, ["combo-1"])
         _write_concepts(
             tmp_path,
             [
@@ -88,11 +86,14 @@ class TestContentAssets:
 
         context = build_asset_context(resources={"data_root": str(tmp_path)})
 
+        cohort_id = "cohort-ok"
+        _write_manifest(tmp_path, cohort_id, ["combo-1"])
+
         mappings_df = selected_combo_mappings(context, cohort_id=cohort_id)
         assert not mappings_df.empty
         assert set(mappings_df["concept_id"].astype(str)) == {"concept-a", "concept-b"}
 
-        combos_out = content_combinations(context, cohort_id=cohort_id)
+        combos_out = content_combinations(context)
         assert len(combos_out) == 1
         combo = combos_out[0]
         assert combo.combo_id == "combo-1"
