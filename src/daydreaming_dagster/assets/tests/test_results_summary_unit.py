@@ -7,7 +7,9 @@ from collections.abc import Iterable, Mapping
 import pandas as pd
 import pytest
 
+from daydreaming_dagster.assets import results_summary as assets_results_summary
 from daydreaming_dagster.results_summary.transformations import (
+    GENERATION_INDEX_COLUMNS as TRANSFORM_GENERATION_INDEX_COLUMNS,
     GenerationPivotResult,
     compute_evaluation_model_template_pivot,
     compute_final_results,
@@ -21,6 +23,10 @@ GEN_RESPONSE_E1 = "gens/essay/E1/parsed.txt"
 GEN_RESPONSE_E2 = "gens/essay/E2/parsed.txt"
 EVAL_RESPONSE_E1 = "evaluations/essay/E1.json"
 EVAL_RESPONSE_E2 = "evaluations/essay/E2.json"
+
+
+def test_asset_generation_index_columns_in_sync():
+    assert assets_results_summary.GENERATION_INDEX_COLUMNS == TRANSFORM_GENERATION_INDEX_COLUMNS
 
 
 def _scores_rows() -> pd.DataFrame:

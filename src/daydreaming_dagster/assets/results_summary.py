@@ -6,6 +6,7 @@ from ..data_layer.paths import Paths, COHORT_REPORT_ASSET_TARGETS
 from .raw_data import EVALUATION_TEMPLATES_KEY
 from ..cohorts import load_cohort_allowlists
 from ..results_summary.transformations import (
+    GENERATION_INDEX_COLUMNS as TRANSFORM_GENERATION_INDEX_COLUMNS,
     compute_generation_scores_pivot,
     compute_final_results,
     compute_evaluation_model_template_pivot,
@@ -15,12 +16,7 @@ from ..utils.errors import DDError, Err
 from .partitions import cohort_reports_partitions
 
 
-GENERATION_INDEX_COLUMNS = [
-    "combo_id",
-    "draft_template",
-    "generation_template",
-    "generation_model",
-]
+GENERATION_INDEX_COLUMNS = list(TRANSFORM_GENERATION_INDEX_COLUMNS)
 
 
 def _require_cohort_partition(context, asset_name: str) -> str:
