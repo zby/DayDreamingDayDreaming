@@ -9,7 +9,7 @@ Our goal is to make each cohort read like a **full-factorial search space with s
 | Artifact | Location | Owner | Purpose |
 | --- | --- | --- | --- |
 | Spec bundle | `data/cohorts/<cohort_id>/spec/` | Authors | Declarative definition of combos, templates, models, and replication authored in the spec DSL. Parsed by `CohortSpecResource` and compiled via `load_cohort_context`. |
-| Manifest | `data/cohorts/<cohort_id>/manifest.json` | `cohort_id` asset | Snapshot of the allowlists derived from the spec. Used by `selected_combo_mappings` and `content_combinations` to hydrate combo metadata. |
+| Manifest | `data/cohorts/<cohort_id>/manifest.json` | `cohort_id` asset | Snapshot of the allowlists derived from the spec. Used by `selected_combo_mappings` to scope combos referenced by the cohort manifest. |
 | Membership table | `data/cohorts/<cohort_id>/membership.csv` | `cohort_membership` asset | Canonical list of stage/gen IDs for the cohort. Drives partition registration and downstream lookups. |
 | Generation metadata | `data/gens/<stage>/<gen_id>/metadata.json` | `seed_cohort_metadata` | Pre-seeded to ensure generation assets have origin context before they run. |
 
@@ -31,6 +31,10 @@ Our goal is to make each cohort read like a **full-factorial search space with s
 - `replicate` — normalized integer replicate index.
 
 Scripts and resources use `membership.csv` to filter partitions, drive backfills, and feed reporting pipelines. If you need richer context, join against the manifest or hydrated catalogs during the cohort build—never add extra columns to the CSV, because downstream assets only expect the two-column layout.
+
+`content_combinations` now reads directly from `data/combo_mappings.csv` and hydrates every catalogued combo regardless of the manifest. Fixing or adding combos in the catalog is enough to unblock downstream prompt builds without rehydrating cached files.
+
+Dagster discovers cohort partitions statically: any directory under `data/cohorts/<cohort_id>/spec/config.yaml` becomes a `cohort_spec_partitions` key at process start. After adding a new cohort spec, restart Dagster (or reload definitions) so the new partition is available before materializing `cohort_id` or `cohort_membership`.
 
 ## Operational guidance
 

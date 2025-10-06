@@ -125,7 +125,7 @@ The system uses CSV-based configuration for easy experiment setup without code c
 
 Generate or edit the cohort spec under `data/cohorts/<cohort_id>/spec/` (entry point: `config.yaml`) to enumerate the concepts, templates, and model allowlists. Bootstrap options include copying an existing cohort's `spec/` bundle as a starting point or drafting a new `config.yaml` and helper files from scratch.
 
-After editing the spec, re-materialise the cohort assets so the manifest and `membership.csv` stay aligned.
+After editing the spec, re-materialise the cohort assets so the manifest and `membership.csv` stay aligned. Because `cohort_id` and friends use the static `cohort_spec_partitions` set discovered at Dagster startup, create `data/cohorts/<cohort_id>/spec/config.yaml` before launching Dagster (or reload definitions) whenever you add a new cohort.
 
 #### 2. Adjust Template Metadata
 
@@ -166,12 +166,15 @@ Optionally stash selection files for traceability:
   Raw inputs are tracked as `SourceAssets` (see `raw_data.py`). After editing files under `data/1_raw/**/*`, re-materialize the cohort bootstrapping assets so the new configuration flows downstream:
   ```bash
   uv run dagster asset materialize -f src/daydreaming_dagster/definitions.py \
+    --partition "<cohort_id>" \
     --select "selected_combo_mappings,content_combinations,cohort_id,cohort_membership,register_cohort_partitions"
   ```
 
    Optional one-time seed (registers cohort partitions):
    ```bash
-   uv run dagster asset materialize -f src/daydreaming_dagster/definitions.py --select "cohort_id,cohort_membership"
+   uv run dagster asset materialize -f src/daydreaming_dagster/definitions.py \
+     --partition "<cohort_id>" \
+     --select "cohort_id,cohort_membership"
    ```
 
 2. **Run generation assets:**
@@ -198,7 +201,7 @@ Optionally stash selection files for traceability:
 
 Raw inputs are not auto-materialized; instead, re-run the cohort setup assets whenever raw CSVs or template files change:
 
-- `selected_combo_mappings`, `content_combinations`, `cohort_id`, `cohort_membership`, and `register_cohort_partitions` should be materialized after editing `data/1_raw/**/*` so the manifest, combo catalog, and membership stay aligned.
+- `selected_combo_mappings`, `content_combinations`, `cohort_id`, `cohort_membership`, and `register_cohort_partitions` should be materialized after editing `data/1_raw/**/*` so the manifest, combo catalog, and membership stay aligned. Cohort assets share the `cohort_spec_partitions` static partition set discovered from directories under `data/cohorts/<cohort_id>/spec/`—restart Dagster or reload definitions after adding a new spec so the partition appears in the UI/CLI.
 - `content_combinations` no longer writes a cache file; each load rebuilds directly from `combo_mappings.csv`, so fixing catalog rows is enough to unblock downstream draft assets.
 - This sequence registers dynamic partitions for the downstream generation and evaluation groups.
 
@@ -228,6 +231,8 @@ Evaluation is cohort‑driven and gen‑id keyed:
 - `parsed_scores` parses outputs from `data/gens/evaluation/<gen_id>` and filters to evaluation `gen_id`s present in cohort membership when available.
 - `parsed_scores` contains normalized outputs and sets `generation_response_path` to the essay’s `parsed.txt` under the gens store. Downstream pivots should key by `parent_gen_id` (the essay `gen_id`) for deterministic grouping across runs.
 
+Use the `experiment-integrity-v1` template when you need to flag fabricated self-run experiments or unsourced quantitative claims. The rubric requires explicit reasoning and enforces a strict `SCORE: X` line in the final output; ensure evaluators follow that format so `parsed_scores` remains reliable.
+
 Lineage and IDs (gen‑id first)
 - `gen_id`: unique identifier of a concrete generation under `data/gens/<stage>/<gen_id>/`.
 - `parent_gen_id`:
@@ -244,7 +249,8 @@ To run a specific evaluation (e.g., `novelty`) only on chosen documents (e.g., p
 
 1. Ensure the evaluation template exists in `data/1_raw/evaluation_templates.csv`, include it in the cohort spec, and confirm the evaluation models are flagged `for_evaluation` in `llm_models.csv`.
    ```bash
-   uv run dagster asset materialize --select "cohort_id,cohort_membership" -f src/daydreaming_dagster/definitions.py
+   uv run dagster asset materialize --select "cohort_id,cohort_membership" \
+     --partition "<cohort_id>" -f src/daydreaming_dagster/definitions.py
    ```
 3. Materialize the evaluation assets for the registered partitions (by `gen_id`). To target a subset, select specific partition keys from `data/cohorts/<cohort_id>/membership.csv` where `stage == 'evaluation'`:
    ```bash
@@ -271,7 +277,8 @@ Quick navigation
 **Note**: Auto-materialization requires the Dagster daemon to be running. In development, you can manually trigger assets if needed:
 ```bash
 # Manually materialize a specific asset
-uv run dagster asset materialize --select "cohort_id,cohort_membership,content_combinations" -f src/daydreaming_dagster/definitions.py
+uv run dagster asset materialize --select "cohort_id,cohort_membership,content_combinations" \
+  --partition "<cohort_id>" -f src/daydreaming_dagster/definitions.py
 ```
 
 ### Free vs Paid LLM Runs (Separate Pools)
@@ -392,7 +399,8 @@ uv run dagster asset materialize -f src/daydreaming_dagster/definitions.py \
   --select "draft_prompt,draft_raw,draft_parsed" --partition "<DRAFT_GEN_ID>"
 
 # Option 3: Rebuild cohort membership (registers partitions); then materialize essays
-uv run dagster asset materialize --select "cohort_id,cohort_membership" -f src/daydreaming_dagster/definitions.py
+uv run dagster asset materialize --select "cohort_id,cohort_membership" \
+  --partition "<cohort_id>" -f src/daydreaming_dagster/definitions.py
 ```
 
 **Prevention:**
@@ -431,7 +439,8 @@ Missing parent_gen_id for evaluation partition 'eval_001'
 **Solutions:**
 ```bash
 # Rebuild cohort membership after updating the cohort spec
-uv run dagster asset materialize --select "cohort_id,cohort_membership" -f src/daydreaming_dagster/definitions.py
+uv run dagster asset materialize --select "cohort_id,cohort_membership" \
+  --partition "<cohort_id>" -f src/daydreaming_dagster/definitions.py
 
 # Inspect raw inputs for issues
 head data/1_raw/essay_templates.csv
@@ -469,7 +478,8 @@ Evaluation task 'eval_123_creativity_claude' not found in task database
 **Solutions:**
 ```bash
 # Refresh cohort partitions (prunes cohort-scoped stale keys, re-registers)
-uv run dagster asset materialize --select "cohort_id,cohort_membership" -f src/daydreaming_dagster/definitions.py
+uv run dagster asset materialize --select "cohort_id,cohort_membership" \
+  --partition "<cohort_id>" -f src/daydreaming_dagster/definitions.py
 
 # Restart Dagster to clear in-memory partition caches if needed
 ```
@@ -514,7 +524,8 @@ Expected path: /path/to/data/gens/essay/<ESSAY_GEN_ID>/parsed.txt
 **Solutions:**
 ```bash
 # Rebuild cohort membership (registers partitions) and materialize required assets
-uv run dagster asset materialize --select "cohort_id,cohort_membership" -f src/daydreaming_dagster/definitions.py
+uv run dagster asset materialize --select "cohort_id,cohort_membership" \
+  --partition "<cohort_id>" -f src/daydreaming_dagster/definitions.py
 uv run dagster asset materialize --select "essay_prompt,essay_raw,essay_parsed" --partition "<ESSAY_GEN_ID>" -f src/daydreaming_dagster/definitions.py
 ```
 
@@ -596,7 +607,8 @@ rm -rf data/cohorts/*
 rm -rf data/gens/*
 
 # 2. Rebuild cohort and verify
-uv run dagster asset materialize --select "cohort_id,cohort_membership" -f src/daydreaming_dagster/definitions.py
+uv run dagster asset materialize --select "cohort_id,cohort_membership" \
+  --partition "<cohort_id>" -f src/daydreaming_dagster/definitions.py
 head data/cohorts/*/membership.csv
 
 # 3. Run a small subset of LLM assets to test (by gen_id)
