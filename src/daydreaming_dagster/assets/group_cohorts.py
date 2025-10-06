@@ -9,10 +9,16 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Dict, List
+from typing import Dict, Iterable, List
 
 import pandas as pd
-from dagster import AssetKey, MetadataValue
+from dagster import (
+    AssetKey,
+    MetadataValue,
+    DagsterInvariantViolationError,
+    DagsterInvalidInvocationError,
+)
+from dagster._check import CheckError
 from ._decorators import asset_with_boundary
 
 from ..utils.ids import (
@@ -39,11 +45,7 @@ from ..cohorts.membership_engine import (
 from ..cohorts.validation import validate_cohort_definition
 from ..models import ContentCombination
 from ..data_layer.gens_data_layer import GensDataLayer
-from ..utils.cohorts import (
-    get_env_cohort_id,
-    compute_cohort_id,
-    write_manifest,
-)
+from ..utils.cohorts import compute_cohort_id, write_manifest
 from .partitions import (
     draft_gens_partitions,
     essay_gens_partitions,
@@ -220,23 +222,42 @@ def register_cohort_partitions(context, cohort_membership: pd.DataFrame) -> Dict
 def cohort_id(context) -> str:
     """Compute a deterministic cohort_id from the current manifest and persist it."""
     data_root = Paths.from_context(context).data_root
-    asset_cfg = getattr(context, "asset_config", None)
-    override = None
-    if asset_cfg:
-        override = asset_cfg.get("override")
-    else:
-        op_ctx = getattr(context, "op_execution_context", None)
-        if op_ctx and getattr(op_ctx, "op_config", None):
-            override = op_ctx.op_config.get("override")
 
-    env_override = get_env_cohort_id()
-    spec_name = override or env_override
+    partition_sentinel = object()
+    try:
+        partition_value = getattr(context, "partition_key", partition_sentinel)
+    except (
+        DagsterInvariantViolationError,
+        DagsterInvalidInvocationError,
+        CheckError,
+    ) as err:
+        raise DDError(
+            Err.INVALID_CONFIG,
+            ctx={
+                "reason": "cohort_spec_required",
+                "hint": "materialize with --partition <cohort_id>",
+            },
+        ) from err
+    if partition_value is partition_sentinel:
+        raise DDError(
+            Err.INVALID_CONFIG,
+            ctx={
+                "reason": "cohort_spec_required",
+                "hint": "materialize with --partition <cohort_id>",
+            },
+        )
+
+    if partition_value is None:
+        spec_name = None
+    else:
+        spec_name = str(partition_value).strip()
+
     if not spec_name:
         raise DDError(
             Err.INVALID_CONFIG,
             ctx={
                 "reason": "cohort_spec_required",
-                "hint": "set asset_config.override or DD_COHORT",
+                "hint": "materialize with --partition <cohort_id>",
             },
         )
 
@@ -264,8 +285,7 @@ def cohort_id(context) -> str:
         },
         "replication": rep_cfg,
     }
-    explicit_id = override or env_override
-    cid = compute_cohort_id("cohort", manifest, explicit=explicit_id)
+    cid = compute_cohort_id("cohort", manifest, explicit=spec_name)
     write_manifest(str(data_root), cid, manifest)
     instance = context.instance
     has_dynamic_partition = getattr(instance, "has_dynamic_partition", None)

@@ -5,8 +5,8 @@
 #   * Run `python scripts/migrate_evaluation_scores_max9.py` (without --dry-run) first
 #     to switch metadata to LLM mode and clear stale artifacts.
 #   * Ensure `DAGSTER_HOME` points at the desired instance root before invoking this script.
-#   * Set `DD_COHORT` (or configure `asset_config.override`) so Dagster resolves the
-#     spec bundle that defines the cohort membership.
+#   * Materialize assets with `--partition <cohort_id>` so Dagster scopes work to the
+#     desired cohort, including the cohort build itself.
 #   * Requires `uv` (or adjust calls to use `.venv/bin/dagster`).
 
 set -u -o pipefail

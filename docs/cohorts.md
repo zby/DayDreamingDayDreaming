@@ -13,7 +13,7 @@ Cohorts capture a reproducible slice of the experiment space. Each cohort owns a
 
 ## Lifecycle
 
-1. **Choose a spec.** Set `DD_COHORT=<cohort_id>` or configure the `cohort_id` asset override. The asset loads `spec/config.yaml`, computes allowlists, and persists a manifest before registering the cohort as a dynamic partition for report assets.
+1. **Choose a spec.** Provide the cohort ID via the Dagster partition (`--partition <cohort_id>`). The `cohort_id` asset loads `spec/config.yaml`, computes allowlists, and persists a manifest before registering the cohort as a dynamic partition for report assets.
 2. **Compile membership.** The `cohort_membership` asset compiles the spec into draft/essay/evaluation rows, validates catalog coverage, seeds generation metadata, and writes `membership.csv`. The persisted CSV is slimmed to `stage,gen_id` while the in-memory DataFrame retains parent and template information.
 3. **Register partitions.** `register_cohort_partitions` reads the returned DataFrame and registers every `gen_id` as an add-only dynamic partition for the draft, essay, and evaluation assets.
 4. **Run stage assets.** Generation assets materialize per `gen_id` partition. They never re-read the spec or manifest; partition keys and the seeded metadata tell them which combos, templates, and parents to use.

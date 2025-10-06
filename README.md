@@ -147,22 +147,15 @@ uv run pytest --cov=daydreaming_dagster
 - Gen IDs are reserved as `reserve_gen_id(stage, task_id, run_id=cohort_id)` so all artifacts are tied to a visible, reproducible cohort.
 
 Usage:
-- Default deterministic cohort (recommended baseline):
-  - `uv run dagster asset materialize --select cohort_id -f src/daydreaming_dagster/definitions.py`
-  - Then materialize tasks (inherits the same cohort):
-    `uv run dagster asset materialize --select "group:cohort" -f src/daydreaming_dagster/definitions.py`
-- Override explicitly for curated re-runs:
-  - Env var: `export DD_COHORT=my-curated-2025-09-09` (tasks will use this value)
-  - Asset config (Dagster UI or YAML):
-    ```yaml
-    ops:
-      cohort_id:
-        config:
-          override: "baseline-v3"
-    ```
+- Always supply the cohort via Dagster's partition flag:
+  - Build or refresh the cohort bundle:
+    `uv run dagster asset materialize --select "group:cohort" -f src/daydreaming_dagster/definitions.py --partition my-curated-2025-09-09`
+  - Materialize downstream tasks for the same cohort by repeating the `--partition` flag on each invocation.
+- Partitioned cohort report assets (e.g., `cohort_aggregated_scores`) follow the same pattern:
+  - `uv run dagster asset materialize --select cohort_aggregated_scores -f src/daydreaming_dagster/definitions.py --partition my-curated-2025-09-09`
 
 Notes:
-- If you materialize a subset (e.g., only tasks) the tasks will compute and persist a cohort manifest automatically unless `DD_COHORT` is set.
+- Downstream partitioned assets derive their cohort from the selected partition; provide `--partition <cohort_id>` on every run that touches cohort-aware assets.
 - Each stage’s `metadata.json` includes `cohort_id`; task CSVs add a `cohort_id` column.
 - Prefer deterministic cohorts for the full Cartesian baseline; use explicit/timestamped IDs for curated or ad‑hoc runs to avoid overwrites.
 

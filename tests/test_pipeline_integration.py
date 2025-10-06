@@ -15,7 +15,7 @@ from unittest.mock import patch, Mock
 
 import pandas as pd
 import pytest
-from dagster import materialize, DagsterInstance
+from dagster import DagsterInstance, build_asset_context, materialize
 from tests.helpers.llm_stubs import CannedLLMResource
 from daydreaming_dagster.cohorts import load_cohort_definition
 
@@ -427,16 +427,16 @@ class TestPipelineIntegration:
             temp_dagster_home.mkdir(parents=True)
             env_vars = {
                 "DAGSTER_HOME": str(temp_dagster_home),
-                "DD_COHORT": "pipeline-test",
             }
             with patch.dict(os.environ, env_vars):
                 instance = DagsterInstance.ephemeral(tempdir=str(temp_dagster_home))
 
                 from daydreaming_dagster.assets.group_cohorts import (
                     cohort_id,
-                    selected_combo_mappings,
-                    content_combinations,
                     cohort_membership,
+                    content_combinations,
+                    register_cohort_partitions,
+                    selected_combo_mappings,
                 )
                 from daydreaming_dagster.assets.group_draft import (
                     draft_prompt,
@@ -498,30 +498,50 @@ class TestPipelineIntegration:
                 }
 
                 print("🚀 Starting complete pipeline workflow...")
-                
+
+                partition = "pipeline-test"
+
                 # STEP 1: Materialize selected mappings first, then cohort scaffolding
                 print("📋 Step 1: Materializing cohort scaffolding...")
-                
-                # First materialize selected_combo_mappings
-                result = materialize(
-                    [cohort_id, selected_combo_mappings],
-                    resources=resources,
-                    instance=instance,
+
+                def _cohort_ctx(**extras):
+                    base = {
+                        "data_root": str(pipeline_data_root),
+                        "cohort_spec": resources["cohort_spec"],
+                    }
+                    base.update(extras)
+                    return build_asset_context(
+                        resources=base,
+                        partition_key=partition,
+                        instance=instance,
+                    )
+
+                cohort_identifier = cohort_id(
+                    _cohort_ctx(io_manager=resources["in_memory_io_manager"])
                 )
-                assert result.success, "Selected combo mappings materialization failed"
-                
-                # Then materialize the rest (include cohort assets to satisfy dependencies)
-                result = materialize(
-                    [
-                        selected_combo_mappings,
-                        cohort_id,
-                        cohort_membership,
-                        content_combinations,
-                    ],
-                    resources=resources,
-                    instance=instance,
+                assert cohort_identifier == partition
+
+                combos_df = selected_combo_mappings(
+                    _cohort_ctx(in_memory_io_manager=resources["in_memory_io_manager"]),
+                    cohort_id=cohort_identifier,
                 )
-                assert result.success, "Cohort scaffolding materialization failed"
+                assert not combos_df.empty, "Expected selected combos for cohort"
+
+                content_combinations(
+                    _cohort_ctx(io_manager=resources["in_memory_io_manager"]),
+                    cohort_id=cohort_identifier,
+                )
+
+                membership_df = cohort_membership(
+                    _cohort_ctx(io_manager=resources["in_memory_io_manager"]),
+                    cohort_id=cohort_identifier,
+                )
+                assert not membership_df.empty, "cohort_membership should yield rows"
+
+                register_cohort_partitions(
+                    _cohort_ctx(io_manager=resources["in_memory_io_manager"]),
+                    membership_df,
+                )
                 print("✅ Cohort scaffolding materialized successfully")
 
                 # STEP 2: Materialize generation pipeline (drafts and essays)
@@ -744,7 +764,6 @@ class TestPipelineIntegration:
 
             env = {
                 "DAGSTER_HOME": str(temp_dagster_home),
-                "DD_COHORT": "allowlist-cohort",
             }
             with patch.dict(os.environ, env):
                 instance = DagsterInstance.ephemeral(tempdir=str(temp_dagster_home))
@@ -767,10 +786,11 @@ class TestPipelineIntegration:
                         return self._store[key]
 
                 from daydreaming_dagster.assets.group_cohorts import (
-                    selected_combo_mappings,
-                    content_combinations,
                     cohort_id,
                     cohort_membership,
+                    content_combinations,
+                    register_cohort_partitions,
+                    selected_combo_mappings,
                 )
                 from daydreaming_dagster.resources.io_managers import (
                     CSVIOManager,
@@ -786,22 +806,44 @@ class TestPipelineIntegration:
                     "cohort_spec": _StubCohortSpec(),
                 }
 
-                result = materialize([cohort_id, selected_combo_mappings], resources=resources, instance=instance)
-                assert result.success, "selected_combo_mappings materialization should succeed"
+                partition = "allowlist-cohort"
 
-                result = materialize(
-                    [cohort_id, selected_combo_mappings, content_combinations],
-                    resources=resources,
-                    instance=instance,
-                )
-                assert result.success, "content_combinations materialization should succeed"
+                def _cohort_ctx(**extras):
+                    base = {
+                        "data_root": str(temp_data_dir),
+                        "cohort_spec": resources["cohort_spec"],
+                    }
+                    base.update(extras)
+                    return build_asset_context(
+                        resources=base,
+                        partition_key=partition,
+                        instance=instance,
+                    )
 
-                result = materialize(
-                    [selected_combo_mappings, content_combinations, cohort_id, cohort_membership],
-                    resources=resources,
-                    instance=instance,
+                cid = cohort_id(
+                    _cohort_ctx(io_manager=resources["io_manager"])
                 )
-                assert result.success, "cohort assets materialization should succeed"
+                assert cid == partition
+
+                selected_combo_mappings(
+                    _cohort_ctx(in_memory_io_manager=resources["in_memory_io_manager"]),
+                    cohort_id=cid,
+                )
+
+                content_combinations(
+                    _cohort_ctx(io_manager=resources["io_manager"]),
+                    cohort_id=cid,
+                )
+
+                membership_df = cohort_membership(
+                    _cohort_ctx(io_manager=resources["io_manager"]),
+                    cohort_id=cid,
+                )
+
+                register_cohort_partitions(
+                    _cohort_ctx(io_manager=resources["io_manager"]),
+                    membership_df,
+                )
 
             cohorts_dir = temp_data_dir / "cohorts"
             cohort_dirs = list(cohorts_dir.iterdir())
