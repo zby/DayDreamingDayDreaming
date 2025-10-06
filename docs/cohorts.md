@@ -1,87 +1,40 @@
 # Cohorts
 
-Cohorts are spec-defined, reproducible experiment manifests. Every cohort ID maps to a
-`data/cohorts/<cohort_id>/spec/` bundle, and Dagster materializes membership exclusively from that
-spec. Curated selections refine (but never replace) the spec-defined rows.
+Cohorts capture a reproducible slice of the experiment space. A cohort is defined by a spec bundle under `data/cohorts/<cohort_id>/spec/`, materialized into a manifest and a canonical `membership.csv`. Downstream assets, scripts, and tooling only rely on the persisted `membership.csv`; the spec bundle and manifest are read exclusively by the cohort asset group while building those artifacts.
 
-See also
-- `docs/spec_dsl.md` for the DSL vocabulary and schema.
-- `scripts/migrations/generate_cohort_spec.py` for migrating legacy cohorts into specs.
+## Core artifacts
 
-> `membership.csv` is the only authoritative source of cohort members. The
-> `origin_cohort_id` stored in gens metadata is provenance only.
+| Artifact | Location | Owner | Purpose |
+| --- | --- | --- | --- |
+| Spec bundle | `data/cohorts/<cohort_id>/spec/` | Authors | Declarative definition of combos, templates, models, and replication. Parsed by `CohortSpecResource` and compiled via `load_cohort_context`. |
+| Manifest | `data/cohorts/<cohort_id>/manifest.json` | `cohort_id` asset | Snapshot of the allowlists derived from the spec. Used by `selected_combo_mappings` and `content_combinations` to hydrate combo metadata. |
+| Membership table | `data/cohorts/<cohort_id>/membership.csv` | `cohort_membership` asset | Canonical list of stage/gen IDs for the cohort. Drives partition registration and downstream lookups. |
+| Generation metadata | `data/gens/<stage>/<gen_id>/metadata.json` | `seed_cohort_metadata` | Pre-seeded to ensure generation assets have origin context before they run. |
 
-## Spec-Driven Workflow
+## Lifecycle
 
-1. **Author or migrate a spec bundle.**
-   - Create `data/cohorts/<cohort_id>/spec/config.yaml` and supporting CSV files referenced via
-     `@file:` (see _Spec bundle layout_ below).
-   - To migrate an existing cohort, run
-     ```bash
-     uv run python scripts/migrations/generate_cohort_spec.py <cohort_id>
-     ```
-     This snapshots the current membership into a spec bundle and verifies round-trip stability.
+1. **Choose a spec.** Set `DD_COHORT=<cohort_id>` or configure the `cohort_id` asset override. The asset loads the spec bundle, computes allowlists, and persists a manifest before registering the cohort as a dynamic partition for report assets.
+2. **Compile membership.** The `cohort_membership` asset compiles the spec into draft/essay/evaluation rows, validates catalog coverage, seeds generation metadata, and writes `membership.csv`. The persisted CSV is slimmed to `stage,gen_id` while the in-memory DataFrame retains parent and template information.
+3. **Register partitions.** `register_cohort_partitions` reads the returned DataFrame and registers every `gen_id` as an add-only dynamic partition for the draft, essay, and evaluation assets.
+4. **Run stage assets.** Generation assets materialize per `gen_id` partition. They never re-read the spec or manifest; partition keys and the seeded metadata tell them which combos, templates, and parents to use.
+5. **Process results.** Reporting assets query `membership.csv` through `MembershipServiceResource` (and helpers like `CohortScope`) to scope analytics to the cohort.
 
-2. **Materialize the cohort assets.**
-   - Set `DD_COHORT=<cohort_id>` (or pass `asset_config.override`) so the Dagster run targets the
-     intended spec.
-   - Build the manifest and membership:
-     ```bash
-     uv run dagster asset materialize -f src/daydreaming_dagster/definitions.py \
-       --select "cohort_id,cohort_membership"
-     ```
-   - The run validates catalog references against the generated membership rows, enforces parent integrity, writes
-     `data/cohorts/<cohort_id>/manifest.json` and
-     `data/cohorts/<cohort_id>/membership.csv`, and registers dynamic partitions add-only for the
-     generated `gen_id`s.
+## `membership.csv` schema
 
-3. **Materialize downstream assets.**
-   - Use the registered `gen_id` partitions to run draft/essay/evaluation assets or aggregated
-     reports as needed:
-     ```bash
-     uv run dagster asset materialize -f src/daydreaming_dagster/definitions.py \
-       --select "draft_prompt,draft_raw,draft_parsed" --partition "<draft_gen_id>"
-     ```
-     Duplicate the command for essays (`essay_*`) and evaluations (`evaluation_*`) or run aggregate
-     assets such as `cohort_aggregated_scores` and `final_results`.
+`membership.csv` is the only cohort artifact that downstream code reads. It is a deduplicated two-column table with headers `stage,gen_id` written by `persist_membership_csv`. The in-memory membership DataFrame (available inside the asset run) also includes:
 
-## Spec Bundle Layout
+- `origin_cohort_id` — provenance for the generated asset.
+- `parent_gen_id` — draft parent for essays, essay parent for evaluations.
+- `combo_id`, `template_id`, `llm_model_id` — identifiers for reproducibility and metadata seeding.
+- `replicate` — normalized integer replicate index.
 
-```
-data/
-  cohorts/
-    <cohort_id>/
-      spec/
-        config.yaml
-        items/
-          *.csv
-```
+Scripts and resources use `membership.csv` to filter partitions, drive backfills, and feed reporting pipelines. If you need richer context, join against the manifest or hydrated catalogs during the cohort build—never add extra columns to the CSV, because downstream assets only expect the two-column layout.
 
-- `config.yaml` declares axes, couplings, and replication targets. Every catalog reference must be
-  explicit; unspecified axes do not fall back to catalog defaults.
-- When tuple rules supply the axis values, you can omit those axes (or set them to `null`) and the loader will infer the levels directly from the tuple rows.
-- Catalog integrity is enforced after building `membership.csv` via `validate_membership_against_catalog`, so mismatches surface during asset runs rather than at spec parse time. Keep the spec bundle and hydrated catalogs in sync.
-- Single-column CSV files referenced via `@file:` provide axis levels. Multi-column CSVs map to tuple
-  values in header order (e.g., paired templates and models).
-- The runtime loader treats specs as immutable inputs—commit them alongside catalog changes so
-  cohorts remain reproducible.
+## Operational guidance
 
-## Operational Tips
+- **Spec migrations.** Use `scripts/migrations/generate_cohort_spec.py <cohort_id>` to snapshot an existing cohort into a spec bundle. The script reads the current `membership.csv` and produces a spec that round-trips through the planner.
+- **Validation.** The cohort build validates parent integrity and catalog coverage before writing `membership.csv`. Keep catalog CSVs in sync with the spec bundle to avoid runtime failures.
+- **Downstream access.** Inject `MembershipServiceResource` or `CohortScope` rather than reading CSVs manually. They handle filtering by stage and cohort ID and keep future schema changes centralized.
+- **Resets.** To rebuild partitions from scratch, run the maintenance asset `prune_dynamic_partitions` before re-materializing `cohort_membership`. Then rematerialize the stage assets per `gen_id`.
 
-- **Environment override.** Set `DD_COHORT=<cohort_id>` (or pass `asset_config.override`) so the
-  `cohort_id` asset resolves to the correct spec bundle.
-- **Analysis.** Include `cohort_id` and `parent_gen_id` when comparing runs to keep pivots stable.
-- **Replication config.** `data/1_raw/replication_config.csv` must provide integer replication counts
-  for draft, essay, and evaluation stages. The cohort builder fails fast when counts are missing or
-  invalid.
-
-## Essay Modes (Copy vs LLM)
-
-Essay templates specify a `generator` column in `data/1_raw/essay_templates.csv`:
-
-- `copy` — the essay is the parsed draft text (single-phase).
-- `llm` — the essay is generated by an LLM (two-phase).
-
-Configure the spec to include only the essay templates needed for a cohort. If you want distinct
-cohorts for one-phase and two-phase runs, create separate spec bundles so deterministic IDs remain
-isolated. See `docs/architecture/architecture.md` (“Two-Phase LLM Generation”) for runtime details.
+By keeping the spec-to-membership translation inside the cohort asset group and treating `membership.csv` as the sole contract for downstream consumers, we maintain reproducible experiments while minimizing coupling between planning code and runtime assets.
