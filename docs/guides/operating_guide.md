@@ -178,13 +178,15 @@ Optionally stash selection files for traceability:
 2. **Run generation assets:**
    ```bash
    uv run dagster asset materialize -f src/daydreaming_dagster/definitions.py \
-    --select "group:generation_draft,group:generation_essays"
+    --select "group:generation_draft,group:generation_essays" \
+    --partition "<gen_id>"
    ```
 
 3. **Run evaluation assets:**
    ```bash
    uv run dagster asset materialize -f src/daydreaming_dagster/definitions.py \
-    --select "group:evaluation"
+    --select "group:evaluation" \
+    --partition "<evaluation_gen_id>"
    ```
 
 4. **Process results and run analysis:**
@@ -291,11 +293,13 @@ Then materialize generation in two steps:
 # Free-tier generation (serialized globally)
 uv run dagster asset materialize -f src/daydreaming_dagster/definitions.py \
   --select "content_combinations,draft_prompt,draft_raw,draft_parsed" \
+  --partition "<draft_gen_id>" \
   --tag experiment_id=exp_free_vs_paid
 
 # Paid generation (parallel per pool)
 uv run dagster asset materialize -f src/daydreaming_dagster/definitions.py \
   --select "content_combinations,draft_prompt,draft_raw,draft_parsed" \
+  --partition "<draft_gen_id>" \
   --tag experiment_id=exp_free_vs_paid
 ```
 
@@ -303,6 +307,7 @@ For evaluation with a paid model:
 ```bash
 uv run dagster asset materialize -f src/daydreaming_dagster/definitions.py \
   --select "evaluation_prompt,evaluation_raw,evaluation_parsed" \
+  --partition "<evaluation_gen_id>" \
   --tag experiment_id=exp_free_vs_paid
 ```
 

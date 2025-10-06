@@ -19,10 +19,10 @@ Setup
    - Catalog mode: ensure `data/combo_mappings.csv` contains the desired combos and materialize `cohort_id` (which writes the manifest) followed by `selected_combo_mappings`/`content_combinations` to hydrate combo content:
      - `uv run dagster asset materialize --select "cohort_id,selected_combo_mappings,content_combinations,cohort_membership" -f src/daydreaming_dagster/definitions.py`
 3) Materialize partitions
-   - Drafts: `uv run dagster asset materialize --select "group:generation_draft" -f src/daydreaming_dagster/definitions.py`
-   - Essays (copy mode): `uv run dagster asset materialize --select "group:generation_essays" -f src/daydreaming_dagster/definitions.py`
+   - Drafts: `uv run dagster asset materialize --select "group:generation_draft" --partition "<draft_gen_id>" -f src/daydreaming_dagster/definitions.py`
+   - Essays (copy mode): `uv run dagster asset materialize --select "group:generation_essays" --partition "<essay_gen_id>" -f src/daydreaming_dagster/definitions.py`
      - The `essay_prompt` will surface `COPY_MODE: ...` and the `essay_raw`/`essay_parsed` assets will copy the parsed draft content.
-   - Evaluations: `uv run dagster asset materialize --select "group:evaluation" -f src/daydreaming_dagster/definitions.py`
+   - Evaluations: `uv run dagster asset materialize --select "group:evaluation" --partition "<evaluation_gen_id>" -f src/daydreaming_dagster/definitions.py`
 4) Results
    - Parse and summarize: `uv run dagster asset materialize --select "parsed_scores,final_results" -f src/daydreaming_dagster/definitions.py`
 
