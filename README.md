@@ -4,15 +4,15 @@ Dagster-based pipeline exploring whether offline LLMs can reinvent the “Daydre
 
 ## Start Here
 
-Most topics now live in the `docs/` tree—jump straight to the detailed guides when you need depth:
+If you're joining the project, work through the essentials below before diving into a feature:
 
-- Project overview & roadmap: [`docs/index.md`](docs/index.md)
-- Goals & scope: [`docs/project_goals.md`](docs/project_goals.md)
-- Architecture reference: [`docs/architecture/architecture.md`](docs/architecture/architecture.md)
-- Operating guide & troubleshooting: [`docs/guides/operating_guide.md`](docs/guides/operating_guide.md)
-- Cohort workflow: [`docs/cohorts.md`](docs/cohorts.md)
+1. **Map the problem space.** Read the project goals and roadmap to understand why the pipeline exists and what "Daydreaming" means in practice. [`docs/theory/project_goals.md`](docs/theory/project_goals.md)
+2. **Trace the data flow.** Skim the architecture reference for how the Dagster assets compose, where data lands on disk, and which modules own each stage. [`docs/architecture.md`](docs/architecture.md)
+3. **Learn the cohort loop.** Review how cohorts are defined, scheduled, and evaluated so you can run or extend experiments without breaking the contract. [`docs/cohorts.md`](docs/cohorts.md)
+4. **Author specs confidently.** Keep the spec DSL handy when you need to add prompts, models, or evaluation rules. [`docs/spec_dsl.md`](docs/spec_dsl.md)
+5. **Stay operational.** Bookmark the operating guide for routine Dagster commands, troubleshooting tips, and cohort maintenance checklists. [`docs/guides/operating_guide.md`](docs/guides/operating_guide.md)
 
-This README keeps only the minimum needed to get the project running.
+This README keeps only the minimum needed to get the project running—treat it as the launchpad for those docs.
 
 ## Quick Start
 
