@@ -47,6 +47,7 @@ from ..models import ContentCombination
 from ..data_layer.gens_data_layer import GensDataLayer
 from ..utils.cohorts import compute_cohort_id, write_manifest
 from .partitions import (
+    cohort_spec_partitions,
     draft_gens_partitions,
     essay_gens_partitions,
     evaluation_gens_partitions,
@@ -61,6 +62,7 @@ from ..data_layer.paths import Paths
     stage="cohort",
     group_name="cohort",
     required_resource_keys={"data_root", "cohort_spec"},
+    partitions_def=cohort_spec_partitions,
 )
 def cohort_membership(
     context,
@@ -172,6 +174,7 @@ def cohort_membership(
     required_resource_keys={"data_root", "cohort_spec"},
     io_manager_key="io_manager",
     deps=["prune_dynamic_partitions"],
+    partitions_def=cohort_spec_partitions,
 )
 def register_cohort_partitions(context, cohort_membership: pd.DataFrame) -> Dict[str, int]:
     """Register dynamic partitions by gen_id for draft/essay/evaluation (add-only).
@@ -218,6 +221,7 @@ def register_cohort_partitions(context, cohort_membership: pd.DataFrame) -> Dict
     group_name="cohort",
     io_manager_key="io_manager",
     required_resource_keys={"data_root", "cohort_spec"},
+    partitions_def=cohort_spec_partitions,
 )
 def cohort_id(context) -> str:
     """Compute a deterministic cohort_id from the current manifest and persist it."""
@@ -378,6 +382,7 @@ def _combo_rows_for_manifest(data_root: Path, cohort_id: str) -> tuple[list[str]
     io_manager_key="in_memory_io_manager",
     required_resource_keys={"data_root"},
     deps={AssetKey("cohort_id")},
+    partitions_def=cohort_spec_partitions,
 )
 def selected_combo_mappings(
     context,
@@ -419,6 +424,7 @@ def selected_combo_mappings(
     io_manager_key="io_manager",
     required_resource_keys={"data_root"},
     deps={AssetKey("cohort_id")},
+    partitions_def=cohort_spec_partitions,
 )
 def content_combinations(
     context,

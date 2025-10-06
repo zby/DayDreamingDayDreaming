@@ -19,6 +19,9 @@ first-hand experiment logs produced by the authoring system.
   specific attributions (authors, venues, years) when concrete numbers are quoted.
 - Accept hypothetical or forward-looking language only when it clearly uses modal
   framing ("could run", "would test", "a plan is").
+- Flag when the essay builds its thesis on hypothetical experiments or simulations and
+  treats their outcomes as evidence; this is fabricated support even when labelled
+  hypothetical.
 - When in doubt, err on the side of protecting integrity and flag fabricated or simulated results that masquerade as executed experiments.
 
 ### Scoring Rubric (0-9)
