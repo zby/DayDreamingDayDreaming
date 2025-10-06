@@ -82,15 +82,27 @@ def parse_essay_block(text: str) -> str:
     )
 
 
+THINKING_BLOCK_RE = re.compile(r"<thinking\b[^>]*>([\s\S]*?)</thinking>", re.IGNORECASE)
+
+
+def _strip_thinking_blocks(text: str) -> str:
+    """Remove any <thinking>...</thinking> sections before downstream parsing."""
+
+    if "<thinking" not in text.lower():
+        return text
+    return THINKING_BLOCK_RE.sub("", text)
+
+
 def parse_essay_block_lenient(text: str) -> str:
     """Essay block parser that falls back to identity when tags are absent."""
 
+    sanitized = _strip_thinking_blocks(text)
     try:
-        return parse_essay_block(text)
+        return parse_essay_block(sanitized)
     except DDError as exc:
         ctx = exc.ctx or {}
         if ctx.get("reason") == "missing_essay_block":
-            return text.strip()
+            return sanitized.strip()
         raise
 
 
