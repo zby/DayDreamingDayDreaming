@@ -1,9 +1,14 @@
 from pathlib import Path
 
+import pandas as pd
 import pytest
 from dagster import AssetKey, build_input_context, build_output_context
 
-from daydreaming_dagster.resources.io_managers import InMemoryIOManager, RehydratingIOManager
+from daydreaming_dagster.resources.io_managers import (
+    ContentCombinationsIOManager,
+    InMemoryIOManager,
+    RehydratingIOManager,
+)
 from daydreaming_dagster.utils.errors import DDError, Err
 from daydreaming_dagster.resources.gens_prompt_io_manager import GensPromptIOManager
 from daydreaming_dagster.resources.llm_client import LLMClientResource
@@ -86,3 +91,57 @@ def test_llm_client_invalid_max_tokens(tmp_path: Path, monkeypatch):
     with pytest.raises(DDError) as err:
         client.generate_with_info("prompt", model="foo", max_tokens=0)
     assert err.value.code is Err.INVALID_CONFIG
+
+
+def test_content_combinations_manager_rehydrates_from_source(tmp_path: Path):
+    # Write minimal concept catalog
+    raw_dir = tmp_path / "1_raw"
+    concepts_dir = raw_dir / "concepts"
+    desc_dir = concepts_dir / "descriptions-paragraph"
+    desc_dir.mkdir(parents=True, exist_ok=True)
+
+    pd.DataFrame(
+        [
+            {"concept_id": "concept-a", "name": "Concept A"},
+            {"concept_id": "concept-b", "name": "Concept B"},
+        ]
+    ).to_csv(raw_dir / "concepts_metadata.csv", index=False)
+    (desc_dir / "concept-a.txt").write_text("Concept A paragraph", encoding="utf-8")
+    (desc_dir / "concept-b.txt").write_text("Concept B paragraph", encoding="utf-8")
+
+    # Write combo mappings
+    pd.DataFrame(
+        [
+            {
+                "combo_id": "combo-1",
+                "version": "v1",
+                "concept_id": "concept-a",
+                "description_level": "paragraph",
+                "k_max": 1,
+                "created_at": "",
+            },
+            {
+                "combo_id": "combo-1",
+                "version": "v1",
+                "concept_id": "concept-b",
+                "description_level": "paragraph",
+                "k_max": 1,
+                "created_at": "",
+            },
+        ]
+    ).to_csv(tmp_path / "combo_mappings.csv", index=False)
+
+    manager = ContentCombinationsIOManager(tmp_path)
+    upstream = build_output_context(asset_key=AssetKey(["content_combinations"]))
+    input_ctx = build_input_context(
+        partition_key="gen-1",
+        asset_key=AssetKey(["draft_prompt"]),
+        upstream_output=upstream,
+    )
+
+    combos = manager.load_input(input_ctx)
+    assert len(combos) == 1
+    assert combos[0].combo_id == "combo-1"
+
+    # Subsequent loads should reuse the cached value
+    assert manager.load_input(input_ctx) is combos

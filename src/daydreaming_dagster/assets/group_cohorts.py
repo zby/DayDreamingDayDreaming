@@ -27,7 +27,6 @@ from ..utils.ids import (
     evaluation_signature,
     compute_deterministic_gen_id,
 )
-from ..utils.raw_readers import read_concepts
 from ..cohorts import (
     build_spec_catalogs,
     load_cohort_context,
@@ -55,6 +54,10 @@ from .partitions import (
 )
 from ..utils.errors import DDError, Err
 from ..data_layer.paths import Paths
+from ..cohorts.content_combination_builder import (
+    build_content_combinations,
+    read_combo_mappings_df,
+)
 
 
 
@@ -337,32 +340,13 @@ def _manifest_combo_ids(manifest: dict[str, object]) -> list[str]:
     return [str(combo).strip() for combo in manifest.get("combos", []) if str(combo).strip()]
 
 
-def _read_combo_mappings(data_root: Path) -> pd.DataFrame:
-    combo_path = data_root / "combo_mappings.csv"
-    if not combo_path.exists():
-        raise DDError(
-            Err.DATA_MISSING,
-            ctx={
-                "reason": "combo_mappings_missing",
-                "path": str(combo_path),
-            },
-        )
-    combos_df = pd.read_csv(combo_path)
-    if combos_df.empty:
-        raise DDError(
-            Err.DATA_MISSING,
-            ctx={"reason": "combo_mappings_empty", "path": str(combo_path)},
-        )
-    return combos_df
-
-
 def _combo_rows_for_manifest(data_root: Path, cohort_id: str) -> tuple[list[str], pd.DataFrame]:
     manifest = _load_manifest(data_root, cohort_id)
     manifest_combos = _manifest_combo_ids(manifest)
     if not manifest_combos:
         return [], pd.DataFrame()
 
-    combos_df = _read_combo_mappings(data_root)
+    combos_df = read_combo_mappings_df(data_root)
     filtered = combos_df[combos_df["combo_id"].astype(str).isin(manifest_combos)]
     if filtered.empty:
         raise DDError(
@@ -421,7 +405,7 @@ def selected_combo_mappings(
 @asset_with_boundary(
     stage="cohort",
     group_name="cohort",
-    io_manager_key="io_manager",
+    io_manager_key="content_combinations_io_manager",
     required_resource_keys={"data_root"},
 )
 def content_combinations(
@@ -437,54 +421,6 @@ def content_combinations(
     paths = Paths.from_context(context)
     data_root = paths.data_root
 
-    combos_df = _read_combo_mappings(data_root)
-    if combos_df.empty:
-        context.add_output_metadata({"count": MetadataValue.int(0), "reason": MetadataValue.text("combo_mappings_empty")})
-        return []
-
-    combo_path = data_root / "combo_mappings.csv"
-
-    concepts = read_concepts(data_root)
-    concept_index = {str(concept.concept_id): concept for concept in concepts}
-
-    combos: list[ContentCombination] = []
-    for combo_id, combo_rows in combos_df.groupby("combo_id"):
-        combo_id = str(combo_id).strip()
-        if not combo_id:
-            continue
-
-        level_value = combo_rows.iloc[0].get("description_level", "paragraph")
-        level = str(level_value).strip() or "paragraph"
-
-        concept_ids = [str(value).strip() for value in combo_rows["concept_id"].astype(str).tolist() if str(value).strip()]
-        resolved_concepts: list = []
-        missing_concepts: list[str] = []
-        for concept_id in concept_ids:
-            concept = concept_index.get(concept_id)
-            if concept is None:
-                missing_concepts.append(concept_id)
-            else:
-                resolved_concepts.append(concept)
-
-        if missing_concepts:
-            raise DDError(
-                Err.DATA_MISSING,
-                ctx={
-                    "reason": "concepts_missing_for_combo",
-                    "combo_id": combo_id,
-                    "missing_concepts": missing_concepts,
-                    "path": str(combo_path),
-                },
-            )
-
-        combos.append(
-            ContentCombination.from_concepts(
-                resolved_concepts,
-                level=level,
-                combo_id=combo_id,
-            )
-        )
-
-    combos.sort(key=lambda combo: combo.combo_id)
+    combos = build_content_combinations(data_root)
     context.add_output_metadata({"count": MetadataValue.int(len(combos))})
     return combos

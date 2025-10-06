@@ -9,6 +9,7 @@ import inspect
 from typing import Callable, Optional, Sequence, Set
 
 from dagster import AssetIn, AssetKey, MetadataValue
+from dagster import AllPartitionMapping
 
 from ._decorators import asset_with_boundary
 from ._error_boundary import resume_notice
@@ -85,6 +86,17 @@ def build_prompt_asset(
         "required_resource_keys": required_resource_keys,
     }
     asset_kwargs.update(_ensure_deps(deps))
+
+    if needs_content_combinations:
+        asset_kwargs.setdefault(
+            "ins",
+            {
+                "content_combinations": AssetIn(
+                    key=AssetKey("content_combinations"),
+                    partition_mapping=AllPartitionMapping(),
+                )
+            },
+        )
 
     if needs_content_combinations:
 

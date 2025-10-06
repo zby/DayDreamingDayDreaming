@@ -57,6 +57,7 @@ from daydreaming_dagster.resources.experiment_config import ExperimentConfig
 from daydreaming_dagster.resources.io_managers import (
     CSVIOManager,
     CohortCSVIOManager,
+    ContentCombinationsIOManager,
     InMemoryIOManager,
     RehydratingIOManager,
 )
@@ -165,6 +166,7 @@ def _shared_resources(paths: Paths) -> dict[str, Any]:
         "experiment_config": ExperimentConfig(),
         "data_root": str(data_root_path),
         "in_memory_io_manager": RehydratingIOManager(data_root_path),
+        "content_combinations_io_manager": ContentCombinationsIOManager(data_root_path),
         "error_log_io_manager": CSVIOManager(base_path=data_root_path / "7_reporting"),
         "parsing_results_io_manager": CohortCSVIOManager(
             paths,

@@ -199,6 +199,7 @@ Optionally stash selection files for traceability:
 Raw inputs are not auto-materialized; instead, re-run the cohort setup assets whenever raw CSVs or template files change:
 
 - `selected_combo_mappings`, `content_combinations`, `cohort_id`, `cohort_membership`, and `register_cohort_partitions` should be materialized after editing `data/1_raw/**/*` so the manifest, combo catalog, and membership stay aligned.
+- `content_combinations` no longer writes a cache file; each load rebuilds directly from `combo_mappings.csv`, so fixing catalog rows is enough to unblock downstream draft assets.
 - This sequence registers dynamic partitions for the downstream generation and evaluation groups.
 
 Cross‑experiment tracking no longer uses auto‑appenders. Use the `filtered_evaluation_results` asset and `scripts/build_pivot_tables.py` for backfills under `data/7_cross_experiment/`. These analyses read scores strictly from `data/gens/evaluation/<gen_id>/parsed.txt` and do not parse `raw.txt` — ensure evaluation assets have produced parsed outputs before running cross-experiment analysis.

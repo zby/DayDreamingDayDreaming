@@ -7,6 +7,7 @@ import os
 from ..utils.errors import DDError, Err
 from ..data_layer.paths import Paths
 from ..data_layer.gens_data_layer import GensDataLayer
+from ..cohorts.content_combination_builder import build_content_combinations
 
 # Factory functions removed - use direct class instantiation in definitions.py
 
@@ -186,7 +187,12 @@ class InMemoryIOManager(IOManager):
         upstream = context.upstream_output
         partition_key = context.partition_key if context.has_partition_key else None
         stage_asset = upstream.asset_key.path[-1] if upstream.asset_key.path else ""
-        key = (tuple(upstream.asset_key.path), partition_key)
+        base_key = tuple(upstream.asset_key.path)
+        key = (base_key, partition_key)
+        if key not in self._store and partition_key is not None:
+            # Fallback to unpartitioned value when a global asset feeds partitioned consumers
+            key = (base_key, None)
+
         if key not in self._store:
             raise DDError(
                 Err.DATA_MISSING,
@@ -226,3 +232,31 @@ class RehydratingIOManager(InMemoryIOManager):
             key = (tuple(upstream.asset_key.path), partition_key)
             self._store[key] = raw_text
             return raw_text
+
+
+class ContentCombinationsIOManager(InMemoryIOManager):
+    """IO manager that recomputes content combinations on demand from source files."""
+
+    def __init__(self, data_root: Path | str):
+        super().__init__()
+        self._data_root = Path(data_root)
+
+    def load_input(self, context: InputContext):
+        try:
+            return super().load_input(context)
+        except DDError as err:
+            if err.code is not Err.DATA_MISSING or err.ctx.get("reason") != "in_memory_missing":
+                raise
+
+        combos = build_content_combinations(self._data_root)
+
+        upstream = context.upstream_output
+        base_key = tuple(upstream.asset_key.path)
+        partition_key = context.partition_key if context.has_partition_key else None
+
+        # Cache under both the specific partition and the global key so subsequent loads reuse it.
+        self._store[(base_key, None)] = combos
+        if partition_key is not None:
+            self._store[(base_key, partition_key)] = combos
+
+        return combos
