@@ -101,6 +101,70 @@ def _write_spec(
     )
 
 
+def _build_minimal_combo_catalog(concepts_csv: Path) -> pd.DataFrame:
+    """Return a minimal combo_mappings catalog for integration tests.
+
+    The live repository data does not currently include ``combo_mappings.csv``.
+    To keep the integration pipeline representative without depending on
+    private data, synthesize a small deterministic mapping derived from the
+    trimmed concepts metadata that ``pipeline_data_root_prepared`` produces.
+    """
+
+    existing_concepts = pd.DataFrame()
+    concept_ids: list[str] = []
+    if concepts_csv.exists():
+        existing_concepts = pd.read_csv(concepts_csv)
+        if "concept_id" in existing_concepts.columns:
+            concept_ids = [
+                str(value).strip()
+                for value in existing_concepts["concept_id"].astype(str).tolist()
+                if str(value).strip()
+            ]
+
+    if not concept_ids:
+        fallback_rows = [
+            {"concept_id": "concept-fixture-a", "name": "Concept Fixture A"},
+            {"concept_id": "concept-fixture-b", "name": "Concept Fixture B"},
+        ]
+        existing_concepts = pd.concat([existing_concepts, pd.DataFrame(fallback_rows)], ignore_index=True)
+        existing_concepts = existing_concepts.drop_duplicates(subset=["concept_id"]).reset_index(drop=True)
+        existing_concepts.to_csv(concepts_csv, index=False)
+        concept_ids = [
+            str(value).strip()
+            for value in existing_concepts["concept_id"].astype(str).tolist()
+            if str(value).strip()
+        ]
+
+    group = concept_ids[: max(1, min(len(concept_ids), 2))]
+    combo_rows = [
+        {
+            "combo_id": "combo_v1_pipeline_fixture_01",
+            "concept_id": concept_id,
+            "description_level": "paragraph",
+            "k_max": len(group),
+            "version": "v1",
+            "created_at": "",
+        }
+        for concept_id in group
+    ]
+
+    if len(concept_ids) > len(group):
+        secondary_group = concept_ids[len(group) : len(group) + max(1, min(len(concept_ids) - len(group), 2))]
+        combo_rows.extend(
+            {
+                "combo_id": "combo_v1_pipeline_fixture_02",
+                "concept_id": concept_id,
+                "description_level": "paragraph",
+                "k_max": len(secondary_group),
+                "version": "v1",
+                "created_at": "",
+            }
+            for concept_id in secondary_group
+        )
+
+    return pd.DataFrame(combo_rows)
+
+
 @pytest.fixture(scope="function")
 def pipeline_data_root_prepared():
     """Prepare persistent test data under tests/data_pipeline_test by copying live data and limiting scope.
@@ -226,13 +290,13 @@ def pipeline_data_root_prepared():
         mdf.to_csv(models_csv, index=False)
 
     combo_mappings_csv = pipeline_data_root / "combo_mappings.csv"
-    if not combo_mappings_csv.exists():
-        raise RuntimeError(
-            "Expected combo_mappings.csv to exist under the prepared pipeline root. "
-            f"Missing file: {combo_mappings_csv}. Ensure live data was copied before running this test."
-        )
+    if combo_mappings_csv.exists():
+        combo_df = pd.read_csv(combo_mappings_csv)
+    else:
+        combo_df = pd.DataFrame()
 
-    combo_df = pd.read_csv(combo_mappings_csv)
+    if combo_df.empty:
+        combo_df = _build_minimal_combo_catalog(concepts_csv)
     combo_df = combo_df.head(10).reset_index(drop=True)
     combo_df.to_csv(combo_mappings_csv, index=False)
     combos = combo_df["combo_id"].astype(str).dropna().unique().tolist()[:3]
