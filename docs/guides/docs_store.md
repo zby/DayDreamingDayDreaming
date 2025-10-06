@@ -1,74 +1,73 @@
 # Gens Store (gen-id first)
 
-The pipeline persists all generated artifacts under a simple, portable filesystem layout keyed by `gen_id`.
+The pipeline persists every generation under a simple, portable filesystem layout keyed by `gen_id`. The gens store is the single source of truth for prompts, model outputs, and metadata.
 
 ## Layout
 
 - Root: `data/gens/<stage>/<gen_id>/`
-- Files per document:
-  - `prompt.txt` — prompt handed to the generator (if available)
-  - `raw.txt` — full unprocessed model output
-  - `parsed.txt` — normalized/parsed text used by downstream stages
-  - `metadata.json` — canonical main metadata (mode/copy lineage, template, ids)
-  - `raw_metadata.json` — metadata captured at raw generation time (LLM info, finish reason, token usage)
-  - `parsed_metadata.json` — metadata captured by the parser (parser name, success flags)
+- Files per generation:
+  - `prompt.txt` — canonical stage input (rendered template or copied parent text)
+  - `raw.txt` — full unprocessed model output captured immediately after generation
+  - `parsed.txt` — normalized/parsed text that downstream stages consume
+  - `metadata.json` — main metadata seeded by the cohort compiler and enriched by asset runs
+  - `raw_metadata.json` — execution details for the raw asset (`reused`, timing, finish reason, token usage)
+  - `parsed_metadata.json` — execution details for the parsed asset (`reused`, parser name, success flags)
 
 Stages:
-- `draft` — Phase 1 drafts
-- `essay` — Phase 2 essays (parent: draft gen)
-- `evaluation` — Evaluations of essays (parent: essay gen)
+- `draft` — Phase 1 drafts (combination driven)
+- `essay` — Phase 2 essays (parent: draft `gen_id`)
+- `evaluation` — Evaluations of essays (parent: essay `gen_id`)
 
-## Metadata
+## Metadata contracts
 
-`metadata.json` (main metadata) includes stage, gen id, mode (`llm`/`copy`), template id, optional lineage (combo/cohort/parent ids), and any legacy fields that could not be classified. `raw_metadata.json` captures the generator run (model id, finish reason, duration, token usage, copy provenance). `parsed_metadata.json` records parser details, success flags, and links back to raw metadata.
+`metadata.json` is written before the raw/parsed stages run. Cohort assets seed it with:
+- `stage`, `gen_id`, `template_id`, `mode` (`llm` or `copy`)
+- lineage (`parent_gen_id`, `combo_id`, `origin_cohort_id`)
+- execution hints (`llm_model_id`, `replicate`)
 
-## Invariants
+Stage assets augment it with file pointers and run-level metrics (`prompt_chars`, `total_tokens`, `duration_ms`, etc.). Treat this file as authoritative configuration for subsequent runs—the raw/parsed assets refuse to execute if required lineage fields are missing.
 
-- Membership (data/cohorts/<cohort_id>/membership.csv) includes a `gen_id` per row and is the source of truth. Assets write to `data/gens/<stage>/<gen_id>` based on that.
-- Essays and evaluations require a valid `parent_gen_id` that exists on disk:
-  - `draft` parent for essays
-  - `essay` parent for evaluations
-- Prompts are passed in-process between prompt/response assets; no runtime re-reads.
+`raw_metadata.json` and `parsed_metadata.json` capture the actual execution. Both files include a `reused` flag to signal when an asset skipped work because the artifact already existed. When `ExperimentConfig.stage_config[stage].force` is `False` (the default), the assets reuse existing `raw.txt`/`parsed.txt` and mark the metadata accordingly; setting `force=True` forces regeneration.
 
-## Programmatic Access
+## Regeneration & invariants
 
-Prefer the centralized `Paths` helpers together with the `GensDataLayer` abstraction when accessing documents programmatically:
+- Membership (`data/cohorts/<cohort_id>/membership.csv`) drives which `gen_id`s exist. If a generation directory is missing, first confirm the cohort membership row.
+- Essays and evaluations require their parent generation on disk; assets raise `Err.INVALID_CONFIG` if `parent_gen_id` is absent.
+- Whenever `raw.txt` or `parsed.txt` exists, the corresponding metadata file **must** exist. The assets raise `Err.DATA_MISSING` if they detect an artifact without metadata—delete the directory or regenerate with `force=True` to repair.
+- Prompts are persisted by the stage-input assets. `prompt.txt` is always updated alongside the rendered input; treat it as the canonical `input_path` referenced in metadata.
+
+## Programmatic access
+
+Use the centralized helpers instead of constructing paths manually:
 
 ```python
-from pathlib import Path
 from daydreaming_dagster.data_layer.paths import Paths
 from daydreaming_dagster.data_layer.gens_data_layer import GensDataLayer
 
 paths = Paths.from_str("data")
-data_layer = GensDataLayer.from_root(paths.data_root)
+layer = GensDataLayer.from_root(paths.data_root)
 
-metadata = data_layer.read_main_metadata("essay", "abc123xyz")
-parsed = data_layer.read_parsed("essay", "abc123xyz")
+meta = layer.read_main_metadata("essay", "abc123xyz")
+parsed = layer.read_parsed("essay", "abc123xyz")
 
-# Paths remains the single source of truth for file locations
-print(paths.parsed_path("essay", "abc123xyz"))
+# prompt.txt and input_path share the same location
+print(paths.input_path("essay", "abc123xyz"))
 ```
 
 ## Troubleshooting
 
-- Missing generation dir:
-  - Check that `data/cohorts/<cohort>/membership.csv` lists the `gen_id` for the stage.
-  - Ensure upstream parents exist (for essays/evaluations).
-- Empty `parsed.txt` but present `raw.txt`:
-  - The generator or parser may have failed; inspect `raw.txt` and `metadata.json`.
-- Not seeing prompts:
-  - Prompt side-writes are best-effort. For drafts and essays generated via LLM, `prompt.txt` is typically present.
+- **Missing directory** → confirm the `gen_id` is registered in cohort membership and that parents exist on disk.
+- **Artifacts reused unexpectedly** → check `raw_metadata.json` / `parsed_metadata.json` for `reused: true`. Set `ExperimentConfig.stage_config[stage].force=True` to regenerate.
+- **Parser failures** → inspect `parsed_metadata.json` for the `parser_name` and `error` preview, then open the corresponding `raw.txt`.
+- **Prompt mismatch** → compare `prompt.txt` with the rendered inputs recorded in Dagster event metadata. The stage-input asset overwrites this file on each run.
 
 ## Notes
 
-- Optional RAW side-writes (`raw.txt`) live alongside artifacts in `data/gens/<stage>/<gen_id>/` when enabled via `ExperimentConfig` for debugging.
-- Single source of truth for the filesystem layout: `src/daydreaming_dagster/data_layer/paths.py`.
+- `src/daydreaming_dagster/data_layer/paths.py` remains the authoritative definition of filenames and directories.
+- The gens store intentionally avoids an external index; text files are the contract.
 
 ### Replicates
 
-- The pipeline can generate multiple replicates per stage by varying a deterministic salt inside the gen_id (e.g., `rep1..repN`).
-- Aggregations (e.g., generation_scores_pivot) average replicates across identical task keys and evaluator axes using mean.
-- Grouping keys used for averaging exclude `gen_id` and replicate; they include:
-  - `combo_id`, `stage`, `draft_template`, `generation_template`, `generation_model` in the index, and the evaluator axis (`evaluation_template` × `evaluation_llm_model`) as columns.
-- Averaging is currently done across cohorts when multiple cohorts are present in the underlying data; typical runs operate within the current cohort.
-- The pipeline no longer depends on a SQLite index; the filesystem layout is the source of truth.
+- Deterministic IDs encode replicate salts (e.g., `d_..._rep1`). Use `replicate` from `metadata.json` to group outputs.
+- Aggregations such as `generation_scores_pivot` average replicates across identical task keys while respecting evaluator axes.
+- Grouping keys exclude the raw `gen_id`; prefer `combo_id`, `stage`, `generation_template`, `generation_model`, and evaluator identifiers for cohort-level reporting.

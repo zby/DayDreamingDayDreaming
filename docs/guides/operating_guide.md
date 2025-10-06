@@ -3,7 +3,6 @@
 This comprehensive guide covers everything you need to know to set up, run, and troubleshoot DayDreaming experiments.
 
 See also
-- Documentation Index: docs/index.md
 - Cohort workflow quickstart: docs/cohorts.md#cohort-membership
 - Cohorts & membership: docs/cohorts.md
 
@@ -643,4 +642,4 @@ Set up monitoring for:
 - Stable combo IDs are versioned and persisted in `data/combo_mappings.csv` for cross-run analysis
 - If you later want stronger isolation (per-experiment folders and automatic propagation of `experiment_id` into paths/metadata), see `plans/experiment_management_plan.md` for a low-friction enhancement using Dagster run tags
 
-For more detailed technical architecture, see `docs/architecture/architecture.md`.
+For more detailed technical architecture, see `docs/architecture.md`.
