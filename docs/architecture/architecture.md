@@ -159,9 +159,12 @@ LLM generation/evaluation assets remain manual to avoid surprise API usage/costs
 **Purpose**: Generate experiment structure and authoritative cohort membership
 
 **Data Flow**:
-1. **Concept Combinations**: Hydrate combos referenced by the cohort manifest (`selected_combo_mappings`) using the canonical `data/combo_mappings.csv` catalog; specs and raw catalogs remain the contract.
-2. **Cohort ID**: Compute a deterministic ID from the cohort spec's combos/templates/models and replication targets, then write the manifest.
-3. **Cohort Membership**: Build normalized rows for `draft`, `essay`, and `evaluation` and register dynamic partitions by `gen_id`.
+1. **Load Spec**: Read `data/cohorts/<cohort_id>/spec/config.yaml` (and any `@file:` helpers) into an `ExperimentSpec` and derive the allowlists it declares.
+2. **Concept Combinations**: Hydrate combos referenced by the cohort manifest (`selected_combo_mappings`) using the canonical `data/combo_mappings.csv` catalog; specs and raw catalogs remain the contract.
+3. **Cohort ID**: Compute a deterministic ID from the cohort spec's combos/templates/models and replication targets, then write the manifest.
+4. **Cohort Membership**: Build normalized rows for `draft`, `essay`, and `evaluation`, persist `membership.csv`, and register dynamic partitions by `gen_id`.
+
+Downstream assets never re-open the spec; they consult `membership.csv` (via `MembershipServiceResource` or `CohortScope`) to discover partitions and provenance. The seeded manifest and generation metadata exist purely so the cohort assets can validate catalogs and pre-create metadata before stage runs begin.
 
 **Key Features**:
 - **Combinatorial Generation**: Efficient k-sized combination generation
@@ -183,14 +186,8 @@ Replicate counts are sourced from `data/1_raw/replication_config.csv`; the cohor
 
 When a rerun asks for new replicates, the allocator walks deterministic IDs until it
 finds the next unused number. If prior gens directories are removed manually, the next cohort may
-reissue those replicate indices; prefer the migration scripts (or a complete cleanup) when
-trimming state.
-
-We keep two maintenance scripts alongside the migration tooling:
-- `scripts/migrate_replicate_indexes.py` – normalises replicate fields across `metadata.json`, `raw_metadata.json`, and `parsed_metadata.json` so signatures are well-formed before a migration.
-- `scripts/migrations/remove_model_id_fields.py` – scrubs legacy top-level `model_id` keys now that every asset reads only `llm_model_id`.
-
-Production migrations run via `scripts/migrations/run_deterministic_id_migrations.sh`, which sequences replicate normalisation, deterministic ID dry-run, synthetic draft backfill for copy-mode essays, and the final rename/metadata rewrite. After the one-time cleanup, the cohort assets operate purely on deterministic IDs without additional guardrails.
+reissue those replicate indices; plan any cleanup deliberately and rehydrate metadata before
+re-running so the IDs remain contiguous.
 
 **Search Strategy**: The experiment currently uses a **focused search strategy** that tests only k_max-sized concept combinations (e.g., if k_max=4, only 4-concept combinations are tested). This approach is based on the insight that richer contextual combinations are more likely to elicit the complex DayDreaming concept from LLMs.
 

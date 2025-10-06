@@ -1,6 +1,6 @@
 # Cohorts
 
-Cohorts capture a reproducible slice of the experiment space. A cohort is defined by a spec bundle under `data/cohorts/<cohort_id>/spec/`, materialized into a manifest and a canonical `membership.csv`. Downstream assets, scripts, and tooling only rely on the persisted `membership.csv`; the spec bundle and manifest are read exclusively by the cohort asset group while building those artifacts.
+Cohorts capture a reproducible slice of the experiment space. Each cohort owns a spec bundle rooted at `data/cohorts/<cohort_id>/spec/` with `config.yaml` as the entry point (and optional `@file:` helpers in the same directory). The cohort assets compile that spec into a manifest and a canonical `membership.csv`. Downstream assets, scripts, and tooling only rely on the persisted `membership.csv`; the spec bundle and manifest are read exclusively by the cohort asset group while building those artifacts.
 
 ## Core artifacts
 
@@ -13,7 +13,7 @@ Cohorts capture a reproducible slice of the experiment space. A cohort is define
 
 ## Lifecycle
 
-1. **Choose a spec.** Set `DD_COHORT=<cohort_id>` or configure the `cohort_id` asset override. The asset loads the spec bundle, computes allowlists, and persists a manifest before registering the cohort as a dynamic partition for report assets.
+1. **Choose a spec.** Set `DD_COHORT=<cohort_id>` or configure the `cohort_id` asset override. The asset loads `spec/config.yaml`, computes allowlists, and persists a manifest before registering the cohort as a dynamic partition for report assets.
 2. **Compile membership.** The `cohort_membership` asset compiles the spec into draft/essay/evaluation rows, validates catalog coverage, seeds generation metadata, and writes `membership.csv`. The persisted CSV is slimmed to `stage,gen_id` while the in-memory DataFrame retains parent and template information.
 3. **Register partitions.** `register_cohort_partitions` reads the returned DataFrame and registers every `gen_id` as an add-only dynamic partition for the draft, essay, and evaluation assets.
 4. **Run stage assets.** Generation assets materialize per `gen_id` partition. They never re-read the spec or manifest; partition keys and the seeded metadata tell them which combos, templates, and parents to use.
@@ -32,7 +32,7 @@ Scripts and resources use `membership.csv` to filter partitions, drive backfills
 
 ## Operational guidance
 
-- **Spec migrations.** Use `scripts/migrations/generate_cohort_spec.py <cohort_id>` to snapshot an existing cohort into a spec bundle. The script reads the current `membership.csv` and produces a spec that round-trips through the planner.
+- **Spec curation.** Keep `spec/config.yaml` under version control and copy an existing cohort's `spec/` bundle when you need a starting point. Update axis allowlists and helper files manually so the definition reflects the catalog on disk.
 - **Validation.** The cohort build validates parent integrity and catalog coverage before writing `membership.csv`. Keep catalog CSVs in sync with the spec bundle to avoid runtime failures.
 - **Downstream access.** Inject `MembershipServiceResource` or `CohortScope` rather than reading CSVs manually. They handle filtering by stage and cohort ID and keep future schema changes centralized.
 - **Resets.** To rebuild partitions from scratch, run the maintenance asset `prune_dynamic_partitions` before re-materializing `cohort_membership`. Then rematerialize the stage assets per `gen_id`.
