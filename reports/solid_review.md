@@ -1,0 +1,31 @@
+# SOLID Architecture Review
+
+## Context
+This review covers the Dagster-based pipeline under `src/daydreaming_dagster/` with a focus on the unified stage runner, cohort compilation assets, and Dagster `Definitions` wiring. Observations are organized by SOLID principle with suggested improvements and quick wins.
+
+## Single Responsibility Principle (SRP)
+- **`cohort_membership` asset mixes concerns.** The function simultaneously loads specs, validates catalogs, orchestrates membership generation, writes multiple artifacts, and emits Dagster metadata. Splitting the orchestration into a dedicated service (e.g., `CohortMembershipBuilder`) would make it easier to reuse the logic and reduce the surface area of the asset boundary. 【F:src/daydreaming_dagster/assets/group_cohorts.py†L64-L172】
+- **`execute_llm` blends execution, validation, and persistence.** The helper performs prompt execution, parser resolution, metadata enrichment, filesystem writes, and tracing. Extracting dedicated collaborators (metadata builder, persistence gateway, validator) would clarify behavior and enable isolated tests. 【F:src/daydreaming_dagster/unified/stage_core.py†L286-L399】
+- **Stage asset builders re-implement caching and metadata wiring.** `build_prompt_asset` and friends juggle Dagster decorators, cache detection, metadata shaping, and dependency wiring. Moving cache-handling and metadata formatting into reusable services would simplify the generated asset definitions and keep Dagster-specific concerns thin. 【F:src/daydreaming_dagster/assets/stage_asset_helpers.py†L32-L120】
+
+## Open/Closed Principle (OCP)
+- **Stage support is hard-coded across modules.** Adding a new stage requires touching `Stage` literals, the registry in `definitions.py`, parser lookups, and stage input logic. Consolidating stage metadata into a declarative registry (with parser/generator policies supplied there) would allow new stages without editing multiple files. 【F:src/daydreaming_dagster/types.py†L1-L8】【F:src/daydreaming_dagster/definitions.py†L85-L115】【F:src/daydreaming_dagster/unified/stage_core.py†L83-L182】
+- **Template parsing policy is centralized in procedural code.** `effective_parser_name` and `resolve_generator_mode` read CSVs and enforce policies inline. Defining strategy objects per stage/template would let the pipeline accept new policies through configuration rather than code changes. 【F:src/daydreaming_dagster/unified/stage_core.py†L83-L182】
+
+## Liskov Substitution Principle (LSP)
+- **Parser registry subclasses share the `DDError` hierarchy but expose inconsistent behavior.** `ParserError` inherits from `DDError` yet is used as a control-flow signal in `parse_text`, which swallows exceptions. Clarifying the contract (e.g., return `None` for missing parsers, reserve exceptions for fatal issues) would make substitution safer for alternate parser implementations. 【F:src/daydreaming_dagster/utils/parser_registry.py†L11-L65】【F:src/daydreaming_dagster/unified/stage_core.py†L260-L283】
+- **LLM client resource tightly couples to OpenAI.** `LLMClientResource` assumes OpenRouter/OpenAI semantics (rate limits, usage payload). Introducing a protocol-based client interface would allow alternate providers while preserving expectations for retries and metadata. 【F:src/daydreaming_dagster/resources/llm_client.py†L1-L105】
+
+## Interface Segregation Principle (ISP)
+- **Large resources expose broad dictionaries.** Assets depend on the entire `ExperimentConfig` and `GensDataLayer` even when they only need one configuration value or reader. Extracting smaller protocols (e.g., `StageConfigReader`, `GenerationStore`) would reduce coupling and make tests easier to stub. 【F:src/daydreaming_dagster/resources/experiment_config.py†L1-L28】【F:src/daydreaming_dagster/unified/stage_inputs.py†L32-L170】
+- **Dagster resource dictionaries aggregate unrelated services.** `_shared_resources` returns concrete implementations for IO, specs, membership, scores, etc., tying the definitions to specific classes. Splitting resources into focused interfaces would allow selective overrides and avoid pulling heavy dependencies into each asset. 【F:src/daydreaming_dagster/definitions.py†L162-L187】
+
+## Dependency Inversion Principle (DIP)
+- **Concrete data-layer dependencies are constructed inside helpers.** Functions such as `execute_llm` and `_stage_input_asset` instantiate `GensDataLayer` directly from filesystem paths, preventing tests from substituting in-memory stores. Accepting `GensDataLayer` or a storage protocol via parameters would invert the dependency. 【F:src/daydreaming_dagster/unified/stage_core.py†L286-L399】【F:src/daydreaming_dagster/unified/stage_inputs.py†L32-L194】
+- **`Definitions` wires concrete resources instead of abstractions.** `_shared_resources` binds Dagster to specific implementations (`LLMClientResource`, `CohortSpecResource`, CSV IO managers). Introducing interfaces and registering them in a container would let orchestrations depend on abstractions while enabling alternate implementations for local or testing scenarios. 【F:src/daydreaming_dagster/definitions.py†L162-L199】
+
+## Quick Wins
+1. **Extract membership generation service.** Move the spec loading, validation, and persistence flow out of `cohort_membership` into a dedicated class or module; keep the asset as a thin orchestrator. This improves SRP and enables re-use in CLI tooling. 【F:src/daydreaming_dagster/assets/group_cohorts.py†L64-L172】
+2. **Introduce storage and client protocols.** Define minimal interfaces for the LLM client and gens data layer, inject them via Dagster resources, and update helpers to depend on the protocols. This unlocks DIP compliance with limited code churn. 【F:src/daydreaming_dagster/unified/stage_core.py†L286-L399】【F:src/daydreaming_dagster/resources/llm_client.py†L1-L105】
+3. **Centralize stage metadata.** Replace the spread of `Literal` checks with a single stage registry that carries parser, generator, and parent relationships. Assets can then read behavior from the registry, making it easier to add or remove stages without touching core helpers. 【F:src/daydreaming_dagster/types.py†L1-L8】【F:src/daydreaming_dagster/unified/stage_core.py†L83-L182】【F:src/daydreaming_dagster/definitions.py†L85-L199】
+
