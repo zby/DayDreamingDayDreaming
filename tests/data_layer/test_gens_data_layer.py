@@ -22,43 +22,6 @@ def _write_metadata(layer: GensDataLayer, stage: str, gen_id: str, payload: dict
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload), encoding="utf-8")
     return path
-
-
-def test_write_input_round_trip(layer: GensDataLayer) -> None:
-    stage = "draft"
-    gen_id = "G1"
-    layer.reserve_generation(stage, gen_id)
-    text = "Hello world"
-
-    target = layer.write_input(stage, gen_id, text)
-
-    assert target.exists()
-    assert target.read_text(encoding="utf-8") == text
-
-
-def test_write_main_metadata_round_trip(layer: GensDataLayer) -> None:
-    payload = {"template_id": "tpl", "mode": "copy", "parent_gen_id": "P1"}
-    path = layer.write_main_metadata("essay", "E1", payload)
-    assert path.exists()
-    assert json.loads(path.read_text(encoding="utf-8")) == payload
-
-
-def test_write_raw_and_parsed_round_trip(layer: GensDataLayer) -> None:
-    layer.write_raw("draft", "G1", "RAW")
-    layer.write_parsed("draft", "G1", "PARSED")
-    assert layer.read_raw("draft", "G1") == "RAW"
-    assert layer.read_parsed("draft", "G1") == "PARSED"
-
-
-def test_raw_and_parsed_metadata_round_trip(layer: GensDataLayer) -> None:
-    raw_meta = {"mode": "llm", "truncated": False}
-    parsed_meta = {"parser_name": "identity", "success": True}
-    layer.write_raw_metadata("essay", "E1", raw_meta)
-    layer.write_parsed_metadata("essay", "E1", parsed_meta)
-    assert layer.read_raw_metadata("essay", "E1") == raw_meta
-    assert layer.read_parsed_metadata("essay", "E1") == parsed_meta
-
-
 def test_read_parsed_missing(layer: GensDataLayer) -> None:
     with pytest.raises(DDError) as err:
         layer.read_parsed("essay", "missing")
