@@ -8,7 +8,7 @@ Key idea
   - `llm`: generate essay from draft via LLM
 
 Prerequisites
-- Ensure drafts (Phase‑1) are configured and can run: entries exist in `data/1_raw/draft_templates.csv` and at least one generation‑capable model in `data/1_raw/llm_models.csv` (`for_generation=true`).
+- Ensure drafts (Phase‑1) are configured and can run: entries exist in `data/1_raw/draft_templates.csv` and at least one model is listed in `data/1_raw/llm_models.csv` that you plan to use.
 - Include at least one essay template with `generator=copy` in the cohort spec. The default repo includes `parsed-from-links-v1` as an example.
 
 Setup

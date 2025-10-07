@@ -118,8 +118,8 @@ def _setup_data_root(root: Path) -> None:
     _write_csv(
         raw / "llm_models.csv",
         [
-            {"id": "gen-model-1", "for_generation": True, "for_evaluation": False},
-            {"id": "eval-model-1", "for_generation": False, "for_evaluation": True},
+            {"id": "gen-model-1"},
+            {"id": "eval-model-1"},
         ],
     )
     _write_csv(

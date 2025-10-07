@@ -1,25 +1,25 @@
-id,model,provider,display_name,for_generation,for_evaluation,specialization
-deepseek_r1_f,deepseek/deepseek-r1:free,deepseek,"DeepSeek R1 (Free)",false,false,reasoning
-deepseek_r1_zero_f,deepseek/deepseek-r1-zero:free,deepseek,"DeepSeek R1 Zero (Free)",false,false,reasoning
-deepseek_r1_distill_70b_f,deepseek/deepseek-r1-distill-llama-70b:free,deepseek,"DeepSeek R1 Distill 70B (Free)",false,false,reasoning
-deepseek_r1_distill_32b_f,deepseek/deepseek-r1-distill-qwen-32b:free,deepseek,"DeepSeek R1 Distill 32B (Free)",false,false,reasoning
-deepseek_chat_v3_f,deepseek/deepseek-chat-v3-0324:free,deepseek,"DeepSeek Chat v3 (Free)",false,false,coding
-gemini_25_pro_f,google/gemini-2.5-pro-exp-03-25:free,google,"Gemini 2.5 Pro (Free)",false,false,general
-gemini_20_flash_thinking_f,google/gemini-2.0-flash-thinking-exp:free,google,"Gemini 2.0 Flash Thinking (Free)",false,false,reasoning
-gemini_20_flash_f,google/gemini-2.0-flash-exp:free,google,"Gemini 2.0 Flash (Free)",false,false,general
-gemma_3_27b_f,google/gemma-3-27b-it:free,google,"Gemma 3 27B IT (Free)",false,false,instruction_following
-llama_4_maverick_f,meta-llama/llama-4-maverick:free,meta,"Llama 4 Maverick (Free)",false,false,general
-llama_4_scout_f,meta-llama/llama-4-scout:free,meta,"Llama 4 Scout (Free)",false,false,general
-llama_33_70b_f,meta-llama/llama-3.3-70b-instruct:free,meta,"Llama 3.3 70B Instruct (Free)",false,false,instruction_following
-llama_33_8b_f,meta-llama/llama-3.3-8b-instruct:free,meta,"Llama 3.3 8B Instruct (Free)",false,false,instruction_following
-nemotron_253b_f,nvidia/llama-3.1-nemotron-ultra-253b-v1:free,nvidia,"Nemotron 253B Ultra (Free)",false,false,general
-qwq_32b_f,qwen/qwq-32b:free,qwen,"QwQ 32B (Free)",false,false,reasoning
-devstral_small_f,mistralai/devstral-small:free,mistral,"Devstral Small (Free)",false,false,coding
-mistral_small_31_f,mistralai/mistral-small-3.1-24b-instruct:free,mistral,"Mistral Small 3.1 24B (Free)",false,false,instruction_following
-mistral_7b_f,mistralai/mistral-7b-instruct:free,mistral,"Mistral 7B Instruct (Free)",false,false,instruction_following
-gemini_2.5_flash,google/gemini-2.5-flash,google,"Gemini 2.5 Flash",true,false,reasoning
-sonnet-4,anthropic/claude-sonnet-4,anthropic,"Sonnet 4",true,true,reasoning
-gemini_25_pro,google/gemini-2.5-pro,google,"Gemini 2.5 Pro",true,true,general
-deepseek_r1_p,deepseek/deepseek-r1,deepseek,"DeepSeek R1",true,false,reasoning
-llama_31_405b,meta-llama/llama-3.1-405b-instruct,meta,"Llama 3.1 405B Instruct",false,false,instruction_following
-qwen3-235b-a22b,qwen/qwen3-235b-a22b,qwen,"Qwen: Qwen3 235B A22B",true,false,instruction_following
+id,model,provider,display_name,specialization
+deepseek_r1_f,deepseek/deepseek-r1:free,deepseek,"DeepSeek R1 (Free)",reasoning
+deepseek_r1_zero_f,deepseek/deepseek-r1-zero:free,deepseek,"DeepSeek R1 Zero (Free)",reasoning
+deepseek_r1_distill_70b_f,deepseek/deepseek-r1-distill-llama-70b:free,deepseek,"DeepSeek R1 Distill 70B (Free)",reasoning
+deepseek_r1_distill_32b_f,deepseek/deepseek-r1-distill-qwen-32b:free,deepseek,"DeepSeek R1 Distill 32B (Free)",reasoning
+deepseek_chat_v3_f,deepseek/deepseek-chat-v3-0324:free,deepseek,"DeepSeek Chat v3 (Free)",coding
+gemini_25_pro_f,google/gemini-2.5-pro-exp-03-25:free,google,"Gemini 2.5 Pro (Free)",general
+gemini_20_flash_thinking_f,google/gemini-2.0-flash-thinking-exp:free,google,"Gemini 2.0 Flash Thinking (Free)",reasoning
+gemini_20_flash_f,google/gemini-2.0-flash-exp:free,google,"Gemini 2.0 Flash (Free)",general
+gemma_3_27b_f,google/gemma-3-27b-it:free,google,"Gemma 3 27B IT (Free)",instruction_following
+llama_4_maverick_f,meta-llama/llama-4-maverick:free,meta,"Llama 4 Maverick (Free)",general
+llama_4_scout_f,meta-llama/llama-4-scout:free,meta,"Llama 4 Scout (Free)",general
+llama_33_70b_f,meta-llama/llama-3.3-70b-instruct:free,meta,"Llama 3.3 70B Instruct (Free)",instruction_following
+llama_33_8b_f,meta-llama/llama-3.3-8b-instruct:free,meta,"Llama 3.3 8B Instruct (Free)",instruction_following
+nemotron_253b_f,nvidia/llama-3.1-nemotron-ultra-253b-v1:free,nvidia,"Nemotron 253B Ultra (Free)",general
+qwq_32b_f,qwen/qwq-32b:free,qwen,"QwQ 32B (Free)",reasoning
+devstral_small_f,mistralai/devstral-small:free,mistral,"Devstral Small (Free)",coding
+mistral_small_31_f,mistralai/mistral-small-3.1-24b-instruct:free,mistral,"Mistral Small 3.1 24B (Free)",instruction_following
+mistral_7b_f,mistralai/mistral-7b-instruct:free,mistral,"Mistral 7B Instruct (Free)",instruction_following
+gemini_2.5_flash,google/gemini-2.5-flash,google,"Gemini 2.5 Flash",reasoning
+sonnet-4,anthropic/claude-sonnet-4,anthropic,"Sonnet 4",reasoning
+gemini_25_pro,google/gemini-2.5-pro,google,"Gemini 2.5 Pro",general
+deepseek_r1_p,deepseek/deepseek-r1,deepseek,"DeepSeek R1",reasoning
+llama_31_405b,meta-llama/llama-3.1-405b-instruct,meta,"Llama 3.1 405B Instruct",instruction_following
+qwen3-235b-a22b,qwen/qwen3-235b-a22b,qwen,"Qwen: Qwen3 235B A22B",instruction_following

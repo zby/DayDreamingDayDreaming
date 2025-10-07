@@ -377,9 +377,9 @@ def tiny_data_root(tmp_path: Path) -> Path:
     (raw / "templates" / "evaluation").mkdir(parents=True, exist_ok=True)
     # CSVs
     (raw / "llm_models.csv").write_text(
-        "model_id,for_generation,for_evaluation\n"
-        "m-gen,True,False\n"
-        "m-eval,False,True\n",
+        "id\n"
+        "m-gen\n"
+        "m-eval\n",
         encoding="utf-8",
     )
     (raw / "draft_templates.csv").write_text(
