@@ -1,111 +1,61 @@
-# Results: LLM Idea Generation Validation Framework
+# DayDreaming Results
 
-## Executive Summary
+## Original DayDreaming Validation (`best_novelty_all_evals`)
 
-This project demonstrates a **reproducible framework for testing whether LLMs can independently generate novel ideas**. While the original goal was to prove pre-June 2025 LLMs could reinvent Gwern's "Daydreaming Loop" concept, the real contribution is the **open infrastructure** that anyone can reuse to validate idea generation capabilities.
+The first experiment set out to verify whether pre-summer-2025 LLMs could independently recreate Gwern's "Daydreaming Loop". We ran a two-stage pipeline (draft → essay → evaluation) over 4–5 concept blends and scored every essay with 11 evaluation templates across two models (`gemini_25_pro`, `sonnet-4`).
 
-## What We Built
+| Rank | Essay ID | Avg Score | Draft Template | Essay Template | Generation Model |
+|------|----------|-----------|----------------|----------------|------------------|
+| #1 | e_sq5klak2lljyyom | 8.77 / 9 | creative-synthesis-v10 | creative-synthesis-v10 | gemini_25_pro |
+| #2 | e_1cx6440bb5zj9466 | 8.75 / 9 | creative-synthesis-v10 | creative-synthesis-v10 | gemini_25_pro |
+| #3 | e_4nqjjtqtnpxlljlz | 8.52 / 9 | creative-synthesis-v7 | parsed-from-links-v1 | deepseek_r1_p |
 
-A systematic pipeline for:
-1. **Combinatorial concept synthesis** - mixing 4-5 concepts to prompt novel connections
-2. **Two-stage generation** - draft → essay refinement for quality control
-3. **Multi-model evaluation** - 11 evaluation templates × 2 models × 2 replicates = 44 scores per essay
+All three essays are copied verbatim in this directory (`e_sq5klak2lljyyom.txt`, `e_1cx6440bb5zj9466.txt`, `e_4nqjjtqtnpxlljlz.txt`). Each one explains the generator–verifier loop, ties it to data flywheels, and argues for an economic moat—exactly the behaviours we wanted to see when probing for independent rediscovery.
 
-## Key Results
+## Follow-up Cohort (`creative-synthesis-gap-v1`)
 
-### Top 3 Essays (Full Details in README.md)
+We later repeated the study with refreshed prompts and evaluation weighting to close a few scoring gaps. The top two essays from that cohort are now included:
 
-| Rank | Essay ID | Avg Score | Draft Template | Essay Template | Model |
-|------|----------|-----------|----------------|----------------|-------|
-| #1 | e_sq5klak2lljyyom | 8.77/9 | creative-synthesis-v10 | creative-synthesis-v10 | gemini_25_pro |
-| #2 | e_1cx6440bb5zj9466 | 8.75/9 | creative-synthesis-v10 | creative-synthesis-v10 | gemini_25_pro |
-| #3 | e_4nqjjtqtnpxlljlz | 8.52/9 | creative-synthesis-v7 | parsed-from-links-v1 | deepseek_r1_p |
+| Essay ID | Avg Score | Notes |
+|----------|-----------|-------|
+| e_2b4k6tvo4kf7ibjh | 8.8 / 9 | Keeps the Daydreaming mechanism intact while elaborating on continuity plans for human evaluators. |
+| e_3hdt16ed4bh528s0 | 8.6 / 9 | Frames the generator–verifier loop as a defendable moat and grounds the argument in feedback data. |
 
-**Overall cohort average: 8.29/9** across mechanism understanding, novelty, coherence, and scientific rigor dimensions. Draft template choice dominates stylistic framing—note how the top two essays share the same draft prompt despite diverging essay templates.
+Both texts (`e_2b4k6tvo4kf7ibjh.txt`, `e_3hdt16ed4bh528s0.txt`) are the raw outputs produced by the pipeline. Reading them alongside the originals shows how template adjustments change tone and emphasis without losing the core mechanism.
 
-### What the Essays Demonstrate
+## How to Treat the Scores
 
-- **Mechanism synthesis**: Combined concepts like "Default Mode Network" + "Economic Moat" + "Generator-Verifier Gap" into coherent frameworks
-- **Independent reinvention**: Top essays used terminology like "Daydreaming LLMs" while correctly describing mechanisms (positive signal of rediscovery)
-- **Technical plausibility**: Evaluators scored 8.5+ on scientific rigor and interdisciplinary coherence
+LLM scoring is a convenience layer—use it to triage, not to replace human judgement. The numbers simply elevated essays that already:
 
-## Why This Matters Now
+1. Restate the original Daydreaming AI insight (generator/verifier loop with iterative feedback).
+2. Add their own supporting detail instead of paraphrasing the concept descriptions.
+3. Stay coherent despite relying on older, freely accessible endpoints.
 
-While recent reports show AI *has* made real scientific discoveries, this project offers:
+We recommend reading the essays yourself to confirm those behaviours.
 
-### 1. **Validation Infrastructure**
-- Test whether *your* LLM can independently discover *your* novel ideas
-- Reproducible from source: all inputs in `data/1_raw/`
-- Full replication instructions in `README.md`
+## Two-Stage vs Single-Stage Runs
 
-### 2. **Reusable Components**
-- **Template library**: Draft/essay/evaluation prompts for creative synthesis
-- **Evaluation rubrics**: Novelty, coherence, rigor, mechanism verification
-- **Pipeline patterns**: Dagster asset-based orchestration for multi-stage workflows
+Both cohorts above employ the full two-stage pipeline (draft then essay). The Dagster assets also support single-stage experiments—skip the draft materialisation and use essay templates that read the concept combinations directly. That pathway is useful when you want a faster baseline or when comparing staged vs unstaged generations.
 
-### 3. **Path to Production Daydreaming Systems**
-- Two-stage generation architecture (draft → essay)
-- Combinatorial concept mixing from knowledge base
-- Multi-model consensus evaluation
-- Artifact tracking and provenance
+## Model Availability
 
-## Technical Architecture
+We purposely limited the experiments to models that were freely available during Q1 2025. Release timestamps are documented in `data/openrouter_free_models.csv`:
 
-```
-Concepts (data/1_raw/concepts/)
-    ↓
-Draft Templates + LLM → Structured concept links
-    ↓
-Essay Templates + LLM → Final essay
-    ↓
-Evaluation Templates + 2 Models × 2 Replicates → 44 scores
-    ↓
-Aggregation → Rankings
-```
+- `deepseek/deepseek-r1` — released 20 Jan 2025 (used for reasoning-heavy drafts and essays).
+- `google/gemini-2.5-pro-exp-03-25` — released 25 Mar 2025 (one of the primary draft/evaluation models).
 
-**Key design choices:**
-- Asset-based orchestration (Dagster) for incremental computation
-- Template versioning for evaluation evolution
-- Structured error codes for debugging
-- Normalized score schemas for cross-cohort comparison
+Evaluation also uses `sonnet-4`; the exact endpoint is recorded in `data/1_raw/llm_models.csv`. When running new cohorts, capture the release date of any updated endpoints so comparisons stay honest.
 
-## Reproducibility
+## Replication Checklist
 
-Every essay includes:
-- Input concept definitions
-- Draft and essay template IDs
-- Model specifications
-- Full generation lineage (draft_id → essay_id → evaluation_ids)
+Step-by-step instructions are in the top-level `README.md`:
 
-All source materials in `data/1_raw/`:
-- `concepts/` - concept definitions at sentence/paragraph/essay levels
-- `templates/draft/` - prompts for initial synthesis
-- `templates/essay/` - prompts for refinement
-- `templates/evaluation/` - scoring rubrics
+1. Register partitions with `register_cohort_partitions` for the cohort you care about.
+2. Materialise the `generation_draft`, `generation_essay`, and `generation_evaluation` asset groups (skip `generation_draft` for single-stage runs).
+3. Inspect the CSVs under `data/cohorts/<cohort>/reports/` and the essay copies in this directory.
 
-## Limitations & Future Work
-
-**Current scope:**
-- Finite concept space (60+ concepts, 5-choose-k combinations)
-- Manual template curation
-- No retrieval/browsing (pure synthesis from provided concepts)
-- Evaluation by LLMs, not domain experts
-
-**Path to production Daydreaming:**
-- Dynamic concept extraction from reading
-- Automated template generation/evolution
-- Real-time idea filtering and ranking
-- Human-in-the-loop validation
-
-## Get Started
-
-1. **Read the essays**: `e_sq5klak2lljyyom.txt`, `e_1cx6440bb5zj9466.txt`, `e_4nqjjtqtnpxlljlz.txt`
-2. **Replicate**: Follow instructions in `README.md`
-3. **Adapt**: Use templates in `data/1_raw/templates/` for your domain
-4. **Extend**: Fork the pipeline at [repository link]
+The entire input stack—concept descriptions, templates, and model identifiers—lives in `data/1_raw/`, so the experiments are reproducible without hitting external services beyond the LLM endpoints.
 
 ---
 
-**Generated**: 2025-01-15
-**Project**: DayDreaming LLM Idea Generation
-**Framework**: Dagster-based asset orchestration
+Original cohort generated: 15 Jan 2025 • Follow-up updates: 06 Oct 2025
