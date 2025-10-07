@@ -90,6 +90,17 @@ We intentionally limited runs to models that were publicly accessible before mid
 
 Evaluation also uses `sonnet-4`; while Anthropic does not publish a formal cutover in the CSV, the model ID is frozen in `data/1_raw/llm_models.csv` so the exact endpoint is reproducible. When swapping to newer checkpoints, document the release date alongside the cohort for apples-to-apples comparisons.
 
+### Outputs and manual verification
+
+The pipeline copies the highest-scoring essays into `data/results/` for quick inspection. Currently you will find five files:
+
+| Cohort | Essay IDs | Why they matter |
+| --- | --- | --- |
+| `best_novelty_all_evals` | `e_sq5klak2lljyyom`, `e_1cx6440bb5zj9466`, `e_4nqjjtqtnpxlljlz` | Original two-stage run where older models (DeepSeek R1, Gemini 2.5 Pro) independently rediscovered the Daydreaming mechanism. |
+| `creative-synthesis-gap-v1` | `e_2b4k6tvo4kf7ibjh`, `e_3hdt16ed4bh528s0` | Follow-up run that tweaks templates yet still delivers essays with the same mechanism plus fresh supporting detail. |
+
+Use the LLM scores to rank candidates, but confirm the behaviour yourself: each essay should (1) restate the generator–verifier loop and feedback flywheel, (2) add its own insights beyond the concept bullet points, and (3) stay readable despite relying on the pre–Q2 2025 free endpoints listed above.
+
 ## Development Cheatsheet
 
 - Tests: `.venv/bin/pytest` (unit tests under `src/daydreaming_dagster/`, integration tests under `tests/`).
