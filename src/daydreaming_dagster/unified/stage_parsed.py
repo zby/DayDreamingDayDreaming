@@ -23,38 +23,9 @@ def _stage_parsed_asset(
     stage_settings,
     min_lines_override: Optional[int],
     fail_on_truncation: bool,
+    run_id: Optional[str] = None,
 ) -> tuple[str, Dict[str, Any]]:
     data_layer.reserve_generation(stage, gen_id, create=True)
-
-    # Check if we should skip regeneration
-    force = stage_settings.force if stage_settings else False
-    if not force and data_layer.parsed_exists(stage, gen_id):
-        # Reuse existing artifact
-        parsed_text = data_layer.read_parsed(stage, gen_id)
-
-        # Try to read existing metadata; if missing we now fail fast
-        try:
-            parsed_metadata = data_layer.read_parsed_metadata(stage, gen_id)
-        except DDError as err:
-            if err.code is Err.DATA_MISSING:
-                ctx = dict(err.ctx or {})
-                ctx.update(
-                    {
-                        "stage": stage,
-                        "gen_id": gen_id,
-                        "artifact": "parsed_metadata",
-                        "reason": "parsed_metadata_missing_for_existing_parsed",
-                    }
-                )
-                raise DDError(Err.DATA_MISSING, ctx=ctx, cause=err)
-            raise
-
-        # Mark as reused
-        parsed_metadata["reused"] = True
-
-        return parsed_text, parsed_metadata
-
-    metadata = resolve_generation_metadata(data_layer, stage, gen_id)
     raw_metadata = raw_metadata or {}
 
     if fail_on_truncation and bool(raw_metadata.get("truncated")):
@@ -133,6 +104,9 @@ def _stage_parsed_asset(
         "reused": False,
     }
 
+    if run_id:
+        parsed_metadata["run_id"] = run_id
+
     for key in ("input_mode", "copied_from"):
         if key in raw_metadata:
             parsed_metadata[key] = raw_metadata[key]
@@ -159,45 +133,62 @@ def stage_parsed_asset(
     data_layer = GensDataLayer.from_root(context.resources.data_root)
     gen_id = str(context.partition_key)
 
-    metadata = resolve_generation_metadata(data_layer, stage, gen_id)
-
-    if raw_metadata is None:
-        try:
-            raw_metadata = data_layer.read_raw_metadata(stage, gen_id)
-        except DDError as err:
-            if err.code is Err.DATA_MISSING:
-                raw_metadata = {}
-            else:
-                raise
-
-    if parser_name is None:
-        parser_name = resolve_parser_name(data_layer.data_root, stage, metadata.template_id, None)
-
     experiment_config = getattr(context.resources, "experiment_config", None)
     if experiment_config is not None:
         settings = experiment_config.stage_config.get(stage)
         if min_lines is None and settings:
             min_lines = settings.min_lines
 
+    stage_settings = experiment_config.stage_config.get(stage) if experiment_config else None
+    force = stage_settings.force if stage_settings else False
+    reuse_existing = data_layer.parsed_exists(stage, gen_id, force=force)
     run_id = get_run_id(context)
 
-    stage_settings = experiment_config.stage_config.get(stage) if experiment_config else None
+    parsed_metadata = None
+    if reuse_existing:
+        try:
+            parsed_text = data_layer.read_parsed(stage, gen_id)
+            parsed_metadata = data_layer.read_parsed_metadata(stage, gen_id)
+        except DDError as err:
+            if err.code is Err.DATA_MISSING:
+                reuse_existing = False
+            else:
+                raise
 
-    parsed_text, parsed_metadata = _stage_parsed_asset(
-        data_layer=data_layer,
-        stage=stage,
-        gen_id=gen_id,
-        raw_text=raw_text,
-        parser_name=parser_name,
-        raw_metadata=raw_metadata or {},
-        stage_settings=stage_settings,
-        min_lines_override=min_lines,
-        fail_on_truncation=fail_on_truncation,
-    )
+    if reuse_existing and parsed_metadata is not None:
+        parsed_metadata = dict(parsed_metadata)
+        parsed_metadata["reused"] = True
+        if run_id:
+            parsed_metadata["run_id"] = run_id
+    else:
+        metadata = resolve_generation_metadata(data_layer, stage, gen_id)
 
-    if run_id:
-        parsed_metadata["run_id"] = run_id
-        data_layer.write_parsed_metadata(stage, gen_id, parsed_metadata)
+        if raw_metadata is None:
+            try:
+                raw_metadata = data_layer.read_raw_metadata(stage, gen_id)
+            except DDError as err:
+                if err.code is Err.DATA_MISSING:
+                    raw_metadata = {}
+                else:
+                    raise
+
+        if parser_name is None:
+            parser_name = resolve_parser_name(
+                data_layer.data_root, stage, metadata.template_id, None
+            )
+
+        parsed_text, parsed_metadata = _stage_parsed_asset(
+            data_layer=data_layer,
+            stage=stage,
+            gen_id=gen_id,
+            raw_text=raw_text,
+            parser_name=parser_name,
+            raw_metadata=raw_metadata or {},
+            stage_settings=stage_settings,
+            min_lines_override=min_lines,
+            fail_on_truncation=fail_on_truncation,
+            run_id=run_id,
+        )
 
     context.add_output_metadata(
         build_stage_artifact_metadata(

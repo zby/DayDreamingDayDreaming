@@ -1,6 +1,8 @@
 # Dagster Dynamic Partitions: Practical Notes
 
-Short, current guidance for our two-phase (draft → essay → evaluation) pipeline.
+Short, current guidance for our three-stage (draft → essay → evaluation) pipeline. Each stage still
+runs its prompt/raw/parsed phases, but the partitioning model treats the stage name as the primary
+dimension.
 
 Current Model
 - Partitions: `cohort_spec_partitions` (StaticPartitionsDefinition discovered from `data/cohorts/<cohort_id>/spec/`), plus `draft_gens`, `essay_gens`, `evaluation_gens` (DynamicPartitionsDefinition keyed by `gen_id`).

@@ -242,7 +242,7 @@ def parse_identifiers_from_eval_task_id(
                     break
 
     result.update({
-        "essay_task_id": result["document_id"],  # for two-phase this equals essay_task_id; for drafts it’s link_task_id
+        "essay_task_id": result["document_id"],  # in the essay stage this equals essay_task_id; for drafts it’s link_task_id
         "combo_id": combo_id,
         "link_template": link_template_val,
         "generation_template": essay_template,

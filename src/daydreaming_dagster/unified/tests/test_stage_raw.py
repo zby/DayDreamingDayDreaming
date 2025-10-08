@@ -282,6 +282,37 @@ def test_stage_raw_force_regenerates(tmp_path: Path):
     assert md["reused"].value is False
 
 
+def test_stage_raw_regeneration_clears_parsed(tmp_path: Path) -> None:
+    """Fresh raw generations should remove any stale parsed artifacts."""
+
+    paths = _prepare_generation(
+        tmp_path,
+        "draft",
+        "D1",
+        {
+            "template_id": "draft-tpl",
+            "mode": "llm",
+            "llm_model_id": "model-x",
+            "origin_cohort_id": "C1",
+        },
+    )
+
+    parsed_path = paths.parsed_path("draft", "D1")
+    parsed_path.write_text("OLD-PARSED", encoding="utf-8")
+    paths.parsed_metadata_path("draft", "D1").write_text(
+        json.dumps({"parser_name": "identity"}), encoding="utf-8"
+    )
+
+    llm = _StubLLM(text="NEW-RAW")
+    ctx = _context(tmp_path, "D1", llm=llm)
+
+    out = stage_raw.stage_raw_asset(ctx, "draft", prompt_text="PROMPT TEXT")
+
+    assert out == "NEW-RAW"
+    assert not parsed_path.exists()
+    assert not paths.parsed_metadata_path("draft", "D1").exists()
+
+
 def test_stage_raw_missing_metadata_fails(tmp_path: Path):
     """Existing raw artifact without metadata should raise."""
     paths = _prepare_generation(

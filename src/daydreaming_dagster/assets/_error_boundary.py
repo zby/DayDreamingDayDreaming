@@ -1,22 +1,17 @@
 from __future__ import annotations
 
 from functools import wraps
-from typing import Any, Dict, Mapping, Optional
+from typing import Any, Dict
 
 from dagster import Failure, MetadataValue, get_dagster_logger
 
 from daydreaming_dagster.utils.errors import DDError
 
-
-__all__ = ["with_asset_error_boundary", "resume_notice"]
+__all__ = ["with_asset_error_boundary"]
 
 
 def with_asset_error_boundary(stage: str):
-    """Wrap an asset so unexpected errors surface as dagster.Failure.
-
-    This decorator preserves the wrapped function's signature via functools.wraps,
-    which keeps Dagster input/resource binding unchanged.
-    """
+    """Wrap an asset so unexpected errors surface as dagster.Failure."""
 
     def deco(fn):
         @wraps(fn)
@@ -53,44 +48,3 @@ def _ctx_to_metadata(ctx: dict[str, Any]) -> dict[str, MetadataValue]:
         return {"error_ctx": MetadataValue.json(ctx)}
     except TypeError:
         return {"error_ctx_repr": MetadataValue.text(repr(ctx))}
-
-
-def resume_notice(
-    *,
-    stage: str,
-    gen_id: str,
-    artifact: str,
-    reason: str,
-    emit_log: bool = False,
-    log_level: str = "info",
-    extra: Optional[Mapping[str, Any]] = None,
-) -> Dict[str, Any]:
-    """Construct a standardized payload describing a resume/skip event.
-
-    Callers can request a log emission via ``emit_log`` but default behaviour is
-    metadata-only so routine resume paths stay quiet.
-    """
-
-    payload: Dict[str, Any] = {
-        "resume": True,
-        "resume_stage": str(stage),
-        "resume_gen_id": str(gen_id),
-        "resume_artifact": str(artifact),
-        "resume_reason": str(reason),
-    }
-    if extra:
-        payload.update(dict(extra))
-
-    message = (
-        f"Resume: stage={stage} gen_id={gen_id} artifact={artifact} reason={reason}"
-    )
-    payload["resume_message"] = message
-
-    if emit_log:
-        logger = get_dagster_logger()
-        log_method = getattr(logger, log_level, None)
-        if not callable(log_method):
-            log_method = logger.info
-        log_method(message)
-
-    return payload

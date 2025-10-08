@@ -5,18 +5,18 @@ The pipeline persists every generation under a simple, portable filesystem layou
 ## Layout
 
 - Root: `data/gens/<stage>/<gen_id>/`
-- Files per generation:
+- **Phase files per stage:**
   - `prompt.txt` — canonical stage input (rendered template or copied parent text)
   - `raw.txt` — full unprocessed model output captured immediately after generation
-  - `parsed.txt` — normalized/parsed text that downstream stages consume
+  - `parsed.txt` — normalised/parsed text that downstream stages consume
   - `metadata.json` — main metadata seeded by the cohort compiler and enriched by asset runs
-  - `raw_metadata.json` — execution details for the raw asset (`reused`, timing, finish reason, token usage)
-  - `parsed_metadata.json` — execution details for the parsed asset (`reused`, parser name, success flags)
+  - `raw_metadata.json` — execution details for the raw phase (`reused`, timing, finish reason, token usage)
+  - `parsed_metadata.json` — execution details for the parsed phase (parser name, success flags, `reused` when we reuse the file)
 
 Stages:
-- `draft` — Phase 1 drafts (combination driven)
-- `essay` — Phase 2 essays (parent: draft `gen_id`)
-- `evaluation` — Evaluations of essays (parent: essay `gen_id`)
+- `draft` — first stage that generates brainstorming drafts (combination driven)
+- `essay` — second stage that turns drafts into essays (parent: draft `gen_id`)
+- `evaluation` — third stage that scores or critiques essays (parent: essay `gen_id`)
 
 ## Metadata contracts
 
@@ -27,14 +27,14 @@ Stages:
 
 Stage assets augment it with file pointers and run-level metrics (`prompt_chars`, `total_tokens`, `duration_ms`, etc.). Treat this file as authoritative configuration for subsequent runs—the raw/parsed assets refuse to execute if required lineage fields are missing.
 
-`raw_metadata.json` and `parsed_metadata.json` capture the actual execution. Both files include a `reused` flag to signal when an asset skipped work because the artifact already existed. When `ExperimentConfig.stage_config[stage].force` is `False` (the default), the assets reuse existing `raw.txt`/`parsed.txt` and mark the metadata accordingly; setting `force=True` forces regeneration.
+`raw_metadata.json` captures the expensive LLM call. When `ExperimentConfig.stage_config[stage].force` is `False` (the default), the raw helper reuses existing `raw.txt` and records `reused: true`; setting `force=True` forces regeneration. Parsed helpers follow the same contract—if `parsed.txt` already exists and the stage is not forced we mark metadata with `reused: true`, otherwise we rewrite both the parsed artifact and `parsed_metadata.json`.
 
 ## Regeneration & invariants
 
 - Membership (`data/cohorts/<cohort_id>/membership.csv`) drives which `gen_id`s exist. If a generation directory is missing, first confirm the cohort membership row.
 - Essays and evaluations require their parent generation on disk; assets raise `Err.INVALID_CONFIG` if `parent_gen_id` is absent.
-- Whenever `raw.txt` or `parsed.txt` exists, the corresponding metadata file **must** exist. The assets raise `Err.DATA_MISSING` if they detect an artifact without metadata—delete the directory or regenerate with `force=True` to repair.
-- Prompts are persisted by the stage-input assets. `prompt.txt` is always updated alongside the rendered input; treat it as the canonical `input_path` referenced in metadata.
+- Whenever `raw.txt` exists, `raw_metadata.json` **must** be present. The raw helper raises `Err.DATA_MISSING` if it detects the file without metadata—delete the directory or rerun with `force=True` to repair. Parsed artifacts follow the same rule: `parsed.txt` and `parsed_metadata.json` travel together, and the helper falls back to regeneration only when either file is missing.
+- Prompts are persisted by the stage-input assets. `prompt.txt` is reused when present and rewritten only when the stage is forced or missing input; treat it as the canonical `input_path` referenced in metadata.
 
 ## Programmatic access
 
@@ -57,9 +57,9 @@ print(paths.input_path("essay", "abc123xyz"))
 ## Troubleshooting
 
 - **Missing directory** → confirm the `gen_id` is registered in cohort membership and that parents exist on disk.
-- **Artifacts reused unexpectedly** → check `raw_metadata.json` / `parsed_metadata.json` for `reused: true`. Set `ExperimentConfig.stage_config[stage].force=True` to regenerate.
+- **Artifacts reused unexpectedly** → check the stage metadata (`raw_metadata.json`, `parsed_metadata.json`, or the Dagster output metadata for prompts) for `reused: true`. Set `ExperimentConfig.stage_config[stage].force=True` to regenerate.
 - **Parser failures** → inspect `parsed_metadata.json` for the `parser_name` and `error` preview, then open the corresponding `raw.txt`.
-- **Prompt mismatch** → compare `prompt.txt` with the rendered inputs recorded in Dagster event metadata. The stage-input asset overwrites this file on each run.
+- **Prompt mismatch** → compare `prompt.txt` with the rendered inputs recorded in Dagster event metadata. The stage-input asset reuses the existing prompt unless the stage is forced or the file is missing.
 
 ## Notes
 

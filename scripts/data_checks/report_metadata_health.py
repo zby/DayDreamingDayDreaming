@@ -158,6 +158,8 @@ def main() -> int:
                     rel = parsed_md_path.relative_to(data_root)
                     print(f"ERROR: missing {rel}")
         else:
+            # Parsed helpers rewrite outputs on every run, so a reused flag indicates
+            # unexpected legacy metadata.
             if parsed_md.get("reused"):
                 summary[stage]["parsed_reused"] += 1
                 if show_reused:

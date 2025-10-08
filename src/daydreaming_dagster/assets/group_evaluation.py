@@ -32,7 +32,6 @@ evaluation_prompt = build_prompt_asset(
     io_manager_key="evaluation_prompt_io_manager",
     required_resource_keys={"data_root", "experiment_config"},
     deps=[EVALUATION_TEMPLATES_KEY],
-    skip_if_parsed_exists=True,
 )
 
 
@@ -46,7 +45,6 @@ evaluation_raw = build_raw_asset(
     required_resource_keys={"openrouter_client", "data_root", "experiment_config"},
     prompt_input_asset_key="evaluation_prompt",
     prompt_input_param="evaluation_prompt",
-    skip_if_parsed_exists=True,
 )
 
 
@@ -59,7 +57,6 @@ evaluation_parsed = build_parsed_asset(
     io_manager_key="in_memory_io_manager",
     required_resource_keys={"data_root", "experiment_config"},
     deps=[AssetKey("evaluation_raw")],
-    skip_if_parsed_exists=True,
 )
 
 

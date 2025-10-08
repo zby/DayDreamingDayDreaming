@@ -45,20 +45,17 @@ See also
 
 ### Artifact Reuse and Regeneration
 
-**Default behavior (skip existing artifacts):**
-By default, stages reuse existing `raw.txt` and `parsed.txt` files to avoid redundant LLM calls.
-If you re-materialize an asset and the output file already exists, the stage will read and return
-the existing content without calling the LLM or parser again.
+**Default behavior (reuse existing artifacts):**
+Each stage consults the gens store before doing work. When `prompt.txt`, `raw.txt`, or
+`parsed.txt` already exist and the stage is not forced, their helpers simply read the saved
+artifacts and surface Dagster metadata with `reused: true`. Otherwise the helper regenerates the
+artifact, writes both the content and its metadata JSON (for raw/parsed), and records
+`reused: false`.
 
-This behavior:
-- Saves API costs and time
-- Allows safe re-runs of downstream assets
-- Emits `reused: true` in Dagster metadata for visibility
-
-**When artifacts are regenerated:**
+**When raw artifacts are regenerated:**
 1. **New replicate index**: Incrementing the replicate count in `replication_config.csv` creates
-   a new file path, bypassing the skip logic
-2. **Force flag**: Set `force: true` in `StageSettings` to explicitly regenerate:
+   a new file path, bypassing reuse entirely.
+2. **Force flag**: Set `force: true` in `StageSettings` to explicitly regenerate raw artifacts:
    ```python
    ExperimentConfig(
        stage_config={
@@ -71,51 +68,74 @@ This behavior:
 **Best practices:**
 - Use replication counts for deliberate variants (different random seeds, etc.)
 - Use `force=True` sparingly (e.g., when debugging prompt changes)
-- Check `reused` metadata field to verify whether an artifact was regenerated
+- Check the stage metadata `reused` field to verify whether an artifact was regenerated
 
-### Two-Phase Generation System 🚀
+### Stages and phases
 
-The pipeline uses a two‑phase generation approach for quality and control:
+DayDreaming experiments run through **three stages**:
 
-**Phase 1 — Draft Generation**: LLMs brainstorm structured notes/points based on the concept combination.
+1. **Draft** — produce structured notes for a combination.
+2. **Essay** — expand a draft into a narrative essay.
+3. **Evaluation** — score or critique an essay.
 
-**Phase 2 — Essay Generation**: LLMs compose an essay using the draft as the source block.
+Each stage executes the same **three phases**:
 
-#### Template Structure
+- **Prompt phase** (`prompt.txt`): render the canonical input for the stage. For essays, this may
+  be a template render or a copy of the parsed draft depending on the template `mode`.
+- **Raw phase** (`raw.txt` + `raw_metadata.json`): run the expensive operation (LLM call or copy)
+  and capture execution metadata.
+- **Parsed phase** (`parsed.txt` + `parsed_metadata.json`): normalise the raw output so downstream
+  stages work with a consistent format.
 
-Templates are organized by phase:
+Because the phases share helpers, reuse rules stay uniform: each phase checks whether its own
+artifacts already exist and reuses them unless the stage is forced. When a phase regenerates its
+output it deletes downstream artifacts so later phases do not accidentally reuse stale files.
+
+#### Template structure by stage
+
+Templates are organised by stage under `data/1_raw/templates/`:
 ```
 data/1_raw/templates/
-├── draft/                    # Phase 1: Draft templates
+├── draft/        # Draft stage templates
 │   ├── creative-synthesis-v7.txt
 │   └── systematic-analytical.txt
-└── essay/                    # Phase 2: Essay composition templates
-    ├── creative-synthesis-v7.txt
-    └── systematic-analytical.txt
+├── essay/        # Essay stage templates
+│   ├── creative-synthesis-v7.txt
+│   └── systematic-analytical.txt
+└── evaluation/  # Evaluation stage templates
+    ├── daydreaming-verification.txt
+    └── novelty.txt
 ```
 
-#### Running Two-Phase Generation
+#### Running stage assets
 
-**Recommended** — Use the two‑phase assets:
+**Recommended** — Materialise the six generation assets per stage:
 ```bash
 # Generate a single partition (replace TASK_ID)
 uv run dagster asset materialize -f src/daydreaming_dagster/definitions.py \
   --select "draft_prompt,draft_raw,draft_parsed,essay_prompt,essay_raw,essay_parsed" \
   --partition "TASK_ID"
 
+# Include evaluation when needed
+uv run dagster asset materialize -f src/daydreaming_dagster/definitions.py \
+  --select "draft_prompt,draft_raw,draft_parsed,essay_prompt,essay_raw,essay_parsed,\
+evaluation_prompt,evaluation_raw,evaluation_parsed" \
+  --partition "TASK_ID"
+
 # Or run by asset group
 uv run dagster asset materialize -f src/daydreaming_dagster/definitions.py \
-  --select "group:generation_draft,group:generation_essays" \
+  --select "group:generation_draft,group:generation_essays,group:generation_evaluations" \
   --partition "TASK_ID"
 ```
 
+#### Quality validation
 
-#### Quality Validation
-
-The two‑phase system includes automatic quality validation:
-- Phase‑1 (drafts) enforces minimum content (e.g., >= 3 non‑empty lines) and applies parser extraction when configured
-- Clear error messages with resolution steps; RAW drafts are still saved on parse errors
-- Individual phase caching allows efficient recovery
+The stage pipeline includes automatic quality validation:
+- Draft stages enforce minimum content (e.g., >= 3 non‑empty lines) and apply parser extraction
+  when configured.
+- Essay stages propagate parser failures while still saving raw outputs for debugging.
+- Evaluation stages record rubric identifiers and reuse results when the prompt/essay pair already
+  has a cached score.
 
 ### Experiment Configuration (No-Code Workflow)
 
@@ -133,7 +153,7 @@ Template CSVs now describe parser/generator properties only—the spec selects w
 
 **Draft Templates** (`data/1_raw/draft_templates.csv`):
 - Columns: `template_id`, `template_name`, `description`, `parser`, `generator`.
-- Parser column: if the draft output requires extraction, set a valid `parser` name (e.g., `essay_block` for strict tagged prompts, `essay_block_lenient` when you need a best-effort identity fallback). Parsing happens in Phase‑1 and failures there will fail the draft with a clear error. Raw LLM output remains saved under `data/gens/draft/<gen_id>/raw.txt` for debugging.
+- Parser column: if the draft output requires extraction, set a valid `parser` name (e.g., `essay_block` for strict tagged prompts, `essay_block_lenient` when you need a best-effort identity fallback). Parsing happens during the draft stage and failures there will fail the draft with a clear error. Raw LLM output remains saved under `data/gens/draft/<gen_id>/raw.txt` for debugging.
 - After adding the `.txt` template file in `data/1_raw/templates/draft/`, reference the new `template_id` inside the cohort spec so it participates in generation.
 
 **Essay Templates** (`data/1_raw/essay_templates.csv`):
