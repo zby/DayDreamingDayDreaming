@@ -1,16 +1,16 @@
 #!/usr/bin/env python3
-"""Report gens-store metadata health (missing files & reuse indicators).
+"""Report gens-store metadata health (missing/invalid metadata files).
 
-This audit scans ``data/gens`` (or a custom ``--data-root``) and summarizes
-how often generations reuse prior artifacts or ship without metadata. Use this
-before tightening the unified stage behaviour so we understand how much legacy
-state depends on the current reuse pathway.
+This audit scans ``data/gens`` (or a custom ``--data-root``) and surfaces
+missing or invalid ``raw_metadata.json`` / ``parsed_metadata.json`` entries.
+It no longer reports reuse statistics now that the unified stages always emit
+the same metadata shape for reused artifacts, but it retains counters for
+"resume" flags so operators can spot forced restarts.
 
 Usage:
     python scripts/data_checks/report_metadata_health.py [--data-root PATH]
                                                          [--stage STAGE ...]
                                                          [--verbose]
-                                                         [--show-reused]
 """
 
 from __future__ import annotations
@@ -63,11 +63,6 @@ def main() -> int:
         action="store_true",
         help="Print per-generation anomalies (missing/invalid metadata).",
     )
-    parser.add_argument(
-        "--show-reused",
-        action="store_true",
-        help="List generations whose metadata marks the artifact as reused.",
-    )
     args = parser.parse_args()
 
     if args.stage is None or "all" in args.stage:
@@ -82,7 +77,6 @@ def main() -> int:
     data_root: Path = args.data_root
     gens_root = data_root / "gens"
     verbose: bool = args.verbose
-    show_reused: bool = args.show_reused
 
     if not gens_root.exists():
         print(f"ERROR: gens root not found at {gens_root}")
@@ -95,15 +89,11 @@ def main() -> int:
             "missing_parsed_metadata": 0,
             "invalid_raw_metadata": 0,
             "invalid_parsed_metadata": 0,
-            "raw_reused": 0,
-            "parsed_reused": 0,
             "raw_resume": 0,
             "parsed_resume": 0,
         }
         for stage in stages
     }
-
-    reused_paths: list[tuple[str, Path, str]] = []
 
     for stage, gen_dir in iter_gen_dirs(data_root, stages):
         if gen_dir is None:
@@ -142,14 +132,8 @@ def main() -> int:
                     rel = raw_md_path.relative_to(data_root)
                     print(f"ERROR: missing {rel}")
         else:
-            if raw_md.get("reused"):
-                summary[stage]["raw_reused"] += 1
-                if show_reused:
-                    reused_paths.append((stage, gen_dir, "raw"))
             if raw_md.get("resume") or raw_md.get("resume_reason"):
                 summary[stage]["raw_resume"] += 1
-                if show_reused and (stage, gen_dir, "raw") not in reused_paths:
-                    reused_paths.append((stage, gen_dir, "raw"))
 
         if parsed_md is None:
             if parsed_artifact_exists:
@@ -158,16 +142,8 @@ def main() -> int:
                     rel = parsed_md_path.relative_to(data_root)
                     print(f"ERROR: missing {rel}")
         else:
-            # Parsed helpers rewrite outputs on every run, so a reused flag indicates
-            # unexpected legacy metadata.
-            if parsed_md.get("reused"):
-                summary[stage]["parsed_reused"] += 1
-                if show_reused:
-                    reused_paths.append((stage, gen_dir, "parsed"))
             if parsed_md.get("resume") or parsed_md.get("resume_reason"):
                 summary[stage]["parsed_resume"] += 1
-                if show_reused and (stage, gen_dir, "parsed") not in reused_paths:
-                    reused_paths.append((stage, gen_dir, "parsed"))
 
     print(f"Scanned gens at {gens_root}\n")
     header = (
@@ -177,8 +153,6 @@ def main() -> int:
         "Missing parsed_md",
         "Invalid raw_md",
         "Invalid parsed_md",
-        "raw reused",
-        "parsed reused",
         "raw resume",
         "parsed resume",
     )
@@ -192,18 +166,10 @@ def main() -> int:
             str(stats["missing_parsed_metadata"]),
             str(stats["invalid_raw_metadata"]),
             str(stats["invalid_parsed_metadata"]),
-            str(stats["raw_reused"]),
-            str(stats["parsed_reused"]),
             str(stats["raw_resume"]),
             str(stats["parsed_resume"]),
         ]
         print("\t".join(row))
-
-    if show_reused and reused_paths:
-        print("\nGenerations flagged as reused/resume:")
-        for stage, gen_dir, artifact in reused_paths:
-            rel = gen_dir.relative_to(data_root)
-            print(f"  {stage}: {rel} ({artifact})")
 
     # Non-zero missing/invalid stats should trigger a failing exit code.
     exit_code = 0

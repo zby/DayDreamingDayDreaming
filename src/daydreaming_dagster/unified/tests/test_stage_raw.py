@@ -130,7 +130,7 @@ def test_stage_raw_llm_persists_expected_files(tmp_path: Path):
         },
     )
     captured_meta = dict(md["raw_metadata"].value)
-    assert captured_meta.pop("reused", False) is False
+    assert "reused" not in captured_meta
     assert captured_meta == raw_meta
 
 
@@ -226,9 +226,8 @@ def test_stage_raw_skips_existing_artifact(tmp_path: Path):
     # LLM should not be called
     assert llm.calls == []
 
-    # Metadata should mark as reused
     md = ctx._captured["metadata"]
-    assert md["reused"].value is True
+    assert "reused" not in md
 
 
 def test_stage_raw_force_regenerates(tmp_path: Path):
@@ -279,9 +278,8 @@ def test_stage_raw_force_regenerates(tmp_path: Path):
     # LLM should be called
     assert len(llm.calls) == 1
 
-    # Metadata should mark as NOT reused
     md = ctx._captured["metadata"]
-    assert md["reused"].value is False
+    assert "reused" not in md
 
 
 def test_stage_raw_regeneration_clears_parsed(tmp_path: Path) -> None:

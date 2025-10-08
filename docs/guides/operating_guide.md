@@ -48,9 +48,8 @@ See also
 **Default behavior (reuse existing artifacts):**
 Each stage consults the gens store before doing work. When `prompt.txt`, `raw.txt`, or
 `parsed.txt` already exist and the stage is not forced, their helpers simply read the saved
-artifacts and surface Dagster metadata with `reused: true`. Otherwise the helper regenerates the
-artifact, writes both the content and its metadata JSON (for raw/parsed), and records
-`reused: false`.
+artifacts and emit the previously written metadata unchanged. Otherwise the helper regenerates the
+artifact and overwrites both the content and its metadata JSON (for raw/parsed).
 
 **When raw artifacts are regenerated:**
 1. **New replicate index**: Incrementing the replicate count in `replication_config.csv` creates
@@ -68,7 +67,8 @@ artifact, writes both the content and its metadata JSON (for raw/parsed), and re
 **Best practices:**
 - Use replication counts for deliberate variants (different random seeds, etc.)
 - Use `force=True` sparingly (e.g., when debugging prompt changes)
-- Check the stage metadata `reused` field to verify whether an artifact was regenerated
+- When you must confirm regeneration occurred, run with `force=True` and inspect timestamps or
+  attach run-specific markers (e.g., `run_id`) in your Dagster run metadata.
 
 ### Stages and phases
 

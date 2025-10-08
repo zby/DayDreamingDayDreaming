@@ -277,7 +277,6 @@ def build_parsed_asset(
 
         if reuse_existing and parsed_metadata is not None:
             parsed_metadata = dict(parsed_metadata)
-            parsed_metadata["reused"] = True
             if run_id:
                 parsed_metadata["run_id"] = run_id
         else:

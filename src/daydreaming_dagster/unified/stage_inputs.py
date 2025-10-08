@@ -50,7 +50,6 @@ def _finalize_input_info(
     input_text: str,
     input_path,
     extras: dict[str, Any],
-    reused: bool,
     mode: str,
     stage: Stage,
 ) -> tuple[str, dict[str, Any]]:
@@ -59,7 +58,6 @@ def _finalize_input_info(
     details["input_path"] = str(input_path)
     details["input_lines"] = _count_non_empty_lines(input_text)
     details["input_length"] = len(input_text)
-    details["reused"] = reused
 
     if mode == "copy" and stage == "draft":
         details.pop("parent_gen_id", None)
@@ -136,7 +134,6 @@ def _stage_input_asset(
             input_text=input_text,
             input_path=input_path,
             extras=extras,
-            reused=reused,
             mode=metadata.mode,
             stage=stage,
         )
@@ -238,7 +235,6 @@ def _stage_input_asset(
         input_text=input_text,
         input_path=input_path,
         extras=extras,
-        reused=reused,
         mode=metadata.mode,
         stage=stage,
     )

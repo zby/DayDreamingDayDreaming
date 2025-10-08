@@ -7,7 +7,7 @@ Small utilities for auditing the gens store and raw configuration files.
 - `find_duplicate_generations.py`: hash `raw.txt` payloads to highlight duplicate generations by stage.
 - `find_missing_combo_concepts.py`: cross-check `combo_mappings.csv` against `concepts_metadata.csv` to spot missing concept rows.
 - `parent_chain_check.py`: ensure essay/evaluation parents (and grandparent drafts) exist with readable metadata.
-- `report_metadata_health.py`: surface gens-store directories missing metadata and count how often artifacts are reused/resumed.
+- `report_metadata_health.py`: surface gens-store directories missing metadata and highlight resumptions captured via the `resume` flags.
 - `report_gen_id_lengths.py`: summarize generation ID length distribution per stage (helps track migration progress).
 - `restore_evaluation_parent_ids.py`: repair evaluation metadata missing `parent_gen_id` by matching essays via `parent_task_id` and replicate.
 - `relink_prompts_to_parents.py`: ensure essay/evaluation prompts embed their parent text and optionally repair `parent_gen_id` when a unique match is found.

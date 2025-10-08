@@ -121,7 +121,7 @@ def test_stage_parsed_asset_wires_metadata(tmp_path: Path, monkeypatch) -> None:
     assert parsed_path.read_text(encoding="utf-8") == "RAW"
     assert ctx.captured["parser_name"].value == "identity"
     assert ctx.captured["parsed_path"].value == str(parsed_path)
-    assert ctx.captured["reused"].value is False
+    assert "reused" not in ctx.captured
 
 
 def test_stage_parsed_reuses_existing_artifact(tmp_path: Path, monkeypatch) -> None:
@@ -146,7 +146,6 @@ def test_stage_parsed_reuses_existing_artifact(tmp_path: Path, monkeypatch) -> N
                 "function": "draft_parsed",
                 "parser_name": "identity",
                 "success": True,
-                "reused": False,
             }
         ),
         encoding="utf-8",
@@ -177,7 +176,7 @@ def test_stage_parsed_reuses_existing_artifact(tmp_path: Path, monkeypatch) -> N
 
     assert out == "STALE"
     assert parsed_path.read_text(encoding="utf-8") == "STALE"
-    assert ctx.captured["reused"].value is True
+    assert "reused" not in ctx.captured
 
 
 def test_stage_parsed_missing_existing_metadata_is_rewritten(tmp_path: Path, monkeypatch) -> None:
@@ -215,6 +214,5 @@ def test_stage_parsed_missing_existing_metadata_is_rewritten(tmp_path: Path, mon
 
     assert out == "RAW"
     assert parsed_path.read_text(encoding="utf-8") == "RAW"
-    assert ctx.captured["reused"].value is False
     meta = json.loads(paths.parsed_metadata_path("draft", "D1").read_text(encoding="utf-8"))
     assert "reused" not in meta

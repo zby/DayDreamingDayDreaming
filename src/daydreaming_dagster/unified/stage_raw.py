@@ -31,10 +31,8 @@ def _stage_raw_asset(
     # Check if we should skip regeneration
     force = stage_settings.force if stage_settings else False
     if data_layer.raw_exists(stage, gen_id, force=force):
-        # Reuse existing artifact
         raw_text = data_layer.read_raw(stage, gen_id)
 
-        # Try to read existing metadata; if missing we now fail fast
         try:
             raw_metadata = data_layer.read_raw_metadata(stage, gen_id)
         except DDError as err:
@@ -51,9 +49,7 @@ def _stage_raw_asset(
                 raise DDError(Err.DATA_MISSING, ctx=ctx, cause=err)
             raise
 
-        # Mark as reused
         raw_metadata = dict(raw_metadata)
-        raw_metadata["reused"] = True
         if run_id:
             raw_metadata["run_id"] = run_id
 
@@ -144,9 +140,7 @@ def _stage_raw_asset(
     raw_metadata["raw_path"] = str(raw_path)
     raw_metadata["raw_metadata_path"] = str(raw_metadata_path)
 
-    file_metadata = dict(raw_metadata)
-    file_metadata.pop("reused", None)
-    data_layer.write_raw_metadata(stage, gen_id, file_metadata)
+    data_layer.write_raw_metadata(stage, gen_id, dict(raw_metadata))
 
     return raw_text, raw_metadata
 
@@ -170,9 +164,6 @@ def stage_raw_asset(context, stage: Stage, *, prompt_text: str) -> str:
         stage_settings=stage_settings,
         run_id=run_id,
     )
-
-    if "reused" not in raw_metadata:
-        raw_metadata["reused"] = False
 
     output_md = build_stage_artifact_metadata(
         function=f"{stage}_raw",

@@ -36,7 +36,7 @@ def test_stage_input_helper_copy(tmp_path: Path) -> None:
     assert text == "Copy text"
     assert info["input_mode"] == "copy"
     assert info["copied_from"].endswith("parsed.txt")
-    assert info["reused"] is False
+    assert "reused" not in info
     assert (
         data_layer.paths.input_path("essay", "E1").read_text(encoding="utf-8")
         == "Copy text"
@@ -74,7 +74,7 @@ def test_stage_input_helper_draft(tmp_path: Path, monkeypatch) -> None:
     assert text == "rendered"
     assert info["input_mode"] == "prompt"
     assert info["combo_id"] == "c1"
-    assert info["reused"] is False
+    assert "reused" not in info
     assert (
         data_layer.paths.input_path("draft", "D1").read_text(encoding="utf-8")
         == "rendered"
@@ -106,7 +106,7 @@ def test_stage_input_asset_wires_metadata(tmp_path: Path, monkeypatch) -> None:
 
     assert ctx.captured_metadata["mode"].value == "copy"
     assert ctx.captured_metadata["input_length"].value == len("Parent")
-    assert ctx.captured_metadata["reused"].value is False
+    assert "reused" not in ctx.captured_metadata
 
 
 def test_stage_input_helper_reuses_existing_prompt(tmp_path: Path, monkeypatch) -> None:
@@ -133,7 +133,7 @@ def test_stage_input_helper_reuses_existing_prompt(tmp_path: Path, monkeypatch) 
     )
 
     assert text == "existing prompt"
-    assert info["reused"] is True
+    assert "reused" not in info
     assert info["input_mode"] == "prompt"
     assert data_layer.read_input("draft", "D1") == "existing prompt"
     assert data_layer.raw_exists("draft", "D1") is True
@@ -170,7 +170,7 @@ def test_stage_input_asset_reuse_skips_combinations(tmp_path: Path, monkeypatch)
     out = stage_inputs.stage_input_asset(ctx, "draft")
 
     assert out == "existing prompt"
-    assert ctx.captured_metadata["reused"].value is True
+    assert "reused" not in ctx.captured_metadata
     assert ctx.captured_metadata["input_mode"].value == "prompt"
     assert data_layer.raw_exists("draft", "D1") is True
 
