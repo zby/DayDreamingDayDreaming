@@ -21,7 +21,7 @@ class StageSettings(Config):
 
 
 class ExperimentConfig(ConfigurableResource):
-    """Experiment configuration for two-phase generation and evaluation."""
+    """Experiment configuration for the three-stage (draft, essay, evaluation) pipeline."""
 
     k_max: int = 6
     description_level: str = "paragraph"

@@ -121,6 +121,14 @@ class GensDataLayer:
             },
         )
 
+    def input_exists(self, stage: str, gen_id: str, *, force: bool = False) -> bool:
+        """Return True when ``input.txt`` exists and reuse is permitted."""
+
+        if force:
+            return False
+        target = self._paths.input_path(stage, gen_id)
+        return target.exists()
+
     def write_raw(self, stage: str, gen_id: str, text: str) -> Path:
         target = self._paths.raw_path(stage, gen_id)
         return self._write_text(target, text)
@@ -153,13 +161,23 @@ class GensDataLayer:
             },
         )
 
-    def parsed_exists(self, stage: str, gen_id: str) -> bool:
-        """Check if parsed.txt exists for the given stage and gen_id."""
+    def parsed_exists(self, stage: str, gen_id: str, *, force: bool = False) -> bool:
+        """Check if parsed.txt exists for the given stage and gen_id.
+
+        When ``force`` is True, callers explicitly opt out of reuse.
+        """
+        if force:
+            return False
         target = self._paths.parsed_path(stage, gen_id)
         return target.exists()
 
-    def raw_exists(self, stage: str, gen_id: str) -> bool:
-        """Check if raw.txt exists for the given stage and gen_id."""
+    def raw_exists(self, stage: str, gen_id: str, *, force: bool = False) -> bool:
+        """Check if raw.txt exists for the given stage and gen_id.
+
+        When ``force`` is True, callers explicitly opt out of reuse.
+        """
+        if force:
+            return False
         target = self._paths.raw_path(stage, gen_id)
         return target.exists()
 
@@ -257,6 +275,50 @@ class GensDataLayer:
                 },
                 cause=exc,
             )
+
+    def delete_downstream_artifacts(
+        self, stage: str, gen_id: str, *, from_stage: str
+    ) -> None:
+        """Remove artifacts produced after ``from_stage`` for a generation."""
+
+        stage_key = str(from_stage or "").strip().lower()
+        if stage_key not in {"input", "raw"}:
+            raise DDError(
+                Err.INVALID_CONFIG,
+                ctx={
+                    "stage": stage,
+                    "gen_id": gen_id,
+                    "from_stage": from_stage,
+                    "reason": "unsupported_downstream_cleanup",
+                },
+            )
+
+        targets: list[Path] = []
+
+        if stage_key == "input":
+            targets.extend(
+                [
+                    self._paths.raw_path(stage, gen_id),
+                    self._paths.raw_metadata_path(stage, gen_id),
+                ]
+            )
+
+        if stage_key in {"input", "raw"}:
+            targets.extend(
+                [
+                    self._paths.parsed_path(stage, gen_id),
+                    self._paths.parsed_metadata_path(stage, gen_id),
+                ]
+            )
+
+        for target in targets:
+            if target.exists():
+                try:
+                    target.unlink()
+                except OSError as exc:
+                    raise DDError(
+                        Err.IO_ERROR, ctx={"path": str(target), "operation": "delete"}
+                    ) from exc
 
 
 @dataclass(frozen=True)

@@ -8,6 +8,7 @@ import pytest
 import daydreaming_dagster.unified.stage_inputs as stage_inputs
 from daydreaming_dagster.data_layer.gens_data_layer import GensDataLayer
 from daydreaming_dagster.data_layer.paths import Paths
+from daydreaming_dagster.resources.experiment_config import ExperimentConfig, StageSettings
 from daydreaming_dagster.utils.errors import DDError, Err
 
 
@@ -22,6 +23,10 @@ def test_stage_input_helper_copy(tmp_path: Path) -> None:
         "E1",
         {"template_id": "essay-tpl", "mode": "copy", "parent_gen_id": "P1"},
     )
+    data_layer.write_raw("essay", "E1", "old raw")
+    data_layer.write_raw_metadata("essay", "E1", {"mode": "llm"})
+    data_layer.write_parsed("essay", "E1", "old parsed")
+    data_layer.write_parsed_metadata("essay", "E1", {"parser_name": "identity"})
     text, info = stage_inputs._stage_input_asset(
         data_layer=data_layer,
         stage="essay",
@@ -31,10 +36,13 @@ def test_stage_input_helper_copy(tmp_path: Path) -> None:
     assert text == "Copy text"
     assert info["input_mode"] == "copy"
     assert info["copied_from"].endswith("parsed.txt")
+    assert info["reused"] is False
     assert (
         data_layer.paths.input_path("essay", "E1").read_text(encoding="utf-8")
         == "Copy text"
     )
+    assert data_layer.raw_exists("essay", "E1") is False
+    assert data_layer.parsed_exists("essay", "E1") is False
 
 
 def test_stage_input_helper_draft(tmp_path: Path, monkeypatch) -> None:
@@ -45,6 +53,10 @@ def test_stage_input_helper_draft(tmp_path: Path, monkeypatch) -> None:
         "D1",
         {"template_id": "draft-tpl", "mode": "llm", "combo_id": "c1"},
     )
+    data_layer.write_raw("draft", "D1", "old raw")
+    data_layer.write_raw_metadata("draft", "D1", {"mode": "llm"})
+    data_layer.write_parsed("draft", "D1", "old parsed")
+    data_layer.write_parsed_metadata("draft", "D1", {"parser_name": "identity"})
     combo = types.SimpleNamespace(combo_id="c1", contents=["idea"])
 
     monkeypatch.setattr(
@@ -62,10 +74,13 @@ def test_stage_input_helper_draft(tmp_path: Path, monkeypatch) -> None:
     assert text == "rendered"
     assert info["input_mode"] == "prompt"
     assert info["combo_id"] == "c1"
+    assert info["reused"] is False
     assert (
         data_layer.paths.input_path("draft", "D1").read_text(encoding="utf-8")
         == "rendered"
     )
+    assert data_layer.raw_exists("draft", "D1") is False
+    assert data_layer.parsed_exists("draft", "D1") is False
 
 
 def test_stage_input_asset_wires_metadata(tmp_path: Path, monkeypatch) -> None:
@@ -91,6 +106,73 @@ def test_stage_input_asset_wires_metadata(tmp_path: Path, monkeypatch) -> None:
 
     assert ctx.captured_metadata["mode"].value == "copy"
     assert ctx.captured_metadata["input_length"].value == len("Parent")
+    assert ctx.captured_metadata["reused"].value is False
+
+
+def test_stage_input_helper_reuses_existing_prompt(tmp_path: Path, monkeypatch) -> None:
+    data_layer = GensDataLayer.from_root(tmp_path)
+    data_layer.write_main_metadata(
+        "draft",
+        "D1",
+        {"template_id": "draft-tpl", "mode": "llm", "combo_id": "c1"},
+    )
+    data_layer.write_input("draft", "D1", "existing prompt")
+    data_layer.write_raw("draft", "D1", "raw")
+    data_layer.write_raw_metadata("draft", "D1", {"mode": "llm"})
+
+    def _fail(*_args, **_kwargs):
+        raise AssertionError("should not render")
+
+    monkeypatch.setattr(stage_inputs, "render_template", _fail)
+
+    text, info = stage_inputs._stage_input_asset(
+        data_layer=data_layer,
+        stage="draft",
+        gen_id="D1",
+        reuse_existing=True,
+    )
+
+    assert text == "existing prompt"
+    assert info["reused"] is True
+    assert info["input_mode"] == "prompt"
+    assert data_layer.read_input("draft", "D1") == "existing prompt"
+    assert data_layer.raw_exists("draft", "D1") is True
+
+
+def test_stage_input_asset_reuse_skips_combinations(tmp_path: Path, monkeypatch) -> None:
+    data_layer = GensDataLayer.from_root(tmp_path)
+    data_layer.write_main_metadata(
+        "draft",
+        "D1",
+        {"template_id": "draft-tpl", "mode": "llm", "combo_id": "c1"},
+    )
+    data_layer.write_input("draft", "D1", "existing prompt")
+    data_layer.write_raw("draft", "D1", "raw")
+    data_layer.write_raw_metadata("draft", "D1", {"mode": "llm"})
+
+    ctx = types.SimpleNamespace(
+        partition_key="D1",
+        resources=types.SimpleNamespace(
+            data_root=str(tmp_path),
+            experiment_config=ExperimentConfig(
+                stage_config={"draft": StageSettings(generation_max_tokens=1024)}
+            ),
+        ),
+        captured_metadata=None,
+        add_output_metadata=lambda md: setattr(ctx, "captured_metadata", md),
+    )
+
+    def _fail_again(*_args, **_kwargs):
+        raise AssertionError("should not render")
+
+    monkeypatch.setattr(stage_inputs, "render_template", _fail_again)
+
+    out = stage_inputs.stage_input_asset(ctx, "draft")
+
+    assert out == "existing prompt"
+    assert ctx.captured_metadata["reused"].value is True
+    assert ctx.captured_metadata["input_mode"].value == "prompt"
+    assert data_layer.raw_exists("draft", "D1") is True
 
 
 def test_stage_input_copy_missing_parent(tmp_path: Path) -> None:
@@ -132,6 +214,26 @@ def test_stage_input_missing_combo(tmp_path: Path, monkeypatch) -> None:
 
     assert err.value.code is Err.DATA_MISSING
     assert err.value.ctx.get("reason") == "combo_not_found"
+
+
+def test_stage_input_reuse_missing_prompt_errors(tmp_path: Path) -> None:
+    data_layer = GensDataLayer.from_root(tmp_path)
+    data_layer.write_main_metadata(
+        "draft",
+        "D3",
+        {"template_id": "draft-tpl", "mode": "llm", "combo_id": "c1"},
+    )
+
+    with pytest.raises(DDError) as err:
+        stage_inputs._stage_input_asset(
+            data_layer=data_layer,
+            stage="draft",
+            gen_id="D3",
+            reuse_existing=True,
+        )
+
+    assert err.value.code is Err.DATA_MISSING
+    assert err.value.ctx.get("reason") == "input_missing_for_reuse"
 
 
 @pytest.mark.parametrize(

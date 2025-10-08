@@ -205,7 +205,7 @@ def pipeline_data_root_prepared():
     gen_templates_dir = pipeline_data_root / "1_raw" / "templates"
     eval_templates_dir = pipeline_data_root / "1_raw" / "templates" / "evaluation"
     
-    # Verify template files exist (two-phase layout: draft/ and essay/)
+    # Verify generation templates exist (draft/ and essay/ under the three-stage layout)
     if gen_templates_dir.exists():
         gen_draft_files = list((gen_templates_dir / "draft").glob("*.txt"))
         gen_essay_files = list((gen_templates_dir / "essay").glob("*.txt"))
@@ -339,12 +339,12 @@ def pipeline_data_root_prepared():
                 existing_concepts = existing_concepts.drop_duplicates(subset=["concept_id"]).reset_index(drop=True)
                 existing_concepts.to_csv(concepts_csv, index=False)
 
-    # Ensure at least one two-phase template exists for downstream checks
+    # Ensure at least one matching draft/essay template pair exists for downstream checks
     draft_file = pipeline_data_root / "1_raw" / "templates" / "draft" / f"{target_template}.txt"
     essay_file = pipeline_data_root / "1_raw" / "templates" / "essay" / f"{target_template}.txt"
     if not (draft_file.exists() and essay_file.exists()):
         raise RuntimeError(
-            f"Two-phase template files missing for {target_template}: {draft_file} or {essay_file}"
+            f"Draft/essay template pair missing for {target_template}: {draft_file} or {essay_file}"
         )
 
     # Capture trimmed catalog entries to seed the cohort spec

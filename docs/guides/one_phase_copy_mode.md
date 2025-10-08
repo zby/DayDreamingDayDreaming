@@ -1,6 +1,6 @@
-# One‑Phase Pipeline (Essay Copy Mode)
+# Essay stage: copy-mode pipeline
 
-This guide shows how to run a “one‑phase” pipeline where the Phase‑2 essay is a verbatim copy of the parsed draft. This is useful for baselines, parser validation, or when you want to evaluate draft quality directly without an LLM essay step.
+This guide shows how to run a pipeline where the **essay stage** skips the LLM call and simply copies the parsed draft. The essay stage still executes its prompt, raw (copy), and parsed phases, but the “raw” phase comes from the draft rather than an LLM. This is useful for baselines, parser validation, or when you want to evaluate draft quality directly without an LLM essay step.
 
 Key idea
 - Essay templates declare a `generator` mode in `data/1_raw/essay_templates.csv`:
@@ -8,7 +8,7 @@ Key idea
   - `llm`: generate essay from draft via LLM
 
 Prerequisites
-- Ensure drafts (Phase‑1) are configured and can run: entries exist in `data/1_raw/draft_templates.csv` and at least one generation‑capable model in `data/1_raw/llm_models.csv` (`for_generation=true`).
+- Ensure drafts (the first stage) are configured and can run: entries exist in `data/1_raw/draft_templates.csv` and at least one generation‑capable model in `data/1_raw/llm_models.csv` (`for_generation=true`).
 - Include at least one essay template with `generator=copy` in the cohort spec. The default repo includes `parsed-from-links-v1` as an example.
 
 Setup

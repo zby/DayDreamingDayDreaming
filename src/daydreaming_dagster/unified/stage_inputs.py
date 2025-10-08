@@ -2,15 +2,14 @@ from __future__ import annotations
 
 from typing import Any, Iterable
 
-from dagster import Failure, MetadataValue
-
 from daydreaming_dagster.assets._helpers import build_stage_artifact_metadata
 from daydreaming_dagster.data_layer.gens_data_layer import (
     GensDataLayer,
     resolve_generation_metadata,
 )
 from daydreaming_dagster.utils.errors import DDError, Err
-from .stage_core import Stage, render_template, effective_parent_stage
+
+from .stage_core import Stage, effective_parent_stage, render_template
 
 
 def _count_non_empty_lines(text: str) -> int:
@@ -29,17 +28,7 @@ def _find_content_combination(
     return None
 
 
-def _stage_input_asset(
-    *,
-    data_layer: GensDataLayer,
-    stage: Stage,
-    gen_id: str,
-    content_combinations=None,
-) -> tuple[str, dict[str, Any]]:
-    data_layer.reserve_generation(stage, gen_id, create=True)
-
-    metadata = resolve_generation_metadata(data_layer, stage, gen_id)
-
+def _base_input_info(stage: Stage, gen_id: str, metadata) -> dict[str, Any]:
     info: dict[str, Any] = {
         "stage": stage,
         "gen_id": gen_id,
@@ -52,8 +41,65 @@ def _stage_input_asset(
         info["origin_cohort_id"] = metadata.origin_cohort_id
     if metadata.parent_gen_id:
         info["parent_gen_id"] = metadata.parent_gen_id
+    return info
 
-    extras: dict[str, Any] = {}
+
+def _finalize_input_info(
+    info: dict[str, Any],
+    *,
+    input_text: str,
+    input_path,
+    extras: dict[str, Any],
+    reused: bool,
+    mode: str,
+    stage: Stage,
+) -> tuple[str, dict[str, Any]]:
+    details = dict(info)
+    details.update(extras)
+    details["input_path"] = str(input_path)
+    details["input_lines"] = _count_non_empty_lines(input_text)
+    details["input_length"] = len(input_text)
+    details["reused"] = reused
+
+    if mode == "copy" and stage == "draft":
+        details.pop("parent_gen_id", None)
+
+    return input_text, details
+
+
+def _stage_input_asset(
+    *,
+    data_layer: GensDataLayer,
+    stage: Stage,
+    gen_id: str,
+    content_combinations=None,
+    reuse_existing: bool = False,
+) -> tuple[str, dict[str, Any]]:
+    data_layer.reserve_generation(stage, gen_id, create=True)
+
+    metadata = resolve_generation_metadata(data_layer, stage, gen_id)
+    info = _base_input_info(stage, gen_id, metadata)
+    input_path = data_layer.paths.input_path(stage, gen_id)
+
+    reused = bool(reuse_existing)
+    input_text: str | None = None
+
+    if reused:
+        try:
+            input_text = data_layer.read_input(stage, gen_id)
+        except DDError as err:
+            if err.code is Err.DATA_MISSING:
+                ctx = dict(err.ctx or {})
+                ctx.update(
+                    {
+                        "stage": stage,
+                        "gen_id": gen_id,
+                        "artifact": "input",
+                        "reason": "input_missing_for_reuse",
+                    }
+                )
+                raise DDError(Err.DATA_MISSING, ctx=ctx, cause=err)
+            raise
 
     if metadata.mode == "copy":
         parent_stage = effective_parent_stage(stage)
@@ -67,24 +113,40 @@ def _stage_input_asset(
                     "reason": "missing_parent",
                 },
             )
-        input_text = data_layer.read_parsed(parent_stage, metadata.parent_gen_id)
-        input_path = data_layer.write_input(stage, gen_id, input_text)
+        parent_text = data_layer.read_parsed(parent_stage, metadata.parent_gen_id)
 
-        extras.update(
-            {
-                "input_mode": "copy",
-                "copied_from": str(
-                    data_layer.parsed_path(
-                        parent_stage, metadata.parent_gen_id
-                    ).resolve()
-                ),
-            }
-        )
+        if not reused:
+            data_layer.delete_downstream_artifacts(stage, gen_id, from_stage="input")
+            input_text = parent_text
+            input_path = data_layer.write_input(stage, gen_id, input_text)
+        elif input_text is None:
+            input_text = parent_text
+
+        extras = {
+            "input_mode": "copy",
+            "copied_from": str(
+                data_layer.parsed_path(parent_stage, metadata.parent_gen_id).resolve()
+            ),
+        }
         if stage == "draft" and metadata.combo_id:
             extras["combo_id"] = metadata.combo_id
-    else:
-        extras["input_mode"] = "prompt"
-        if stage == "draft":
+
+        return _finalize_input_info(
+            info,
+            input_text=input_text,
+            input_path=input_path,
+            extras=extras,
+            reused=reused,
+            mode=metadata.mode,
+            stage=stage,
+        )
+
+    extras: dict[str, Any] = {"input_mode": "prompt"}
+
+    if stage == "draft":
+        if metadata.combo_id:
+            extras["combo_id"] = metadata.combo_id
+        if not reused:
             if content_combinations is None:
                 raise DDError(
                     Err.INVALID_CONFIG,
@@ -120,64 +182,66 @@ def _stage_input_asset(
                     },
                 )
             template_vars = {"concepts": concepts}
-            if metadata.combo_id:
-                extras["combo_id"] = metadata.combo_id
-        elif stage == "essay":
-            parent_stage = effective_parent_stage(stage)
-            if not metadata.parent_gen_id:
-                raise DDError(
-                    Err.INVALID_CONFIG,
-                    ctx={
-                        "stage": stage,
-                        "gen_id": gen_id,
-                        "reason": "missing_parent",
-                    },
-                )
-            parent_text = data_layer.read_parsed(parent_stage, metadata.parent_gen_id)
+        else:
+            template_vars = None
+    elif stage in {"essay", "evaluation"}:
+        parent_stage = effective_parent_stage(stage)
+        if not metadata.parent_gen_id:
+            raise DDError(
+                Err.INVALID_CONFIG,
+                ctx={
+                    "stage": stage,
+                    "gen_id": gen_id,
+                    "reason": "missing_parent",
+                },
+            )
+        parent_text = data_layer.read_parsed(parent_stage, metadata.parent_gen_id)
+        info["parent_gen_id"] = metadata.parent_gen_id
+        if stage == "essay":
+            extras["draft_line_count"] = _count_non_empty_lines(parent_text)
             template_vars = {
                 "draft_block": parent_text,
                 "links_block": parent_text,
             }
-            extras["draft_line_count"] = _count_non_empty_lines(parent_text)
-            info["parent_gen_id"] = metadata.parent_gen_id
-        elif stage == "evaluation":
-            parent_stage = effective_parent_stage(stage)
-            if not metadata.parent_gen_id:
-                raise DDError(
-                    Err.INVALID_CONFIG,
-                    ctx={
-                        "stage": stage,
-                        "gen_id": gen_id,
-                        "reason": "missing_parent",
-                    },
-                )
-            parent_text = data_layer.read_parsed(parent_stage, metadata.parent_gen_id)
-            template_vars = {"response": parent_text}
-            info["parent_gen_id"] = metadata.parent_gen_id
         else:
+            template_vars = {"response": parent_text}
+    else:
+        raise DDError(
+            Err.INVALID_CONFIG,
+            ctx={"stage": stage, "reason": "unsupported_stage"},
+        )
+
+    if reused and input_text is None:
+        input_text = data_layer.read_input(stage, gen_id)
+
+    if not reused:
+        if template_vars is None:
             raise DDError(
                 Err.INVALID_CONFIG,
-                ctx={"stage": stage, "reason": "unsupported_stage"},
+                ctx={
+                    "stage": stage,
+                    "gen_id": gen_id,
+                    "reason": "missing_template_vars",
+                },
             )
-
         input_text = render_template(
             stage,
             metadata.template_id,
             template_vars,
             paths=data_layer.paths,
         )
+        data_layer.delete_downstream_artifacts(stage, gen_id, from_stage="input")
         input_path = data_layer.write_input(stage, gen_id, input_text)
 
-    info["input_path"] = str(input_path)
-    info["input_lines"] = _count_non_empty_lines(input_text)
-    info["input_length"] = len(input_text)
-    for key, value in extras.items():
-        info[key] = value
-
-    if metadata.mode == "copy" and stage == "draft":
-        info.pop("parent_gen_id", None)
-
-    return input_text, info
+    return _finalize_input_info(
+        info,
+        input_text=input_text,
+        input_path=input_path,
+        extras=extras,
+        reused=reused,
+        mode=metadata.mode,
+        stage=stage,
+    )
 
 
 def stage_input_asset(context, stage: Stage, *, content_combinations=None) -> str:
@@ -186,11 +250,17 @@ def stage_input_asset(context, stage: Stage, *, content_combinations=None) -> st
     data_layer = GensDataLayer.from_root(context.resources.data_root)
     gen_id = str(context.partition_key)
 
+    experiment_config = getattr(context.resources, "experiment_config", None)
+    stage_settings = experiment_config.stage_config.get(stage) if experiment_config else None
+    force = stage_settings.force if stage_settings else False
+    reuse_existing = data_layer.input_exists(stage, gen_id, force=force)
+
     input_text, info = _stage_input_asset(
         data_layer=data_layer,
         stage=stage,
         gen_id=gen_id,
         content_combinations=content_combinations,
+        reuse_existing=reuse_existing,
     )
 
     context.add_output_metadata(

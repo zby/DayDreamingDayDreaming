@@ -30,7 +30,7 @@ def _stage_raw_asset(
 
     # Check if we should skip regeneration
     force = stage_settings.force if stage_settings else False
-    if not force and data_layer.raw_exists(stage, gen_id):
+    if data_layer.raw_exists(stage, gen_id, force=force):
         # Reuse existing artifact
         raw_text = data_layer.read_raw(stage, gen_id)
 
@@ -135,6 +135,9 @@ def _stage_raw_asset(
 
     raw_metadata["raw_length"] = len(raw_text)
     raw_metadata["raw_lines"] = sum(1 for _ in str(raw_text).splitlines())
+
+    # A fresh raw output invalidates previously parsed artifacts.
+    data_layer.delete_downstream_artifacts(stage, gen_id, from_stage="raw")
 
     raw_path = data_layer.write_raw(stage, gen_id, raw_text)
     raw_metadata_path = data_layer.paths.raw_metadata_path(stage, gen_id)

@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 import pytest
-from dagster import AssetKey, build_asset_context
+from dagster import AssetKey
 
 from daydreaming_dagster.assets.group_draft import draft_parsed, draft_prompt, draft_raw
 from daydreaming_dagster.assets.group_essay import essay_parsed, essay_prompt, essay_raw
@@ -17,7 +17,6 @@ from daydreaming_dagster.assets.partitions import (
     essay_gens_partitions,
     evaluation_gens_partitions,
 )
-from daydreaming_dagster.data_layer.gens_data_layer import GensDataLayer
 from daydreaming_dagster.assets.raw_data import EVALUATION_TEMPLATES_KEY
 
 
@@ -123,55 +122,3 @@ def test_stage_assets_share_expected_metadata(case: _StageAssetExpectation) -> N
     assert case.asset_def.asset_deps[asset_key] == case.deps
 
 
-@dataclass(frozen=True)
-class _ResumeCase:
-    stage: str
-    prompt_asset: object
-    raw_asset: object
-    parsed_asset: object
-    prompt_kwargs: dict[str, object]
-    raw_kwargs: dict[str, object]
-
-
-_RESUME_CASES = [
-    _ResumeCase(
-        stage="evaluation",
-        prompt_asset=evaluation_prompt,
-        raw_asset=evaluation_raw,
-        parsed_asset=evaluation_parsed,
-        prompt_kwargs={},
-        raw_kwargs={"evaluation_prompt": "cached-input"},
-    ),
-]
-
-
-@pytest.mark.parametrize("case", _RESUME_CASES)
-def test_stage_assets_skip_when_parsed_exists(case: _ResumeCase, tmp_path) -> None:
-    gen_id = f"G-{case.stage}-001"
-    data_layer = GensDataLayer.from_root(tmp_path)
-    data_layer.reserve_generation(case.stage, gen_id, create=True)
-    data_layer.write_input(case.stage, gen_id, "cached-input")
-    data_layer.write_raw(case.stage, gen_id, "cached-raw")
-    data_layer.write_parsed(case.stage, gen_id, "cached-parsed")
-
-    @dataclass
-    class _ExperimentConfig:
-        stage_config: dict[str, object] = None
-
-    resources = {
-        "data_root": str(tmp_path),
-        "experiment_config": _ExperimentConfig(stage_config={}),
-        "openrouter_client": object(),
-    }
-
-    def _context():
-        return build_asset_context(partition_key=gen_id, resources=resources)
-
-    prompt_result = case.prompt_asset(_context(), **case.prompt_kwargs)
-    assert prompt_result == "cached-input"
-
-    raw_result = case.raw_asset(_context(), **case.raw_kwargs)
-    assert raw_result == "cached-raw"
-
-    parsed_result = case.parsed_asset(_context())
-    assert parsed_result == "cached-parsed"

@@ -6,13 +6,12 @@ These helpers encapsulate the shared wiring logic between Dagster assets and the
 from __future__ import annotations
 
 import inspect
-from typing import Callable, Optional, Sequence, Set
+from typing import Optional, Sequence, Set
 
-from dagster import AssetIn, AssetKey, MetadataValue
+from dagster import AssetIn, AssetKey
 from dagster import AllPartitionMapping
 
 from ._decorators import asset_with_boundary
-from ._error_boundary import resume_notice
 from ._helpers import build_stage_artifact_metadata, get_run_id
 from ..data_layer.gens_data_layer import GensDataLayer, resolve_generation_metadata
 from ..unified.stage_core import Stage, resolve_parser_name
@@ -32,37 +31,6 @@ def _resolve_stage_settings(context, stage: Stage):
         return None
     return experiment_config.stage_config.get(stage)
 
-
-def _return_cached_artifact(
-    *,
-    skip_if_parsed_exists: bool,
-    context,
-    data_layer: GensDataLayer,
-    stage: Stage,
-    gen_id: str,
-    artifact: str,
-    reader: Callable[[Stage, str], str],
-):
-    if not skip_if_parsed_exists:
-        return None
-    if not data_layer.parsed_exists(stage, gen_id):
-        return None
-    cached_value = reader(stage, gen_id)
-    context.add_output_metadata(
-        {
-            "resume": MetadataValue.json(
-                resume_notice(
-                    stage=str(stage),
-                    gen_id=gen_id,
-                    artifact=artifact,
-                    reason="parsed_exists",
-                )
-            )
-        }
-    )
-    return cached_value
-
-
 def build_prompt_asset(
     *,
     stage: Stage,
@@ -74,7 +42,6 @@ def build_prompt_asset(
     required_resource_keys: Set[str],
     deps: Optional[Sequence[AssetKey]] = None,
     needs_content_combinations: bool = False,
-    skip_if_parsed_exists: bool = False,
 ):
     """Create a prompt asset that delegates to the unified stage input helper."""
 
@@ -105,23 +72,16 @@ def build_prompt_asset(
             data_layer = GensDataLayer.from_root(context.resources.data_root)
             gen_id = str(context.partition_key)
 
-            cached = _return_cached_artifact(
-                skip_if_parsed_exists=skip_if_parsed_exists,
-                context=context,
-                data_layer=data_layer,
-                stage=stage,
-                gen_id=gen_id,
-                artifact="prompt",
-                reader=data_layer.read_input,
-            )
-            if cached is not None:
-                return cached
+            stage_settings = _resolve_stage_settings(context, stage)
+            force = stage_settings.force if stage_settings else False
+            reuse_existing = data_layer.input_exists(stage, gen_id, force=force)
 
             input_text, info = _stage_input_asset(
                 data_layer=data_layer,
                 stage=stage,
                 gen_id=gen_id,
                 content_combinations=content_combinations,
+                reuse_existing=reuse_existing,
             )
 
             context.add_output_metadata(
@@ -141,22 +101,15 @@ def build_prompt_asset(
             data_layer = GensDataLayer.from_root(context.resources.data_root)
             gen_id = str(context.partition_key)
 
-            cached = _return_cached_artifact(
-                skip_if_parsed_exists=skip_if_parsed_exists,
-                context=context,
-                data_layer=data_layer,
-                stage=stage,
-                gen_id=gen_id,
-                artifact="prompt",
-                reader=data_layer.read_input,
-            )
-            if cached is not None:
-                return cached
+            stage_settings = _resolve_stage_settings(context, stage)
+            force = stage_settings.force if stage_settings else False
+            reuse_existing = data_layer.input_exists(stage, gen_id, force=force)
 
             input_text, info = _stage_input_asset(
                 data_layer=data_layer,
                 stage=stage,
                 gen_id=gen_id,
+                reuse_existing=reuse_existing,
             )
 
             context.add_output_metadata(
@@ -185,7 +138,6 @@ def build_raw_asset(
     prompt_input_asset_key: str,
     prompt_input_param: str | None = None,
     deps: Optional[Sequence[AssetKey]] = None,
-    skip_if_parsed_exists: bool = False,
 ):
     """Create a raw asset that delegates to the unified raw helper."""
 
@@ -207,18 +159,6 @@ def build_raw_asset(
     def _raw_asset_impl(context, prompt_value, asset_inputs):
         data_layer = GensDataLayer.from_root(context.resources.data_root)
         gen_id = str(context.partition_key)
-
-        cached = _return_cached_artifact(
-            skip_if_parsed_exists=skip_if_parsed_exists,
-            context=context,
-            data_layer=data_layer,
-            stage=stage,
-            gen_id=gen_id,
-            artifact="raw",
-            reader=data_layer.read_raw,
-        )
-        if cached is not None:
-            return cached
 
         prompt_text = prompt_value
         if prompt_text is None:
@@ -301,7 +241,6 @@ def build_parsed_asset(
     io_manager_key: str,
     required_resource_keys: Set[str],
     deps: Sequence[AssetKey],
-    skip_if_parsed_exists: bool = False,
     fail_on_truncation: bool = True,
 ):
     """Create a parsed asset that delegates to the unified parsed helper."""
@@ -320,55 +259,60 @@ def build_parsed_asset(
         data_layer = GensDataLayer.from_root(context.resources.data_root)
         gen_id = str(context.partition_key)
 
-        cached = _return_cached_artifact(
-            skip_if_parsed_exists=skip_if_parsed_exists,
-            context=context,
-            data_layer=data_layer,
-            stage=stage,
-            gen_id=gen_id,
-            artifact="parsed",
-            reader=data_layer.read_parsed,
-        )
-        if cached is not None:
-            return cached
-
-        raw_text = data_layer.read_raw(stage, gen_id)
-
-        metadata = resolve_generation_metadata(data_layer, stage, gen_id)
-        try:
-            raw_metadata = data_layer.read_raw_metadata(stage, gen_id)
-        except DDError as err:
-            if err.code is Err.DATA_MISSING:
-                raw_metadata = {}
-            else:
-                raise
-
-        parser_name = resolve_parser_name(
-            data_layer.data_root,
-            stage,
-            metadata.template_id,
-            None,
-        )
-
         stage_settings = _resolve_stage_settings(context, stage)
-        min_lines_override = stage_settings.min_lines if stage_settings else None
-
-        parsed_text, parsed_metadata = _stage_parsed_asset(
-            data_layer=data_layer,
-            stage=stage,
-            gen_id=gen_id,
-            raw_text=raw_text,
-            parser_name=parser_name,
-            raw_metadata=raw_metadata,
-            stage_settings=stage_settings,
-            min_lines_override=min_lines_override,
-            fail_on_truncation=fail_on_truncation,
-        )
-
+        force = stage_settings.force if stage_settings else False
+        reuse_existing = data_layer.parsed_exists(stage, gen_id, force=force)
         run_id = get_run_id(context)
-        if run_id:
-            parsed_metadata["run_id"] = run_id
-            data_layer.write_parsed_metadata(stage, gen_id, parsed_metadata)
+
+        parsed_metadata = None
+        if reuse_existing:
+            try:
+                parsed_text = data_layer.read_parsed(stage, gen_id)
+                parsed_metadata = data_layer.read_parsed_metadata(stage, gen_id)
+            except DDError as err:
+                if err.code is Err.DATA_MISSING:
+                    reuse_existing = False
+                else:
+                    raise
+
+        if reuse_existing and parsed_metadata is not None:
+            parsed_metadata = dict(parsed_metadata)
+            parsed_metadata["reused"] = True
+            if run_id:
+                parsed_metadata["run_id"] = run_id
+        else:
+            raw_text = data_layer.read_raw(stage, gen_id)
+
+            metadata = resolve_generation_metadata(data_layer, stage, gen_id)
+            try:
+                raw_metadata = data_layer.read_raw_metadata(stage, gen_id)
+            except DDError as err:
+                if err.code is Err.DATA_MISSING:
+                    raw_metadata = {}
+                else:
+                    raise
+
+            parser_name = resolve_parser_name(
+                data_layer.data_root,
+                stage,
+                metadata.template_id,
+                None,
+            )
+
+            min_lines_override = stage_settings.min_lines if stage_settings else None
+
+            parsed_text, parsed_metadata = _stage_parsed_asset(
+                data_layer=data_layer,
+                stage=stage,
+                gen_id=gen_id,
+                raw_text=raw_text,
+                parser_name=parser_name,
+                raw_metadata=raw_metadata,
+                stage_settings=stage_settings,
+                min_lines_override=min_lines_override,
+                fail_on_truncation=fail_on_truncation,
+                run_id=run_id,
+            )
 
         context.add_output_metadata(
             build_stage_artifact_metadata(
