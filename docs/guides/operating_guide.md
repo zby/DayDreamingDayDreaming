@@ -267,7 +267,7 @@ Note on legacy data:
 
 To run a specific evaluation (e.g., `novelty`) only on chosen documents (e.g., prior-art winners):
 
-1. Ensure the evaluation template exists in `data/1_raw/evaluation_templates.csv`, include it in the cohort spec, and confirm the evaluation models are flagged `for_evaluation` in `llm_models.csv`.
+1. Ensure the evaluation template exists in `data/1_raw/evaluation_templates.csv`, include it in the cohort spec, and confirm the models you intend to use are listed in `llm_models.csv`.
    ```bash
    uv run dagster asset materialize --select "cohort_id,cohort_membership" \
      --partition "<cohort_id>" -f src/daydreaming_dagster/definitions.py

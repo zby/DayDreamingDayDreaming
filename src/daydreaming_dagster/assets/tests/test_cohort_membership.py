@@ -124,8 +124,8 @@ def base_data_root(tmp_path: Path) -> Path:
     _write_csv(
         raw / "llm_models.csv",
         [
-            {"id": "gen-model", "for_generation": True, "for_evaluation": False},
-            {"id": "eval-model", "for_generation": False, "for_evaluation": True},
+            {"id": "gen-model"},
+            {"id": "eval-model"},
         ],
     )
     _write_csv(
@@ -206,8 +206,8 @@ def test_cohort_membership_cartesian_multiple_replicates(tmp_path: Path) -> None
     _write_csv(
         raw / "llm_models.csv",
         [
-            {"id": "gen-model", "for_generation": True, "for_evaluation": False},
-            {"id": "eval-model", "for_generation": False, "for_evaluation": True},
+            {"id": "gen-model"},
+            {"id": "eval-model"},
         ],
     )
     (data_root / "gens" / "draft").mkdir(parents=True, exist_ok=True)
@@ -308,9 +308,9 @@ def test_cohort_membership_uses_spec_plan(tmp_path: Path) -> None:
     _write_csv(
         raw / "llm_models.csv",
         [
-            {"id": "draft-llm", "for_generation": True, "for_evaluation": False},
-            {"id": "essay-llm", "for_generation": True, "for_evaluation": False},
-            {"id": "eval-llm", "for_generation": False, "for_evaluation": True},
+            {"id": "draft-llm"},
+            {"id": "essay-llm"},
+            {"id": "eval-llm"},
         ],
     )
 

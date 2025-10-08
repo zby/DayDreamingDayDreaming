@@ -94,8 +94,8 @@ def test_essay_rows_reference_draft_ids(tmp_path: Path) -> None:
     _write_csv(
         raw / "llm_models.csv",
         [
-            {"id": "gen-model", "for_generation": True, "for_evaluation": False},
-            {"id": "eval-model", "for_generation": False, "for_evaluation": True},
+            {"id": "gen-model"},
+            {"id": "eval-model"},
         ],
     )
     _write_csv(

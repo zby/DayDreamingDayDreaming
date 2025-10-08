@@ -20,6 +20,7 @@ Keep these open when working; this file intentionally avoids duplicating the sam
 
 ## 2. Daily Development Loop
 - Practice TDD: update or add tests first, then code. Run the narrowest test you can (`pytest -k`, single asset partition, etc.).
+- Before sending a PR, run the full suite once via `.venv/bin/pytest`. The full run completes quickly and catches wiring errors CI will flag anyway.
 - Always invoke the test runner via the project environment: use `.venv/bin/pytest` (not the system `pytest`).
 - Unit tests live next to the code under `src/daydreaming_dagster/`; they must avoid network and heavy file I/O. Integration tests go under `tests/` and may use the sample `data/` tree but never real APIs.
 - Lean on dependency injection: pass resources, clients, and paths explicitly so tests can stub them.

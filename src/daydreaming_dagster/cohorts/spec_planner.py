@@ -317,23 +317,17 @@ def build_spec_catalogs(data_root: Path) -> dict[str, list[str]]:
         catalogs["evaluation_template"] = evaluations
 
     llm_df = read_llm_models(data_root)
-    if not llm_df.empty:
-        generation_llms = {
+    if not llm_df.empty and "id" in llm_df.columns:
+        llm_values = {
             str(value).strip()
-            for value in llm_df[llm_df["for_generation"] == True]["id"].dropna().tolist()
+            for value in llm_df["id"].dropna().tolist()
             if str(value).strip()
         }
-        evaluation_llms = {
-            str(value).strip()
-            for value in llm_df[llm_df["for_evaluation"] == True]["id"].dropna().tolist()
-            if str(value).strip()
-        }
-        if generation_llms:
-            sorted_generation = sorted(generation_llms)
-            catalogs["draft_llm"] = sorted_generation
-            catalogs.setdefault("essay_llm", sorted_generation)
-        if evaluation_llms:
-            catalogs["evaluation_llm"] = sorted(evaluation_llms)
+        if llm_values:
+            sorted_llms = sorted(llm_values)
+            catalogs["draft_llm"] = sorted_llms
+            catalogs["essay_llm"] = sorted_llms
+            catalogs["evaluation_llm"] = sorted_llms
 
     if "essay_llm" in catalogs:
         values = set(catalogs["essay_llm"])

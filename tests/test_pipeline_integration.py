@@ -281,12 +281,6 @@ def pipeline_data_root_prepared():
     if models_csv.exists():
         mdf = pd.read_csv(models_csv)
         mdf = _drop_legacy_columns(mdf).head(4).reset_index(drop=True)
-        if "for_generation" in mdf.columns and not mdf.empty:
-            mdf["for_generation"] = False
-            mdf.loc[mdf.index[: min(2, len(mdf))], "for_generation"] = True
-        if "for_evaluation" in mdf.columns and not mdf.empty:
-            mdf["for_evaluation"] = False
-            mdf.loc[mdf.index[: min(2, len(mdf))], "for_evaluation"] = True
         mdf.to_csv(models_csv, index=False)
 
     combo_mappings_csv = pipeline_data_root / "combo_mappings.csv"
@@ -352,14 +346,15 @@ def pipeline_data_root_prepared():
     essay_templates = pd.read_csv(essay_templates_csv)["template_id"].astype(str).dropna().tolist()
     evaluation_templates = pd.read_csv(eval_templates_csv)["template_id"].astype(str).dropna().tolist()
     llm_models_df = pd.read_csv(models_csv)
-    generation_llms = llm_models_df[llm_models_df.get("for_generation", False) == True]["id"].astype(str).dropna().tolist()
-    evaluation_llms = llm_models_df[llm_models_df.get("for_evaluation", False) == True]["id"].astype(str).dropna().tolist()
+    all_llms = llm_models_df["id"].astype(str).dropna().tolist() if "id" in llm_models_df.columns else []
+    generation_llms = all_llms[:2] if all_llms else []
+    evaluation_llms = all_llms[:2] if all_llms else []
 
-    # Fallbacks in case trimming removed too much
-    if not generation_llms and "id" in llm_models_df.columns:
-        generation_llms = llm_models_df["id"].astype(str).dropna().tolist()[:1]
-    if not evaluation_llms and "id" in llm_models_df.columns:
-        evaluation_llms = llm_models_df["id"].astype(str).dropna().tolist()[:1]
+    # Fallback in case trimming removed too much
+    if not generation_llms and all_llms:
+        generation_llms = all_llms[:1]
+    if not evaluation_llms and all_llms:
+        evaluation_llms = all_llms[:1]
 
     if not combos:
         combos = ["combo-test-1"]
@@ -748,8 +743,6 @@ class TestPipelineIntegration:
                         "model": "provider/model",
                         "provider": "provider",
                         "display_name": "Test Model",
-                        "for_generation": True,
-                        "for_evaluation": True,
                         "specialization": "test",
                     }
                 ]
