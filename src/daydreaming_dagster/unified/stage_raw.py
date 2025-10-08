@@ -52,6 +52,7 @@ def _stage_raw_asset(
             raise
 
         # Mark as reused
+        raw_metadata = dict(raw_metadata)
         raw_metadata["reused"] = True
         if run_id:
             raw_metadata["run_id"] = run_id
@@ -69,7 +70,6 @@ def _stage_raw_asset(
         "mode": mode,
         "stage": str(stage),
         "gen_id": str(gen_id),
-        "reused": False,
     }
     if run_id:
         raw_metadata["run_id"] = run_id
@@ -143,7 +143,10 @@ def _stage_raw_asset(
     raw_metadata_path = data_layer.paths.raw_metadata_path(stage, gen_id)
     raw_metadata["raw_path"] = str(raw_path)
     raw_metadata["raw_metadata_path"] = str(raw_metadata_path)
-    data_layer.write_raw_metadata(stage, gen_id, raw_metadata)
+
+    file_metadata = dict(raw_metadata)
+    file_metadata.pop("reused", None)
+    data_layer.write_raw_metadata(stage, gen_id, file_metadata)
 
     return raw_text, raw_metadata
 
@@ -167,6 +170,9 @@ def stage_raw_asset(context, stage: Stage, *, prompt_text: str) -> str:
         stage_settings=stage_settings,
         run_id=run_id,
     )
+
+    if "reused" not in raw_metadata:
+        raw_metadata["reused"] = False
 
     output_md = build_stage_artifact_metadata(
         function=f"{stage}_raw",

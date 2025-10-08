@@ -138,6 +138,7 @@ def build_pivot(
     cohort_spec: ExperimentSpec | None = None,
     seed: int | None = None,
 ) -> None:
+    data_root = paths.data_root
     if not parsed_scores.exists():
         raise DDError(
             Err.DATA_MISSING,

@@ -217,4 +217,4 @@ def test_stage_parsed_missing_existing_metadata_is_rewritten(tmp_path: Path, mon
     assert parsed_path.read_text(encoding="utf-8") == "RAW"
     assert ctx.captured["reused"].value is False
     meta = json.loads(paths.parsed_metadata_path("draft", "D1").read_text(encoding="utf-8"))
-    assert meta["reused"] is False
+    assert "reused" not in meta

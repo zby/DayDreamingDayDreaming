@@ -101,7 +101,6 @@ def _stage_parsed_asset(
         "parser_name": parser_name,
         "success": True,
         "error": None,
-        "reused": False,
     }
 
     if run_id:
@@ -115,7 +114,10 @@ def _stage_parsed_asset(
     parsed_metadata_path = data_layer.paths.parsed_metadata_path(stage, gen_id)
     parsed_metadata["parsed_path"] = str(parsed_path)
     parsed_metadata["parsed_metadata_path"] = str(parsed_metadata_path)
-    data_layer.write_parsed_metadata(stage, gen_id, parsed_metadata)
+
+    file_metadata = dict(parsed_metadata)
+    file_metadata.pop("reused", None)
+    data_layer.write_parsed_metadata(stage, gen_id, file_metadata)
 
     return parsed_text, parsed_metadata
 
@@ -189,6 +191,9 @@ def stage_parsed_asset(
             fail_on_truncation=fail_on_truncation,
             run_id=run_id,
         )
+
+    if "reused" not in parsed_metadata:
+        parsed_metadata["reused"] = False
 
     context.add_output_metadata(
         build_stage_artifact_metadata(

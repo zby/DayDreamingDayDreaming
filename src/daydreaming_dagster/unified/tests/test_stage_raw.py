@@ -129,7 +129,9 @@ def test_stage_raw_llm_persists_expected_files(tmp_path: Path):
             "raw_path": str(raw_path),
         },
     )
-    assert md["raw_metadata"].value == raw_meta
+    captured_meta = dict(md["raw_metadata"].value)
+    assert captured_meta.pop("reused", False) is False
+    assert captured_meta == raw_meta
 
 
 def test_stage_raw_copy_marks_input_mode(tmp_path: Path):
