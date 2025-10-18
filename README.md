@@ -1,6 +1,6 @@
 # DayDreaming Dagster Pipeline
 
-Dagster-based pipeline exploring whether offline LLMs can reinvent the “Daydreaming Loop” via a structured, three-stage (draft → essay → evaluation) generation workflow. For the full set of project goals and guiding questions, start with [`docs/theory/project_goals.md`](docs/theory/project_goals.md).
+Dagster-based pipeline exploring whether offline LLMs can reinvent the “Daydreaming Loop” via a structured, three-stage (draft → essay → evaluation) generation workflow. For the full set of project goals and guiding questions, start with [`docs/rationale/project_goals.md`](docs/rationale/project_goals.md).
 
 ## Start Here
 
