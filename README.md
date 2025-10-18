@@ -33,12 +33,14 @@ See the operating guide for partitioning examples, essay/draft pipelines, and sc
 
 ## Reproducing the DayDreaming Experiments
 
-Two cohorts ship in this repository:
+No cohorts are pre-materialized in this repository; every run is generated locally from the cohort specs. Two reference cohort definitions ship as part of the source tree:
 
 - `best_novelty_all_evals` &mdash; the original two-stage experiment (draft → essay → evaluation) that recreates Gwern's Daydreaming loop.
 - `creative-synthesis-gap-v1` &mdash; a follow-up cohort focused on the same concept bundle with tweaked templates and evaluation rubrics. It uses the identical two-stage pipeline so the results are directly comparable.
 
-Everything required to regenerate both cohorts lives under `data/`. To reproduce from scratch:
+While the cohorts themselves are local-only, we ship representative result essays under `data/results/` so you can inspect the intended outputs without re-running the pipeline.
+
+Everything required to generate these cohorts lives under `data/`. To reproduce from scratch:
 
 1. **Sync dependencies and point Dagster at your workspace.**
    ```bash
